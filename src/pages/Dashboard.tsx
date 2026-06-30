@@ -652,9 +652,27 @@ export function Dashboard({
             {heroCopy.description}
           </p>
           <div className="dashboard-stats">
-            <span>全部 {stats.officialCount}</span>
-            <span>收藏 {stats.favoriteCount}</span>
-            <span>草稿 {stats.draftCount}</span>
+            <button
+              className={prefs.favoriteMode === "all" ? "active" : ""}
+              onClick={() => updatePrefs({ favoriteMode: "all" })}
+              type="button"
+            >
+              全部 {stats.officialCount}
+            </button>
+            <button
+              className={prefs.favoriteMode === "favorites" ? "active" : ""}
+              onClick={() => updatePrefs({ favoriteMode: "favorites" })}
+              type="button"
+            >
+              收藏 {stats.favoriteCount}
+            </button>
+            <button
+              className={prefs.favoriteMode === "drafts" ? "active" : ""}
+              onClick={() => updatePrefs({ favoriteMode: "drafts" })}
+              type="button"
+            >
+              草稿 {stats.draftCount}
+            </button>
           </div>
         </div>
         <div className="hero-actions dashboard-hero-actions">
@@ -988,7 +1006,16 @@ export function Dashboard({
             </button>
           </div>
         ) : (
-          <div className="card-list">
+          <>
+          {visibleCharacters.length === 1 && (
+            <div className="single-list-note">
+              <span>目前只有 1 个角色，可以继续新建来丰富你的角色库。</span>
+              <button className="ghost-button" onClick={onCreate} type="button">
+                新建角色
+              </button>
+            </div>
+          )}
+          <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
             {visibleCharacters.map((character) => {
               const tags = character.personalityTags || [];
               const visibleTags = tags.slice(0, 5);
@@ -1203,6 +1230,7 @@ export function Dashboard({
               );
             })}
           </div>
+          </>
         )}
       </div>
       <footer className="dashboard-footer">

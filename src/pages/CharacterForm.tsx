@@ -184,9 +184,26 @@ const randomNames = [
   "陆沉舟",
   "塔莉娅",
   "北原澈",
+  "鹿川遥",
+  "南宫祈",
+  "艾瑞尔",
+  "钟离昼",
+  "姜停云",
+  "凛音",
+  "塞西莉亚",
+  "乌诺",
+  "许照夜",
+  "明堂雪",
+  "卡洛斯",
+  "岚",
+  "白鸟栖",
+  "伊森",
+  "森野萤",
+  "罗莎琳",
 ];
 
-const randomGenders = ["女", "男", "非二元", "其他"];
+const randomGenders = ["女", "男", "非二元", "其他", "无性别", "性别流动", "未知"];
+const randomAges = ["12", "15", "17", "19", "22", "24", "27", "31", "36", "42", "58", "128", "外表约20"];
 const genderOptions = ["男", "女", "非二元", "其他", "自定义"];
 
 const randomSpecies = [
@@ -206,6 +223,18 @@ const randomSpecies = [
   "旧神眷属",
   "时间旅人",
   "仿生体",
+  "星灵",
+  "月族",
+  "梦魇",
+  "灵媒",
+  "机械精灵",
+  "荒原混血",
+  "镜像人",
+  "书页妖精",
+  "古代守卫",
+  "数据幽魂",
+  "深海遗民",
+  "灾厄容器",
 ];
 
 const randomOccupations = [
@@ -229,6 +258,18 @@ const randomOccupations = [
   "图书馆守夜人",
   "异常收容员",
   "失业侦探",
+  "星图绘师",
+  "梦境潜航员",
+  "战地药剂师",
+  "记忆修复师",
+  "禁书译者",
+  "义体调律师",
+  "荒野信使",
+  "结界工程师",
+  "旧货店老板",
+  "观测站值夜员",
+  "地下剧团演员",
+  "灵异案件顾问",
 ];
 
 const randomAppearances = [
@@ -246,6 +287,14 @@ const randomAppearances = [
   "黑色礼服外套，耳坠不成对，说话时很少眨眼。",
   "短靴、披肩和金属护臂混搭，身上带着旅途风尘。",
   "发尾像被火燎过，外套内侧藏着许多纸条。",
+  "发间别着细小金属夹，制服干净却总有雨水痕迹。",
+  "眼下有淡淡黑眼圈，围巾遮住半张脸，声音很轻。",
+  "一侧手臂覆盖精密义体，关节处有微弱蓝光。",
+  "披着旧斗篷，靴侧挂着小铃铛，走路几乎没有声响。",
+  "异色瞳，手套上绣着陌生符号，常带着礼貌微笑。",
+  "短发凌乱，背包上挂满护身符和坏掉的钥匙。",
+  "额前有一道浅色印记，衣服层叠但配色克制。",
+  "穿着改造过的校服，袖口缝着细密的防护符线。",
 ];
 
 const randomAbilities = [
@@ -263,6 +312,14 @@ const randomAbilities = [
   "对毒素和污染有高度耐受，身体恢复速度缓慢但稳定。",
   "能把情绪具象成短暂武器，情绪越极端越难控制。",
   "拥有精准射击能力，同时依赖一副特制护目镜。",
+  "能在短距离内交换两个物体的位置，但必须先触碰目标。",
+  "可以记录并重放一段声音，用来误导敌人或保存证词。",
+  "能让伤口暂时停止恶化，但代价是自身感官迟钝。",
+  "可以看见谎言留下的细线，却无法判断谎言的动机。",
+  "能召来小型使魔传递消息，使魔性格很难控制。",
+  "可以短暂进入镜面空间，停留太久会迷失方向。",
+  "擅长拆解结界和安全系统，但需要安静的准备时间。",
+  "能把梦境片段投影成幻象，越真实越消耗精神。",
 ];
 
 const randomBackstories = [
@@ -280,17 +337,25 @@ const randomBackstories = [
   "被某个神秘组织误认为关键人物，只好边逃边调查。",
   "表面经营小店，实际替附近居民处理异常事件。",
   "曾经背叛过同伴，如今试图用自己的方式补偿过去。",
+  "被一封没有署名的信引到陌生城市，从此卷入连续怪事。",
+  "继承了一间只在午夜营业的店铺，也继承了店里的契约。",
+  "为了保护某个秘密档案，主动从原本的生活中消失。",
+  "在一次失败任务后被除名，仍暗中守着旧队友留下的线索。",
+  "每年生日都会收到来自未来的礼物，内容越来越危险。",
+  "曾短暂成为某个仪式的祭品，因此获得了不稳定的力量。",
+  "在废墟中醒来时只记得一个名字，正试图找回自己的身份。",
+  "被记录为早已死亡的人，却以新的身份安静生活至今。",
 ];
 
 const randomWorldviewDetails: Record<string, string[]> = {
-  现代都市: ["雨夜霓虹街区", "旧城区怪谈", "大型企业阴影"],
-  奇幻: ["边境王国", "浮空群岛", "古老魔法学院"],
-  赛博朋克: ["高塔贫民区", "义体诊所", "失控数据城"],
-  废土: ["干涸海床", "移动避难所", "污染隔离带"],
-  校园: ["封闭寄宿学校", "社团怪谈", "考试季异常事件"],
-  异世界: ["召唤后的陌生大陆", "多种族贸易城", "勇者传说背面"],
-  克苏鲁: ["海边小镇", "禁书图书馆", "低语梦境"],
-  后室风: ["无尽办公层", "潮湿黄色走廊", "错误出口"],
+  现代都市: ["雨夜霓虹街区", "旧城区怪谈", "大型企业阴影", "深夜便利店", "匿名论坛事件"],
+  奇幻: ["边境王国", "浮空群岛", "古老魔法学院", "沉睡森林", "失落神殿"],
+  赛博朋克: ["高塔贫民区", "义体诊所", "失控数据城", "地下黑市", "企业实验楼"],
+  废土: ["干涸海床", "移动避难所", "污染隔离带", "风暴补给站", "废弃发射井"],
+  校园: ["封闭寄宿学校", "社团怪谈", "考试季异常事件", "旧教学楼", "天台约定"],
+  异世界: ["召唤后的陌生大陆", "多种族贸易城", "勇者传说背面", "边境驿站", "王都下水道"],
+  克苏鲁: ["海边小镇", "禁书图书馆", "低语梦境", "雾中灯塔", "沉没教堂"],
+  后室风: ["无尽办公层", "潮湿黄色走廊", "错误出口", "失真商场", "循环楼梯间"],
 };
 
 const helperText: Record<
@@ -323,6 +388,9 @@ const promptValueMap: Record<string, string> = {
   女: "female",
   男: "male",
   非二元: "non-binary",
+  其他: "other gender expression",
+  无性别: "agender",
+  性别流动: "genderfluid",
   未知: "unknown gender",
   人类: "human",
   精灵: "elf",
@@ -340,6 +408,18 @@ const promptValueMap: Record<string, string> = {
   旧神眷属: "old god follower",
   时间旅人: "time traveler",
   仿生体: "android",
+  星灵: "astral spirit",
+  月族: "moon clan descendant",
+  梦魇: "nightmare entity",
+  灵媒: "spirit medium",
+  机械精灵: "mechanical elf",
+  荒原混血: "wasteland hybrid",
+  镜像人: "mirror person",
+  书页妖精: "book fairy",
+  古代守卫: "ancient guardian",
+  数据幽魂: "data ghost",
+  深海遗民: "deep sea survivor",
+  灾厄容器: "vessel of calamity",
   现代都市: "modern urban setting",
   奇幻: "fantasy setting",
   赛博朋克: "cyberpunk setting",
@@ -829,7 +909,7 @@ export function CharacterForm({
       name: pickRandom(randomNames),
       avatarEmoji: pickRandom(avatarEmojiOptions),
       gender: pickRandom(randomGenders),
-      age: String(Math.floor(Math.random() * 33) + 14),
+      age: pickRandom(randomAges),
       birthDate: "",
       birthYear: "",
       species: pickRandom(randomSpecies),
@@ -850,8 +930,16 @@ export function CharacterForm({
       imagePrompt: generateImagePrompt(randomCharacter),
     });
     setAgeMode("manual");
-    setGenderMode(randomCharacter.gender || "");
-    setCustomGender("");
+    setGenderMode(
+      randomCharacter.gender && genderOptions.includes(randomCharacter.gender)
+        ? randomCharacter.gender
+        : "自定义",
+    );
+    setCustomGender(
+      randomCharacter.gender && genderOptions.includes(randomCharacter.gender)
+        ? ""
+        : randomCharacter.gender || "",
+    );
     setFormError("");
     showToast("角色已随机生成");
   }
