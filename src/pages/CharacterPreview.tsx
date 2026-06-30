@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { Character } from "../types/character";
-import { exportCharacterJson, exportPreviewPdf } from "../utils/importExport";
+import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
 
 type CharacterPreviewProps = {
   character: Character;
@@ -28,6 +28,9 @@ function buildFullCharacterText(character: Character) {
     `种族：${displayValue(character.species)}`,
     `职业：${displayValue(character.occupation)}`,
     `世界观：${displayValue(character.worldview)}`,
+    `角色标签：${
+      character.tags?.length ? character.tags.map((tag) => tag.name).join("、") : "未填写"
+    }`,
     `性格标签：${
       character.personalityTags?.length
         ? character.personalityTags.join("、")
@@ -77,6 +80,24 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
       showToast("PDF 已导出");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "PDF 导出失败，请稍后重试");
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  async function handleExportImage(format: "jpg" | "png") {
+    if (!previewRef.current) {
+      showToast("找不到可导出的角色展示区域");
+      return;
+    }
+
+    setLoadingAction(format);
+
+    try {
+      await exportPreviewImage(previewRef.current, character.name || "未命名角色", format);
+      showToast(`${format.toUpperCase()} 已导出`);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : `${format.toUpperCase()} 导出失败`);
     } finally {
       setLoadingAction(null);
     }
@@ -132,6 +153,22 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
             >
               {loadingAction === "pdf" ? "导出中..." : "导出 PDF"}
             </button>
+            <button
+              className="ghost-button"
+              disabled={loadingAction === "jpg"}
+              onClick={() => handleExportImage("jpg")}
+              type="button"
+            >
+              {loadingAction === "jpg" ? "导出中..." : "导出 JPG"}
+            </button>
+            <button
+              className="ghost-button"
+              disabled={loadingAction === "png"}
+              onClick={() => handleExportImage("png")}
+              type="button"
+            >
+              {loadingAction === "png" ? "导出中..." : "导出 PNG"}
+            </button>
             <button className="ghost-button" onClick={onBack} type="button">
               返回
             </button>
@@ -151,6 +188,23 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
                 </div>
               ))}
             </div>
+          </article>
+
+          <article className="preview-card">
+            <div className="preview-card-title">
+              <h2>角色标签</h2>
+            </div>
+            {character.tags?.length ? (
+              <div className="preview-tags">
+                {character.tags.map((tag) => (
+                  <span className={`tag-color-${tag.color || "gray"}`} key={tag.id}>
+                    {tag.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p>未填写</p>
+            )}
           </article>
 
           <article className="preview-card">

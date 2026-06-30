@@ -1,4 +1,4 @@
-import type { Character } from "../types/character";
+import type { Character, CharacterTag } from "../types/character";
 
 const csvHeaders = [
   "名字",
@@ -8,6 +8,7 @@ const csvHeaders = [
   "职业",
   "世界观",
   "性格标签",
+  "角色标签",
   "视觉风格",
   "外貌描述",
   "能力描述",
@@ -46,6 +47,36 @@ function asStringArray(value: unknown) {
     : [];
 }
 
+function asTags(value: unknown): CharacterTag[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item): CharacterTag | null => {
+      if (typeof item === "string") {
+        return { id: crypto.randomUUID(), name: item };
+      }
+
+      if (!isRecord(item)) {
+        return null;
+      }
+
+      const name = asString(item.name).trim();
+
+      if (!name) {
+        return null;
+      }
+
+      return {
+        id: asString(item.id) || crypto.randomUUID(),
+        name,
+        color: asString(item.color),
+      };
+    })
+    .filter((item): item is CharacterTag => item !== null);
+}
+
 function normalizeCharacter(value: unknown, existingIds: Set<string>): Character | null {
   if (!isRecord(value)) {
     return null;
@@ -68,6 +99,7 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     species: asString(value.species),
     occupation: asString(value.occupation),
     worldview: asString(value.worldview),
+    tags: asTags(value.tags),
     personalityTags: asStringArray(value.personalityTags),
     appearanceDescription: asString(value.appearanceDescription),
     abilityDescription: asString(value.abilityDescription),
@@ -102,6 +134,10 @@ function downloadBlob(content: BlobPart, filename: string, type: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function exportNodeName(characterName: string, extension: string) {
+  return `${safeFileName(characterName)}-${dateStamp()}.${extension}`;
 }
 
 export function exportCharacterJson(character: Character) {
@@ -140,6 +176,7 @@ export function exportCharactersCsv(characters: Character[]) {
     character.occupation || "",
     character.worldview || "",
     character.personalityTags?.join("、") || "",
+    character.tags?.map((tag) => tag.name).join("、") || "",
     character.visualStyle || "",
     character.appearanceDescription || "",
     character.abilityDescription || "",
@@ -182,7 +219,7 @@ export async function importCharactersFromFiles(
   return [...importedCharacters, ...existingCharacters];
 }
 
-export async function exportPreviewPdf(element: HTMLElement, characterName: string) {
+async function capturePreviewCanvas(element: HTMLElement) {
   if (!element.isConnected) {
     throw new Error("找不到可导出的角色展示区域");
   }
@@ -198,12 +235,9 @@ export async function exportPreviewPdf(element: HTMLElement, characterName: stri
   }
 
   try {
-    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-      import("html2canvas"),
-      import("jspdf"),
-    ]);
+    const { default: html2canvas } = await import("html2canvas");
 
-    const canvas = await html2canvas(element, {
+    return await html2canvas(element, {
       backgroundColor: "#f3f4f6",
       height: Math.ceil(bounds.height),
       onclone: (documentClone) => {
@@ -249,6 +283,40 @@ export async function exportPreviewPdf(element: HTMLElement, characterName: stri
         window.innerWidth,
       ),
     });
+  } finally {
+    element.classList.remove("pdf-safe");
+  }
+}
+
+export async function exportPreviewImage(
+  element: HTMLElement,
+  characterName: string,
+  format: "png" | "jpg",
+  quality = 0.9,
+) {
+  const canvas = await capturePreviewCanvas(element);
+
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("图片截图生成失败");
+  }
+
+  const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, mimeType, format === "jpg" ? quality : undefined),
+  );
+
+  if (!blob) {
+    throw new Error("图片导出失败");
+  }
+
+  downloadBlob(blob, exportNodeName(characterName, format), mimeType);
+}
+
+async function createPreviewPdfBlob(element: HTMLElement) {
+  const [{ jsPDF }, canvas] = await Promise.all([
+    import("jspdf"),
+    capturePreviewCanvas(element),
+  ]);
 
     if (canvas.width <= 0 || canvas.height <= 0) {
       throw new Error("PDF 截图生成失败");
@@ -273,8 +341,246 @@ export async function exportPreviewPdf(element: HTMLElement, characterName: stri
       remainingHeight -= pageHeight;
     }
 
-    pdf.save(`${safeFileName(characterName)}-${dateStamp()}.pdf`);
+    return pdf.output("blob");
+}
+
+export async function exportPreviewPdf(element: HTMLElement, characterName: string) {
+  const blob = await createPreviewPdfBlob(element);
+  downloadBlob(blob, exportNodeName(characterName, "pdf"), "application/pdf");
+}
+
+function createSnapshotElement(character: Character) {
+  const element = document.createElement("div");
+  element.dataset.pdfExportRoot = "true";
+  element.className = "snapshot-export pdf-safe";
+  element.innerHTML = `
+    <section class="preview-hero">
+      <div class="preview-identity">
+        <div class="preview-avatar">${character.avatarEmoji || "🙂"}</div>
+        <div>
+          <p class="eyebrow">Character Preview</p>
+          <h1>${escapeHtml(character.name || "未命名角色")}</h1>
+          <p class="muted">${escapeHtml(character.occupation || "未填写")} / ${escapeHtml(character.worldview || "未填写")}</p>
+        </div>
+      </div>
+    </section>
+    <section class="preview-layout">
+      ${snapshotCard("基础资料", [
+        `性别：${character.gender || "未填写"}`,
+        `年龄：${character.age || "未填写"}`,
+        `种族：${character.species || "未填写"}`,
+        `职业：${character.occupation || "未填写"}`,
+        `世界观：${character.worldview || "未填写"}`,
+      ].join("\\n"))}
+      ${snapshotCard("角色标签", character.tags?.map((tag) => tag.name).join("、") || "未填写")}
+      ${snapshotCard("性格标签", character.personalityTags?.join("、") || "未填写")}
+      ${snapshotCard("外貌描述", character.appearanceDescription || "未填写")}
+      ${snapshotCard("能力描述", character.abilityDescription || "未填写")}
+      ${snapshotCard("背景故事", character.backstory || "未填写")}
+      ${snapshotCard("中文人物关键词", character.characterKeywords || "未填写")}
+      ${snapshotCard("英文 AI Prompt", character.imagePrompt || "未填写")}
+    </section>
+  `;
+  document.body.appendChild(element);
+  return element;
+}
+
+async function createCharacterSnapshotBlob(
+  character: Character,
+  format: "pdf" | "png" | "jpg",
+) {
+  const element = createSnapshotElement(character);
+
+  try {
+    if (format === "pdf") {
+      return {
+        blob: await createPreviewPdfBlob(element),
+        type: "application/pdf",
+      };
+    }
+
+    const canvas = await capturePreviewCanvas(element);
+    const type = format === "jpg" ? "image/jpeg" : "image/png";
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, type, format === "jpg" ? 0.9 : undefined),
+    );
+
+    if (!blob) {
+      throw new Error("图片导出失败");
+    }
+
+    return { blob, type };
   } finally {
-    element.classList.remove("pdf-safe");
+    element.remove();
   }
 }
+
+export async function exportCharacterSnapshot(
+  character: Character,
+  format: "pdf" | "png" | "jpg",
+) {
+  const { blob, type } = await createCharacterSnapshotBlob(character, format);
+  downloadBlob(blob, exportNodeName(character.name || "未命名角色", format), type);
+}
+
+export async function exportCharacterSnapshotsZip(
+  characters: Character[],
+  format: "pdf" | "png" | "jpg",
+  onProgress?: (current: number, total: number) => void,
+) {
+  const files: Array<{ name: string; blob: Blob }> = [];
+  let failedCount = 0;
+  const usedNames = new Map<string, number>();
+
+  for (let index = 0; index < characters.length; index += 1) {
+    const character = characters[index];
+    onProgress?.(index + 1, characters.length);
+
+    try {
+      const { blob } = await createCharacterSnapshotBlob(character, format);
+      const baseName = safeFileName(character.name || "未命名角色");
+      const count = usedNames.get(baseName) || 0;
+      usedNames.set(baseName, count + 1);
+      files.push({
+        name: `${baseName}${count > 0 ? `-${count + 1}` : ""}.${format}`,
+        blob,
+      });
+    } catch {
+      failedCount += 1;
+    }
+  }
+
+  const zipBlob = await createZipBlob(files);
+  downloadBlob(
+    zipBlob,
+    `character-studio-export-${dateStamp()}.zip`,
+    "application/zip",
+  );
+
+  return { failedCount };
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function snapshotCard(title: string, content: string) {
+  return `
+    <article class="preview-card wide-card">
+      <div class="preview-card-title"><h2>${escapeHtml(title)}</h2></div>
+      <p>${escapeHtml(content)}</p>
+    </article>
+  `;
+}
+
+async function createZipBlob(files: Array<{ name: string; blob: Blob }>) {
+  const encoder = new TextEncoder();
+  const localParts: Uint8Array[] = [];
+  const centralParts: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const data = new Uint8Array(await file.blob.arrayBuffer());
+    const name = encoder.encode(file.name);
+    const crc = crc32(data);
+    const { time, date } = dosDateTime(new Date());
+    const localHeader = new Uint8Array(30 + name.length);
+    const localView = new DataView(localHeader.buffer);
+    localView.setUint32(0, 0x04034b50, true);
+    localView.setUint16(4, 20, true);
+    localView.setUint16(6, 0x0800, true);
+    localView.setUint16(8, 0, true);
+    localView.setUint16(10, time, true);
+    localView.setUint16(12, date, true);
+    localView.setUint32(14, crc, true);
+    localView.setUint32(18, data.length, true);
+    localView.setUint32(22, data.length, true);
+    localView.setUint16(26, name.length, true);
+    localHeader.set(name, 30);
+    localParts.push(localHeader, data);
+
+    const centralHeader = new Uint8Array(46 + name.length);
+    const centralView = new DataView(centralHeader.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint16(8, 0x0800, true);
+    centralView.setUint16(10, 0, true);
+    centralView.setUint16(12, time, true);
+    centralView.setUint16(14, date, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, data.length, true);
+    centralView.setUint32(24, data.length, true);
+    centralView.setUint16(28, name.length, true);
+    centralView.setUint32(42, offset, true);
+    centralHeader.set(name, 46);
+    centralParts.push(centralHeader);
+
+    offset += localHeader.length + data.length;
+  }
+
+  const centralSize = centralParts.reduce((sum, part) => sum + part.length, 0);
+  const endHeader = new Uint8Array(22);
+  const endView = new DataView(endHeader.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, offset, true);
+
+  const zipData = concatBytes([...localParts, ...centralParts, endHeader]);
+
+  return new Blob([zipData.buffer], {
+    type: "application/zip",
+  });
+}
+
+function concatBytes(parts: Uint8Array[]) {
+  const totalLength = parts.reduce((sum, part) => sum + part.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+
+  parts.forEach((part) => {
+    result.set(part, offset);
+    offset += part.length;
+  });
+
+  return result;
+}
+
+function dosDateTime(date: Date) {
+  return {
+    time:
+      (date.getHours() << 11) |
+      (date.getMinutes() << 5) |
+      Math.floor(date.getSeconds() / 2),
+    date:
+      ((date.getFullYear() - 1980) << 9) |
+      ((date.getMonth() + 1) << 5) |
+      date.getDate(),
+  };
+}
+
+function crc32(data: Uint8Array) {
+  let crc = 0xffffffff;
+
+  for (const byte of data) {
+    crc = (crc >>> 8) ^ crcTable[(crc ^ byte) & 0xff];
+  }
+
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+const crcTable = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+
+  return value >>> 0;
+});

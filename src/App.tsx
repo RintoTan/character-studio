@@ -321,6 +321,7 @@ function App() {
           onSave={handleSave}
           onDraftSave={handleDraftSave}
           onAutoSave={handleAutoSave}
+          onDelete={handleDelete}
           onCancel={() => setPage("dashboard")}
           saveSignal={editorSaveSignal}
         />

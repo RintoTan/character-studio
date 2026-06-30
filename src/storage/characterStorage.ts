@@ -12,6 +12,7 @@ export function loadCharacters(): Character[] {
       avatarEmoji: character.avatarEmoji || "🙂",
       isDraft: character.isDraft === true,
       draftOfId: character.draftOfId,
+      tags: Array.isArray(character.tags) ? character.tags : [],
       createdAt: character.createdAt || character.updatedAt || new Date().toISOString(),
       updatedAt: character.updatedAt || character.createdAt || new Date().toISOString(),
     }));

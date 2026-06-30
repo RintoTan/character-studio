@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Character } from "../types/character";
 import {
   exportAllCharactersJson,
+  exportCharacterSnapshot,
+  exportCharacterSnapshotsZip,
   exportCharacterJson,
   exportCharactersCsv,
   exportSelectedCharactersJson,
@@ -25,6 +27,7 @@ type DashboardProps = {
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
 type ScopeMode = "all" | "favorites" | "drafts";
+type ViewMode = "cards" | "list";
 
 const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 const DASHBOARD_FLAGS_KEY = "character-studio.dashboard-flags";
@@ -35,7 +38,9 @@ type DashboardPrefs = {
   worldviewFilter: string;
   genderFilter: string;
   visualStyleFilter: string;
+  tagFilters: string[];
   favoriteMode: ScopeMode;
+  viewMode: ViewMode;
 };
 
 type DashboardFlags = {
@@ -49,7 +54,9 @@ const defaultPrefs: DashboardPrefs = {
   worldviewFilter: "全部",
   genderFilter: "全部",
   visualStyleFilter: "全部",
+  tagFilters: [],
   favoriteMode: "all",
+  viewMode: "cards",
 };
 
 const defaultFlags: DashboardFlags = {
@@ -88,6 +95,7 @@ export function Dashboard({
     "success" | "warning" | "error" | "loading"
   >("success");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [exportProgress, setExportProgress] = useState("");
   const undoTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -97,6 +105,7 @@ export function Dashboard({
   const worldviewOptions = getUniqueOptions(characters, "worldview");
   const genderOptions = getUniqueOptions(characters, "gender");
   const visualStyleOptions = getUniqueOptions(characters, "visualStyle");
+  const tagOptions = getTagOptions(characters);
   const visibleCharacters = getVisibleCharacters(
     characters,
     prefs,
@@ -107,12 +116,14 @@ export function Dashboard({
     prefs.worldviewFilter !== "全部" ||
     prefs.genderFilter !== "全部" ||
     prefs.visualStyleFilter !== "全部" ||
+    prefs.tagFilters.length > 0 ||
     prefs.favoriteMode !== "all";
   const hasSearchOrFilter = Boolean(
     prefs.searchTerm.trim() ||
     prefs.worldviewFilter !== "全部" ||
     prefs.genderFilter !== "全部" ||
-    prefs.visualStyleFilter !== "全部",
+    prefs.visualStyleFilter !== "全部" ||
+    prefs.tagFilters.length > 0,
   );
   const heroCopy = getHeroCopy(prefs.favoriteMode);
   const listTitle = getListTitle(prefs, hasSearchOrFilter);
@@ -325,19 +336,140 @@ export function Dashboard({
     showToast("当前角色 JSON 已导出");
   }
 
+  async function handleBulkSnapshotExport(format: "pdf" | "jpg" | "png") {
+    const selected = selectedCharacters();
+
+    if (selected.length === 0) {
+      showToast("请先选择角色");
+      return;
+    }
+
+    setLoadingAction(`bulk-${format}`);
+    setExportProgress(`0 / ${selected.length}`);
+
+    try {
+      const result = await exportCharacterSnapshotsZip(selected, format, (current, total) => {
+        setExportProgress(`${current} / ${total}`);
+      });
+      showToast(
+        result.failedCount > 0
+          ? `已完成导出，失败 ${result.failedCount} 个角色。`
+          : `选中角色 ${format.toUpperCase()} ZIP 已导出`,
+        result.failedCount > 0 ? "warning" : "success",
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : `${format.toUpperCase()} 导出失败`,
+        "error",
+      );
+    } finally {
+      setLoadingAction(null);
+      setExportProgress("");
+    }
+  }
+
+  function bulkSetFavorite(shouldFavorite: boolean) {
+    if (selectedIds.length === 0) {
+      showToast("请先选择角色");
+      return;
+    }
+
+    setFlags((current) => ({
+      ...current,
+      favoriteIds: shouldFavorite
+        ? Array.from(new Set([...current.favoriteIds, ...selectedIds]))
+        : current.favoriteIds.filter((id) => !selectedIds.includes(id)),
+    }));
+    showToast(shouldFavorite ? "已批量收藏" : "已批量取消收藏");
+  }
+
+  function bulkAddTag(tagName: string) {
+    if (selectedIds.length === 0) {
+      showToast("请先选择角色");
+      return;
+    }
+
+    if (!tagName) {
+      showToast("请选择标签");
+      return;
+    }
+
+    onImport(characters.map((character) => {
+      if (!selectedIds.includes(character.id)) {
+        return character;
+      }
+
+      const tags = character.tags || [];
+
+      if (tags.some((tag) => tag.name === tagName)) {
+        return character;
+      }
+
+      const sourceTag = tagOptions.find((tag) => tag.name === tagName);
+
+      return {
+        ...character,
+        tags: [
+          ...tags,
+          {
+            id: crypto.randomUUID(),
+            name: tagName,
+            color: sourceTag?.color || "gray",
+          },
+        ],
+        updatedAt: new Date().toISOString(),
+      };
+    }));
+    showToast("已批量添加标签");
+  }
+
+  function bulkRemoveTag(tagName: string) {
+    if (selectedIds.length === 0) {
+      showToast("请先选择角色");
+      return;
+    }
+
+    if (!tagName) {
+      showToast("请选择标签");
+      return;
+    }
+
+    onImport(characters.map((character) =>
+      selectedIds.includes(character.id)
+        ? {
+            ...character,
+            tags: (character.tags || []).filter((tag) => tag.name !== tagName),
+            updatedAt: new Date().toISOString(),
+          }
+        : character,
+    ));
+    showToast("已批量移除标签");
+  }
+
   function clearSearchAndFilters() {
     setPrefs((current) => ({
       ...current,
       searchTerm: "",
+      sortMode: "updated-desc",
       worldviewFilter: "全部",
       genderFilter: "全部",
       visualStyleFilter: "全部",
+      tagFilters: [],
       favoriteMode: "all",
     }));
   }
 
   function updatePrefs(nextPrefs: Partial<DashboardPrefs>) {
     setPrefs((current) => ({ ...current, ...nextPrefs }));
+  }
+
+  function toggleTagFilter(tagName: string) {
+    setPrefs((current) => ({
+      ...current,
+      tagFilters: current.tagFilters.includes(tagName)
+        ? current.tagFilters.filter((tag) => tag !== tagName)
+        : [...current.tagFilters, tagName],
+    }));
   }
 
   function toggleFavorite(characterId: string) {
@@ -731,6 +863,19 @@ export function Dashboard({
           >
             ♥
           </button>
+          <button
+            aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
+            className="hero-icon-button"
+            data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
+            onClick={() =>
+              updatePrefs({
+                viewMode: prefs.viewMode === "cards" ? "list" : "cards",
+              })
+            }
+            type="button"
+          >
+            {prefs.viewMode === "cards" ? "☷" : "▦"}
+          </button>
           <div className="dashboard-actions" ref={moreMenuRef}>
             <input
               accept="application/json,.json"
@@ -811,6 +956,15 @@ export function Dashboard({
       </div>
 
       <div className={isSearchPanelOpen ? "dashboard-controls-panel open" : "dashboard-controls-panel"}>
+        <button
+          aria-label="清空筛选"
+          className="filter-clear-button"
+          data-tooltip="清空筛选"
+          onClick={clearSearchAndFilters}
+          type="button"
+        >
+          ×
+        </button>
         <div className="dashboard-controls">
           <label>
             搜索
@@ -899,6 +1053,29 @@ export function Dashboard({
               ))}
             </select>
           </label>
+          <label className="tag-filter-control">
+            标签
+            <div className="tag-filter-list">
+              {tagOptions.length > 0 ? (
+                tagOptions.map((tag) => (
+                  <button
+                    className={
+                      prefs.tagFilters.includes(tag.name)
+                        ? `tag-color-${tag.color || "gray"} active`
+                        : `tag-color-${tag.color || "gray"}`
+                    }
+                    key={tag.name}
+                    onClick={() => toggleTagFilter(tag.name)}
+                    type="button"
+                  >
+                    {tag.name}
+                  </button>
+                ))
+              ) : (
+                <span>暂无标签</span>
+              )}
+            </div>
+          </label>
         </div>
       </div>
 
@@ -926,14 +1103,86 @@ export function Dashboard({
                       : "全选"}
                   </button>
                   {prefs.favoriteMode !== "drafts" && (
-                    <button
-                      className="ghost-button"
-                      disabled={selectedIds.length === 0}
-                      onClick={handleExportSelectedJson}
-                      type="button"
-                    >
-                      导出选中 JSON
-                    </button>
+                    <>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0}
+                        onClick={() => bulkSetFavorite(true)}
+                        type="button"
+                      >
+                        批量收藏
+                      </button>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0}
+                        onClick={() => bulkSetFavorite(false)}
+                        type="button"
+                      >
+                        取消收藏
+                      </button>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0}
+                        onClick={handleExportSelectedJson}
+                        type="button"
+                      >
+                        导出 JSON
+                      </button>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0 || loadingAction !== null}
+                        onClick={() => handleBulkSnapshotExport("pdf")}
+                        type="button"
+                      >
+                        {loadingAction === "bulk-pdf" ? `导出中 ${exportProgress}` : "导出 PDF"}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0 || loadingAction !== null}
+                        onClick={() => handleBulkSnapshotExport("jpg")}
+                        type="button"
+                      >
+                        {loadingAction === "bulk-jpg" ? `导出中 ${exportProgress}` : "导出 JPG"}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0 || loadingAction !== null}
+                        onClick={() => handleBulkSnapshotExport("png")}
+                        type="button"
+                      >
+                        {loadingAction === "bulk-png" ? `导出中 ${exportProgress}` : "导出 PNG"}
+                      </button>
+                      <select
+                        aria-label="批量添加标签"
+                        disabled={selectedIds.length === 0 || tagOptions.length === 0}
+                        onChange={(event) => {
+                          bulkAddTag(event.target.value);
+                          event.currentTarget.value = "";
+                        }}
+                      >
+                        <option value="">添加标签</option>
+                        {tagOptions.map((tag) => (
+                          <option key={tag.name} value={tag.name}>
+                            {tag.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        aria-label="批量移除标签"
+                        disabled={selectedIds.length === 0 || tagOptions.length === 0}
+                        onChange={(event) => {
+                          bulkRemoveTag(event.target.value);
+                          event.currentTarget.value = "";
+                        }}
+                      >
+                        <option value="">移除标签</option>
+                        {tagOptions.map((tag) => (
+                          <option key={tag.name} value={tag.name}>
+                            {tag.name}
+                          </option>
+                        ))}
+                      </select>
+                    </>
                   )}
                   <button
                     className="ghost-button"
@@ -1015,9 +1264,77 @@ export function Dashboard({
               </button>
             </div>
           )}
+          {prefs.viewMode === "list" ? (
+          <div className="character-table-wrap">
+            <div className="character-table">
+              <div className="character-table-head">
+                <span>角色</span>
+                <span>职业</span>
+                <span>世界观</span>
+                <span>年龄</span>
+                <span>标签</span>
+                <span>状态</span>
+                <span>最后编辑</span>
+                <span>操作</span>
+              </div>
+              {visibleCharacters.map((character) => {
+                const isFavorite = flags.favoriteIds.includes(character.id);
+                const isDraft = character.isDraft === true;
+
+                return (
+                  <div className="character-table-row" key={character.id}>
+                    <button className="table-main" onClick={() => onPreview(character)} type="button">
+                      <span className="table-avatar">{character.avatarEmoji || "🙂"}</span>
+                      <strong>{character.name || "未命名角色"}</strong>
+                    </button>
+                    <span>{character.occupation || "未填写"}</span>
+                    <span>{character.worldview || "未填写"}</span>
+                    <span>{character.age || "未填写"}</span>
+                    <div className="table-tags">
+                      {(character.tags || []).slice(0, 4).map((tag) => (
+                        <button
+                          className={`tag-color-${tag.color || "gray"}`}
+                          key={tag.id}
+                          onClick={() => toggleTagFilter(tag.name)}
+                          type="button"
+                        >
+                          {tag.name}
+                        </button>
+                      ))}
+                    </div>
+                    <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
+                    <span>{formatDate(character.updatedAt)}</span>
+                    <div className="table-actions">
+                      {isBulkMode ? (
+                        <button
+                          className={
+                            selectedIds.includes(character.id)
+                              ? "select-circle selected inline"
+                              : "select-circle inline"
+                          }
+                          onClick={() => toggleSelected(character.id)}
+                          type="button"
+                        />
+                      ) : (
+                        <>
+                          <button className="bare-icon-button" onClick={() => onEdit(character)} type="button">
+                            ✎
+                          </button>
+                          <button className="bare-icon-button" onClick={() => onPreview(character)} type="button">
+                            ⋯
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          ) : (
           <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
             {visibleCharacters.map((character) => {
-              const tags = character.personalityTags || [];
+              const tags = character.tags || [];
               const visibleTags = tags.slice(0, 5);
               const isFavorite = flags.favoriteIds.includes(character.id);
               const isPinned = flags.pinnedIds.includes(character.id);
@@ -1085,12 +1402,12 @@ export function Dashboard({
                     {!isDraft && isPinned && <span className="status-badge pinned">置顶</span>}
                     {!isDraft && visibleTags.map((tag) => (
                       <button
-                        className={`tag-tone-${getTagTone(tag)} preview-hit`}
-                        key={tag}
-                        onClick={() => onPreview(character)}
+                        className={`tag-color-${tag.color || "gray"} preview-hit`}
+                        key={tag.id}
+                        onClick={() => toggleTagFilter(tag.name)}
                         type="button"
                       >
-                        {tag}
+                        {tag.name}
                       </button>
                     ))}
                   </div>
@@ -1154,7 +1471,43 @@ export function Dashboard({
                               }}
                               type="button"
                             >
-                              导出
+                              导出 JSON
+                            </button>
+                            <button
+                              onClick={() => {
+                                void exportCharacterSnapshot(character, "pdf").then(
+                                  () => showToast("PDF 已导出"),
+                                  () => showToast("PDF 导出失败", "error"),
+                                );
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              导出 PDF
+                            </button>
+                            <button
+                              onClick={() => {
+                                void exportCharacterSnapshot(character, "jpg").then(
+                                  () => showToast("JPG 已导出"),
+                                  () => showToast("JPG 导出失败", "error"),
+                                );
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              导出 JPG
+                            </button>
+                            <button
+                              onClick={() => {
+                                void exportCharacterSnapshot(character, "png").then(
+                                  () => showToast("PNG 已导出"),
+                                  () => showToast("PNG 导出失败", "error"),
+                                );
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              导出 PNG
                             </button>
                             <button
                               className="menu-danger"
@@ -1230,6 +1583,7 @@ export function Dashboard({
               );
             })}
           </div>
+          )}
           </>
         )}
       </div>
@@ -1256,6 +1610,20 @@ function getUniqueOptions(
   ).sort((a, b) => a.localeCompare(b));
 }
 
+function getTagOptions(characters: Character[]) {
+  const tagMap = new Map<string, { name: string; color?: string }>();
+
+  characters.forEach((character) => {
+    (character.tags || []).forEach((tag) => {
+      if (tag.name.trim() && !tagMap.has(tag.name)) {
+        tagMap.set(tag.name, { name: tag.name, color: tag.color || "gray" });
+      }
+    });
+  });
+
+  return Array.from(tagMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function getVisibleCharacters(
   characters: Character[],
   prefs: DashboardPrefs,
@@ -1272,6 +1640,7 @@ function getVisibleCharacters(
         character.name,
         character.occupation,
         character.worldview,
+        ...(character.tags || []).map((tag) => tag.name),
         ...(character.personalityTags || []),
       ]
         .join(" ")
@@ -1285,6 +1654,10 @@ function getVisibleCharacters(
       const matchesVisualStyle =
         prefs.visualStyleFilter === "全部" ||
         character.visualStyle === prefs.visualStyleFilter;
+      const tagNames = new Set((character.tags || []).map((tag) => tag.name));
+      const matchesTags =
+        prefs.tagFilters.length === 0 ||
+        prefs.tagFilters.every((tagName) => tagNames.has(tagName));
       const matchesScope =
         prefs.favoriteMode === "drafts"
           ? isDraft
@@ -1297,6 +1670,7 @@ function getVisibleCharacters(
         matchesWorldview &&
         matchesGender &&
         matchesVisualStyle &&
+        matchesTags &&
         matchesScope
       );
     })
@@ -1326,7 +1700,15 @@ function getVisibleCharacters(
 function loadDashboardPrefs(): DashboardPrefs {
   try {
     const value = localStorage.getItem(DASHBOARD_PREFS_KEY);
-    return value ? { ...defaultPrefs, ...JSON.parse(value) } : defaultPrefs;
+    const parsedValue = value ? { ...defaultPrefs, ...JSON.parse(value) } : defaultPrefs;
+
+    return {
+      ...parsedValue,
+      tagFilters: Array.isArray(parsedValue.tagFilters)
+        ? parsedValue.tagFilters
+        : [],
+      viewMode: parsedValue.viewMode === "list" ? "list" : "cards",
+    };
   } catch {
     return defaultPrefs;
   }

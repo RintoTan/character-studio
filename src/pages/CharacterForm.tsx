@@ -16,6 +16,7 @@ type CharacterFormProps = {
   onSave: (character: Character) => void;
   onDraftSave: (character: Character) => void;
   onAutoSave?: (character: Character) => void;
+  onDelete?: (character: Character) => void;
   onCancel: () => void;
   saveSignal?: number;
 };
@@ -36,6 +37,8 @@ type AvatarCategory = {
 
 const DEFAULT_AVATAR_EMOJI = "🙂";
 const RECENT_AVATAR_KEY = "character-studio.recent-avatars";
+const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
+const tagColorOptions = ["gray", "blue", "green", "yellow", "rose", "violet"] as const;
 
 const avatarCategories: AvatarCategory[] = [
   {
@@ -110,6 +113,7 @@ const initialCharacter: CharacterDraft = {
   species: "",
   occupation: "",
   worldview: "",
+  tags: [],
   personalityTags: [],
   appearanceDescription: "",
   abilityDescription: "",
@@ -516,6 +520,19 @@ function avatarCategoryTitle(label: string) {
   return label.replace(/^\S+\s*/, "");
 }
 
+function tagColorLabel(color: string) {
+  const labels: Record<string, string> = {
+    gray: "灰色",
+    blue: "蓝色",
+    green: "绿色",
+    yellow: "黄色",
+    rose: "玫瑰",
+    violet: "紫色",
+  };
+
+  return labels[color] || "灰色";
+}
+
 function pickRandomTags() {
   return [...personalityOptions]
     .sort(() => Math.random() - 0.5)
@@ -628,11 +645,13 @@ export function CharacterForm({
   onSave,
   onDraftSave,
   onAutoSave,
+  onDelete,
   onCancel,
   saveSignal = 0,
 }: CharacterFormProps) {
   const [formData, setFormData] = useState<CharacterDraft>(initialCharacter);
   const [customTag, setCustomTag] = useState("");
+  const [characterTagInput, setCharacterTagInput] = useState("");
   const [customGender, setCustomGender] = useState("");
   const [genderMode, setGenderMode] = useState("自定义");
   const [ageMode, setAgeMode] = useState<"manual" | "birthDate" | "birthYear">(
@@ -656,6 +675,7 @@ export function CharacterForm({
       | "imagePrompt";
     label: string;
   } | null>(null);
+  const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("basic");
   const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>({
@@ -701,6 +721,7 @@ export function CharacterForm({
           species: character.species || "",
           occupation: character.occupation || "",
           worldview: character.worldview || "",
+          tags: character.tags || [],
           personalityTags: character.personalityTags || [],
           appearanceDescription: character.appearanceDescription || "",
           abilityDescription: character.abilityDescription || "",
@@ -898,6 +919,51 @@ export function CharacterForm({
     }));
   }
 
+  function addCharacterTag() {
+    const nextTag = characterTagInput.trim();
+
+    if (!nextTag) {
+      return;
+    }
+
+    setFormData((current) => {
+      const currentTags = current.tags || [];
+
+      if (currentTags.some((tag) => tag.name === nextTag)) {
+        return current;
+      }
+
+      return {
+        ...current,
+        tags: [
+          ...currentTags,
+          { id: crypto.randomUUID(), name: nextTag, color: "gray" },
+        ],
+      };
+    });
+    setCharacterTagInput("");
+  }
+
+  function updateCharacterTag(
+    tagId: string,
+    field: "name" | "color",
+    value: string,
+  ) {
+    setFormData((current) => ({
+      ...current,
+      tags: (current.tags || [])
+        .map((tag) => (tag.id === tagId ? { ...tag, [field]: value } : tag))
+        .filter((tag) => tag.name.trim()),
+    }));
+  }
+
+  function removeCharacterTag(tagId: string) {
+    setFormData((current) => ({
+      ...current,
+      tags: (current.tags || []).filter((tag) => tag.id !== tagId),
+    }));
+  }
+
   function handleRandomCharacter() {
     setIsRandomizing(true);
     window.setTimeout(() => setIsRandomizing(false), 450);
@@ -1039,6 +1105,58 @@ export function CharacterForm({
     setPendingClear(null);
   }
 
+  function resetEditableForm() {
+    const nextData = {
+      ...initialCharacter,
+      avatarEmoji: DEFAULT_AVATAR_EMOJI,
+    };
+
+    setFormData(nextData);
+    setCustomTag("");
+    setCharacterTagInput("");
+    setCustomGender("");
+    setGenderMode("");
+    setAgeMode("manual");
+    setFormError("");
+    setSaveStatus("idle");
+    lastAutoSavedSnapshotRef.current = JSON.stringify(nextData);
+  }
+
+  function confirmFormAction() {
+    if (pendingFormAction === "clear") {
+      resetEditableForm();
+      showToast("当前内容已清空");
+      setPendingFormAction(null);
+      return;
+    }
+
+    if (pendingFormAction === "delete") {
+      if (!character || !onDelete) {
+        resetEditableForm();
+        showToast("当前内容已清空");
+        setPendingFormAction(null);
+        return;
+      }
+
+      onDelete(character);
+      localStorage.setItem(
+        DASHBOARD_PREFS_KEY,
+        JSON.stringify({
+          searchTerm: "",
+          sortMode: "updated-desc",
+          worldviewFilter: "全部",
+          genderFilter: "全部",
+          visualStyleFilter: "全部",
+          tagFilters: [],
+          favoriteMode: character.isDraft ? "drafts" : "all",
+          viewMode: "cards",
+        }),
+      );
+      setPendingFormAction(null);
+      onCancel();
+    }
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     saveCurrentCharacter();
@@ -1148,6 +1266,32 @@ export function CharacterForm({
               </button>
               <button className="danger-button" onClick={clearField} type="button">
                 确认清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingFormAction && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>{pendingFormAction === "clear" ? "清空编辑内容" : "删除角色"}</h2>
+            <p>
+              {pendingFormAction === "clear"
+                ? "确定要清空当前编辑页的全部内容吗？此操作不会删除角色。"
+                : character
+                  ? `确定要删除「${character.name || "未命名角色"}」吗？此操作不可撤销。`
+                  : "当前角色尚未保存，删除会清空当前内容。"}
+            </p>
+            <div className="form-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setPendingFormAction(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button className="danger-button" onClick={confirmFormAction} type="button">
+                {pendingFormAction === "clear" ? "确认清空" : "确认删除"}
               </button>
             </div>
           </div>
@@ -1471,6 +1615,57 @@ export function CharacterForm({
             {!collapsedSections.personality && (
               <div className="workspace-card-body">
                 <fieldset className="tag-fieldset">
+                  <legend>角色标签</legend>
+                  <div className="character-tag-editor">
+                    {(formData.tags || []).map((tag) => (
+                      <div className="character-tag-row" key={tag.id}>
+                        <input
+                          value={tag.name}
+                          onChange={(event) =>
+                            updateCharacterTag(tag.id, "name", event.target.value)
+                          }
+                          placeholder="标签名称"
+                        />
+                        <select
+                          value={tag.color || "gray"}
+                          onChange={(event) =>
+                            updateCharacterTag(tag.id, "color", event.target.value)
+                          }
+                        >
+                          {tagColorOptions.map((color) => (
+                            <option key={color} value={color}>
+                              {tagColorLabel(color)}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          className="ghost-button"
+                          onClick={() => removeCharacterTag(tag.id)}
+                          type="button"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="custom-tag-row">
+                    <input
+                      value={characterTagInput}
+                      onChange={(event) => setCharacterTagInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          addCharacterTag();
+                        }
+                      }}
+                      placeholder="添加角色管理标签，例如：主角 / 反派 / 第一章"
+                    />
+                    <button className="ghost-button" onClick={addCharacterTag} type="button">
+                      添加
+                    </button>
+                  </div>
+                </fieldset>
+                <fieldset className="tag-fieldset">
                   <legend>性格标签</legend>
                   <div className="tag-grid">
                     {personalityOptions.map((tag) => (
@@ -1708,15 +1903,25 @@ export function CharacterForm({
           </section>
 
           <div className="form-actions workspace-footer">
-            <button className="ghost-button" type="button" onClick={onCancel}>
-              取消
-            </button>
-            <button className="ghost-button" type="button" onClick={saveDraftCharacter}>
-              临时保存
-            </button>
-            <button className="primary-button" type="submit">
-              保存角色
-            </button>
+            <div className="footer-danger-actions">
+              <button className="ghost-button" type="button" onClick={() => setPendingFormAction("clear")}>
+                清空
+              </button>
+              <button className="danger-button" type="button" onClick={() => setPendingFormAction("delete")}>
+                删除
+              </button>
+            </div>
+            <div className="footer-main-actions">
+              <button className="ghost-button" type="button" onClick={onCancel}>
+                取消
+              </button>
+              <button className="ghost-button" type="button" onClick={saveDraftCharacter}>
+                临时保存
+              </button>
+              <button className="primary-button" type="submit">
+                保存角色
+              </button>
+            </div>
           </div>
         </div>
       </form>

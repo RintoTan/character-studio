@@ -1,3 +1,9 @@
+export type CharacterTag = {
+  id: string;
+  name: string;
+  color?: string;
+};
+
 export type Character = {
   id: string;
   name: string;
@@ -11,6 +17,7 @@ export type Character = {
   species?: string;
   occupation?: string;
   worldview?: string;
+  tags?: CharacterTag[];
   personalityTags?: string[];
   appearanceDescription?: string;
   abilityDescription?: string;
