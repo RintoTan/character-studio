@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import type { Character } from "../types/character";
+import type { Character, CharacterTag } from "../types/character";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
 
 type CharacterPreviewProps = {
@@ -21,6 +21,8 @@ function displayValue(value?: string) {
 }
 
 function buildFullCharacterText(character: Character) {
+  const tags = getCharacterTags(character);
+
   return [
     `角色名：${displayValue(character.name)}`,
     `性别：${displayValue(character.gender)}`,
@@ -29,7 +31,7 @@ function buildFullCharacterText(character: Character) {
     `职业：${displayValue(character.occupation)}`,
     `世界观：${displayValue(character.worldview)}`,
     `角色标签：${
-      character.tags?.length ? character.tags.map((tag) => tag.name).join("、") : "未填写"
+      tags.length ? tags.map((tag) => tag.name).join("、") : "未填写"
     }`,
     `性格标签：${
       character.personalityTags?.length
@@ -45,10 +47,37 @@ function buildFullCharacterText(character: Character) {
   ].join("\n");
 }
 
+function getCharacterTags(character: Character): CharacterTag[] {
+  const tagMap = new Map<string, CharacterTag>();
+
+  (character.tags || []).forEach((tag) => {
+    if (tag.name.trim()) {
+      tagMap.set(tag.name, {
+        id: tag.id || `tag-${tag.name}`,
+        name: tag.name,
+        color: tag.color || "gray",
+      });
+    }
+  });
+
+  (character.personalityTags || []).forEach((tagName) => {
+    if (tagName.trim() && !tagMap.has(tagName)) {
+      tagMap.set(tagName, {
+        id: `personality-${tagName}`,
+        name: tagName,
+        color: "gray",
+      });
+    }
+  });
+
+  return Array.from(tagMap.values());
+}
+
 export function CharacterPreview({ character, onBack, onEdit }: CharacterPreviewProps) {
   const [toastMessage, setToastMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const previewRef = useRef<HTMLDivElement>(null);
+  const characterTags = getCharacterTags(character);
 
   function showToast(message: string) {
     setToastMessage(message);
@@ -194,9 +223,9 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
             <div className="preview-card-title">
               <h2>角色标签</h2>
             </div>
-            {character.tags?.length ? (
+            {characterTags.length ? (
               <div className="preview-tags">
-                {character.tags.map((tag) => (
+                {characterTags.map((tag) => (
                   <span className={`tag-color-${tag.color || "gray"}`} key={tag.id}>
                     {tag.name}
                   </span>

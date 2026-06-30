@@ -77,6 +77,31 @@ function asTags(value: unknown): CharacterTag[] {
     .filter((item): item is CharacterTag => item !== null);
 }
 
+function mergeTags(tags: CharacterTag[], personalityTags: string[]) {
+  const tagMap = new Map<string, CharacterTag>();
+
+  tags.forEach((tag) => {
+    if (tag.name.trim()) {
+      tagMap.set(tag.name, {
+        ...tag,
+        color: tag.color || "gray",
+      });
+    }
+  });
+
+  personalityTags.forEach((tagName) => {
+    if (tagName.trim() && !tagMap.has(tagName)) {
+      tagMap.set(tagName, {
+        id: `personality-${tagName}`,
+        name: tagName,
+        color: "gray",
+      });
+    }
+  });
+
+  return Array.from(tagMap.values());
+}
+
 function normalizeCharacter(value: unknown, existingIds: Set<string>): Character | null {
   if (!isRecord(value)) {
     return null;
@@ -85,6 +110,9 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
   const sourceId = asString(value.id);
   const id = sourceId && !existingIds.has(sourceId) ? sourceId : crypto.randomUUID();
   existingIds.add(id);
+
+  const personalityTags = asStringArray(value.personalityTags);
+  const tags = mergeTags(asTags(value.tags), personalityTags);
 
   return {
     id,
@@ -99,8 +127,8 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     species: asString(value.species),
     occupation: asString(value.occupation),
     worldview: asString(value.worldview),
-    tags: asTags(value.tags),
-    personalityTags: asStringArray(value.personalityTags),
+    tags,
+    personalityTags,
     appearanceDescription: asString(value.appearanceDescription),
     abilityDescription: asString(value.abilityDescription),
     backstory: asString(value.backstory),
@@ -176,7 +204,7 @@ export function exportCharactersCsv(characters: Character[]) {
     character.occupation || "",
     character.worldview || "",
     character.personalityTags?.join("、") || "",
-    character.tags?.map((tag) => tag.name).join("、") || "",
+    getCharacterTags(character).map((tag) => tag.name).join("、") || "",
     character.visualStyle || "",
     character.appearanceDescription || "",
     character.abilityDescription || "",
@@ -372,7 +400,7 @@ function createSnapshotElement(character: Character) {
         `职业：${character.occupation || "未填写"}`,
         `世界观：${character.worldview || "未填写"}`,
       ].join("\\n"))}
-      ${snapshotCard("角色标签", character.tags?.map((tag) => tag.name).join("、") || "未填写")}
+      ${snapshotCard("角色标签", getCharacterTags(character).map((tag) => tag.name).join("、") || "未填写")}
       ${snapshotCard("性格标签", character.personalityTags?.join("、") || "未填写")}
       ${snapshotCard("外貌描述", character.appearanceDescription || "未填写")}
       ${snapshotCard("能力描述", character.abilityDescription || "未填写")}
@@ -475,6 +503,10 @@ function snapshotCard(title: string, content: string) {
       <p>${escapeHtml(content)}</p>
     </article>
   `;
+}
+
+function getCharacterTags(character: Character): CharacterTag[] {
+  return mergeTags(character.tags || [], character.personalityTags || []);
 }
 
 async function createZipBlob(files: Array<{ name: string; blob: Blob }>) {

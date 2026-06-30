@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Character } from "../types/character";
+import type { Character, CharacterTag } from "../types/character";
 import {
   exportAllCharactersJson,
   exportCharacterSnapshot,
@@ -84,6 +84,7 @@ export function Dashboard({
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
+  const [exportTarget, setExportTarget] = useState<Character | null>(null);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -100,6 +101,7 @@ export function Dashboard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const cardMenuRef = useRef<HTMLDivElement>(null);
+  const exportDialogRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const worldviewOptions = getUniqueOptions(characters, "worldview");
@@ -139,9 +141,11 @@ export function Dashboard({
       }
       if (
         cardMenuRef.current &&
-        !cardMenuRef.current.contains(event.target as Node)
+        !cardMenuRef.current.contains(event.target as Node) &&
+        !exportDialogRef.current?.contains(event.target as Node)
       ) {
         setOpenCardMenuId(null);
+        setExportTarget(null);
       }
     }
 
@@ -149,6 +153,7 @@ export function Dashboard({
       if (event.key === "Escape") {
         setIsMoreMenuOpen(false);
         setOpenCardMenuId(null);
+        setExportTarget(null);
         setIsSearchPanelOpen(false);
         setIsCommandOpen(false);
         setIsAboutOpen(false);
@@ -336,6 +341,31 @@ export function Dashboard({
     showToast("当前角色 JSON 已导出");
   }
 
+  async function handleCardExport(format: "json" | "pdf" | "jpg" | "png") {
+    if (!exportTarget) {
+      return;
+    }
+
+    const target = exportTarget;
+    setExportTarget(null);
+
+    if (format === "json") {
+      handleExportCharacterJson(target);
+      return;
+    }
+
+    setLoadingAction(`card-${format}`);
+
+    try {
+      await exportCharacterSnapshot(target, format);
+      showToast(`${format.toUpperCase()} 已导出`);
+    } catch {
+      showToast(`${format.toUpperCase()} 导出失败`, "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
   async function handleBulkSnapshotExport(format: "pdf" | "jpg" | "png") {
     const selected = selectedCharacters();
 
@@ -399,7 +429,7 @@ export function Dashboard({
         return character;
       }
 
-      const tags = character.tags || [];
+      const tags = getCharacterTags(character);
 
       if (tags.some((tag) => tag.name === tagName)) {
         return character;
@@ -642,6 +672,65 @@ export function Dashboard({
                 type="button"
               >
                 确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exportTarget && (
+        <div
+          className="modal-backdrop export-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setExportTarget(null);
+            }
+          }}
+          role="presentation"
+        >
+          <div
+            className="export-dialog"
+            ref={exportDialogRef}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Export</p>
+                <h2>导出角色</h2>
+              </div>
+              <button
+                className="ghost-button"
+                onClick={() => setExportTarget(null)}
+                type="button"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="export-dialog-list">
+              <button onClick={() => handleCardExport("json")} type="button">
+                JSON
+              </button>
+              <button
+                disabled={loadingAction === "card-pdf"}
+                onClick={() => handleCardExport("pdf")}
+                type="button"
+              >
+                {loadingAction === "card-pdf" ? "导出中..." : "PDF"}
+              </button>
+              <button
+                disabled={loadingAction === "card-jpg"}
+                onClick={() => handleCardExport("jpg")}
+                type="button"
+              >
+                {loadingAction === "card-jpg" ? "导出中..." : "JPG"}
+              </button>
+              <button
+                disabled={loadingAction === "card-png"}
+                onClick={() => handleCardExport("png")}
+                type="button"
+              >
+                {loadingAction === "card-png" ? "导出中..." : "PNG"}
               </button>
             </div>
           </div>
@@ -1291,7 +1380,7 @@ export function Dashboard({
                     <span>{character.worldview || "未填写"}</span>
                     <span>{character.age || "未填写"}</span>
                     <div className="table-tags">
-                      {(character.tags || []).slice(0, 4).map((tag) => (
+                      {getCharacterTags(character).slice(0, 4).map((tag) => (
                         <button
                           className={`tag-color-${tag.color || "gray"}`}
                           key={tag.id}
@@ -1334,7 +1423,7 @@ export function Dashboard({
           ) : (
           <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
             {visibleCharacters.map((character) => {
-              const tags = character.tags || [];
+              const tags = getCharacterTags(character);
               const visibleTags = tags.slice(0, 5);
               const isFavorite = flags.favoriteIds.includes(character.id);
               const isPinned = flags.pinnedIds.includes(character.id);
@@ -1466,48 +1555,12 @@ export function Dashboard({
                             </button>
                             <button
                               onClick={() => {
-                                handleExportCharacterJson(character);
+                                setExportTarget(character);
                                 setOpenCardMenuId(null);
                               }}
                               type="button"
                             >
-                              导出 JSON
-                            </button>
-                            <button
-                              onClick={() => {
-                                void exportCharacterSnapshot(character, "pdf").then(
-                                  () => showToast("PDF 已导出"),
-                                  () => showToast("PDF 导出失败", "error"),
-                                );
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              导出 PDF
-                            </button>
-                            <button
-                              onClick={() => {
-                                void exportCharacterSnapshot(character, "jpg").then(
-                                  () => showToast("JPG 已导出"),
-                                  () => showToast("JPG 导出失败", "error"),
-                                );
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              导出 JPG
-                            </button>
-                            <button
-                              onClick={() => {
-                                void exportCharacterSnapshot(character, "png").then(
-                                  () => showToast("PNG 已导出"),
-                                  () => showToast("PNG 导出失败", "error"),
-                                );
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              导出 PNG
+                              导出
                             </button>
                             <button
                               className="menu-danger"
@@ -1614,7 +1667,7 @@ function getTagOptions(characters: Character[]) {
   const tagMap = new Map<string, { name: string; color?: string }>();
 
   characters.forEach((character) => {
-    (character.tags || []).forEach((tag) => {
+    getCharacterTags(character).forEach((tag) => {
       if (tag.name.trim() && !tagMap.has(tag.name)) {
         tagMap.set(tag.name, { name: tag.name, color: tag.color || "gray" });
       }
@@ -1622,6 +1675,32 @@ function getTagOptions(characters: Character[]) {
   });
 
   return Array.from(tagMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getCharacterTags(character: Character): CharacterTag[] {
+  const tagMap = new Map<string, CharacterTag>();
+
+  (character.tags || []).forEach((tag) => {
+    if (tag.name.trim()) {
+      tagMap.set(tag.name, {
+        id: tag.id || `tag-${tag.name}`,
+        name: tag.name,
+        color: tag.color || "gray",
+      });
+    }
+  });
+
+  (character.personalityTags || []).forEach((tagName) => {
+    if (tagName.trim() && !tagMap.has(tagName)) {
+      tagMap.set(tagName, {
+        id: `personality-${tagName}`,
+        name: tagName,
+        color: "gray",
+      });
+    }
+  });
+
+  return Array.from(tagMap.values());
 }
 
 function getVisibleCharacters(
@@ -1640,7 +1719,7 @@ function getVisibleCharacters(
         character.name,
         character.occupation,
         character.worldview,
-        ...(character.tags || []).map((tag) => tag.name),
+        ...getCharacterTags(character).map((tag) => tag.name),
         ...(character.personalityTags || []),
       ]
         .join(" ")
@@ -1654,7 +1733,7 @@ function getVisibleCharacters(
       const matchesVisualStyle =
         prefs.visualStyleFilter === "全部" ||
         character.visualStyle === prefs.visualStyleFilter;
-      const tagNames = new Set((character.tags || []).map((tag) => tag.name));
+      const tagNames = new Set(getCharacterTags(character).map((tag) => tag.name));
       const matchesTags =
         prefs.tagFilters.length === 0 ||
         prefs.tagFilters.every((tagName) => tagNames.has(tagName));

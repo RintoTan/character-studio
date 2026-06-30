@@ -537,6 +537,53 @@ h2 {
   background: var(--surface-subtle);
 }
 
+.export-backdrop {
+  z-index: 24;
+}
+
+.export-dialog {
+  width: min(360px, 100%);
+  max-height: min(520px, calc(100vh - 32px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 18px;
+  animation: menu-in 120ms ease-out;
+}
+
+.export-dialog-list {
+  display: grid;
+  gap: 8px;
+}
+
+.export-dialog-list button {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-soft);
+  padding: 0 12px;
+  font-weight: 800;
+  text-align: left;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.export-dialog-list button:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
 .empty-state {
   border: 1px dashed var(--border-strong);
   border-radius: 8px;
@@ -555,8 +602,9 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-subtle);
-  padding: 14px;
+  padding: 14px 52px 14px 14px;
   margin-bottom: 20px;
+  min-width: 0;
 }
 
 .dashboard-controls-panel {
@@ -654,14 +702,21 @@ h2 {
 
 .tag-filter-control {
   min-width: 0;
+  max-width: 100%;
 }
 
 .tag-filter-list {
   display: flex;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 48px;
+  max-height: 84px;
   align-items: center;
+  align-content: flex-start;
+  flex-wrap: wrap;
   gap: 5px;
-  overflow-x: auto;
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -672,6 +727,8 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tag-filter-list button,
@@ -779,6 +836,7 @@ h2 {
 .card-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
   gap: 18px;
 }
 
@@ -900,6 +958,7 @@ h2 {
   gap: 14px;
   aspect-ratio: 1 / 1.06;
   min-height: 250px;
+  min-width: 0;
   padding: 56px 16px 54px;
   text-align: left;
   transition:
@@ -2459,7 +2518,7 @@ kbd {
   .dashboard-controls {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-    padding: 12px;
+    padding: 46px 12px 12px;
   }
 
   .character-tag-row {
@@ -2518,8 +2577,9 @@ kbd {
   }
 
   .character-card {
-    min-height: 220px;
-    padding: 50px 12px 48px;
+    aspect-ratio: auto;
+    min-height: 236px;
+    padding: 54px 12px 52px;
   }
 
   .card-main {
@@ -2531,6 +2591,13 @@ kbd {
     min-width: 52px;
     height: 52px;
     font-size: 28px;
+  }
+
+  .card-tags {
+    left: 12px;
+    right: 12px;
+    max-width: calc(100% - 24px);
+    max-height: 42px;
   }
 
   .floating-actions {
@@ -2557,6 +2624,13 @@ kbd {
 @media (max-width: 430px) {
   .dashboard-controls {
     grid-template-columns: 1fr;
+    padding-top: 46px;
+  }
+
+  .card-list,
+  .single-card-list {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 
   .bulk-actions select {
@@ -2587,8 +2661,8 @@ kbd {
   }
 
   .character-card {
-    min-height: 198px;
-    padding: 46px 10px 44px;
+    min-height: 224px;
+    padding: 54px 12px 52px;
   }
 
   .card-title-button {
@@ -2601,12 +2675,18 @@ kbd {
   }
 
   .card-tags {
+    left: 12px;
+    right: 12px;
     gap: 4px;
+    max-width: calc(100% - 24px);
+    max-height: 40px;
   }
 
   .card-tags button,
   .status-badge {
-    max-width: 64px;
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .modal-backdrop {
