@@ -1561,6 +1561,53 @@ textarea {
   font-weight: 700;
 }
 
+.pdf-safe {
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+}
+
+.pdf-safe .preview-hero,
+.pdf-safe .preview-card,
+.pdf-safe .basic-card {
+  border-color: #d1d5db !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+}
+
+.pdf-safe .preview-avatar {
+  border-color: #d1d5db !important;
+  background: #f3f4f6 !important;
+  color: #111827 !important;
+  box-shadow: none !important;
+}
+
+.pdf-safe .eyebrow,
+.pdf-safe .muted,
+.pdf-safe .preview-card span,
+.pdf-safe .basic-item span {
+  color: #6b7280 !important;
+}
+
+.pdf-safe h1,
+.pdf-safe h2,
+.pdf-safe p,
+.pdf-safe strong {
+  color: #111827 !important;
+}
+
+.pdf-safe .basic-item {
+  border-color: #d1d5db !important;
+  background: #f9fafb !important;
+  box-shadow: none !important;
+}
+
+.pdf-safe .preview-tags span {
+  border-color: #d1d5db !important;
+  background: #f9fafb !important;
+  color: #374151 !important;
+}
+
 .toast {
   position: fixed;
   top: 24px;

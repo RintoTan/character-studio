@@ -187,79 +187,94 @@ export async function exportPreviewPdf(element: HTMLElement, characterName: stri
     throw new Error("找不到可导出的角色展示区域");
   }
 
+  element.classList.add("pdf-safe");
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+
   const bounds = element.getBoundingClientRect();
 
   if (bounds.width <= 0 || bounds.height <= 0) {
+    element.classList.remove("pdf-safe");
     throw new Error("角色展示区域尺寸异常，无法导出 PDF");
   }
 
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
-    import("jspdf"),
-  ]);
+  try {
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
 
-  const canvas = await html2canvas(element, {
-    backgroundColor: "#f3f4f6",
-    height: Math.ceil(bounds.height),
-    onclone: (documentClone) => {
-      documentClone.documentElement.dataset.theme = "light";
-      documentClone.body.style.background = "#f3f4f6";
-      documentClone.body.style.color = "#111827";
+    const canvas = await html2canvas(element, {
+      backgroundColor: "#f3f4f6",
+      height: Math.ceil(bounds.height),
+      onclone: (documentClone) => {
+        documentClone.documentElement.dataset.theme = "light";
+        documentClone.body.style.background = "#f3f4f6";
+        documentClone.body.style.color = "#111827";
 
-      const exportRoot = documentClone.querySelector<HTMLElement>(
-        "[data-pdf-export-root='true']",
-      );
+        const exportRoot = documentClone.querySelector<HTMLElement>(
+          "[data-pdf-export-root='true']",
+        );
 
-      if (exportRoot) {
-        exportRoot.style.background = "#f3f4f6";
-        exportRoot.style.color = "#111827";
-      }
+        if (exportRoot) {
+          exportRoot.classList.add("pdf-safe");
+          exportRoot.style.background = "#f3f4f6";
+          exportRoot.style.color = "#111827";
 
-      documentClone
-        .querySelectorAll(
-          "[data-pdf-hidden='true'], button, input, select, textarea",
-        )
-        .forEach((item) => {
-          item.setAttribute("style", "display: none !important;");
-        });
-    },
-    scale: 2,
-    scrollX: 0,
-    scrollY: 0,
-    useCORS: true,
-    width: Math.ceil(bounds.width),
-    windowHeight: Math.max(
-      document.documentElement.scrollHeight,
-      window.innerHeight,
-    ),
-    windowWidth: Math.max(
-      document.documentElement.scrollWidth,
-      window.innerWidth,
-    ),
-  });
+          exportRoot.querySelectorAll<HTMLElement>("*").forEach((item) => {
+            item.style.backgroundImage = "none";
+            item.style.boxShadow = "none";
+            item.style.textShadow = "none";
+          });
+        }
 
-  if (canvas.width <= 0 || canvas.height <= 0) {
-    throw new Error("PDF 截图生成失败");
-  }
+        documentClone
+          .querySelectorAll(
+            "[data-pdf-hidden='true'], button, input, select, textarea",
+          )
+          .forEach((item) => {
+            item.setAttribute("style", "display: none !important;");
+          });
+      },
+      scale: 2,
+      scrollX: 0,
+      scrollY: 0,
+      useCORS: true,
+      width: Math.ceil(bounds.width),
+      windowHeight: Math.max(
+        document.documentElement.scrollHeight,
+        window.innerHeight,
+      ),
+      windowWidth: Math.max(
+        document.documentElement.scrollWidth,
+        window.innerWidth,
+      ),
+    });
 
-  const imageData = canvas.toDataURL("image/png");
-  const pdf = new jsPDF("p", "mm", "a4");
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const imageWidth = pageWidth;
-  const imageHeight = (canvas.height * imageWidth) / canvas.width;
-  let position = 0;
-  let remainingHeight = imageHeight;
+    if (canvas.width <= 0 || canvas.height <= 0) {
+      throw new Error("PDF 截图生成失败");
+    }
 
-  pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
-  remainingHeight -= pageHeight;
+    const imageData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imageWidth = pageWidth;
+    const imageHeight = (canvas.height * imageWidth) / canvas.width;
+    let position = 0;
+    let remainingHeight = imageHeight;
 
-  while (remainingHeight > 0) {
-    position -= pageHeight;
-    pdf.addPage();
     pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
     remainingHeight -= pageHeight;
-  }
 
-  pdf.save(`${safeFileName(characterName)}-${dateStamp()}.pdf`);
+    while (remainingHeight > 0) {
+      position -= pageHeight;
+      pdf.addPage();
+      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
+      remainingHeight -= pageHeight;
+    }
+
+    pdf.save(`${safeFileName(characterName)}-${dateStamp()}.pdf`);
+  } finally {
+    element.classList.remove("pdf-safe");
+  }
 }
