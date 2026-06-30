@@ -98,7 +98,6 @@ const avatarCategories: AvatarCategory[] = [
 const avatarEmojiOptions = Array.from(
   new Set(avatarCategories.flatMap((category) => category.emojis)),
 );
-const favoriteAvatarEmojis = ["🙂", "👩", "👨", "🧒", "🧙", "🦸", "🧝", "👻", "🐱", "🐉"];
 
 const initialCharacter: CharacterDraft = {
   name: "",
@@ -433,6 +432,10 @@ function saveRecentAvatar(emoji: string) {
   return nextRecent;
 }
 
+function avatarCategoryTitle(label: string) {
+  return label.replace(/^\S+\s*/, "");
+}
+
 function pickRandomTags() {
   return [...personalityOptions]
     .sort(() => Math.random() - 0.5)
@@ -561,7 +564,7 @@ export function CharacterForm({
   const [activeAvatarCategoryId, setActiveAvatarCategoryId] = useState(
     avatarCategories[0].id,
   );
-  const [avatarSearchTerm, setAvatarSearchTerm] = useState("");
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [recentAvatars, setRecentAvatars] = useState(loadRecentAvatars);
   const [pendingClear, setPendingClear] = useState<{
     field:
@@ -603,23 +606,6 @@ export function CharacterForm({
   const activeAvatarCategory =
     avatarCategories.find((category) => category.id === activeAvatarCategoryId) ||
     avatarCategories[0];
-  const avatarSearchKeyword = avatarSearchTerm.trim().toLocaleLowerCase();
-  const filteredAvatarEmojis = avatarSearchKeyword
-    ? Array.from(
-        new Set(
-          avatarCategories
-            .filter((category) =>
-              category.label.toLocaleLowerCase().includes(avatarSearchKeyword),
-            )
-            .flatMap((category) => category.emojis)
-            .concat(
-              avatarEmojiOptions.filter((emoji) =>
-                emoji.includes(avatarSearchKeyword),
-              ),
-            ),
-        ),
-      )
-    : activeAvatarCategory.emojis;
 
   useEffect(() => {
     const nextData: CharacterDraft = character
@@ -725,6 +711,7 @@ export function CharacterForm({
   function selectAvatarEmoji(emoji: string) {
     updateField("avatarEmoji", emoji);
     setRecentAvatars(saveRecentAvatar(emoji));
+    setIsAvatarPickerOpen(false);
   }
 
   function showToast(message: string) {
@@ -1155,55 +1142,78 @@ export function CharacterForm({
               <div className="workspace-card-body">
                 <div className="avatar-editor">
                   <div className="avatar-picker-header">
-                    <div>
-                      <strong>Avatar Picker</strong>
-                      <p className="muted">选择适合角色设定的头像，后续可扩展 SVG、上传或 AI 头像。</p>
+                    <div className="avatar-current-wrap">
+                      <div className="avatar-current" aria-label="当前头像">
+                        {formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
+                      </div>
+                      <div>
+                        <strong>Avatar Picker</strong>
+                        <p className="muted">选择适合角色设定的头像，后续可扩展 SVG、上传或 AI 头像。</p>
+                      </div>
                     </div>
-                    <div className="avatar-current" aria-label="当前头像">
-                      {formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
-                    </div>
+                    <button
+                      className="ghost-button"
+                      onClick={() => setIsAvatarPickerOpen((current) => !current)}
+                      type="button"
+                    >
+                      {isAvatarPickerOpen ? "收起头像" : "更换头像"}
+                    </button>
                   </div>
 
-                  <div className="avatar-picker">
-                    <input
-                      value={avatarSearchTerm}
-                      onChange={(event) => setAvatarSearchTerm(event.target.value)}
-                      placeholder="搜索当前头像集"
-                      type="search"
-                    />
+                  {isAvatarPickerOpen && (
+                    <div className="avatar-picker">
+                      <div className="avatar-category-tabs" aria-label="头像分类">
+                        {avatarCategories.map((category) => (
+                          <button
+                            className={
+                              activeAvatarCategoryId === category.id
+                                ? "avatar-tab active"
+                                : "avatar-tab"
+                            }
+                            key={category.id}
+                            onClick={() => setActiveAvatarCategoryId(category.id)}
+                            type="button"
+                          >
+                            {category.label}
+                          </button>
+                        ))}
+                      </div>
 
-                    <div className="avatar-category-tabs" aria-label="头像分类">
-                      {avatarCategories.map((category) => (
-                        <button
-                          className={
-                            activeAvatarCategoryId === category.id
-                              ? "avatar-tab active"
-                              : "avatar-tab"
-                          }
-                          key={category.id}
-                          onClick={() => {
-                            setActiveAvatarCategoryId(category.id);
-                            setAvatarSearchTerm("");
-                          }}
-                          type="button"
-                        >
-                          {category.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {recentAvatars.length > 0 && (
                       <div className="avatar-section">
                         <span>最近使用</span>
-                        <div className="avatar-quick-grid">
-                          {recentAvatars.map((emoji) => (
+                        {recentAvatars.length > 0 ? (
+                          <div className="avatar-quick-grid">
+                            {recentAvatars.map((emoji) => (
+                              <button
+                                className={
+                                  formData.avatarEmoji === emoji
+                                    ? "emoji-option selected"
+                                    : "emoji-option"
+                                }
+                                key={`recent-${emoji}`}
+                                onClick={() => selectAvatarEmoji(emoji)}
+                                type="button"
+                              >
+                                {emoji}
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="avatar-empty">暂无最近使用</p>
+                        )}
+                      </div>
+
+                      <div className="avatar-section">
+                        <span>{avatarCategoryTitle(activeAvatarCategory.label)}</span>
+                        <div className="emoji-picker" aria-label={activeAvatarCategory.label}>
+                          {activeAvatarCategory.emojis.map((emoji) => (
                             <button
                               className={
                                 formData.avatarEmoji === emoji
                                   ? "emoji-option selected"
                                   : "emoji-option"
                               }
-                              key={`recent-${emoji}`}
+                              key={`${activeAvatarCategory.id}-${emoji}`}
                               onClick={() => selectAvatarEmoji(emoji)}
                               type="button"
                             >
@@ -1212,43 +1222,8 @@ export function CharacterForm({
                           ))}
                         </div>
                       </div>
-                    )}
-
-                    <div className="avatar-section">
-                      <span>常用 Emoji</span>
-                      <div className="avatar-quick-grid">
-                        {favoriteAvatarEmojis.map((emoji) => (
-                          <button
-                            className={
-                              formData.avatarEmoji === emoji
-                                ? "emoji-option selected"
-                                : "emoji-option"
-                            }
-                            key={`favorite-${emoji}`}
-                            onClick={() => selectAvatarEmoji(emoji)}
-                            type="button"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
                     </div>
-
-                    <div className="emoji-picker" aria-label={activeAvatarCategory.label}>
-                      {filteredAvatarEmojis.map((emoji) => (
-                        <button
-                          className={
-                            formData.avatarEmoji === emoji ? "emoji-option selected" : "emoji-option"
-                          }
-                          key={`${activeAvatarCategory.id}-${emoji}`}
-                          onClick={() => selectAvatarEmoji(emoji)}
-                          type="button"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 <label>
