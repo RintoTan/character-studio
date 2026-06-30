@@ -1,5 +1,3 @@
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 import type { Character } from "../types/character";
 
 const csvHeaders = [
@@ -185,9 +183,38 @@ export async function importCharactersFromFiles(
 }
 
 export async function exportPreviewPdf(element: HTMLElement, characterName: string) {
+  if (!element.isConnected) {
+    throw new Error("找不到可导出的角色展示区域");
+  }
+
+  const bounds = element.getBoundingClientRect();
+
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    throw new Error("角色展示区域尺寸异常，无法导出 PDF");
+  }
+
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
+
   const canvas = await html2canvas(element, {
     backgroundColor: "#f3f4f6",
+    height: Math.ceil(bounds.height),
     onclone: (documentClone) => {
+      documentClone.documentElement.dataset.theme = "light";
+      documentClone.body.style.background = "#f3f4f6";
+      documentClone.body.style.color = "#111827";
+
+      const exportRoot = documentClone.querySelector<HTMLElement>(
+        "[data-pdf-export-root='true']",
+      );
+
+      if (exportRoot) {
+        exportRoot.style.background = "#f3f4f6";
+        exportRoot.style.color = "#111827";
+      }
+
       documentClone
         .querySelectorAll(
           "[data-pdf-hidden='true'], button, input, select, textarea",
@@ -197,8 +224,24 @@ export async function exportPreviewPdf(element: HTMLElement, characterName: stri
         });
     },
     scale: 2,
+    scrollX: 0,
+    scrollY: 0,
     useCORS: true,
+    width: Math.ceil(bounds.width),
+    windowHeight: Math.max(
+      document.documentElement.scrollHeight,
+      window.innerHeight,
+    ),
+    windowWidth: Math.max(
+      document.documentElement.scrollWidth,
+      window.innerWidth,
+    ),
   });
+
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("PDF 截图生成失败");
+  }
+
   const imageData = canvas.toDataURL("image/png");
   const pdf = new jsPDF("p", "mm", "a4");
   const pageWidth = pdf.internal.pageSize.getWidth();

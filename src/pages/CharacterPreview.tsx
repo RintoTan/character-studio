@@ -66,7 +66,7 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
 
   async function handleExportPdf() {
     if (!previewRef.current) {
-      showToast("PDF 导出失败");
+      showToast("找不到可导出的角色展示区域");
       return;
     }
 
@@ -75,8 +75,8 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
     try {
       await exportPreviewPdf(previewRef.current, character.name || "未命名角色");
       showToast("PDF 已导出");
-    } catch {
-      showToast("PDF 导出失败");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "PDF 导出失败，请稍后重试");
     } finally {
       setLoadingAction(null);
     }
@@ -86,7 +86,7 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
     <section className="preview-page">
       {toastMessage && <div className="toast">{toastMessage}</div>}
 
-      <div ref={previewRef}>
+      <div ref={previewRef} data-pdf-export-root="true">
         <div className="preview-hero">
           <div className="preview-identity">
             <div className="preview-avatar" aria-hidden="true">
