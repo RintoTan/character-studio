@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Character, CharacterTag } from "../types/character";
+import type { Character } from "../types/character";
 import {
   exportAllCharactersJson,
   exportCharacterSnapshot,
@@ -38,7 +38,6 @@ type DashboardPrefs = {
   worldviewFilter: string;
   genderFilter: string;
   visualStyleFilter: string;
-  tagFilters: string[];
   favoriteMode: ScopeMode;
   viewMode: ViewMode;
 };
@@ -54,7 +53,6 @@ const defaultPrefs: DashboardPrefs = {
   worldviewFilter: "全部",
   genderFilter: "全部",
   visualStyleFilter: "全部",
-  tagFilters: [],
   favoriteMode: "all",
   viewMode: "cards",
 };
@@ -85,6 +83,7 @@ export function Dashboard({
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<Character | null>(null);
+  const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -107,7 +106,6 @@ export function Dashboard({
   const worldviewOptions = getUniqueOptions(characters, "worldview");
   const genderOptions = getUniqueOptions(characters, "gender");
   const visualStyleOptions = getUniqueOptions(characters, "visualStyle");
-  const tagOptions = getTagOptions(characters);
   const visibleCharacters = getVisibleCharacters(
     characters,
     prefs,
@@ -118,14 +116,12 @@ export function Dashboard({
     prefs.worldviewFilter !== "全部" ||
     prefs.genderFilter !== "全部" ||
     prefs.visualStyleFilter !== "全部" ||
-    prefs.tagFilters.length > 0 ||
     prefs.favoriteMode !== "all";
   const hasSearchOrFilter = Boolean(
     prefs.searchTerm.trim() ||
     prefs.worldviewFilter !== "全部" ||
     prefs.genderFilter !== "全部" ||
-    prefs.visualStyleFilter !== "全部" ||
-    prefs.tagFilters.length > 0,
+    prefs.visualStyleFilter !== "全部",
   );
   const heroCopy = getHeroCopy(prefs.favoriteMode);
   const listTitle = getListTitle(prefs, hasSearchOrFilter);
@@ -146,6 +142,7 @@ export function Dashboard({
       ) {
         setOpenCardMenuId(null);
         setExportTarget(null);
+        setIsBulkExportOpen(false);
       }
     }
 
@@ -154,6 +151,7 @@ export function Dashboard({
         setIsMoreMenuOpen(false);
         setOpenCardMenuId(null);
         setExportTarget(null);
+        setIsBulkExportOpen(false);
         setIsSearchPanelOpen(false);
         setIsCommandOpen(false);
         setIsAboutOpen(false);
@@ -366,6 +364,17 @@ export function Dashboard({
     }
   }
 
+  async function handleBulkExport(format: "json" | "pdf" | "jpg" | "png") {
+    if (format === "json") {
+      handleExportSelectedJson();
+      setIsBulkExportOpen(false);
+      return;
+    }
+
+    setIsBulkExportOpen(false);
+    await handleBulkSnapshotExport(format);
+  }
+
   async function handleBulkSnapshotExport(format: "pdf" | "jpg" | "png") {
     const selected = selectedCharacters();
 
@@ -413,69 +422,6 @@ export function Dashboard({
     showToast(shouldFavorite ? "已批量收藏" : "已批量取消收藏");
   }
 
-  function bulkAddTag(tagName: string) {
-    if (selectedIds.length === 0) {
-      showToast("请先选择角色");
-      return;
-    }
-
-    if (!tagName) {
-      showToast("请选择标签");
-      return;
-    }
-
-    onImport(characters.map((character) => {
-      if (!selectedIds.includes(character.id)) {
-        return character;
-      }
-
-      const tags = getCharacterTags(character);
-
-      if (tags.some((tag) => tag.name === tagName)) {
-        return character;
-      }
-
-      const sourceTag = tagOptions.find((tag) => tag.name === tagName);
-
-      return {
-        ...character,
-        tags: [
-          ...tags,
-          {
-            id: crypto.randomUUID(),
-            name: tagName,
-            color: sourceTag?.color || "gray",
-          },
-        ],
-        updatedAt: new Date().toISOString(),
-      };
-    }));
-    showToast("已批量添加标签");
-  }
-
-  function bulkRemoveTag(tagName: string) {
-    if (selectedIds.length === 0) {
-      showToast("请先选择角色");
-      return;
-    }
-
-    if (!tagName) {
-      showToast("请选择标签");
-      return;
-    }
-
-    onImport(characters.map((character) =>
-      selectedIds.includes(character.id)
-        ? {
-            ...character,
-            tags: (character.tags || []).filter((tag) => tag.name !== tagName),
-            updatedAt: new Date().toISOString(),
-          }
-        : character,
-    ));
-    showToast("已批量移除标签");
-  }
-
   function clearSearchAndFilters() {
     setPrefs((current) => ({
       ...current,
@@ -484,22 +430,12 @@ export function Dashboard({
       worldviewFilter: "全部",
       genderFilter: "全部",
       visualStyleFilter: "全部",
-      tagFilters: [],
       favoriteMode: "all",
     }));
   }
 
   function updatePrefs(nextPrefs: Partial<DashboardPrefs>) {
     setPrefs((current) => ({ ...current, ...nextPrefs }));
-  }
-
-  function toggleTagFilter(tagName: string) {
-    setPrefs((current) => ({
-      ...current,
-      tagFilters: current.tagFilters.includes(tagName)
-        ? current.tagFilters.filter((tag) => tag !== tagName)
-        : [...current.tagFilters, tagName],
-    }));
   }
 
   function toggleFavorite(characterId: string) {
@@ -731,6 +667,60 @@ export function Dashboard({
                 type="button"
               >
                 {loadingAction === "card-png" ? "导出中..." : "PNG"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isBulkExportOpen && (
+        <div
+          className="modal-backdrop export-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsBulkExportOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="export-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Export</p>
+                <h2>导出选中角色</h2>
+              </div>
+              <button
+                className="ghost-button"
+                onClick={() => setIsBulkExportOpen(false)}
+                type="button"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="export-dialog-list">
+              <button onClick={() => handleBulkExport("json")} type="button">
+                JSON
+              </button>
+              <button
+                disabled={loadingAction === "bulk-pdf"}
+                onClick={() => handleBulkExport("pdf")}
+                type="button"
+              >
+                {loadingAction === "bulk-pdf" ? `导出中 ${exportProgress}` : "PDF"}
+              </button>
+              <button
+                disabled={loadingAction === "bulk-jpg"}
+                onClick={() => handleBulkExport("jpg")}
+                type="button"
+              >
+                {loadingAction === "bulk-jpg" ? `导出中 ${exportProgress}` : "JPG"}
+              </button>
+              <button
+                disabled={loadingAction === "bulk-png"}
+                onClick={() => handleBulkExport("png")}
+                type="button"
+              >
+                {loadingAction === "bulk-png" ? `导出中 ${exportProgress}` : "PNG"}
               </button>
             </div>
           </div>
@@ -1142,29 +1132,6 @@ export function Dashboard({
               ))}
             </select>
           </label>
-          <label className="tag-filter-control">
-            标签
-            <div className="tag-filter-list">
-              {tagOptions.length > 0 ? (
-                tagOptions.map((tag) => (
-                  <button
-                    className={
-                      prefs.tagFilters.includes(tag.name)
-                        ? `tag-color-${tag.color || "gray"} active`
-                        : `tag-color-${tag.color || "gray"}`
-                    }
-                    key={tag.name}
-                    onClick={() => toggleTagFilter(tag.name)}
-                    type="button"
-                  >
-                    {tag.name}
-                  </button>
-                ))
-              ) : (
-                <span>暂无标签</span>
-              )}
-            </div>
-          </label>
         </div>
       </div>
 
@@ -1211,66 +1178,12 @@ export function Dashboard({
                       </button>
                       <button
                         className="ghost-button"
-                        disabled={selectedIds.length === 0}
-                        onClick={handleExportSelectedJson}
-                        type="button"
-                      >
-                        导出 JSON
-                      </button>
-                      <button
-                        className="ghost-button"
                         disabled={selectedIds.length === 0 || loadingAction !== null}
-                        onClick={() => handleBulkSnapshotExport("pdf")}
+                        onClick={() => setIsBulkExportOpen(true)}
                         type="button"
                       >
-                        {loadingAction === "bulk-pdf" ? `导出中 ${exportProgress}` : "导出 PDF"}
+                        导出
                       </button>
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length === 0 || loadingAction !== null}
-                        onClick={() => handleBulkSnapshotExport("jpg")}
-                        type="button"
-                      >
-                        {loadingAction === "bulk-jpg" ? `导出中 ${exportProgress}` : "导出 JPG"}
-                      </button>
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length === 0 || loadingAction !== null}
-                        onClick={() => handleBulkSnapshotExport("png")}
-                        type="button"
-                      >
-                        {loadingAction === "bulk-png" ? `导出中 ${exportProgress}` : "导出 PNG"}
-                      </button>
-                      <select
-                        aria-label="批量添加标签"
-                        disabled={selectedIds.length === 0 || tagOptions.length === 0}
-                        onChange={(event) => {
-                          bulkAddTag(event.target.value);
-                          event.currentTarget.value = "";
-                        }}
-                      >
-                        <option value="">添加标签</option>
-                        {tagOptions.map((tag) => (
-                          <option key={tag.name} value={tag.name}>
-                            {tag.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        aria-label="批量移除标签"
-                        disabled={selectedIds.length === 0 || tagOptions.length === 0}
-                        onChange={(event) => {
-                          bulkRemoveTag(event.target.value);
-                          event.currentTarget.value = "";
-                        }}
-                      >
-                        <option value="">移除标签</option>
-                        {tagOptions.map((tag) => (
-                          <option key={tag.name} value={tag.name}>
-                            {tag.name}
-                          </option>
-                        ))}
-                      </select>
                     </>
                   )}
                   <button
@@ -1380,14 +1293,14 @@ export function Dashboard({
                     <span>{character.worldview || "未填写"}</span>
                     <span>{character.age || "未填写"}</span>
                     <div className="table-tags">
-                      {getCharacterTags(character).slice(0, 4).map((tag) => (
+                      {getPersonalityTags(character).slice(0, 4).map((tag) => (
                         <button
-                          className={`tag-color-${tag.color || "gray"}`}
-                          key={tag.id}
-                          onClick={() => toggleTagFilter(tag.name)}
+                          className={`tag-tone-${getTagTone(tag)}`}
+                          key={tag}
+                          onClick={() => onPreview(character)}
                           type="button"
                         >
-                          {tag.name}
+                          {tag}
                         </button>
                       ))}
                     </div>
@@ -1423,7 +1336,7 @@ export function Dashboard({
           ) : (
           <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
             {visibleCharacters.map((character) => {
-              const tags = getCharacterTags(character);
+              const tags = getPersonalityTags(character);
               const visibleTags = tags.slice(0, 5);
               const isFavorite = flags.favoriteIds.includes(character.id);
               const isPinned = flags.pinnedIds.includes(character.id);
@@ -1491,12 +1404,12 @@ export function Dashboard({
                     {!isDraft && isPinned && <span className="status-badge pinned">置顶</span>}
                     {!isDraft && visibleTags.map((tag) => (
                       <button
-                        className={`tag-color-${tag.color || "gray"} preview-hit`}
-                        key={tag.id}
-                        onClick={() => toggleTagFilter(tag.name)}
+                        className={`tag-tone-${getTagTone(tag)} preview-hit`}
+                        key={tag}
+                        onClick={() => onPreview(character)}
                         type="button"
                       >
-                        {tag.name}
+                        {tag}
                       </button>
                     ))}
                   </div>
@@ -1663,44 +1576,10 @@ function getUniqueOptions(
   ).sort((a, b) => a.localeCompare(b));
 }
 
-function getTagOptions(characters: Character[]) {
-  const tagMap = new Map<string, { name: string; color?: string }>();
-
-  characters.forEach((character) => {
-    getCharacterTags(character).forEach((tag) => {
-      if (tag.name.trim() && !tagMap.has(tag.name)) {
-        tagMap.set(tag.name, { name: tag.name, color: tag.color || "gray" });
-      }
-    });
-  });
-
-  return Array.from(tagMap.values()).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-function getCharacterTags(character: Character): CharacterTag[] {
-  const tagMap = new Map<string, CharacterTag>();
-
-  (character.tags || []).forEach((tag) => {
-    if (tag.name.trim()) {
-      tagMap.set(tag.name, {
-        id: tag.id || `tag-${tag.name}`,
-        name: tag.name,
-        color: tag.color || "gray",
-      });
-    }
-  });
-
-  (character.personalityTags || []).forEach((tagName) => {
-    if (tagName.trim() && !tagMap.has(tagName)) {
-      tagMap.set(tagName, {
-        id: `personality-${tagName}`,
-        name: tagName,
-        color: "gray",
-      });
-    }
-  });
-
-  return Array.from(tagMap.values());
+function getPersonalityTags(character: Character) {
+  return Array.from(
+    new Set((character.personalityTags || []).filter((tag) => tag.trim())),
+  );
 }
 
 function getVisibleCharacters(
@@ -1719,7 +1598,6 @@ function getVisibleCharacters(
         character.name,
         character.occupation,
         character.worldview,
-        ...getCharacterTags(character).map((tag) => tag.name),
         ...(character.personalityTags || []),
       ]
         .join(" ")
@@ -1733,10 +1611,6 @@ function getVisibleCharacters(
       const matchesVisualStyle =
         prefs.visualStyleFilter === "全部" ||
         character.visualStyle === prefs.visualStyleFilter;
-      const tagNames = new Set(getCharacterTags(character).map((tag) => tag.name));
-      const matchesTags =
-        prefs.tagFilters.length === 0 ||
-        prefs.tagFilters.every((tagName) => tagNames.has(tagName));
       const matchesScope =
         prefs.favoriteMode === "drafts"
           ? isDraft
@@ -1749,7 +1623,6 @@ function getVisibleCharacters(
         matchesWorldview &&
         matchesGender &&
         matchesVisualStyle &&
-        matchesTags &&
         matchesScope
       );
     })
@@ -1783,9 +1656,6 @@ function loadDashboardPrefs(): DashboardPrefs {
 
     return {
       ...parsedValue,
-      tagFilters: Array.isArray(parsedValue.tagFilters)
-        ? parsedValue.tagFilters
-        : [],
       viewMode: parsedValue.viewMode === "list" ? "list" : "cards",
     };
   } catch {
@@ -1854,7 +1724,7 @@ function getListTitle(prefs: DashboardPrefs, hasSearchOrFilter: boolean) {
 }
 
 function getTagTone(tag: string) {
-  const tones = [0, 1, 2, 3, 4, 5];
+  const tones = Array.from({ length: 18 }, (_, index) => index);
   const total = Array.from(tag).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return tones[total % tones.length];
 }

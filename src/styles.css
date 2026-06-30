@@ -597,7 +597,7 @@ h2 {
 
 .dashboard-controls {
   display: grid;
-  grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(128px, 150px)) minmax(180px, 1fr);
+  grid-template-columns: minmax(220px, 1.2fr) repeat(5, minmax(128px, 150px));
   gap: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1125,10 +1125,10 @@ h2 {
   max-width: fit-content;
   min-height: 18px;
   height: 18px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--tag-border, var(--border));
   border-radius: 4px;
-  background: var(--surface-subtle);
-  color: var(--text-soft);
+  background: var(--tag-bg, var(--surface-subtle));
+  color: var(--tag-text, var(--text-soft));
   padding: 2px 6px;
   font-size: 11px;
   font-weight: 700;
@@ -1148,25 +1148,43 @@ h2 {
   color: #a16207;
 }
 
-.card-tags .tag-tone-1 {
-  background: color-mix(in srgb, #64748b 12%, var(--surface));
-}
+.tag-tone-0 { --tag-bg: #f3f4f6; --tag-border: #d1d5db; --tag-text: #374151; }
+.tag-tone-1 { --tag-bg: #eff6ff; --tag-border: #bfdbfe; --tag-text: #1e3a8a; }
+.tag-tone-2 { --tag-bg: #ecfdf5; --tag-border: #bbf7d0; --tag-text: #166534; }
+.tag-tone-3 { --tag-bg: #fffbeb; --tag-border: #fde68a; --tag-text: #854d0e; }
+.tag-tone-4 { --tag-bg: #fff1f2; --tag-border: #fecdd3; --tag-text: #9f1239; }
+.tag-tone-5 { --tag-bg: #f5f3ff; --tag-border: #ddd6fe; --tag-text: #5b21b6; }
+.tag-tone-6 { --tag-bg: #f0fdfa; --tag-border: #99f6e4; --tag-text: #115e59; }
+.tag-tone-7 { --tag-bg: #fdf4ff; --tag-border: #f5d0fe; --tag-text: #86198f; }
+.tag-tone-8 { --tag-bg: #f8fafc; --tag-border: #cbd5e1; --tag-text: #334155; }
+.tag-tone-9 { --tag-bg: #eef2ff; --tag-border: #c7d2fe; --tag-text: #3730a3; }
+.tag-tone-10 { --tag-bg: #f7fee7; --tag-border: #d9f99d; --tag-text: #3f6212; }
+.tag-tone-11 { --tag-bg: #fff7ed; --tag-border: #fed7aa; --tag-text: #9a3412; }
+.tag-tone-12 { --tag-bg: #f0f9ff; --tag-border: #bae6fd; --tag-text: #075985; }
+.tag-tone-13 { --tag-bg: #fdf2f8; --tag-border: #fbcfe8; --tag-text: #9d174d; }
+.tag-tone-14 { --tag-bg: #f4f4f5; --tag-border: #d4d4d8; --tag-text: #3f3f46; }
+.tag-tone-15 { --tag-bg: #ecfeff; --tag-border: #a5f3fc; --tag-text: #155e75; }
+.tag-tone-16 { --tag-bg: #fafaf9; --tag-border: #d6d3d1; --tag-text: #44403c; }
+.tag-tone-17 { --tag-bg: #fefce8; --tag-border: #fde047; --tag-text: #713f12; }
 
-.card-tags .tag-tone-2 {
-  background: color-mix(in srgb, #71717a 12%, var(--surface));
-}
-
-.card-tags .tag-tone-3 {
-  background: color-mix(in srgb, #6b7280 12%, var(--surface));
-}
-
-.card-tags .tag-tone-4 {
-  background: color-mix(in srgb, #78716c 12%, var(--surface));
-}
-
-.card-tags .tag-tone-5 {
-  background: color-mix(in srgb, #475569 12%, var(--surface));
-}
+:root[data-theme="dark"] .tag-tone-0 { --tag-bg: #27272a; --tag-border: #3f3f46; --tag-text: #d4d4d8; }
+:root[data-theme="dark"] .tag-tone-1 { --tag-bg: #172554; --tag-border: #1d4ed8; --tag-text: #bfdbfe; }
+:root[data-theme="dark"] .tag-tone-2 { --tag-bg: #052e16; --tag-border: #15803d; --tag-text: #bbf7d0; }
+:root[data-theme="dark"] .tag-tone-3 { --tag-bg: #422006; --tag-border: #a16207; --tag-text: #fde68a; }
+:root[data-theme="dark"] .tag-tone-4 { --tag-bg: #4c0519; --tag-border: #be123c; --tag-text: #fecdd3; }
+:root[data-theme="dark"] .tag-tone-5 { --tag-bg: #2e1065; --tag-border: #7c3aed; --tag-text: #ddd6fe; }
+:root[data-theme="dark"] .tag-tone-6 { --tag-bg: #134e4a; --tag-border: #0f766e; --tag-text: #99f6e4; }
+:root[data-theme="dark"] .tag-tone-7 { --tag-bg: #4a044e; --tag-border: #a21caf; --tag-text: #f5d0fe; }
+:root[data-theme="dark"] .tag-tone-8 { --tag-bg: #1e293b; --tag-border: #475569; --tag-text: #cbd5e1; }
+:root[data-theme="dark"] .tag-tone-9 { --tag-bg: #312e81; --tag-border: #4f46e5; --tag-text: #c7d2fe; }
+:root[data-theme="dark"] .tag-tone-10 { --tag-bg: #365314; --tag-border: #65a30d; --tag-text: #d9f99d; }
+:root[data-theme="dark"] .tag-tone-11 { --tag-bg: #431407; --tag-border: #c2410c; --tag-text: #fed7aa; }
+:root[data-theme="dark"] .tag-tone-12 { --tag-bg: #0c4a6e; --tag-border: #0284c7; --tag-text: #bae6fd; }
+:root[data-theme="dark"] .tag-tone-13 { --tag-bg: #500724; --tag-border: #be185d; --tag-text: #fbcfe8; }
+:root[data-theme="dark"] .tag-tone-14 { --tag-bg: #27272a; --tag-border: #52525b; --tag-text: #e4e4e7; }
+:root[data-theme="dark"] .tag-tone-15 { --tag-bg: #164e63; --tag-border: #0891b2; --tag-text: #a5f3fc; }
+:root[data-theme="dark"] .tag-tone-16 { --tag-bg: #292524; --tag-border: #57534e; --tag-text: #d6d3d1; }
+:root[data-theme="dark"] .tag-tone-17 { --tag-bg: #422006; --tag-border: #ca8a04; --tag-text: #fef08a; }
 
 .card-footer-actions {
   position: absolute;

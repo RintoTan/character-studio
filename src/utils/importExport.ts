@@ -8,7 +8,6 @@ const csvHeaders = [
   "职业",
   "世界观",
   "性格标签",
-  "角色标签",
   "视觉风格",
   "外貌描述",
   "能力描述",
@@ -111,8 +110,11 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
   const id = sourceId && !existingIds.has(sourceId) ? sourceId : crypto.randomUUID();
   existingIds.add(id);
 
-  const personalityTags = asStringArray(value.personalityTags);
-  const tags = mergeTags(asTags(value.tags), personalityTags);
+  const importedTags = asTags(value.tags);
+  const personalityTags = mergeTags(
+    importedTags,
+    asStringArray(value.personalityTags),
+  ).map((tag) => tag.name);
 
   return {
     id,
@@ -127,7 +129,7 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     species: asString(value.species),
     occupation: asString(value.occupation),
     worldview: asString(value.worldview),
-    tags,
+    tags: importedTags,
     personalityTags,
     appearanceDescription: asString(value.appearanceDescription),
     abilityDescription: asString(value.abilityDescription),
@@ -204,7 +206,6 @@ export function exportCharactersCsv(characters: Character[]) {
     character.occupation || "",
     character.worldview || "",
     character.personalityTags?.join("、") || "",
-    getCharacterTags(character).map((tag) => tag.name).join("、") || "",
     character.visualStyle || "",
     character.appearanceDescription || "",
     character.abilityDescription || "",
@@ -400,7 +401,6 @@ function createSnapshotElement(character: Character) {
         `职业：${character.occupation || "未填写"}`,
         `世界观：${character.worldview || "未填写"}`,
       ].join("\\n"))}
-      ${snapshotCard("角色标签", getCharacterTags(character).map((tag) => tag.name).join("、") || "未填写")}
       ${snapshotCard("性格标签", character.personalityTags?.join("、") || "未填写")}
       ${snapshotCard("外貌描述", character.appearanceDescription || "未填写")}
       ${snapshotCard("能力描述", character.abilityDescription || "未填写")}
@@ -503,10 +503,6 @@ function snapshotCard(title: string, content: string) {
       <p>${escapeHtml(content)}</p>
     </article>
   `;
-}
-
-function getCharacterTags(character: Character): CharacterTag[] {
-  return mergeTags(character.tags || [], character.personalityTags || []);
 }
 
 async function createZipBlob(files: Array<{ name: string; blob: Blob }>) {
