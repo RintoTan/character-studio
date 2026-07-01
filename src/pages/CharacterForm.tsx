@@ -27,6 +27,7 @@ type CharacterFormProps = {
   onDelete?: (character: Character) => void;
   onCancel: () => void;
   saveSignal?: number;
+  draftSaveSignal?: number;
 };
 
 type SectionId =
@@ -855,6 +856,7 @@ export function CharacterForm({
   onDelete,
   onCancel,
   saveSignal = 0,
+  draftSaveSignal = 0,
 }: CharacterFormProps) {
   const [formData, setFormData] = useState<CharacterDraft>(initialCharacter);
   const [customTag, setCustomTag] = useState("");
@@ -923,6 +925,7 @@ export function CharacterForm({
   >("idle");
   const lastAutoSavedSnapshotRef = useRef("");
   const saveSignalRef = useRef(saveSignal);
+  const draftSaveSignalRef = useRef(draftSaveSignal);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
   const cropStageRef = useRef<HTMLDivElement>(null);
@@ -1042,6 +1045,15 @@ export function CharacterForm({
     saveSignalRef.current = saveSignal;
     void saveCurrentCharacter();
   }, [saveSignal]);
+
+  useEffect(() => {
+    if (draftSaveSignal === draftSaveSignalRef.current) {
+      return;
+    }
+
+    draftSaveSignalRef.current = draftSaveSignal;
+    void saveDraftCharacter();
+  }, [draftSaveSignal]);
 
   useEffect(() => {
     return () => {
@@ -1904,7 +1916,7 @@ export function CharacterForm({
             <label className="crop-slider">
               缩放
               <input
-                max="2.4"
+                max="4"
                 min="1"
                 onChange={(event) =>
                   setCropDraft((current) =>
@@ -1925,7 +1937,7 @@ export function CharacterForm({
                   alt=""
                   src={cropDraft.imageUrl}
                   style={{
-                    transform: `translate(calc(-50% + ${cropDraft.offsetX / 2}px), calc(-50% + ${cropDraft.offsetY / 2}px)) scale(${cropDraft.zoom})`,
+                    transform: `translate(calc(-50% + ${cropDraft.offsetX / 3.8}px), calc(-50% + ${cropDraft.offsetY / 3.8}px)) scale(${cropDraft.zoom})`,
                   }}
                 />
               </div>

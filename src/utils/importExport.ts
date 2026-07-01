@@ -365,6 +365,7 @@ async function capturePreviewCanvas(element: HTMLElement) {
   }
 
   element.classList.add("pdf-safe");
+  await waitForAvatarImages(element);
   await waitForImages(element);
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
 
@@ -404,7 +405,7 @@ async function capturePreviewCanvas(element: HTMLElement) {
 
         documentClone
           .querySelectorAll(
-            "[data-pdf-hidden='true'], button, input, select, textarea",
+            "[data-pdf-hidden='true'], input, select, textarea",
           )
           .forEach((item) => {
             item.setAttribute("style", "display: none !important;");
@@ -446,6 +447,22 @@ async function waitForImages(element: HTMLElement) {
         }),
     ),
   );
+}
+
+async function waitForAvatarImages(element: HTMLElement) {
+  const deadline = Date.now() + 1200;
+
+  while (Date.now() < deadline) {
+    const pendingAvatars = Array.from(
+      element.querySelectorAll<HTMLElement>("[data-avatar-asset='true']"),
+    ).filter((avatar) => avatar.dataset.avatarImage !== "true");
+
+    if (pendingAvatars.length === 0) {
+      return;
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
 }
 
 export async function exportPreviewImage(

@@ -56,7 +56,12 @@ export function AvatarDisplay({
   const visibleImageUrl = previewImageUrl || imageUrl;
 
   return (
-    <span className={className} aria-label={label} data-avatar-image={Boolean(visibleImageUrl)}>
+    <span
+      className={className}
+      aria-label={label}
+      data-avatar-asset={Boolean(assetId || previewImageUrl)}
+      data-avatar-image={Boolean(visibleImageUrl)}
+    >
       {visibleImageUrl ? <img alt="" src={visibleImageUrl} /> : emoji}
     </span>
   );

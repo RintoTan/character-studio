@@ -12,10 +12,13 @@ import {
   importCharactersFromFiles,
 } from "../utils/importExport";
 import {
+  clearAvatarAssets,
   cleanupUnusedAvatarAssets,
   deleteAvatarAsset,
+  exportAvatarAssetsJson,
   formatAssetSize,
   getAvatarAssetStats,
+  importAvatarAssetsJson,
   listAvatarAssets,
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
@@ -36,6 +39,7 @@ type DashboardProps = {
   onToggleTheme: () => void;
   themeMode: ThemeMode;
   onSetThemeMode: (themeMode: ThemeMode) => void;
+  searchSignal?: number;
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
@@ -92,6 +96,7 @@ export function Dashboard({
   onToggleTheme,
   themeMode,
   onSetThemeMode,
+  searchSignal = 0,
 }: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
@@ -126,10 +131,12 @@ export function Dashboard({
   const [exportProgress, setExportProgress] = useState("");
   const undoTimerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const assetImportInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const cardMenuRef = useRef<HTMLDivElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchSignalRef = useRef(searchSignal);
 
   const worldviewOptions = getUniqueOptions(characters, "worldview");
   const genderOptions = getUniqueOptions(characters, "gender");
@@ -244,12 +251,56 @@ export function Dashboard({
   }, [prefs]);
 
   useEffect(() => {
+    const hasDialogOpen =
+      Boolean(pendingDelete) ||
+      isBulkDeleteOpen ||
+      Boolean(exportTarget) ||
+      isBulkExportOpen ||
+      isBulkMoreOpen ||
+      isCommandOpen ||
+      isAboutOpen ||
+      isSettingsOpen ||
+      isClearDataOpen ||
+      isAssetCleanupOpen ||
+      Boolean(pendingAssetDelete) ||
+      pendingAssetBatchDeleteIds.length > 0;
+
+    if (hasDialogOpen) {
+      setIsMoreMenuOpen(false);
+      setOpenCardMenuId(null);
+    }
+  }, [
+    pendingDelete,
+    isBulkDeleteOpen,
+    exportTarget,
+    isBulkExportOpen,
+    isBulkMoreOpen,
+    isCommandOpen,
+    isAboutOpen,
+    isSettingsOpen,
+    isClearDataOpen,
+    isAssetCleanupOpen,
+    pendingAssetDelete,
+    pendingAssetBatchDeleteIds.length,
+  ]);
+
+  useEffect(() => {
     if (!isSettingsOpen) {
       return;
     }
 
     void refreshAvatarAssetStats();
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    if (searchSignal === searchSignalRef.current) {
+      return;
+    }
+
+    searchSignalRef.current = searchSignal;
+    setIsSearchPanelOpen(true);
+    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+  }, [searchSignal]);
 
   useEffect(() => {
     localStorage.setItem(DASHBOARD_FLAGS_KEY, JSON.stringify(flags));
@@ -613,14 +664,37 @@ export function Dashboard({
     }
   }
 
-  function clearLocalData() {
+  async function clearLocalData() {
+    localStorage.clear();
+    await clearAvatarAssets();
     onImport([]);
     setSelectedIds([]);
+    setSelectedAssetIds([]);
+    setAvatarAssets([]);
+    setAvatarAssetStats({ count: 0, size: 0 });
     setIsBulkMode(false);
     setIsClearDataOpen(false);
     setIsSettingsOpen(false);
     clearSearchAndFilters();
     showToast("本地数据已清空", "warning");
+  }
+
+  async function handleImportAvatarAssets(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const result = await importAvatarAssetsJson(file);
+      await refreshAvatarAssetStats();
+      showToast(`已导入 ${result.importedCount} 个头像素材，跳过 ${result.skippedCount} 个重复素材`);
+    } catch {
+      showToast("头像素材导入失败", "error");
+    } finally {
+      if (assetImportInputRef.current) {
+        assetImportInputRef.current.value = "";
+      }
+    }
   }
 
   async function refreshAvatarAssetStats() {
@@ -1327,9 +1401,27 @@ export function Dashboard({
                 <p className="muted">
                   图片存储在当前浏览器 IndexedDB 中，轻量 JSON 不包含头像图片二进制。
                 </p>
+                <div className="settings-actions">
+                  <input
+                    accept="application/json,.json"
+                    className="hidden-input"
+                    onChange={(event) => void handleImportAvatarAssets(event.target.files?.[0])}
+                    ref={assetImportInputRef}
+                    type="file"
+                  />
+                  <button className="ghost-button" onClick={() => assetImportInputRef.current?.click()} type="button">
+                    导入素材
+                  </button>
+                  <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
+                    导出全部素材
+                  </button>
+                </div>
                 {avatarAssets.length > 0 ? (
                   <>
                     <div className="settings-asset-toolbar">
+                      <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAssetIds)} type="button">
+                        导出所选素材
+                      </button>
                       <button className="ghost-button" onClick={toggleAllAssetsSelected} type="button">
                         {selectedAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
                       </button>

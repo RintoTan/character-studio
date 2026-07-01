@@ -1741,6 +1741,14 @@ textarea {
   gap: 8px;
 }
 
+.avatar-actions .ghost-button {
+  min-height: 36px;
+  border-radius: 9px;
+  padding-inline: 12px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
 .avatar-image-menu-wrap {
   position: relative;
 }
@@ -1803,6 +1811,11 @@ textarea {
   background: var(--surface);
   box-shadow: var(--shadow-strong);
   padding: 18px;
+}
+
+.crop-dialog {
+  display: grid;
+  grid-template-rows: auto minmax(0, auto) auto auto auto;
 }
 
 .crop-stage {
@@ -1875,6 +1888,14 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface-subtle);
+}
+
+.crop-dialog .form-actions {
+  position: sticky;
+  bottom: -18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding-top: 12px;
 }
 
 .asset-library-grid {
@@ -2926,6 +2947,37 @@ kbd {
     width: 34px;
     min-width: 34px;
     padding: 0;
+  }
+
+  .crop-dialog {
+    position: fixed;
+    inset: 10px;
+    width: auto;
+    max-height: calc(100vh - 20px);
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .crop-stage {
+    width: min(100%, calc(100vw - 48px));
+    height: auto;
+    max-height: none;
+    aspect-ratio: 1 / 1;
+    margin-block: 10px;
+  }
+
+  .crop-frame {
+    inset: clamp(20px, 8vw, 34px);
+  }
+
+  .avatar-picker-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .avatar-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .dashboard-action-groups {

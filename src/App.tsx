@@ -12,10 +12,13 @@ import {
 } from "./storage/characterStorage";
 import type { Character } from "./types/character";
 import {
+  clearAvatarAssets,
   cleanupUnusedAvatarAssets,
   deleteAvatarAsset,
+  exportAvatarAssetsJson,
   formatAssetSize,
   getAvatarAssetStats,
+  importAvatarAssetsJson,
   listAvatarAssets,
   type AvatarAssetRecord,
 } from "./utils/avatarAssets";
@@ -33,11 +36,17 @@ function App() {
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
+  const [isAppClearDataOpen, setIsAppClearDataOpen] = useState(false);
   const [pendingAppAssetDelete, setPendingAppAssetDelete] = useState<AvatarAssetRecord | null>(null);
+  const [pendingAppAssetBatchDeleteIds, setPendingAppAssetBatchDeleteIds] = useState<string[]>([]);
   const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
+  const [selectedAppAssetIds, setSelectedAppAssetIds] = useState<string[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [editorSaveSignal, setEditorSaveSignal] = useState(0);
+  const [editorDraftSaveSignal, setEditorDraftSaveSignal] = useState(0);
+  const [previewExportSignal, setPreviewExportSignal] = useState(0);
+  const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
     return storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
@@ -48,6 +57,7 @@ function App() {
     null,
   );
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const appAssetImportInputRef = useRef<HTMLInputElement>(null);
   const isHistoryNavigationRef = useRef(false);
 
   useEffect(() => {
@@ -87,6 +97,8 @@ function App() {
         setIsThemeMenuOpen(false);
         setPendingAppAssetDelete(null);
         setIsAppAssetCleanupOpen(false);
+        setIsAppClearDataOpen(false);
+        setPendingAppAssetBatchDeleteIds([]);
       }
     }
 
@@ -135,9 +147,13 @@ function App() {
 
       setAvatarAssetStats(stats);
       setAvatarAssets(assets);
+      setSelectedAppAssetIds((current) =>
+        current.filter((id) => assets.some((asset) => asset.id === id)),
+      );
     } catch {
       setAvatarAssetStats({ count: 0, size: 0 });
       setAvatarAssets([]);
+      setSelectedAppAssetIds([]);
     }
   }
 
@@ -184,6 +200,111 @@ function App() {
     }
     setPendingAppAssetDelete(null);
     await refreshAvatarAssetStats();
+  }
+
+  function toggleAppAssetSelected(assetId: string) {
+    setSelectedAppAssetIds((current) =>
+      current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current, assetId],
+    );
+  }
+
+  function toggleAllAppAssetsSelected() {
+    setSelectedAppAssetIds((current) =>
+      current.length === avatarAssets.length ? [] : avatarAssets.map((asset) => asset.id),
+    );
+  }
+
+  async function deleteAppAssets(assetIds: string[]) {
+    await Promise.all(assetIds.map((id) => deleteAvatarAsset(id)));
+    const deletedIds = new Set(assetIds);
+    const nextCharacters = characters.map((character) =>
+      character.avatarAssetId && deletedIds.has(character.avatarAssetId)
+        ? { ...character, avatarAssetId: "", updatedAt: new Date().toISOString() }
+        : character,
+    );
+
+    saveCharacters(nextCharacters);
+    setCharacters(nextCharacters);
+    if (selectedCharacter?.avatarAssetId && deletedIds.has(selectedCharacter.avatarAssetId)) {
+      setSelectedCharacter({ ...selectedCharacter, avatarAssetId: "" });
+    }
+    setSelectedAppAssetIds([]);
+    await refreshAvatarAssetStats();
+  }
+
+  async function deleteSelectedAppUnusedAssets() {
+    const unusedIds = selectedAppAssetIds.filter((id) => getAssetUsageCount(id) === 0);
+
+    if (unusedIds.length === 0) {
+      return;
+    }
+
+    await deleteAppAssets(unusedIds);
+  }
+
+  function requestSelectedAppAssetDelete() {
+    if (selectedAppAssetIds.length === 0) {
+      return;
+    }
+
+    if (selectedAppAssetIds.some((id) => getAssetUsageCount(id) > 0)) {
+      setPendingAppAssetBatchDeleteIds(selectedAppAssetIds);
+      return;
+    }
+
+    void deleteAppAssets(selectedAppAssetIds);
+  }
+
+  async function confirmAppAssetBatchDelete() {
+    if (pendingAppAssetBatchDeleteIds.length === 0) {
+      return;
+    }
+
+    await deleteAppAssets(pendingAppAssetBatchDeleteIds);
+    setPendingAppAssetBatchDeleteIds([]);
+  }
+
+  async function clearAppLocalData() {
+    localStorage.clear();
+    await clearAvatarAssets();
+    saveCharacters([]);
+    setCharacters([]);
+    setSelectedCharacter(null);
+    setAvatarAssets([]);
+    setAvatarAssetStats({ count: 0, size: 0 });
+    setSelectedAppAssetIds([]);
+    setIsAppClearDataOpen(false);
+    setIsAppSettingsOpen(false);
+    setPage("dashboard");
+  }
+
+  async function handleAppImportAvatarAssets(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    try {
+      await importAvatarAssetsJson(file);
+      await refreshAvatarAssetStats();
+    } catch {
+      // Dashboard has toast feedback; app-level Settings keeps the import failure non-fatal.
+    } finally {
+      if (appAssetImportInputRef.current) {
+        appAssetImportInputRef.current.value = "";
+      }
+    }
+  }
+
+  function closeAppOverlays() {
+    setIsThemeMenuOpen(false);
+    setIsAppAboutOpen(false);
+    setIsAppSettingsOpen(false);
+    setIsAppAssetCleanupOpen(false);
+    setIsAppClearDataOpen(false);
+    setPendingAppAssetDelete(null);
+    setPendingAppAssetBatchDeleteIds([]);
   }
 
   useEffect(() => {
@@ -288,16 +409,19 @@ function App() {
   }
 
   function handleCreate() {
+    closeAppOverlays();
     setSelectedCharacter(null);
     setPage("form");
   }
 
   function handleEdit(character: Character) {
+    closeAppOverlays();
     setSelectedCharacter(character);
     setPage("form");
   }
 
   function handlePreview(character: Character) {
+    closeAppOverlays();
     setSelectedCharacter(character);
     setPage("preview");
   }
@@ -357,6 +481,7 @@ function App() {
   function handleImport(nextCharacters: Character[]) {
     saveCharacters(nextCharacters);
     setCharacters(nextCharacters);
+    closeAppOverlays();
     setPage("dashboard");
   }
 
@@ -365,14 +490,27 @@ function App() {
     setIsThemeMenuOpen(false);
   }
 
+  function goDashboard() {
+    closeAppOverlays();
+    setPage("dashboard");
+  }
+
+  const isAppOverlayOpen =
+    isAppAboutOpen ||
+    isAppSettingsOpen ||
+    isAppAssetCleanupOpen ||
+    isAppClearDataOpen ||
+    Boolean(pendingAppAssetDelete) ||
+    pendingAppAssetBatchDeleteIds.length > 0;
+
   return (
     <main className="app-shell">
       <nav className="topbar">
-        <button className="brand-button" onClick={() => setPage("dashboard")}>
+        <button className="brand-button" onClick={goDashboard}>
           Character Studio
         </button>
         <div className="nav-actions">
-          <button className="ghost-button" onClick={() => setPage("dashboard")}>
+          <button className="ghost-button" onClick={goDashboard}>
             Dashboard
           </button>
           <div className="theme-menu-wrap" ref={themeMenuRef}>
@@ -449,6 +587,7 @@ function App() {
           onToggleTheme={toggleTheme}
           themeMode={themeMode}
           onSetThemeMode={setThemeMode}
+          searchSignal={dashboardSearchSignal}
         />
       )}
 
@@ -461,6 +600,7 @@ function App() {
           onDelete={handleDelete}
           onCancel={() => setPage("dashboard")}
           saveSignal={editorSaveSignal}
+          draftSaveSignal={editorDraftSaveSignal}
         />
       )}
 
@@ -470,6 +610,7 @@ function App() {
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
           onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}
+          exportSignal={previewExportSignal}
         />
       )}
 
@@ -485,29 +626,62 @@ function App() {
             ↑
           </button>
         )}
-        {page !== "dashboard" && (
+        {isAppOverlayOpen && (
           <button
             aria-label="返回"
             className="floating-action"
             data-tooltip="返回"
-            onClick={goBack}
+            onClick={closeAppOverlays}
             type="button"
           >
             ←
           </button>
         )}
-        {page !== "dashboard" && (
+        {isAppOverlayOpen && (
           <button
             aria-label="回到主页"
             className="floating-action"
             data-tooltip="回到主页"
-            onClick={() => setPage("dashboard")}
+            onClick={goDashboard}
             type="button"
           >
             ⌂
           </button>
         )}
-        {page === "preview" && selectedCharacter && (
+        {!isAppOverlayOpen && page === "dashboard" && showQuickBackToTop && (
+          <button
+            aria-label="新建角色"
+            className="floating-action"
+            data-tooltip="新建角色"
+            onClick={handleCreate}
+            type="button"
+          >
+            +
+          </button>
+        )}
+        {!isAppOverlayOpen && page === "dashboard" && showQuickBackToTop && (
+          <button
+            aria-label="搜索 / 筛选"
+            className="floating-action"
+            data-tooltip="搜索 / 筛选"
+            onClick={() => setDashboardSearchSignal((current) => current + 1)}
+            type="button"
+          >
+            ⌕
+          </button>
+        )}
+        {!isAppOverlayOpen && page !== "dashboard" && (
+          <button
+            aria-label="回到主页"
+            className="floating-action"
+            data-tooltip="回到主页"
+            onClick={goDashboard}
+            type="button"
+          >
+            ⌂
+          </button>
+        )}
+        {!isAppOverlayOpen && page === "preview" && selectedCharacter && (
           <button
             aria-label="编辑角色"
             className="floating-action"
@@ -518,7 +692,18 @@ function App() {
             ⌁
           </button>
         )}
-        {page === "form" && (
+        {!isAppOverlayOpen && page === "preview" && selectedCharacter && (
+          <button
+            aria-label="导出"
+            className="floating-action"
+            data-tooltip="导出"
+            onClick={() => setPreviewExportSignal((current) => current + 1)}
+            type="button"
+          >
+            ↓
+          </button>
+        )}
+        {!isAppOverlayOpen && page === "form" && (
           <button
             aria-label="保存角色"
             className="floating-action"
@@ -527,6 +712,17 @@ function App() {
             type="button"
           >
             ✓
+          </button>
+        )}
+        {!isAppOverlayOpen && page === "form" && (
+          <button
+            aria-label="临时保存"
+            className="floating-action"
+            data-tooltip="临时保存"
+            onClick={() => setEditorDraftSaveSignal((current) => current + 1)}
+            type="button"
+          >
+            ◇
           </button>
         )}
       </div>
@@ -608,6 +804,11 @@ function App() {
               <article>
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步。</p>
+                <div className="settings-actions">
+                  <button className="danger-button" onClick={() => setIsAppClearDataOpen(true)} type="button">
+                    清空本地数据
+                  </button>
+                </div>
               </article>
               <article>
                 <h3>Local Avatar Assets</h3>
@@ -616,36 +817,73 @@ function App() {
                 </p>
                 <p className="muted">图片只保存在当前浏览器 IndexedDB，换设备不会自动同步。</p>
                 {avatarAssets.length > 0 ? (
-                  <div className="settings-asset-list">
-                    {avatarAssets.map((asset) => {
-                      const usageCount = getAssetUsageCount(asset.id);
+                  <>
+                    <div className="settings-asset-toolbar">
+                      <button className="ghost-button" onClick={toggleAllAppAssetsSelected} type="button">
+                        {selectedAppAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
+                      </button>
+                      <button className="ghost-button" disabled={selectedAppAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAppAssetIds)} type="button">
+                        导出所选素材
+                      </button>
+                      <button className="ghost-button" disabled={selectedAppAssetIds.length === 0} onClick={() => void deleteSelectedAppUnusedAssets()} type="button">
+                        删除未使用
+                      </button>
+                      <button className="danger-button" disabled={selectedAppAssetIds.length === 0} onClick={requestSelectedAppAssetDelete} type="button">
+                        删除所选
+                      </button>
+                    </div>
+                    <div className="settings-asset-list">
+                      {avatarAssets.map((asset) => {
+                        const usageCount = getAssetUsageCount(asset.id);
 
-                      return (
-                        <div className="settings-asset-item" key={asset.id}>
-                          <AvatarDisplay assetId={asset.id} className="settings-asset-thumb" emoji="🙂" />
-                          <div>
-                            <strong>{asset.name || "avatar"}</strong>
-                            <span>
-                              {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
-                              {formatAssetSize(asset.size || asset.blob?.size || 0)}
-                            </span>
-                            <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用"}</small>
+                        return (
+                          <div className="settings-asset-item" key={asset.id}>
+                            <label className="asset-select-check">
+                              <input
+                                checked={selectedAppAssetIds.includes(asset.id)}
+                                onChange={() => toggleAppAssetSelected(asset.id)}
+                                type="checkbox"
+                              />
+                              <span className="sr-only">选择素材</span>
+                            </label>
+                            <AvatarDisplay assetId={asset.id} className="settings-asset-thumb" emoji="🙂" />
+                            <div>
+                              <strong>{asset.name || "avatar"}</strong>
+                              <span>
+                                {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
+                                {formatAssetSize(asset.size || asset.blob?.size || 0)}
+                              </span>
+                              <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
+                            </div>
+                            <button
+                              className={usageCount > 0 ? "danger-button" : "ghost-button"}
+                              onClick={() => void requestAppAssetDelete(asset)}
+                              type="button"
+                            >
+                              删除
+                            </button>
                           </div>
-                          <button
-                            className={usageCount > 0 ? "danger-button" : "ghost-button"}
-                            onClick={() => void requestAppAssetDelete(asset)}
-                            type="button"
-                          >
-                            删除
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 ) : (
                   <p className="muted">暂无本地头像素材。</p>
                 )}
                 <div className="settings-actions">
+                  <input
+                    accept="application/json,.json"
+                    className="hidden-input"
+                    onChange={(event) => void handleAppImportAvatarAssets(event.target.files?.[0])}
+                    ref={appAssetImportInputRef}
+                    type="file"
+                  />
+                  <button className="ghost-button" onClick={() => appAssetImportInputRef.current?.click()} type="button">
+                    导入素材
+                  </button>
+                  <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
+                    导出素材
+                  </button>
                   <button className="ghost-button" onClick={() => setIsAppAssetCleanupOpen(true)} type="button">
                     清理未使用头像素材
                   </button>
@@ -667,6 +905,40 @@ function App() {
               </button>
               <button className="danger-button" onClick={confirmAppAssetCleanup} type="button">
                 确认清理
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAppClearDataOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>清空本地数据</h2>
+            <p>确定要清空角色、设置和所有本地头像素材吗？此操作不可撤销。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsAppClearDataOpen(false)} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={() => void clearAppLocalData()} type="button">
+                确认清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAppAssetBatchDeleteIds.length > 0 && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>批量删除头像素材</h2>
+            <p>选中的素材中有正在被角色使用的头像。删除后相关角色会自动回退到 Emoji 头像。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setPendingAppAssetBatchDeleteIds([])} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={() => void confirmAppAssetBatchDelete()} type="button">
+                确认删除
               </button>
             </div>
           </div>

@@ -225,8 +225,116 @@ export async function deleteAvatarAsset(id: string) {
   await withStore("readwrite", (store) => store.delete(id));
 }
 
+export async function clearAvatarAssets() {
+  await withStore("readwrite", (store) => store.clear());
+}
+
 export async function listAvatarAssets() {
   return withStore<AvatarAssetRecord[]>("readonly", (store) => store.getAll());
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function downloadBlob(content: BlobPart, filename: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function dateStamp() {
+  const now = new Date();
+  return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+}
+
+export async function exportAvatarAssetsJson(assetIds?: string[]) {
+  const assetIdSet = assetIds?.length ? new Set(assetIds) : null;
+  const assets = (await listAvatarAssets()).filter((asset) =>
+    assetIdSet ? assetIdSet.has(asset.id) : true,
+  );
+  const payload = {
+    exportType: "character-studio-avatar-assets",
+    exportedAt: new Date().toISOString(),
+    avatarAssets: await Promise.all(
+      assets.map(async (asset) => ({
+        sourceId: asset.id,
+        name: asset.name || "avatar",
+        mimeType: asset.mimeType || asset.blob.type || "image/webp",
+        size: asset.size || asset.blob.size,
+        width: asset.width || 512,
+        height: asset.height || 512,
+        createdAt: asset.createdAt,
+        updatedAt: asset.updatedAt,
+        dataUrl: await blobToDataUrl(asset.blob),
+      })),
+    ),
+  };
+
+  downloadBlob(
+    JSON.stringify(payload, null, 2),
+    `character-studio-avatar-assets-${dateStamp()}.json`,
+    "application/json",
+  );
+}
+
+export async function importAvatarAssetsJson(file: File) {
+  const parsedValue = JSON.parse(await file.text()) as unknown;
+
+  if (
+    typeof parsedValue !== "object" ||
+    parsedValue === null ||
+    !Array.isArray((parsedValue as { avatarAssets?: unknown }).avatarAssets)
+  ) {
+    throw new Error("头像素材 JSON 不合法");
+  }
+
+  const existingAssets = await listAvatarAssets();
+  const existingDataUrls = new Set(
+    await Promise.all(existingAssets.map((asset) => blobToDataUrl(asset.blob))),
+  );
+  let importedCount = 0;
+  let skippedCount = 0;
+
+  for (const item of (parsedValue as { avatarAssets: unknown[] }).avatarAssets) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+
+    const record = item as { dataUrl?: unknown; name?: unknown };
+    const dataUrl = typeof record.dataUrl === "string" ? record.dataUrl : "";
+
+    if (!dataUrl.startsWith("data:image/")) {
+      continue;
+    }
+
+    if (existingDataUrls.has(dataUrl)) {
+      skippedCount += 1;
+      continue;
+    }
+
+    const asset = await saveAvatarBlob(
+      dataUrlToBlob(dataUrl),
+      typeof record.name === "string" ? record.name : "avatar",
+    );
+    existingDataUrls.add(dataUrl);
+    if (asset) {
+      importedCount += 1;
+    }
+  }
+
+  return { importedCount, skippedCount };
 }
 
 export async function getAvatarAssetStats() {

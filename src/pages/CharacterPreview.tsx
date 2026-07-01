@@ -9,6 +9,7 @@ type CharacterPreviewProps = {
   onBack: () => void;
   onEdit?: () => void;
   onToggleFavorite?: () => void;
+  exportSignal?: number;
 };
 
 const basicFields: Array<[keyof Character, string]> = [
@@ -45,12 +46,13 @@ function buildFullCharacterText(character: Character) {
   ].join("\n");
 }
 
-export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }: CharacterPreviewProps) {
+export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, exportSignal = 0 }: CharacterPreviewProps) {
   const [toastMessage, setToastMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
   const previewRef = useRef<HTMLDivElement>(null);
+  const exportSignalRef = useRef(exportSignal);
   const isFavorite = Boolean(character.favorite ?? character.isFavorite);
 
   function showToast(message: string) {
@@ -69,6 +71,15 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (exportSignal === exportSignalRef.current) {
+      return;
+    }
+
+    exportSignalRef.current = exportSignal;
+    setIsExportOpen(true);
+  }, [exportSignal]);
 
   async function copyText(text: string, message: string) {
     await navigator.clipboard.writeText(text || "未填写");
@@ -233,6 +244,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
             <button
               aria-label="查看头像大图"
               className="preview-avatar-button"
+              data-pdf-keep="true"
               onClick={() => void openAvatarPreview()}
               type="button"
             >
