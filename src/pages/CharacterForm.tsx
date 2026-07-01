@@ -1088,6 +1088,10 @@ export function CharacterForm({
 
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {
+      if (!isAvatarImageMenuOpen) {
+        return;
+      }
+
       const imageItem = Array.from(event.clipboardData?.items || []).find((item) =>
         item.type.startsWith("image/"),
       );
@@ -1106,7 +1110,7 @@ export function CharacterForm({
 
     document.addEventListener("paste", handlePaste);
     return () => document.removeEventListener("paste", handlePaste);
-  }, []);
+  }, [isAvatarImageMenuOpen]);
 
   function updateField(field: keyof CharacterDraft, value: string | string[]) {
     setFormData((current) => ({ ...current, [field]: value }));
@@ -1144,6 +1148,7 @@ export function CharacterForm({
     }
 
     openAvatarCrop(file);
+    setIsAvatarImageMenuOpen(false);
 
     if (avatarFileInputRef.current) {
       avatarFileInputRef.current.value = "";
@@ -1198,6 +1203,19 @@ export function CharacterForm({
     } catch {
       showToast("URL 图片读取失败，请下载后上传或尝试拖拽图片");
     }
+  }
+
+  function adjustCropZoom(delta: number) {
+    setCropDraft((current) =>
+      clampCropDraft(
+        current
+          ? {
+              ...current,
+              zoom: Math.max(0.25, Math.min(8, current.zoom + delta)),
+            }
+          : current,
+      ),
+    );
   }
 
   async function handleAvatarDrop(event: DragEvent<HTMLDivElement>) {
@@ -1984,6 +2002,10 @@ export function CharacterForm({
             <div
               className="crop-stage"
               ref={cropStageRef}
+              onWheel={(event) => {
+                event.preventDefault();
+                adjustCropZoom(event.deltaY > 0 ? -0.08 : 0.08);
+              }}
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 setCropDrag({ x: event.clientX, y: event.clientY });
@@ -2023,8 +2045,8 @@ export function CharacterForm({
             <label className="crop-slider">
               缩放
               <input
-                max="4"
-                min="1"
+                max="8"
+                min="0.25"
                 onChange={(event) =>
                   setCropDraft((current) =>
                     clampCropDraft(
@@ -2037,17 +2059,36 @@ export function CharacterForm({
                 value={cropDraft.zoom}
               />
             </label>
-            <div className="crop-preview-row">
-              <span>预览</span>
-              <div className="crop-preview">
-                <img
-                  alt=""
-                  src={cropDraft.imageUrl}
-                  style={{
-                    transform: `translate(calc(-50% + ${cropDraft.offsetX / 3.8}px), calc(-50% + ${cropDraft.offsetY / 3.8}px)) scale(${cropDraft.zoom})`,
-                  }}
-                />
-              </div>
+            <div className="crop-zoom-actions">
+              <button className="ghost-button" onClick={() => adjustCropZoom(-0.15)} type="button">
+                缩小
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() =>
+                  setCropDraft((current) =>
+                    clampCropDraft(current ? { ...current, zoom: 0.25 } : current),
+                  )
+                }
+                type="button"
+              >
+                最小
+              </button>
+              <span>{Math.round(cropDraft.zoom * 100)}%</span>
+              <button
+                className="ghost-button"
+                onClick={() =>
+                  setCropDraft((current) =>
+                    clampCropDraft(current ? { ...current, zoom: 8 } : current),
+                  )
+                }
+                type="button"
+              >
+                最大
+              </button>
+              <button className="ghost-button" onClick={() => adjustCropZoom(0.15)} type="button">
+                放大
+              </button>
             </div>
             <div className="form-actions">
               <button className="ghost-button" onClick={closeCropDialog} type="button">
@@ -2100,54 +2141,6 @@ export function CharacterForm({
           </div>
         </div>
       )}
-      {isAvatarUrlOpen && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsAvatarUrlOpen(false);
-            }
-          }}
-          role="presentation"
-        >
-          <div className="confirm-dialog avatar-url-dialog" role="dialog" aria-modal="true">
-            <div className="preview-card-title">
-              <div>
-                <p className="eyebrow">Avatar URL</p>
-                <h2>通过 URL 添加头像</h2>
-              </div>
-              <button className="ghost-button" onClick={() => setIsAvatarUrlOpen(false)} type="button">
-                关闭
-              </button>
-            </div>
-            <label>
-              图片 URL
-              <input
-                autoFocus
-                onChange={(event) => setAvatarUrlValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void handleAvatarUrlSubmit();
-                  }
-                }}
-                placeholder="https://example.com/avatar.webp"
-                value={avatarUrlValue}
-              />
-            </label>
-            <p className="muted">若网站禁止跨域读取，请下载图片后上传，或尝试拖拽图片文件。</p>
-            <div className="form-actions">
-              <button className="ghost-button" onClick={() => setIsAvatarUrlOpen(false)} type="button">
-                取消
-              </button>
-              <button className="primary-button" onClick={() => void handleAvatarUrlSubmit()} type="button">
-                读取并裁剪
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="panel workspace-hero">
         <div className="workspace-title-block">
           <AvatarDisplay
@@ -2225,20 +2218,7 @@ export function CharacterForm({
             </button>
             {!collapsedSections.basic && (
               <div className="workspace-card-body">
-                <div
-                  className={isAvatarDragActive ? "avatar-editor drag-active" : "avatar-editor"}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    setIsAvatarDragActive(true);
-                  }}
-                  onDragLeave={(event) => {
-                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                      setIsAvatarDragActive(false);
-                    }
-                  }}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={(event) => void handleAvatarDrop(event)}
-                >
+                <div className="avatar-editor">
                   <div className="avatar-picker-header">
                     <div className="avatar-current-wrap">
                       <AvatarDisplay
@@ -2277,29 +2257,57 @@ export function CharacterForm({
                           更换头像
                         </button>
                         {isAvatarImageMenuOpen && (
-                          <div className="avatar-image-menu">
+                          <div
+                            className="avatar-upload-panel"
+                            onDragEnter={(event) => {
+                              event.preventDefault();
+                              setIsAvatarDragActive(true);
+                            }}
+                            onDragLeave={(event) => {
+                              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                                setIsAvatarDragActive(false);
+                              }
+                            }}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDrop={(event) => void handleAvatarDrop(event)}
+                          >
+                            <div className={isAvatarDragActive ? "avatar-upload-drop active" : "avatar-upload-drop"}>
+                              <strong>拖拽图片到此处</strong>
+                              <span>支持 JPG / PNG / WEBP，也可以在面板打开时粘贴图片</span>
+                            </div>
                             <button
+                              className="ghost-button"
                               onClick={() => {
-                                setIsAvatarImageMenuOpen(false);
                                 avatarFileInputRef.current?.click();
                               }}
                               type="button"
                             >
-                              上传新头像
+                              选择文件
                             </button>
-                            <button
-                              onClick={() => {
-                                setIsAvatarImageMenuOpen(false);
-                                setIsAvatarUrlOpen(true);
-                              }}
-                              type="button"
-                            >
-                              通过 URL 添加
-                            </button>
-                            <button onClick={() => void openAssetLibrary()} type="button">
+                            <label className="avatar-url-inline">
+                              输入图片 URL
+                              <div>
+                                <input
+                                  onChange={(event) => setAvatarUrlValue(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      void handleAvatarUrlSubmit();
+                                    }
+                                  }}
+                                  placeholder="https://example.com/avatar.webp"
+                                  value={avatarUrlValue}
+                                />
+                                <button className="ghost-button" onClick={() => void handleAvatarUrlSubmit()} type="button">
+                                  添加
+                                </button>
+                              </div>
+                            </label>
+                            <button className="ghost-button" onClick={() => void openAssetLibrary()} type="button">
                               从素材库选择
                             </button>
                             <button
+                              className="ghost-button"
                               disabled={!formData.avatarAssetId && !pendingAvatar}
                               onClick={removeAvatarImage}
                               type="button"

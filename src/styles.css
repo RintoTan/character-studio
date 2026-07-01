@@ -1794,6 +1794,71 @@ textarea {
   opacity: 0.45;
 }
 
+.avatar-upload-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 80;
+  display: grid;
+  width: min(360px, calc(100vw - 32px));
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 12px;
+}
+
+.avatar-upload-panel .ghost-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.avatar-upload-drop {
+  display: grid;
+  gap: 4px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  padding: 14px;
+  text-align: center;
+}
+
+.avatar-upload-drop.active {
+  border-color: var(--primary);
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.avatar-upload-drop strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.avatar-upload-drop span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.avatar-url-inline {
+  display: grid;
+  gap: 7px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.avatar-url-inline > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.avatar-url-inline input {
+  min-width: 0;
+}
+
 .avatar-url-dialog {
   display: grid;
   gap: 14px;
@@ -1887,6 +1952,22 @@ textarea {
   color: var(--text-soft);
   font-size: 13px;
   font-weight: 800;
+}
+
+.crop-zoom-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.crop-zoom-actions .ghost-button {
+  min-height: 30px;
+  padding: 0 10px;
 }
 
 .crop-preview-row {
@@ -2998,6 +3079,17 @@ kbd {
   .avatar-actions {
     justify-content: flex-start;
     width: 100%;
+  }
+
+  .avatar-upload-panel {
+    position: fixed;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: 10px;
+    top: auto;
+    width: auto;
+    max-height: min(78vh, 520px);
+    overflow-y: auto;
   }
 
   .dashboard-action-groups {
