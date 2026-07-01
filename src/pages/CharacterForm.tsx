@@ -35,6 +35,14 @@ type AvatarCategory = {
   emojis: string[];
 };
 
+type HelperSectionId = Exclude<SectionId, "basic" | "prompt">;
+type HelperField =
+  | "personalityTags"
+  | "appearanceDescription"
+  | "abilityDescription"
+  | "backstory";
+type HelperKind = "example" | "inspiration" | "tip";
+
 const DEFAULT_AVATAR_EMOJI = "🙂";
 const RECENT_AVATAR_KEY = "character-studio.recent-avatars";
 const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
@@ -451,7 +459,7 @@ const helperText: Record<
 };
 
 const helperInspirationLibrary: Record<
-  Exclude<SectionId, "basic" | "prompt">,
+  HelperSectionId,
   string[]
 > = {
   appearance: [
@@ -482,6 +490,33 @@ const helperInspirationLibrary: Record<
     "给角色一个被误解的身份记录，例如死亡、失踪、叛逃或不存在。",
     "让背景故事留下一个温柔的锚点：旧友、宠物、店铺、课堂或约定。",
   ],
+};
+
+const helperFragments = {
+  appearance: {
+    features: ["异色瞳", "浅色旧伤", "微光义眼", "被剪短的发尾", "兽耳或尖耳", "颈侧编号", "手背纹路"],
+    clothing: ["旧风衣", "改造校服", "高领斗篷", "战术外套", "礼服式制服", "宽大雨衣", "层叠披肩"],
+    accessories: ["不成对耳坠", "磨损通行证", "玻璃药瓶", "坏掉的钥匙串", "护身符", "旧式录音笔", "折叠工具"],
+    actions: ["紧张时会整理袖口", "说谎时会避开光源", "走路几乎没有声响", "总把手藏进袖子里"],
+  },
+  personality: {
+    traits: ["克制", "执着", "笨拙", "警觉", "矛盾", "嘴硬心软", "过度礼貌", "慢热"],
+    behaviors: ["遇到危险先观察出口", "习惯替别人收拾残局", "总把玩笑当真", "做决定前会反复记录"],
+    hobbies: ["收集旧车票", "修理坏掉的小物件", "给陌生人写未寄出的信", "整理怪谈剪报"],
+    flaws: ["不擅长求助", "容易过度负责", "害怕被留下", "会把沉默误认为拒绝"],
+  },
+  ability: {
+    powers: ["读取残留记忆", "短暂操控雾气", "预演三秒后的行动", "与机械共感", "封存一段记忆", "看见谎言的线"],
+    costs: ["消耗体温", "短暂失聪", "遗忘一件小事", "失去方向感", "情绪被放大", "必须说出真实姓名"],
+    triggers: ["触碰目标后", "听到特定频率时", "在雨中", "强光消失后", "完成契约文字时", "进入安静空间后"],
+    limits: ["无法判断动机", "连续使用会失控", "对熟人效果变弱", "会暴露自己的位置", "需要安静准备"],
+  },
+  backstory: {
+    events: ["城市停电", "学院失踪案", "边境灾难", "秘密实验", "午夜店铺继承", "匿名委托", "异常天气事故"],
+    secrets: ["真实身份被记录为死亡", "保管着不该存在的档案", "一直收到未来的信", "曾短暂成为仪式祭品"],
+    goals: ["寻找失踪的家人", "证明预言错误", "偿还一笔旧债", "守住某个温柔约定", "找回被删除的记忆"],
+    anchors: ["一张旧地图", "一枚龙鳞", "一封没有署名的信", "一只只在梦里出现的鸟", "一间午夜营业的小店"],
+  },
 };
 
 const promptValueMap: Record<string, string> = {
@@ -620,6 +655,58 @@ function pickRandomTags() {
   return [...personalityOptions]
     .sort(() => Math.random() - 0.5)
     .slice(0, Math.floor(Math.random() * 3) + 2);
+}
+
+function generateHelperSet(sectionId: HelperSectionId) {
+  return {
+    example: generateHelperContent(sectionId, "example"),
+    inspiration: generateHelperContent(sectionId, "inspiration"),
+    tip: generateHelperContent(sectionId, "tip"),
+  };
+}
+
+function generateHelperContent(sectionId: HelperSectionId, kind: HelperKind) {
+  if (sectionId === "appearance") {
+    const parts = helperFragments.appearance;
+    if (kind === "example") {
+      return `${pickRandom(parts.features)}，穿着${pickRandom(parts.clothing)}，随身带着${pickRandom(parts.accessories)}。`;
+    }
+    if (kind === "tip") {
+      return `从${pickRandom(parts.features)}、${pickRandom(parts.clothing)}和${pickRandom(parts.actions)}三个层面写，让外观同时服务识别度和故事感。`;
+    }
+    return `加入${pickRandom(parts.accessories)}作为线索，并让角色${pickRandom(parts.actions)}，暗示过去经历。`;
+  }
+
+  if (sectionId === "personality") {
+    const parts = helperFragments.personality;
+    if (kind === "example") {
+      return `${pickRandom(parts.traits)}、${pickRandom(parts.flaws)}`;
+    }
+    if (kind === "tip") {
+      return `${pickRandom(parts.traits)}、${pickRandom(parts.hobbies)}、${pickRandom(parts.behaviors)}`;
+    }
+    return `${pickRandom(parts.traits)}、${pickRandom(parts.flaws)}、${pickRandom(parts.hobbies)}`;
+  }
+
+  if (sectionId === "ability") {
+    const parts = helperFragments.ability;
+    if (kind === "example") {
+      return `可以${pickRandom(parts.powers)}，但每次都会${pickRandom(parts.costs)}。`;
+    }
+    if (kind === "tip") {
+      return `把能力写成“触发条件 + 效果 + 代价”：例如${pickRandom(parts.triggers)}可以${pickRandom(parts.powers)}，限制是${pickRandom(parts.limits)}。`;
+    }
+    return `${pickRandom(parts.triggers)}，角色可以${pickRandom(parts.powers)}；代价是${pickRandom(parts.costs)}，并且${pickRandom(parts.limits)}。`;
+  }
+
+  const parts = helperFragments.backstory;
+  if (kind === "example") {
+    return `经历过${pickRandom(parts.events)}后，角色一直带着${pickRandom(parts.anchors)}，并试图${pickRandom(parts.goals)}。`;
+  }
+  if (kind === "tip") {
+    return `给背景留下一个“未解决问题”：${pickRandom(parts.secrets)}，现在的目标是${pickRandom(parts.goals)}。`;
+  }
+  return `把${pickRandom(parts.events)}和${pickRandom(parts.secrets)}连接起来，再用${pickRandom(parts.anchors)}作为故事锚点。`;
 }
 
 function chooseAvatarForCharacter(character: Pick<CharacterDraft, "species" | "occupation" | "worldview" | "abilityDescription" | "gender">) {
@@ -786,11 +873,8 @@ export function CharacterForm({
     label: string;
   } | null>(null);
   const [helperSuggestion, setHelperSuggestion] = useState<{
-    field:
-      | "personalityTags"
-      | "appearanceDescription"
-      | "abilityDescription"
-      | "backstory";
+    sectionId: HelperSectionId;
+    field: HelperField;
     label: string;
     value: string;
     example: string;
@@ -1155,22 +1239,37 @@ export function CharacterForm({
     setHelperSuggestion(null);
   }
 
-  function showHelperSuggestion(
-    sectionId: Exclude<SectionId, "basic" | "prompt">,
-    field: "personalityTags" | "appearanceDescription" | "abilityDescription" | "backstory",
-    value?: string,
-  ) {
-    const helper = helperText[sectionId];
-    const inspiration = value || pickRandom(helperInspirationLibrary[sectionId]);
-
+  function showHelperSuggestion(sectionId: HelperSectionId, field: HelperField) {
+    const nextSet = generateHelperSet(sectionId);
     setHelperSuggestion({
+      sectionId,
       field,
       label: "随机灵感",
-      value: inspiration,
-      example: helper.example,
-      inspiration,
-      tip: helper.tip,
+      value: nextSet.inspiration,
+      ...nextSet,
     });
+  }
+
+  function refreshHelperItem(kind: HelperKind) {
+    setHelperSuggestion((current) =>
+      current
+        ? {
+            ...current,
+            [kind]: generateHelperContent(current.sectionId, kind),
+          }
+        : current,
+    );
+  }
+
+  function refreshAllHelperSuggestions() {
+    setHelperSuggestion((current) =>
+      current
+        ? {
+            ...current,
+            ...generateHelperSet(current.sectionId),
+          }
+        : current,
+    );
   }
 
   function buildCharacter(isDraft: boolean) {
@@ -1408,15 +1507,29 @@ export function CharacterForm({
         <div className="modal-backdrop" role="presentation">
           <div className="confirm-dialog helper-dialog" role="dialog" aria-modal="true">
             <p className="eyebrow">{helperSuggestion.label}</p>
-            <h2>创作辅助</h2>
+            <div className="helper-dialog-head">
+              <h2>创作辅助</h2>
+              <button className="ghost-button" onClick={refreshAllHelperSuggestions} type="button">
+                全部换一组
+              </button>
+            </div>
             <div className="helper-suggestion-list">
               {[
-                ["示例", helperSuggestion.example],
-                ["随机灵感", helperSuggestion.inspiration],
-                ["写作提示", helperSuggestion.tip],
-              ].map(([title, value]) => (
-                <article key={title}>
-                  <h3>{title}</h3>
+                ["example", "示例", helperSuggestion.example],
+                ["inspiration", "随机灵感", helperSuggestion.inspiration],
+                ["tip", "写作提示", helperSuggestion.tip],
+              ].map(([kind, title, value]) => (
+                <article key={kind}>
+                  <div className="helper-suggestion-title">
+                    <h3>{title}</h3>
+                    <button
+                      className="ghost-button"
+                      onClick={() => refreshHelperItem(kind as HelperKind)}
+                      type="button"
+                    >
+                      换一个
+                    </button>
+                  </div>
                   <p>{value}</p>
                   <div className="helper-suggestion-actions">
                     <button
@@ -1849,7 +1962,7 @@ export function CharacterForm({
                 <div className="helper-row">
                   <button
                     className="ghost-button"
-                    onClick={() => showHelperSuggestion("personality", "personalityTags", "克制、笨拙")}
+                    onClick={() => showHelperSuggestion("personality", "personalityTags")}
                     type="button"
                   >
                     随机灵感

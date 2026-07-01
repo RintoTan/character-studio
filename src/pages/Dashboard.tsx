@@ -93,6 +93,7 @@ export function Dashboard({
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<Character | null>(null);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
+  const [isBulkMoreOpen, setIsBulkMoreOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -156,6 +157,7 @@ export function Dashboard({
         setOpenCardMenuId(null);
         setExportTarget(null);
         setIsBulkExportOpen(false);
+        setIsBulkMoreOpen(false);
       }
     }
 
@@ -165,6 +167,7 @@ export function Dashboard({
         setOpenCardMenuId(null);
         setExportTarget(null);
         setIsBulkExportOpen(false);
+        setIsBulkMoreOpen(false);
         setIsSearchPanelOpen(false);
         setIsCommandOpen(false);
         setIsAboutOpen(false);
@@ -805,6 +808,55 @@ export function Dashboard({
         </div>
       )}
 
+      {isBulkMoreOpen && (
+        <div
+          className="modal-backdrop export-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsBulkMoreOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="export-dialog mobile-bulk-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Batch</p>
+                <h2>更多操作</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsBulkMoreOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="export-dialog-list">
+              <button
+                disabled={selectedIds.length === 0}
+                onClick={() => {
+                  setIsBulkMoreOpen(false);
+                  handleBulkDuplicate();
+                }}
+                type="button"
+              >
+                批量复制
+              </button>
+              <button
+                className="menu-danger"
+                disabled={selectedIds.length === 0}
+                onClick={() => {
+                  setIsBulkMoreOpen(false);
+                  selectedIds.length > 0
+                    ? setIsBulkDeleteOpen(true)
+                    : showToast("请先选择角色");
+                }}
+                type="button"
+              >
+                批量删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isCommandOpen && (
         <div className="modal-backdrop" role="presentation">
           <div className="command-palette" role="dialog" aria-modal="true">
@@ -1402,73 +1454,115 @@ export function Dashboard({
             <div className="bulk-actions">
               {isBulkMode ? (
                 <>
-                  <button
-                    className="ghost-button"
-                    onClick={toggleSelectAll}
-                    type="button"
-                  >
-                    {selectedIds.length === visibleCharacters.length
-                      ? "取消全选"
-                      : "全选"}
-                  </button>
-                  {!isDraftView && (
-                    <>
-                      {isFavoriteView ? (
+                  <div className="bulk-actions-desktop">
+                    <button
+                      className="ghost-button"
+                      onClick={toggleSelectAll}
+                      type="button"
+                    >
+                      {selectedIds.length === visibleCharacters.length
+                        ? "取消全选"
+                        : "全选"}
+                    </button>
+                    {!isDraftView && (
+                      <>
+                        {isFavoriteView ? (
+                          <button
+                            className="ghost-button"
+                            disabled={selectedIds.length === 0}
+                            onClick={() => bulkSetFavorite(false)}
+                            type="button"
+                          >
+                            移出收藏
+                          </button>
+                        ) : (
+                          <button
+                            className="ghost-button"
+                            disabled={selectedIds.length === 0}
+                            onClick={() => bulkSetFavorite(true)}
+                            type="button"
+                          >
+                            加入收藏
+                          </button>
+                        )}
                         <button
                           className="ghost-button"
-                          disabled={selectedIds.length === 0}
-                          onClick={() => bulkSetFavorite(false)}
+                          disabled={selectedIds.length === 0 || loadingAction !== null}
+                          onClick={() => setIsBulkExportOpen(true)}
                           type="button"
                         >
-                          移出收藏
+                          导出
                         </button>
-                      ) : (
+                      </>
+                    )}
+                    <button
+                      className="ghost-button"
+                      disabled={selectedIds.length === 0}
+                      onClick={handleBulkDuplicate}
+                      type="button"
+                    >
+                      {isDraftView ? "复制" : "批量复制"}
+                    </button>
+                    <button
+                      className="danger-button"
+                      disabled={selectedIds.length === 0}
+                      onClick={() =>
+                        selectedIds.length > 0
+                          ? setIsBulkDeleteOpen(true)
+                          : showToast("请先选择角色")
+                      }
+                      type="button"
+                    >
+                      {isDraftView ? "删除" : "批量删除"}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={exitBulkMode}
+                      type="button"
+                    >
+                      取消选择
+                    </button>
+                  </div>
+                  <div className="mobile-bulk-toolbar">
+                    <div className="mobile-bulk-summary">
+                      <span>已选择 {selectedIds.length} 个角色</span>
+                      <button className="ghost-button" onClick={exitBulkMode} type="button">
+                        取消
+                      </button>
+                    </div>
+                    <div className="mobile-bulk-actions">
+                      <button className="ghost-button" onClick={toggleSelectAll} type="button">
+                        <span>□</span>
+                        {selectedIds.length === visibleCharacters.length ? "取消全选" : "全选"}
+                      </button>
+                      {!isDraftView && (
                         <button
                           className="ghost-button"
                           disabled={selectedIds.length === 0}
-                          onClick={() => bulkSetFavorite(true)}
+                          onClick={() => bulkSetFavorite(isFavoriteView ? false : true)}
                           type="button"
                         >
-                          加入收藏
+                          <span>{isFavoriteView ? "♡" : "♡"}</span>
+                          {isFavoriteView ? "移出" : "收藏"}
                         </button>
                       )}
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length === 0 || loadingAction !== null}
-                        onClick={() => setIsBulkExportOpen(true)}
-                        type="button"
-                      >
-                        导出
+                      {!isDraftView && (
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length === 0 || loadingAction !== null}
+                          onClick={() => setIsBulkExportOpen(true)}
+                          type="button"
+                        >
+                          <span>↓</span>
+                          导出
+                        </button>
+                      )}
+                      <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
+                        <span>···</span>
+                        更多
                       </button>
-                    </>
-                  )}
-                  <button
-                    className="ghost-button"
-                    disabled={selectedIds.length === 0}
-                    onClick={handleBulkDuplicate}
-                    type="button"
-                  >
-                    {isDraftView ? "复制" : "批量复制"}
-                  </button>
-                  <button
-                    className="danger-button"
-                    disabled={selectedIds.length === 0}
-                    onClick={() =>
-                      selectedIds.length > 0
-                        ? setIsBulkDeleteOpen(true)
-                        : showToast("请先选择角色")
-                    }
-                    type="button"
-                  >
-                    {isDraftView ? "删除" : "批量删除"}
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={exitBulkMode}
-                    type="button"
-                  >
-                    取消选择
-                  </button>
+                    </div>
+                  </div>
                 </>
               ) : (
                 <button

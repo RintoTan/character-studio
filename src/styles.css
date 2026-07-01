@@ -510,6 +510,17 @@ h2 {
   padding-bottom: 0;
 }
 
+.bulk-actions-desktop {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.mobile-bulk-toolbar {
+  display: none;
+}
+
 .export-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -2826,17 +2837,59 @@ kbd {
 
   .bulk-actions {
     width: auto;
-    max-width: 58%;
+    max-width: 64%;
     justify-content: flex-start;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: thin;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
-  .bulk-actions button {
+  .bulk-actions-desktop {
+    display: none;
+  }
+
+  .mobile-bulk-toolbar {
+    display: grid;
+    width: min(100%, 360px);
+    gap: 8px;
+  }
+
+  .mobile-bulk-summary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .mobile-bulk-summary .ghost-button {
+    min-height: 28px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .mobile-bulk-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .mobile-bulk-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-bulk-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: 0 0 auto;
     min-height: 32px;
-    padding: 0 9px;
+    gap: 4px;
+    padding: 0 8px;
     font-size: 12px;
     white-space: nowrap;
   }
