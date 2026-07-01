@@ -1698,6 +1698,13 @@ textarea {
   gap: 10px;
 }
 
+.avatar-editor.drag-active {
+  border-radius: 14px;
+  outline: 2px dashed var(--border-strong);
+  outline-offset: 6px;
+  background: var(--surface-subtle);
+}
+
 .avatar-picker-header {
   display: flex;
   align-items: center;
@@ -1785,6 +1792,19 @@ textarea {
 .avatar-image-menu button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+.avatar-url-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.avatar-url-dialog label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .pending-avatar-note {

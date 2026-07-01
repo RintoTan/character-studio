@@ -1,5 +1,6 @@
 import {
   ChangeEvent,
+  DragEvent,
   FormEvent,
   useEffect,
   useMemo,
@@ -873,6 +874,9 @@ export function CharacterForm({
   );
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
   const [isAvatarImageMenuOpen, setIsAvatarImageMenuOpen] = useState(false);
+  const [isAvatarUrlOpen, setIsAvatarUrlOpen] = useState(false);
+  const [avatarUrlValue, setAvatarUrlValue] = useState("");
+  const [isAvatarDragActive, setIsAvatarDragActive] = useState(false);
   const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
   const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
   const [pendingAvatar, setPendingAvatar] = useState<{
@@ -1074,11 +1078,35 @@ export function CharacterForm({
       }
       setIsAssetLibraryOpen(false);
       setIsAvatarImageMenuOpen(false);
+      setIsAvatarUrlOpen(false);
+      setAvatarUrlValue("");
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [cropDraft]);
+
+  useEffect(() => {
+    function handlePaste(event: ClipboardEvent) {
+      const imageItem = Array.from(event.clipboardData?.items || []).find((item) =>
+        item.type.startsWith("image/"),
+      );
+
+      if (!imageItem) {
+        return;
+      }
+
+      const file = imageItem.getAsFile();
+
+      if (file) {
+        event.preventDefault();
+        void handleAvatarUpload(file);
+      }
+    }
+
+    document.addEventListener("paste", handlePaste);
+    return () => document.removeEventListener("paste", handlePaste);
+  }, []);
 
   function updateField(field: keyof CharacterDraft, value: string | string[]) {
     setFormData((current) => ({ ...current, [field]: value }));
@@ -1088,6 +1116,16 @@ export function CharacterForm({
     updateField("avatarEmoji", emoji);
     setRecentAvatars(saveRecentAvatar(emoji));
     setIsAvatarPickerOpen(false);
+  }
+
+  function openAvatarCrop(file: File) {
+    setCropDraft({
+      fileName: file.name || "avatar",
+      imageUrl: URL.createObjectURL(file),
+      offsetX: 0,
+      offsetY: 0,
+      zoom: 1,
+    });
   }
 
   async function handleAvatarUpload(file: File | undefined) {
@@ -1105,17 +1143,86 @@ export function CharacterForm({
       return;
     }
 
-    setCropDraft({
-      fileName: file.name || "avatar",
-      imageUrl: URL.createObjectURL(file),
-      offsetX: 0,
-      offsetY: 0,
-      zoom: 1,
-    });
+    openAvatarCrop(file);
 
     if (avatarFileInputRef.current) {
       avatarFileInputRef.current.value = "";
     }
+  }
+
+  function inferImageTypeFromUrl(value: string) {
+    const pathname = value.split("?")[0].toLowerCase();
+
+    if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) {
+      return "image/jpeg";
+    }
+    if (pathname.endsWith(".png")) {
+      return "image/png";
+    }
+    if (pathname.endsWith(".webp")) {
+      return "image/webp";
+    }
+
+    return "";
+  }
+
+  async function handleAvatarUrlSubmit(urlOverride?: string) {
+    const url = (urlOverride || avatarUrlValue).trim();
+
+    if (!url) {
+      showToast("请输入图片 URL");
+      return;
+    }
+
+    try {
+      const response = await fetch(url, { mode: "cors" });
+
+      if (!response.ok) {
+        throw new Error("图片读取失败");
+      }
+
+      const blob = await response.blob();
+      const mimeType = blob.type || inferImageTypeFromUrl(url);
+
+      if (!mimeType) {
+        throw new Error("无法识别图片格式");
+      }
+
+      const file = new File([blob.type ? blob : new Blob([blob], { type: mimeType })], "url-avatar", {
+        type: mimeType,
+      });
+      await handleAvatarUpload(file);
+      setIsAvatarUrlOpen(false);
+      setAvatarUrlValue("");
+      setIsAvatarImageMenuOpen(false);
+    } catch {
+      showToast("URL 图片读取失败，请下载后上传或尝试拖拽图片");
+    }
+  }
+
+  async function handleAvatarDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsAvatarDragActive(false);
+
+    const file = Array.from(event.dataTransfer.files).find((item) =>
+      item.type.startsWith("image/"),
+    );
+
+    if (file) {
+      await handleAvatarUpload(file);
+      return;
+    }
+
+    const url =
+      event.dataTransfer.getData("text/uri-list") ||
+      event.dataTransfer.getData("text/plain");
+
+    if (url) {
+      await handleAvatarUrlSubmit(url);
+      return;
+    }
+
+    showToast("请拖入 JPG、PNG 或 WEBP 图片");
   }
 
   function getVisibleCrop() {
@@ -1993,6 +2100,53 @@ export function CharacterForm({
           </div>
         </div>
       )}
+      {isAvatarUrlOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAvatarUrlOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="confirm-dialog avatar-url-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Avatar URL</p>
+                <h2>通过 URL 添加头像</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAvatarUrlOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <label>
+              图片 URL
+              <input
+                autoFocus
+                onChange={(event) => setAvatarUrlValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleAvatarUrlSubmit();
+                  }
+                }}
+                placeholder="https://example.com/avatar.webp"
+                value={avatarUrlValue}
+              />
+            </label>
+            <p className="muted">若网站禁止跨域读取，请下载图片后上传，或尝试拖拽图片文件。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsAvatarUrlOpen(false)} type="button">
+                取消
+              </button>
+              <button className="primary-button" onClick={() => void handleAvatarUrlSubmit()} type="button">
+                读取并裁剪
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="panel workspace-hero">
         <div className="workspace-title-block">
@@ -2071,7 +2225,20 @@ export function CharacterForm({
             </button>
             {!collapsedSections.basic && (
               <div className="workspace-card-body">
-                <div className="avatar-editor">
+                <div
+                  className={isAvatarDragActive ? "avatar-editor drag-active" : "avatar-editor"}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsAvatarDragActive(true);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setIsAvatarDragActive(false);
+                    }
+                  }}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => void handleAvatarDrop(event)}
+                >
                   <div className="avatar-picker-header">
                     <div className="avatar-current-wrap">
                       <AvatarDisplay
@@ -2119,6 +2286,15 @@ export function CharacterForm({
                               type="button"
                             >
                               上传新头像
+                            </button>
+                            <button
+                              onClick={() => {
+                                setIsAvatarImageMenuOpen(false);
+                                setIsAvatarUrlOpen(true);
+                              }}
+                              type="button"
+                            >
+                              通过 URL 添加
                             </button>
                             <button onClick={() => void openAssetLibrary()} type="button">
                               从素材库选择
