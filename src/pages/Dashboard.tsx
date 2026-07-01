@@ -1447,7 +1447,12 @@ export function Dashboard({
             <h2>{listTitle}</h2>
             <span>
               {visibleCharacters.length} 个角色
-              {selectedIds.length > 0 && ` / 已选 ${selectedIds.length} 个`}
+              {selectedIds.length > 0 && (
+                <span className="selected-count-inline">
+                  {" / "}
+                  已选 {selectedIds.length} 个
+                </span>
+              )}
             </span>
           </div>
           {visibleCharacters.length > 0 && (

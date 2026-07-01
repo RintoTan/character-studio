@@ -2491,6 +2491,7 @@ kbd {
   .app-shell {
     width: min(100% - 20px, 1120px);
     padding-top: 16px;
+    padding-bottom: calc(44px + env(safe-area-inset-bottom));
   }
 
   h1 {
@@ -2837,10 +2838,15 @@ kbd {
 
   .bulk-actions {
     width: auto;
-    max-width: 64%;
-    justify-content: flex-start;
+    max-width: min(62vw, 252px);
+    flex: 0 1 min(62vw, 252px);
+    justify-content: flex-end;
     overflow: visible;
     padding-bottom: 0;
+  }
+
+  .selected-count-inline {
+    display: none;
   }
 
   .bulk-actions-desktop {
@@ -2849,31 +2855,32 @@ kbd {
 
   .mobile-bulk-toolbar {
     display: grid;
-    width: min(100%, 360px);
-    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    gap: 6px;
   }
 
   .mobile-bulk-summary {
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 6px;
     color: var(--muted);
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 800;
     white-space: nowrap;
   }
 
   .mobile-bulk-summary .ghost-button {
-    min-height: 28px;
-    padding: 0 9px;
-    font-size: 12px;
+    min-height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
   }
 
   .mobile-bulk-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 6px;
+    gap: 4px;
     overflow-x: auto;
     scrollbar-width: none;
   }
@@ -2887,11 +2894,27 @@ kbd {
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    min-height: 32px;
-    gap: 4px;
-    padding: 0 8px;
-    font-size: 12px;
+    min-height: 30px;
+    gap: 3px;
+    padding: 0 6px;
+    font-size: 11px;
     white-space: nowrap;
+  }
+
+  .export-backdrop {
+    z-index: 120;
+  }
+
+  .export-dialog,
+  .mobile-bulk-dialog {
+    position: fixed;
+    inset: auto 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+    z-index: 130;
+    width: auto;
+    max-width: none;
+    max-height: min(76vh, 460px);
+    overflow-y: auto;
+    border-radius: 14px;
   }
 
   .footer-danger-actions {
