@@ -1,4 +1,5 @@
 import type { Character, CharacterTag } from "../types/character";
+import { getAvatarAsset } from "./avatarAssets";
 
 const csvHeaders = [
   "名字",
@@ -120,6 +121,7 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     id,
     name: asString(value.name) || "未命名角色",
     avatarEmoji: asString(value.avatarEmoji),
+    avatarAssetId: asString(value.avatarAssetId),
     favorite: value.favorite === true || value.isFavorite === true,
     isFavorite: undefined,
     isDraft: value.isDraft === true,
@@ -256,6 +258,7 @@ async function capturePreviewCanvas(element: HTMLElement) {
   }
 
   element.classList.add("pdf-safe");
+  await waitForImages(element);
   await new Promise((resolve) => window.requestAnimationFrame(resolve));
 
   const bounds = element.getBoundingClientRect();
@@ -319,6 +322,25 @@ async function capturePreviewCanvas(element: HTMLElement) {
   }
 }
 
+async function waitForImages(element: HTMLElement) {
+  const images = Array.from(element.querySelectorAll("img"));
+
+  await Promise.all(
+    images.map(
+      (image) =>
+        new Promise<void>((resolve) => {
+          if (image.complete) {
+            resolve();
+            return;
+          }
+
+          image.onload = () => resolve();
+          image.onerror = () => resolve();
+        }),
+    ),
+  );
+}
+
 export async function exportPreviewImage(
   element: HTMLElement,
   characterName: string,
@@ -380,14 +402,40 @@ export async function exportPreviewPdf(element: HTMLElement, characterName: stri
   downloadBlob(blob, exportNodeName(characterName, "pdf"), "application/pdf");
 }
 
-function createSnapshotElement(character: Character) {
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function getAvatarSnapshotHtml(character: Character) {
+  if (character.avatarAssetId) {
+    try {
+      const asset = await getAvatarAsset(character.avatarAssetId);
+      if (asset) {
+        const dataUrl = await blobToDataUrl(asset.blob);
+        return `<div class="preview-avatar"><img alt="" src="${dataUrl}" /></div>`;
+      }
+    } catch {
+      // Fall back to emoji below.
+    }
+  }
+
+  return `<div class="preview-avatar">${character.avatarEmoji || "🙂"}</div>`;
+}
+
+async function createSnapshotElement(character: Character) {
   const element = document.createElement("div");
   element.dataset.pdfExportRoot = "true";
   element.className = "snapshot-export pdf-safe";
+  const avatarHtml = await getAvatarSnapshotHtml(character);
   element.innerHTML = `
     <section class="preview-hero">
       <div class="preview-identity">
-        <div class="preview-avatar">${character.avatarEmoji || "🙂"}</div>
+        ${avatarHtml}
         <div>
           <p class="eyebrow">Character Preview</p>
           <h1>${escapeHtml(character.name || "未命名角色")}</h1>
@@ -419,7 +467,7 @@ async function createCharacterSnapshotBlob(
   character: Character,
   format: "pdf" | "png" | "jpg",
 ) {
-  const element = createSnapshotElement(character);
+  const element = await createSnapshotElement(character);
 
   try {
     if (format === "pdf") {

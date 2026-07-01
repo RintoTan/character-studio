@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
 import {
   exportAllCharactersJson,
@@ -9,6 +10,11 @@ import {
   exportSelectedCharactersJson,
   importCharactersFromFiles,
 } from "../utils/importExport";
+import {
+  cleanupUnusedAvatarAssets,
+  formatAssetSize,
+  getAvatarAssetStats,
+} from "../utils/avatarAssets";
 
 type DashboardProps = {
   characters: Character[];
@@ -98,7 +104,9 @@ export function Dashboard({
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
+  const [isAssetCleanupOpen, setIsAssetCleanupOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [prefs, setPrefs] = useState<DashboardPrefs>(loadDashboardPrefs);
   const [flags, setFlags] = useState<DashboardFlags>(loadDashboardFlags);
   const [undoCharacter, setUndoCharacter] = useState<Character | null>(null);
@@ -173,6 +181,7 @@ export function Dashboard({
         setIsAboutOpen(false);
         setIsSettingsOpen(false);
         setIsClearDataOpen(false);
+        setIsAssetCleanupOpen(false);
         setIsBulkMode(false);
         setSelectedIds([]);
       }
@@ -223,6 +232,14 @@ export function Dashboard({
   useEffect(() => {
     localStorage.setItem(DASHBOARD_PREFS_KEY, JSON.stringify(prefs));
   }, [prefs]);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return;
+    }
+
+    void refreshAvatarAssetStats();
+  }, [isSettingsOpen]);
 
   useEffect(() => {
     localStorage.setItem(DASHBOARD_FLAGS_KEY, JSON.stringify(flags));
@@ -575,6 +592,29 @@ export function Dashboard({
     setIsSettingsOpen(false);
     clearSearchAndFilters();
     showToast("本地数据已清空", "warning");
+  }
+
+  async function refreshAvatarAssetStats() {
+    try {
+      setAvatarAssetStats(await getAvatarAssetStats());
+    } catch {
+      setAvatarAssetStats({ count: 0, size: 0 });
+    }
+  }
+
+  async function confirmAssetCleanup() {
+    try {
+      const usedAssetIds = characters
+        .map((character) => character.avatarAssetId)
+        .filter((id): id is string => Boolean(id));
+      const removedCount = await cleanupUnusedAvatarAssets(usedAssetIds);
+
+      await refreshAvatarAssetStats();
+      setIsAssetCleanupOpen(false);
+      showToast(`已清理 ${removedCount} 个未使用头像素材`);
+    } catch {
+      showToast("清理头像素材失败", "error");
+    }
   }
 
   function runCommand(command: string) {
@@ -1127,6 +1167,20 @@ export function Dashboard({
                 </div>
               </article>
               <article>
+                <h3>Local Avatar Assets</h3>
+                <p className="muted">
+                  本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。
+                </p>
+                <p className="muted">
+                  图片存储在当前浏览器 IndexedDB 中，轻量 JSON 不包含头像图片二进制。
+                </p>
+                <div className="settings-actions">
+                  <button className="ghost-button" onClick={() => setIsAssetCleanupOpen(true)} type="button">
+                    清理未使用头像素材
+                  </button>
+                </div>
+              </article>
+              <article>
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步，清除浏览器缓存可能导致数据丢失。</p>
               </article>
@@ -1146,6 +1200,23 @@ export function Dashboard({
               </button>
               <button className="danger-button" onClick={clearLocalData} type="button">
                 确认清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAssetCleanupOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>清理头像素材</h2>
+            <p>确定要清理未被任何角色使用的本地头像素材吗？正在使用的头像不会被删除。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsAssetCleanupOpen(false)} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={confirmAssetCleanup} type="button">
+                确认清理
               </button>
             </div>
           </div>
@@ -1649,7 +1720,11 @@ export function Dashboard({
                     key={character.id}
                   >
                     <button className="table-main" onClick={() => onPreview(character)} type="button">
-                      <span className="table-avatar">{character.avatarEmoji || "🙂"}</span>
+                      <AvatarDisplay
+                        assetId={character.avatarAssetId}
+                        className="table-avatar"
+                        emoji={character.avatarEmoji || "🙂"}
+                      />
                       <strong>{character.name || "未命名角色"}</strong>
                     </button>
                     <span>{character.occupation || "未填写"}</span>
@@ -1805,7 +1880,11 @@ export function Dashboard({
                     onClick={() => onPreview(character)}
                     type="button"
                   >
-                    {character.avatarEmoji || "🙂"}
+                    <AvatarDisplay
+                      assetId={character.avatarAssetId}
+                      className="avatar-inner"
+                      emoji={character.avatarEmoji || "🙂"}
+                    />
                   </button>
                   <div className="card-copy">
                     <button

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
 
@@ -178,9 +179,11 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
       <div ref={previewRef} data-pdf-export-root="true">
         <div className="preview-hero">
           <div className="preview-identity">
-            <div className="preview-avatar" aria-hidden="true">
-              {character.avatarEmoji || "🙂"}
-            </div>
+            <AvatarDisplay
+              assetId={character.avatarAssetId}
+              className="preview-avatar"
+              emoji={character.avatarEmoji || "🙂"}
+            />
             <div>
             <p className="eyebrow">Character Preview</p>
             <h1>{displayValue(character.name)}</h1>

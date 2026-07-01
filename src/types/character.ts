@@ -8,6 +8,7 @@ export type Character = {
   id: string;
   name: string;
   avatarEmoji?: string;
+  avatarAssetId?: string;
   favorite?: boolean;
   isFavorite?: boolean;
   isDraft?: boolean;

@@ -10,6 +10,11 @@ import {
   upsertCharacter,
 } from "./storage/characterStorage";
 import type { Character } from "./types/character";
+import {
+  cleanupUnusedAvatarAssets,
+  formatAssetSize,
+  getAvatarAssetStats,
+} from "./utils/avatarAssets";
 
 type Page = "dashboard" | "form" | "preview";
 type ThemeMode = "system" | "light" | "dark";
@@ -23,6 +28,8 @@ function App() {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
+  const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
+  const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [editorSaveSignal, setEditorSaveSignal] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -102,6 +109,32 @@ function App() {
     mediaQuery.addEventListener("change", applyTheme);
     return () => mediaQuery.removeEventListener("change", applyTheme);
   }, [themeMode]);
+
+  useEffect(() => {
+    if (!isAppSettingsOpen) {
+      return;
+    }
+
+    void refreshAvatarAssetStats();
+  }, [isAppSettingsOpen]);
+
+  async function refreshAvatarAssetStats() {
+    try {
+      setAvatarAssetStats(await getAvatarAssetStats());
+    } catch {
+      setAvatarAssetStats({ count: 0, size: 0 });
+    }
+  }
+
+  async function confirmAppAssetCleanup() {
+    const usedAssetIds = characters
+      .map((character) => character.avatarAssetId)
+      .filter((id): id is string => Boolean(id));
+
+    await cleanupUnusedAvatarAssets(usedAssetIds);
+    await refreshAvatarAssetStats();
+    setIsAppAssetCleanupOpen(false);
+  }
 
   useEffect(() => {
     window.history.replaceState({ characterStudioPage: "dashboard" }, "", window.location.href);
@@ -526,6 +559,34 @@ function App() {
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步。</p>
               </article>
+              <article>
+                <h3>Local Avatar Assets</h3>
+                <p className="muted">
+                  本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。轻量 JSON 不包含头像图片二进制。
+                </p>
+                <div className="settings-actions">
+                  <button className="ghost-button" onClick={() => setIsAppAssetCleanupOpen(true)} type="button">
+                    清理未使用头像素材
+                  </button>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAppAssetCleanupOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>清理头像素材</h2>
+            <p>确定要清理未被任何角色使用的本地头像素材吗？正在使用的头像不会被删除。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsAppAssetCleanupOpen(false)} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={confirmAppAssetCleanup} type="button">
+                确认清理
+              </button>
             </div>
           </div>
         </div>

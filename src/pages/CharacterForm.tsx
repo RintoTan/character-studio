@@ -6,7 +6,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
+import { saveAvatarAsset } from "../utils/avatarAssets";
 import { CharacterPreview } from "./CharacterPreview";
 
 type CharacterDraft = Omit<Character, "id" | "updatedAt">;
@@ -112,6 +114,7 @@ const avatarEmojiOptions = Array.from(
 const initialCharacter: CharacterDraft = {
   name: "",
   avatarEmoji: DEFAULT_AVATAR_EMOJI,
+  avatarAssetId: "",
   isDraft: false,
   age: "",
   birthDate: "",
@@ -898,6 +901,7 @@ export function CharacterForm({
   >("idle");
   const lastAutoSavedSnapshotRef = useRef("");
   const saveSignalRef = useRef(saveSignal);
+  const avatarFileInputRef = useRef<HTMLInputElement>(null);
 
   const previewCharacter = useMemo<Character>(
     () => ({
@@ -919,6 +923,7 @@ export function CharacterForm({
       ? {
           name: character.name,
           avatarEmoji: character.avatarEmoji || DEFAULT_AVATAR_EMOJI,
+          avatarAssetId: character.avatarAssetId || "",
           isDraft: character.isDraft === true,
           draftOfId: character.draftOfId,
           age: character.age || "",
@@ -939,6 +944,7 @@ export function CharacterForm({
       : {
           ...initialCharacter,
           avatarEmoji: DEFAULT_AVATAR_EMOJI,
+          avatarAssetId: "",
         };
 
     setFormData(nextData);
@@ -1019,6 +1025,34 @@ export function CharacterForm({
     updateField("avatarEmoji", emoji);
     setRecentAvatars(saveRecentAvatar(emoji));
     setIsAvatarPickerOpen(false);
+  }
+
+  async function handleAvatarUpload(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const asset = await saveAvatarAsset(file);
+
+      setFormData((current) => ({
+        ...current,
+        avatarAssetId: asset.id,
+      }));
+
+      showToast("头像图片已上传并压缩");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "头像上传失败");
+    } finally {
+      if (avatarFileInputRef.current) {
+        avatarFileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function removeAvatarImage() {
+    setFormData((current) => ({ ...current, avatarAssetId: "" }));
+    showToast("已恢复 Emoji 头像");
   }
 
   function showToast(message: string) {
@@ -1332,6 +1366,7 @@ export function CharacterForm({
     const nextData = {
       ...initialCharacter,
       avatarEmoji: DEFAULT_AVATAR_EMOJI,
+      avatarAssetId: "",
     };
 
     setFormData(nextData);
@@ -1600,9 +1635,11 @@ export function CharacterForm({
 
       <div className="panel workspace-hero">
         <div className="workspace-title-block">
-          <div className="workspace-avatar" aria-hidden="true">
-            {formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
-          </div>
+          <AvatarDisplay
+            assetId={formData.avatarAssetId}
+            className="workspace-avatar"
+            emoji={formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
+          />
           <div>
             <p className="eyebrow">{character ? "Character Workspace" : "New Character"}</p>
             <h1>{character ? "编辑角色工作台" : "新建角色工作台"}</h1>
@@ -1675,21 +1712,45 @@ export function CharacterForm({
                 <div className="avatar-editor">
                   <div className="avatar-picker-header">
                     <div className="avatar-current-wrap">
-                      <div className="avatar-current" aria-label="当前头像">
-                        {formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
-                      </div>
+                      <AvatarDisplay
+                        assetId={formData.avatarAssetId}
+                        className="avatar-current"
+                        emoji={formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
+                        label="当前头像"
+                      />
                       <div>
                         <strong>Avatar Picker</strong>
-                        <p className="muted">选择适合角色设定的头像，后续可扩展 SVG、上传或 AI 头像。</p>
+                        <p className="muted">选择 Emoji 或上传本地头像图片。图片仅保存在当前浏览器。</p>
                       </div>
                     </div>
-                    <button
-                      className="ghost-button"
-                      onClick={() => setIsAvatarPickerOpen((current) => !current)}
-                      type="button"
-                    >
-                      {isAvatarPickerOpen ? "收起头像" : "更换头像"}
-                    </button>
+                    <div className="avatar-actions">
+                      <input
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden-input"
+                        onChange={(event) => void handleAvatarUpload(event.target.files?.[0])}
+                        ref={avatarFileInputRef}
+                        type="file"
+                      />
+                      <button
+                        className="ghost-button"
+                        onClick={() => setIsAvatarPickerOpen((current) => !current)}
+                        type="button"
+                      >
+                        {isAvatarPickerOpen ? "收起 Emoji" : "选择 Emoji"}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => avatarFileInputRef.current?.click()}
+                        type="button"
+                      >
+                        上传头像
+                      </button>
+                      {formData.avatarAssetId && (
+                        <button className="ghost-button" onClick={removeAvatarImage} type="button">
+                          移除图片
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {isAvatarPickerOpen && (
