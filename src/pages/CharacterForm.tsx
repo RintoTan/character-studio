@@ -2447,8 +2447,8 @@ export function CharacterForm({
                   />
                 </label>
 
-                <div className="form-row">
-                  <label>
+                <div className="basic-info-grid">
+                  <label className="field-cell">
                     性别
                     <select
                       value={genderMode}
@@ -2462,7 +2462,17 @@ export function CharacterForm({
                       ))}
                     </select>
                   </label>
-                  <label>
+                  {genderMode === "自定义" && (
+                    <label className="field-cell">
+                      自定义性别
+                      <input
+                        value={customGender}
+                        onChange={(event) => handleCustomGenderChange(event.target.value)}
+                        placeholder="输入自定义性别"
+                      />
+                    </label>
+                  )}
+                  <label className="field-cell field-cell-wide">
                     年龄 / 出生日期
                     <div className="age-combo">
                       <input
@@ -2477,10 +2487,10 @@ export function CharacterForm({
                       />
                     </div>
                     <span className="field-hint">
-                      {ageMode === "manual" ? "当前使用手动年龄。" : "已根据出生日期自动推导年龄。"}
+                      {ageMode === "manual" ? "当前使用手动年龄" : "根据出生日期计算年龄"}
                     </span>
                   </label>
-                  <label>
+                  <label className="field-cell">
                     种族
                     <input
                       value={formData.species}
@@ -2488,21 +2498,7 @@ export function CharacterForm({
                       placeholder="例如：人类 / 精灵"
                     />
                   </label>
-                </div>
-
-                {genderMode === "自定义" && (
-                  <label>
-                    自定义性别
-                    <input
-                      value={customGender}
-                      onChange={(event) => handleCustomGenderChange(event.target.value)}
-                      placeholder="输入自定义性别"
-                    />
-                  </label>
-                )}
-
-                <div className="form-row">
-                  <label>
+                  <label className="field-cell">
                     职业
                     <input
                       value={formData.occupation}
@@ -2510,53 +2506,71 @@ export function CharacterForm({
                       placeholder="例如：调查员 / 魔法师"
                     />
                   </label>
-                  <label>
+                  <label className="field-cell field-cell-wide">
                     世界观
-                    <select
-                      value={!formData.worldview ? "" : worldviewOptions.includes(formData.worldview) ? formData.worldview : "__custom"}
-                      onChange={(event) => {
-                        if (event.target.value !== "__custom") {
-                          updateField("worldview", event.target.value);
+                    <div className="combo-field">
+                      <input
+                        value={formData.worldview}
+                        onChange={(event) => updateField("worldview", event.target.value)}
+                        placeholder="选择或输入世界观"
+                      />
+                      <select
+                        aria-label="选择预设世界观"
+                        value={
+                          !formData.worldview
+                            ? ""
+                            : worldviewOptions.includes(formData.worldview)
+                              ? formData.worldview
+                              : "__custom"
                         }
-                      }}
-                    >
-                      <option value="">请选择世界观</option>
-                      {worldviewOptions.map((worldview) => (
-                        <option key={worldview} value={worldview}>
-                          {worldview}
-                        </option>
-                      ))}
-                      <option value="__custom">自定义</option>
-                    </select>
-                    <input
-                      value={formData.worldview}
-                      onChange={(event) => updateField("worldview", event.target.value)}
-                      placeholder="或输入自定义世界观"
-                    />
+                        onChange={(event) => {
+                          if (event.target.value !== "__custom") {
+                            updateField("worldview", event.target.value);
+                          }
+                        }}
+                      >
+                        <option value="">预设</option>
+                        {worldviewOptions.map((worldview) => (
+                          <option key={worldview} value={worldview}>
+                            {worldview}
+                          </option>
+                        ))}
+                        <option value="__custom">自定义</option>
+                      </select>
+                    </div>
                   </label>
-                  <label>
+                  <label className="field-cell field-cell-wide">
                     视觉风格
-                    <select
-                      value={!formData.visualStyle ? "" : visualStyleOptions.includes(formData.visualStyle) ? formData.visualStyle : "__custom"}
-                      onChange={(event) => {
-                        if (event.target.value !== "__custom") {
-                          updateField("visualStyle", event.target.value);
+                    <div className="combo-field">
+                      <input
+                        value={formData.visualStyle}
+                        onChange={(event) => updateField("visualStyle", event.target.value)}
+                        placeholder="选择或输入视觉风格"
+                      />
+                      <select
+                        aria-label="选择预设视觉风格"
+                        value={
+                          !formData.visualStyle
+                            ? ""
+                            : visualStyleOptions.includes(formData.visualStyle)
+                              ? formData.visualStyle
+                              : "__custom"
                         }
-                      }}
-                    >
-                      <option value="">请选择视觉风格</option>
-                      {visualStyleOptions.map((style) => (
-                        <option key={style} value={style}>
-                          {style}
-                        </option>
-                      ))}
-                      <option value="__custom">自定义</option>
-                    </select>
-                    <input
-                      value={formData.visualStyle}
-                      onChange={(event) => updateField("visualStyle", event.target.value)}
-                      placeholder="或输入自定义视觉风格"
-                    />
+                        onChange={(event) => {
+                          if (event.target.value !== "__custom") {
+                            updateField("visualStyle", event.target.value);
+                          }
+                        }}
+                      >
+                        <option value="">预设</option>
+                        {visualStyleOptions.map((style) => (
+                          <option key={style} value={style}>
+                            {style}
+                          </option>
+                        ))}
+                        <option value="__custom">自定义</option>
+                      </select>
+                    </div>
                   </label>
                 </div>
               </div>
