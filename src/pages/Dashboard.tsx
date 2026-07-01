@@ -1284,8 +1284,15 @@ export function Dashboard({
         <button
           aria-label="清空筛选"
           className="filter-clear-button"
-          data-tooltip="清空筛选"
-          onClick={clearSearchAndFilters}
+          data-tooltip={hasSearchOrFilter || prefs.favoriteMode !== "all" ? "清空筛选" : "收起筛选"}
+          onClick={() => {
+            if (hasSearchOrFilter || prefs.favoriteMode !== "all") {
+              clearSearchAndFilters();
+              return;
+            }
+
+            setIsSearchPanelOpen(false);
+          }}
           type="button"
         >
           ×
@@ -1293,35 +1300,17 @@ export function Dashboard({
         <div className="dashboard-controls">
           <label>
             搜索
-            <span className="search-input-wrap">
-              <input
-                ref={searchInputRef}
-                value={prefs.searchTerm}
-                onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    openFirstSearchResult();
-                  }
-                }}
-                placeholder="搜索角色名、职业、世界观、性格标签"
-              />
-              <button
-                aria-label={prefs.searchTerm.trim() ? "清空搜索" : "收起搜索"}
-                className="search-clear-button"
-                data-tooltip={prefs.searchTerm.trim() ? "清空搜索" : "收起搜索"}
-                onClick={() => {
-                  if (prefs.searchTerm.trim()) {
-                    updatePrefs({ searchTerm: "" });
-                    return;
-                  }
-
-                  setIsSearchPanelOpen(false);
-                }}
-                type="button"
-              >
-                ×
-              </button>
-            </span>
+            <input
+              ref={searchInputRef}
+              value={prefs.searchTerm}
+              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  openFirstSearchResult();
+                }
+              }}
+              placeholder="搜索角色名、职业、世界观、性格标签"
+            />
           </label>
           <label>
             范围

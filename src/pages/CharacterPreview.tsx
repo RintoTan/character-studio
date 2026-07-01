@@ -346,6 +346,17 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
             </div>
             <p>{displayValue(character.imagePrompt)}</p>
           </article>
+
+          <article className="preview-card wide-card preview-time-card">
+            <div>
+              <span>创建时间</span>
+              <strong>{formatPreviewTime(character.createdAt)}</strong>
+            </div>
+            <div>
+              <span>最后编辑</span>
+              <strong>{formatPreviewTime(character.updatedAt)}</strong>
+            </div>
+          </article>
         </div>
       </div>
     </section>
@@ -355,4 +366,37 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
 function getTagTone(tag: string) {
   const total = Array.from(tag).reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return total % 18;
+}
+
+function formatPreviewTime(value?: string) {
+  if (!value) {
+    return "未知";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "未知";
+  }
+
+  const currentYear = new Date().getFullYear();
+  const options: Intl.DateTimeFormatOptions =
+    date.getFullYear() === currentYear
+      ? {
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }
+      : {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        };
+
+  return new Intl.DateTimeFormat("en-US", options).format(date);
 }

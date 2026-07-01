@@ -450,6 +450,40 @@ const helperText: Record<
   },
 };
 
+const helperInspirationLibrary: Record<
+  Exclude<SectionId, "basic" | "prompt">,
+  string[]
+> = {
+  appearance: [
+    "给角色添加一个会随情绪变化的小细节，例如眼中光点、发饰位置或手套纹路。",
+    "设计一件与职业矛盾的服饰，比如医生穿战术靴，剑士带旧式录音笔。",
+    "加入一道不解释来源的旧伤，并让它和角色当前目标产生联系。",
+    "使用两种材质形成反差，例如柔软围巾搭配冰冷义体。",
+    "给角色一个经常修补的随身物，让外观暗示长期流浪或反复失去。",
+  ],
+  personality: [
+    "选择一个主性格，再添加一个只在亲近的人面前出现的反面特质。",
+    "让角色有一个小小的社交误区，例如过度礼貌、不会拒绝或总把玩笑当真。",
+    "添加一个隐藏的底线：平时温和，但一旦触碰就会变得非常危险。",
+    "给角色安排一个与外表不一致的兴趣，例如冷面角色喜欢收集贴纸。",
+    "把性格写成行动习惯：遇到危险先记录、先道歉、先保护别人或先逃跑。",
+  ],
+  ability: [
+    "为能力增加明确代价，例如消耗记忆、体温、听觉或一段未来可能性。",
+    "能力触发条件可以和角色弱点绑定，例如必须说真话、必须触碰目标。",
+    "设计一个非战斗用途，让能力能服务日常、调查或情感关系。",
+    "让能力有一个误判风险：能看到线索，但看不到动机。",
+    "给能力添加环境限制，例如雨天增强、强光失效、安静时更稳定。",
+  ],
+  backstory: [
+    "让角色现在追寻的问题与过去的失误有关，而不是单纯复仇。",
+    "加入一个仍在寄来的信件、账单或通知，暗示旧生活没有结束。",
+    "安排一个角色不敢回去的地点，并让它在主线中不可避免地出现。",
+    "给角色一个被误解的身份记录，例如死亡、失踪、叛逃或不存在。",
+    "让背景故事留下一个温柔的锚点：旧友、宠物、店铺、课堂或约定。",
+  ],
+};
+
 const promptValueMap: Record<string, string> = {
   女: "female",
   男: "male",
@@ -760,6 +794,7 @@ export function CharacterForm({
     label: string;
     value: string;
   } | null>(null);
+  const [isHelperReplaceConfirmOpen, setIsHelperReplaceConfirmOpen] = useState(false);
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("basic");
   const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
@@ -1109,6 +1144,24 @@ export function CharacterForm({
     setHelperSuggestion(null);
   }
 
+  function showHelperSuggestion(
+    sectionId: Exclude<SectionId, "basic" | "prompt">,
+    field: "personalityTags" | "appearanceDescription" | "abilityDescription" | "backstory",
+    label: string,
+    value?: string,
+  ) {
+    const helper = helperText[sectionId];
+    const content =
+      value ||
+      (label === "随机灵感"
+        ? pickRandom(helperInspirationLibrary[sectionId])
+        : label === "写作提示"
+          ? helper.tip
+          : helper.example);
+
+    setHelperSuggestion({ field, label, value: content });
+  }
+
   function buildCharacter(isDraft: boolean) {
     if (!formData.name.trim()) {
       setFormError("请先填写角色名字");
@@ -1224,7 +1277,6 @@ export function CharacterForm({
     sectionId: Exclude<SectionId, "basic" | "prompt">,
     field: "appearanceDescription" | "abilityDescription" | "backstory",
   ) {
-    const helper = helperText[sectionId];
     const labels = {
       appearanceDescription: "外貌描述",
       abilityDescription: "能力描述",
@@ -1235,21 +1287,21 @@ export function CharacterForm({
       <div className="helper-row">
         <button
           className="ghost-button"
-          onClick={() => setHelperSuggestion({ field, label: "示例", value: helper.example })}
+          onClick={() => showHelperSuggestion(sectionId, field, "示例")}
           type="button"
         >
           示例
         </button>
         <button
           className="ghost-button"
-          onClick={() => setHelperSuggestion({ field, label: "随机灵感", value: helper.inspiration })}
+          onClick={() => showHelperSuggestion(sectionId, field, "随机灵感")}
           type="button"
         >
           随机灵感
         </button>
         <button
           className="ghost-button"
-          onClick={() => setHelperSuggestion({ field, label: "写作提示", value: helper.tip })}
+          onClick={() => showHelperSuggestion(sectionId, field, "写作提示")}
           type="button"
         >
           写作提示
@@ -1378,7 +1430,7 @@ export function CharacterForm({
               </button>
               <button
                 className="primary-button"
-                onClick={() => applyHelperSuggestion("replace")}
+                onClick={() => setIsHelperReplaceConfirmOpen(true)}
                 type="button"
               >
                 应用
@@ -1389,6 +1441,33 @@ export function CharacterForm({
                 type="button"
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isHelperReplaceConfirmOpen && helperSuggestion && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>替换当前字段</h2>
+            <p>确定要用这条辅助内容替换当前字段吗？原内容会被覆盖。</p>
+            <div className="form-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setIsHelperReplaceConfirmOpen(false)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="danger-button"
+                onClick={() => {
+                  setIsHelperReplaceConfirmOpen(false);
+                  applyHelperSuggestion("replace");
+                }}
+                type="button"
+              >
+                确认替换
               </button>
             </div>
           </div>
@@ -1759,41 +1838,21 @@ export function CharacterForm({
                 <div className="helper-row">
                   <button
                     className="ghost-button"
-                    onClick={() =>
-                      setHelperSuggestion({
-                        field: "personalityTags",
-                        label: "示例",
-                        value: "克制、笨拙",
-                      })
-                    }
+                    onClick={() => showHelperSuggestion("personality", "personalityTags", "示例", "克制、笨拙")}
                     type="button"
                   >
                     示例
                   </button>
                   <button
                     className="ghost-button"
-                    onClick={() => {
-                      const helper = helperText.personality;
-                      const nextTag = pickRandom(["矛盾", "克制", "执着", "笨拙"]);
-                      setHelperSuggestion({
-                        field: "personalityTags",
-                        label: "随机灵感",
-                        value: `${nextTag}。${helper.inspiration}`,
-                      });
-                    }}
+                    onClick={() => showHelperSuggestion("personality", "personalityTags", "随机灵感")}
                     type="button"
                   >
                     随机灵感
                   </button>
                   <button
                     className="ghost-button"
-                    onClick={() =>
-                      setHelperSuggestion({
-                        field: "personalityTags",
-                        label: "写作提示",
-                        value: helperText.personality.tip,
-                      })
-                    }
+                    onClick={() => showHelperSuggestion("personality", "personalityTags", "写作提示")}
                     type="button"
                   >
                     写作提示
