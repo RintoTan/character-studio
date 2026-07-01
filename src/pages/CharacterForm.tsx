@@ -2193,41 +2193,44 @@ export function CharacterForm({
                 <article key={kind}>
                   <div className="helper-suggestion-title">
                     <h3>{title}</h3>
-                    <button
-                      className="ghost-button"
-                      onClick={() => refreshHelperItem(kind as HelperKind)}
-                      type="button"
-                    >
-                      换一个
-                    </button>
                   </div>
                   <p>{value}</p>
                   <div className="helper-suggestion-actions">
+                    <div className="helper-action-main">
+                      <button
+                        className="ghost-button"
+                        onClick={() => copyText(value, "辅助内容已复制")}
+                        type="button"
+                      >
+                        复制
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => applyHelperValue(value, "append")}
+                        type="button"
+                      >
+                        追加
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => {
+                          setHelperSuggestion((current) =>
+                            current ? { ...current, value } : current,
+                          );
+                          setIsHelperReplaceConfirmOpen(true);
+                        }}
+                        type="button"
+                      >
+                        替换
+                      </button>
+                    </div>
                     <button
-                      className="ghost-button"
-                      onClick={() => copyText(value, "辅助内容已复制")}
+                      className="ghost-button helper-refresh-button"
+                      onClick={() => refreshHelperItem(kind as HelperKind)}
                       type="button"
                     >
-                      复制
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={() => applyHelperValue(value, "append")}
-                      type="button"
-                    >
-                      追加
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={() => {
-                        setHelperSuggestion((current) =>
-                          current ? { ...current, value } : current,
-                        );
-                        setIsHelperReplaceConfirmOpen(true);
-                      }}
-                      type="button"
-                    >
-                      替换
+                      <span aria-hidden="true">↻</span>
+                      换一个
                     </button>
                   </div>
                 </article>
@@ -2751,13 +2754,7 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设世界观"
-                        value={
-                          !formData.worldview
-                            ? ""
-                            : worldviewOptions.includes(formData.worldview)
-                              ? formData.worldview
-                              : "__custom"
-                        }
+                        value=""
                         onChange={(event) => {
                           if (event.target.value !== "__custom") {
                             updateField("worldview", event.target.value);
@@ -2784,13 +2781,7 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设视觉风格"
-                        value={
-                          !formData.visualStyle
-                            ? ""
-                            : visualStyleOptions.includes(formData.visualStyle)
-                              ? formData.visualStyle
-                              : "__custom"
-                        }
+                        value=""
                         onChange={(event) => {
                           if (event.target.value !== "__custom") {
                             updateField("visualStyle", event.target.value);
