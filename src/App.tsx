@@ -312,6 +312,8 @@ function App() {
           onPromoteDraft={handlePromoteDraft}
           isLoading={isLoading}
           onToggleTheme={toggleTheme}
+          themeMode={themeMode}
+          onSetThemeMode={setThemeMode}
         />
       )}
 

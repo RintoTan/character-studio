@@ -23,11 +23,14 @@ type DashboardProps = {
   onPromoteDraft: (character: Character) => void;
   isLoading?: boolean;
   onToggleTheme: () => void;
+  themeMode: ThemeMode;
+  onSetThemeMode: (themeMode: ThemeMode) => void;
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
 type ScopeMode = "all" | "favorites" | "drafts";
 type ViewMode = "cards" | "list";
+type ThemeMode = "system" | "light" | "dark";
 
 const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 const DASHBOARD_FLAGS_KEY = "character-studio.dashboard-flags";
@@ -75,17 +78,23 @@ export function Dashboard({
   onPromoteDraft,
   isLoading = false,
   onToggleTheme,
+  themeMode,
+  onSetThemeMode,
 }: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(
+    () => localStorage.getItem("character-studio.settings.open-search") === "true",
+  );
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<Character | null>(null);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [prefs, setPrefs] = useState<DashboardPrefs>(loadDashboardPrefs);
   const [flags, setFlags] = useState<DashboardFlags>(loadDashboardFlags);
@@ -155,6 +164,8 @@ export function Dashboard({
         setIsSearchPanelOpen(false);
         setIsCommandOpen(false);
         setIsAboutOpen(false);
+        setIsSettingsOpen(false);
+        setIsClearDataOpen(false);
         setIsBulkMode(false);
         setSelectedIds([]);
       }
@@ -494,6 +505,16 @@ export function Dashboard({
     if (visibleCharacters.length > 0) {
       onPreview(visibleCharacters[0]);
     }
+  }
+
+  function clearLocalData() {
+    onImport([]);
+    setSelectedIds([]);
+    setIsBulkMode(false);
+    setIsClearDataOpen(false);
+    setIsSettingsOpen(false);
+    clearSearchAndFilters();
+    showToast("本地数据已清空", "warning");
   }
 
   function runCommand(command: string) {
@@ -851,6 +872,173 @@ export function Dashboard({
               </article>
             </div>
             <p className="about-footer">RINTO © 2026</p>
+          </div>
+        </div>
+      )}
+
+      {isSettingsOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsSettingsOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="settings-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Settings</p>
+                <h2>设置</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsSettingsOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="settings-grid">
+              <article>
+                <h3>Appearance</h3>
+                <div className="segmented-row">
+                  {(["system", "light", "dark"] as const).map((mode) => (
+                    <button
+                      className={themeMode === mode ? "active" : ""}
+                      key={mode}
+                      onClick={() => onSetThemeMode(mode)}
+                      type="button"
+                    >
+                      {mode === "system" ? "Follow System" : mode === "light" ? "Light" : "Dark"}
+                    </button>
+                  ))}
+                </div>
+              </article>
+              <article>
+                <h3>Default View</h3>
+                <div className="segmented-row">
+                  <button
+                    className={prefs.viewMode === "cards" ? "active" : ""}
+                    onClick={() => updatePrefs({ viewMode: "cards" })}
+                    type="button"
+                  >
+                    Card
+                  </button>
+                  <button
+                    className={prefs.viewMode === "list" ? "active" : ""}
+                    onClick={() => updatePrefs({ viewMode: "list" })}
+                    type="button"
+                  >
+                    List
+                  </button>
+                </div>
+              </article>
+              <article>
+                <h3>Mobile</h3>
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    defaultChecked={localStorage.getItem("character-studio.settings.compact-mobile") !== "false"}
+                    onChange={(event) =>
+                      localStorage.setItem(
+                        "character-studio.settings.compact-mobile",
+                        String(event.target.checked),
+                      )
+                    }
+                  />
+                  <span>简洁模式</span>
+                </label>
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    defaultChecked={localStorage.getItem("character-studio.settings.open-search") === "true"}
+                    onChange={(event) => {
+                      localStorage.setItem(
+                        "character-studio.settings.open-search",
+                        String(event.target.checked),
+                      );
+                      setIsSearchPanelOpen(event.target.checked);
+                    }}
+                  />
+                  <span>默认展开搜索</span>
+                </label>
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    defaultChecked={localStorage.getItem("character-studio.settings.hide-low-priority") !== "false"}
+                    onChange={(event) =>
+                      localStorage.setItem(
+                        "character-studio.settings.hide-low-priority",
+                        String(event.target.checked),
+                      )
+                    }
+                  />
+                  <span>自动隐藏低优先级信息</span>
+                </label>
+              </article>
+              <article>
+                <h3>Export</h3>
+                <label>
+                  JPG Quality
+                  <input
+                    defaultValue={localStorage.getItem("character-studio.settings.jpg-quality") || "0.9"}
+                    min="0.1"
+                    max="1"
+                    onChange={(event) =>
+                      localStorage.setItem("character-studio.settings.jpg-quality", event.target.value)
+                    }
+                    step="0.1"
+                    type="number"
+                  />
+                </label>
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    defaultChecked={localStorage.getItem("character-studio.settings.pdf-light") !== "false"}
+                    onChange={(event) =>
+                      localStorage.setItem(
+                        "character-studio.settings.pdf-light",
+                        String(event.target.checked),
+                      )
+                    }
+                  />
+                  <span>PDF Light Mode</span>
+                </label>
+              </article>
+              <article>
+                <h3>Data</h3>
+                <div className="settings-actions">
+                  <button className="ghost-button" onClick={handleExportAllJson} type="button">
+                    导出全部 JSON
+                  </button>
+                  <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
+                    导入 JSON
+                  </button>
+                  <button className="danger-button" onClick={() => setIsClearDataOpen(true)} type="button">
+                    清空本地数据
+                  </button>
+                </div>
+              </article>
+              <article>
+                <h3>About Data</h3>
+                <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步，清除浏览器缓存可能导致数据丢失。</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isClearDataOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>清空本地数据</h2>
+            <p>确定要清空所有本地角色数据吗？此操作不可撤销。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsClearDataOpen(false)} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={clearLocalData} type="button">
+                确认清空
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1393,8 +1581,11 @@ export function Dashboard({
                       type="button"
                     >
                       {character.occupation || "暂无职业"} ｜{" "}
-                      {character.worldview || "暂无世界观"} ｜{" "}
-                      {character.age || "年龄未知"}
+                      {character.worldview || "暂无世界观"}
+                      <span className="card-age-fragment">
+                        {" ｜ "}
+                        {character.age || "年龄未知"}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -1419,7 +1610,7 @@ export function Dashboard({
                     <div className="card-actions">
                       <button
                         aria-label="编辑"
-                        className="bare-icon-button"
+                        className="bare-icon-button card-edit-button"
                         onClick={(event) => {
                           event.stopPropagation();
                           onEdit(character);
@@ -1447,6 +1638,15 @@ export function Dashboard({
                           <div className="card-menu" onClick={(event) => event.stopPropagation()}>
                             <button onClick={() => onPreview(character)} type="button">
                               预览
+                            </button>
+                            <button
+                              onClick={() => {
+                                onEdit(character);
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              编辑
                             </button>
                             <button
                               onClick={() => {
@@ -1556,6 +1756,9 @@ export function Dashboard({
       <footer className="dashboard-footer">
         <button onClick={() => setIsAboutOpen(true)} type="button">
           About Character Studio
+        </button>
+        <button onClick={() => setIsSettingsOpen(true)} type="button">
+          Settings
         </button>
         <span>RINTO © 2026</span>
       </footer>

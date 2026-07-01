@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Character } from "../types/character";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
 
@@ -45,12 +45,24 @@ function buildFullCharacterText(character: Character) {
 export function CharacterPreview({ character, onBack, onEdit }: CharacterPreviewProps) {
   const [toastMessage, setToastMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   function showToast(message: string) {
     setToastMessage(message);
     window.setTimeout(() => setToastMessage(""), 3000);
   }
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsExportOpen(false);
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   async function copyText(text: string, message: string) {
     await navigator.clipboard.writeText(text || "未填写");
@@ -100,9 +112,66 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
     }
   }
 
+  function runExport(format: "json" | "pdf" | "jpg" | "png") {
+    setIsExportOpen(false);
+
+    if (format === "json") {
+      handleExportJson();
+      return;
+    }
+
+    if (format === "pdf") {
+      void handleExportPdf();
+      return;
+    }
+
+    void handleExportImage(format);
+  }
+
   return (
     <section className="preview-page">
       {toastMessage && <div className="toast">{toastMessage}</div>}
+      {isExportOpen && (
+        <div
+          className="modal-backdrop export-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsExportOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="export-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Export</p>
+                <h2>导出角色</h2>
+              </div>
+              <button
+                className="ghost-button"
+                onClick={() => setIsExportOpen(false)}
+                type="button"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="export-dialog-list">
+              <button onClick={() => runExport("json")} type="button">
+                导出 JSON
+              </button>
+              <button onClick={() => runExport("pdf")} type="button">
+                {loadingAction === "pdf" ? "导出中..." : "导出 PDF"}
+              </button>
+              <button onClick={() => runExport("jpg")} type="button">
+                {loadingAction === "jpg" ? "导出中..." : "导出 JPG"}
+              </button>
+              <button onClick={() => runExport("png")} type="button">
+                {loadingAction === "png" ? "导出中..." : "导出 PNG"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div ref={previewRef} data-pdf-export-root="true">
         <div className="preview-hero">
@@ -136,35 +205,11 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
             </button>
             <button
               className="ghost-button"
-              disabled={loadingAction === "json"}
-              onClick={handleExportJson}
+              disabled={loadingAction !== null}
+              onClick={() => setIsExportOpen(true)}
               type="button"
             >
-              {loadingAction === "json" ? "导出中..." : "导出 JSON"}
-            </button>
-            <button
-              className="ghost-button"
-              disabled={loadingAction === "pdf"}
-              onClick={handleExportPdf}
-              type="button"
-            >
-              {loadingAction === "pdf" ? "导出中..." : "导出 PDF"}
-            </button>
-            <button
-              className="ghost-button"
-              disabled={loadingAction === "jpg"}
-              onClick={() => handleExportImage("jpg")}
-              type="button"
-            >
-              {loadingAction === "jpg" ? "导出中..." : "导出 JPG"}
-            </button>
-            <button
-              className="ghost-button"
-              disabled={loadingAction === "png"}
-              onClick={() => handleExportImage("png")}
-              type="button"
-            >
-              {loadingAction === "png" ? "导出中..." : "导出 PNG"}
+              {loadingAction ? "导出中..." : "导出"}
             </button>
             <button className="ghost-button" onClick={onBack} type="button">
               返回
