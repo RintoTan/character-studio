@@ -1866,9 +1866,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-layout {
+  --editor-sidebar-width: 220px;
+  --editor-layout-gap: 18px;
+  --editor-footer-left-offset: calc(var(--editor-sidebar-width) + var(--editor-layout-gap));
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: var(--editor-sidebar-width) minmax(0, 1fr);
+  gap: var(--editor-layout-gap);
   align-items: start;
 }
 
@@ -2629,7 +2632,7 @@ input[type="number"]::-webkit-inner-spin-button {
   position: fixed;
   right: max(16px, calc((100vw - 1120px) / 2));
   bottom: calc(12px + env(safe-area-inset-bottom));
-  left: max(16px, calc((100vw - 1120px) / 2));
+  left: calc(max(16px, calc((100vw - 1120px) / 2)) + var(--editor-footer-left-offset));
   z-index: 90;
   display: flex;
   align-items: center;
@@ -3728,6 +3731,10 @@ kbd {
   .workspace-layout,
   .avatar-editor {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-layout {
+    --editor-footer-left-offset: 0px;
   }
 
   .workspace-hero,
