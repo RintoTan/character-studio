@@ -27,6 +27,7 @@ type Page = "dashboard" | "form" | "preview";
 type ThemeMode = "system" | "light" | "dark";
 
 const THEME_KEY = "character-studio.theme";
+const ABOUT_SEEN_KEY = "character-studio.about-seen";
 
 function App() {
   const [page, setPage] = useState<Page>("dashboard");
@@ -63,6 +64,9 @@ function App() {
   useEffect(() => {
     setCharacters(loadCharacters());
     setIsLoading(false);
+    if (localStorage.getItem(ABOUT_SEEN_KEY) !== "true") {
+      setIsAppAboutOpen(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -732,10 +736,13 @@ function App() {
           <button onClick={() => setIsAppAboutOpen(true)} type="button">
             About Character Studio
           </button>
-          <span>RINTO © 2026</span>
+          <button onClick={() => setIsAppSettingsOpen(true)} type="button">
+            Asset Library
+          </button>
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
             Settings
           </button>
+          <span>RINTO © 2026</span>
         </footer>
       )}
 
@@ -764,6 +771,28 @@ function App() {
                   <li>Dashboard、Editor、Preview、草稿箱与收藏夹。</li>
                   <li>主题切换、导入导出、PDF / JPG / PNG 输出。</li>
                 </ul>
+              </article>
+              <article>
+                <h3>导入 / 导出说明</h3>
+                <ul className="about-list">
+                  <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
+                  <li>角色 JSON：仅角色文字数据，不含头像，适合轻量备份。</li>
+                  <li>完整备份 ZIP：包含角色、manifest 与头像素材，适合跨设备迁移。</li>
+                  <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
+                  <li>CSV、PDF、JPG、PNG：用于查看、归档或展示，不用于重新导入。</li>
+                </ul>
+              </article>
+              <article>
+                <h3>首次提示</h3>
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    onChange={(event) =>
+                      localStorage.setItem(ABOUT_SEEN_KEY, String(event.target.checked))
+                    }
+                  />
+                  <span>不再自动显示</span>
+                </label>
               </article>
             </div>
             <p className="about-footer">RINTO © 2026</p>

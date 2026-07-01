@@ -86,11 +86,16 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
     showToast(message);
   }
 
-  function handleExportJson() {
+  async function handleExportJson() {
     setLoadingAction("json");
-    exportCharacterJson(character);
-    showToast("当前角色 JSON 已导出");
-    window.setTimeout(() => setLoadingAction(null), 300);
+    try {
+      await exportCharacterJson(character);
+      showToast("当前角色 JSON 已导出");
+    } catch {
+      showToast("JSON 导出失败");
+    } finally {
+      setLoadingAction(null);
+    }
   }
 
   async function handleExportPdf() {
@@ -133,7 +138,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
     setIsExportOpen(false);
 
     if (format === "json") {
-      handleExportJson();
+      void handleExportJson();
       return;
     }
 

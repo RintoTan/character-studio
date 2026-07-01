@@ -6,6 +6,23 @@ import {
   saveAvatarBlob,
 } from "./avatarAssets";
 
+type AvatarAssetExportData = {
+  sourceId?: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  dataUrl?: string;
+};
+
+type ZipEntry = {
+  name: string;
+  blob: Blob;
+};
+
 const csvHeaders = [
   "名字",
   "性别",
@@ -50,6 +67,30 @@ function asStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function asAvatarAssetData(value: unknown): AvatarAssetExportData | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const dataUrl = asString(value.dataUrl);
+
+  if (!dataUrl.startsWith("data:image/")) {
+    return null;
+  }
+
+  return {
+    sourceId: asString(value.sourceId),
+    name: asString(value.name),
+    mimeType: asString(value.mimeType),
+    size: typeof value.size === "number" ? value.size : undefined,
+    width: typeof value.width === "number" ? value.width : undefined,
+    height: typeof value.height === "number" ? value.height : undefined,
+    createdAt: asString(value.createdAt),
+    updatedAt: asString(value.updatedAt),
+    dataUrl,
+  };
 }
 
 function blobToDataUrl(blob: Blob) {
@@ -188,9 +229,41 @@ function exportNodeName(characterName: string, extension: string) {
   return `${safeFileName(characterName)}-${dateStamp()}.${extension}`;
 }
 
-export function exportCharacterJson(character: Character) {
+async function getAvatarAssetExportData(assetId?: string): Promise<AvatarAssetExportData | undefined> {
+  if (!assetId) {
+    return undefined;
+  }
+
+  const asset = await getAvatarAsset(assetId);
+
+  if (!asset) {
+    return undefined;
+  }
+
+  return {
+    sourceId: asset.id,
+    name: asset.name || "avatar",
+    mimeType: asset.mimeType || asset.blob.type || "image/webp",
+    size: asset.size || asset.blob.size,
+    width: asset.width || 512,
+    height: asset.height || 512,
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+    dataUrl: await blobToDataUrl(asset.blob),
+  };
+}
+
+export async function exportCharacterJson(character: Character) {
   const filename = `character-studio-${safeFileName(character.name)}-${dateStamp()}.json`;
-  downloadBlob(JSON.stringify(character, null, 2), filename, "application/json");
+  const avatarAssetData = await getAvatarAssetExportData(character.avatarAssetId);
+  const payload = avatarAssetData
+    ? {
+        ...character,
+        avatarAssetData,
+      }
+    : character;
+
+  downloadBlob(JSON.stringify(payload, null, 2), filename, "application/json");
 }
 
 export function exportAllCharactersJson(characters: Character[]) {
@@ -249,6 +322,85 @@ export async function exportFullBackupJson(characters: Character[]) {
   );
 }
 
+export async function exportFullBackupZip(characters: Character[]) {
+  const usedAssetIds = Array.from(
+    new Set(
+      characters
+        .map((character) => character.avatarAssetId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const assets = (
+    await Promise.all(
+      usedAssetIds.map(async (assetId) => {
+        const asset = await getAvatarAsset(assetId);
+        return asset ? { assetId, asset } : null;
+      }),
+    )
+  ).filter((item): item is NonNullable<typeof item> => item !== null);
+  const assetFileById = new Map<string, string>();
+  const files: Array<{ name: string; blob: Blob }> = [];
+
+  assets.forEach(({ asset }, index) => {
+    const extension = (asset.mimeType || asset.blob.type || "image/webp").includes("png")
+      ? "png"
+      : (asset.mimeType || asset.blob.type || "image/webp").includes("jpeg")
+        ? "jpg"
+        : "webp";
+    const file = `assets/avatar/avatar-${index + 1}.${extension}`;
+    assetFileById.set(asset.id, file);
+    files.push({ name: file, blob: asset.blob });
+  });
+
+  const manifest = {
+    schemaVersion: 1,
+    bindings: characters
+      .filter((character) => character.avatarAssetId && assetFileById.has(character.avatarAssetId))
+      .map((character) => {
+        const asset = assets.find((item) => item.asset.id === character.avatarAssetId)?.asset;
+        return {
+          sourceCharacterId: character.id,
+          sourceAssetKey: character.avatarAssetId,
+          assetFile: character.avatarAssetId ? assetFileById.get(character.avatarAssetId) : "",
+          hash: character.avatarAssetId,
+          mimeType: asset?.mimeType || asset?.blob.type || "image/webp",
+          size: asset?.size || asset?.blob.size || 0,
+        };
+      }),
+  };
+  const backupInfo = {
+    schemaVersion: 1,
+    exportedAt: new Date().toISOString(),
+    appVersion: "0.1.0",
+    characterCount: characters.length,
+    avatarAssetCount: assets.length,
+    assetTotalSize: assets.reduce((sum, item) => sum + (item.asset.size || item.asset.blob.size), 0),
+    exportType: "character-studio-full-backup-zip",
+    notes: "完整备份 ZIP 包含角色数据和头像素材。头像绑定仅依据 manifest，不根据文件名或旧 ID 猜测。",
+  };
+
+  files.unshift(
+    {
+      name: "characters.json",
+      blob: new Blob([JSON.stringify({ characters }, null, 2)], { type: "application/json" }),
+    },
+    {
+      name: "manifest.json",
+      blob: new Blob([JSON.stringify(manifest, null, 2)], { type: "application/json" }),
+    },
+    {
+      name: "backup-info.json",
+      blob: new Blob([JSON.stringify(backupInfo, null, 2)], { type: "application/json" }),
+    },
+  );
+
+  downloadBlob(
+    await createZipBlob(files),
+    `character-studio-full-backup-${dateStamp()}.zip`,
+    "application/zip",
+  );
+}
+
 export function exportSelectedCharactersJson(characters: Character[]) {
   const filename = `character-studio-selected-${dateStamp()}.json`;
   const payload = characters.length === 1 ? characters[0] : characters;
@@ -292,6 +444,11 @@ export async function importCharactersFromFiles(
   const importedCharacters: Character[] = [];
 
   for (const file of Array.from(files)) {
+    if (isZipFile(file)) {
+      importedCharacters.push(...(await importCharactersFromBackupZip(file, existingIds)));
+      continue;
+    }
+
     const text = await file.text();
     const parsedValue = JSON.parse(text) as unknown;
     const avatarIdMap = await restoreAvatarAssets(parsedValue);
@@ -301,6 +458,16 @@ export async function importCharactersFromFiles(
       const character = normalizeCharacter(candidate, existingIds);
 
       if (character) {
+        if (isRecord(candidate)) {
+          const avatarAssetData = asAvatarAssetData(candidate.avatarAssetData);
+          if (avatarAssetData?.dataUrl) {
+            const asset = await saveAvatarBlob(
+              dataUrlToBlob(avatarAssetData.dataUrl),
+              avatarAssetData.name || `${character.name || "avatar"}-avatar`,
+            );
+            character.avatarAssetId = asset.id;
+          }
+        }
         character.avatarAssetId =
           avatarIdMap.get(character.avatarAssetId || "") || character.avatarAssetId;
         importedCharacters.push(character);
@@ -313,6 +480,49 @@ export async function importCharactersFromFiles(
   }
 
   return [...importedCharacters, ...existingCharacters];
+}
+
+function isZipFile(file: File) {
+  return file.name.toLowerCase().endsWith(".zip") || file.type === "application/zip";
+}
+
+async function importCharactersFromBackupZip(file: File, existingIds: Set<string>) {
+  const entries = await readStoredZip(file);
+  const entryByName = new Map(entries.map((entry) => [entry.name, entry]));
+  const charactersEntry = entryByName.get("characters.json");
+
+  if (!charactersEntry) {
+    throw new Error("完整备份缺少 characters.json");
+  }
+
+  const charactersValue = JSON.parse(await charactersEntry.blob.text()) as unknown;
+  const manifestEntry = entryByName.get("manifest.json");
+  const manifestValue = manifestEntry
+    ? (JSON.parse(await manifestEntry.blob.text()) as unknown)
+    : undefined;
+  const sourceAssetToNewAsset = await restoreZipAvatarAssets(entries, manifestValue);
+  const candidates = getCharacterCandidates(charactersValue);
+  const importedCharacters: Character[] = [];
+
+  for (const candidate of candidates) {
+    const sourceCharacterId = isRecord(candidate) ? asString(candidate.id) : "";
+    const character = normalizeCharacter(candidate, existingIds);
+
+    if (!character) {
+      continue;
+    }
+
+    const boundAssetId = findManifestBoundAssetId(
+      manifestValue,
+      sourceCharacterId,
+      sourceAssetToNewAsset,
+    );
+
+    character.avatarAssetId = boundAssetId || "";
+    importedCharacters.push(character);
+  }
+
+  return importedCharacters;
 }
 
 async function restoreAvatarAssets(value: unknown) {
@@ -357,6 +567,120 @@ async function restoreAvatarAssets(value: unknown) {
   }
 
   return avatarIdMap;
+}
+
+async function restoreZipAvatarAssets(entries: ZipEntry[], manifestValue: unknown) {
+  const sourceAssetToNewAsset = new Map<string, string>();
+  const assetEntries = entries.filter((entry) => entry.name.startsWith("assets/avatar/"));
+  const bindings = getManifestBindings(manifestValue);
+  const existingAssets = await listAvatarAssets();
+  const existingDataUrls = new Map<string, string>();
+
+  await Promise.all(
+    existingAssets.map(async (asset) => {
+      existingDataUrls.set(await blobToDataUrl(asset.blob), asset.id);
+    }),
+  );
+
+  for (const entry of assetEntries) {
+    const mimeType = mimeTypeFromFileName(entry.name);
+    const blob = new Blob([await entry.blob.arrayBuffer()], { type: mimeType });
+    const dataUrl = await blobToDataUrl(blob);
+    const existingId = existingDataUrls.get(dataUrl);
+    const asset = existingId
+      ? { id: existingId }
+      : await saveAvatarBlob(blob, entry.name.split("/").pop() || "avatar");
+
+    if (!existingId) {
+      existingDataUrls.set(dataUrl, asset.id);
+    }
+
+    bindings
+      .filter((binding) => binding.assetFile === entry.name && binding.sourceAssetKey)
+      .forEach((binding) => sourceAssetToNewAsset.set(binding.sourceAssetKey, asset.id));
+  }
+
+  return sourceAssetToNewAsset;
+}
+
+function getManifestBindings(value: unknown) {
+  if (!isRecord(value) || !Array.isArray(value.bindings)) {
+    return [];
+  }
+
+  return value.bindings
+    .filter(isRecord)
+    .map((binding) => ({
+      sourceCharacterId: asString(binding.sourceCharacterId),
+      sourceAssetKey: asString(binding.sourceAssetKey),
+      assetFile: asString(binding.assetFile),
+    }))
+    .filter((binding) => binding.assetFile);
+}
+
+function findManifestBoundAssetId(
+  manifestValue: unknown,
+  sourceCharacterId: string,
+  sourceAssetToNewAsset: Map<string, string>,
+) {
+  if (!sourceCharacterId) {
+    return "";
+  }
+
+  const binding = getManifestBindings(manifestValue).find(
+    (item) => item.sourceCharacterId === sourceCharacterId,
+  );
+
+  return binding ? sourceAssetToNewAsset.get(binding.sourceAssetKey) || "" : "";
+}
+
+function mimeTypeFromFileName(fileName: string) {
+  const lowerName = fileName.toLowerCase();
+
+  if (lowerName.endsWith(".png")) {
+    return "image/png";
+  }
+
+  if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  return "image/webp";
+}
+
+async function readStoredZip(file: File): Promise<ZipEntry[]> {
+  const buffer = await file.arrayBuffer();
+  const view = new DataView(buffer);
+  const decoder = new TextDecoder();
+  const entries: ZipEntry[] = [];
+  let offset = 0;
+
+  while (offset + 30 <= buffer.byteLength && view.getUint32(offset, true) === 0x04034b50) {
+    const method = view.getUint16(offset + 8, true);
+    const compressedSize = view.getUint32(offset + 18, true);
+    const nameLength = view.getUint16(offset + 26, true);
+    const extraLength = view.getUint16(offset + 28, true);
+    const nameStart = offset + 30;
+    const dataStart = nameStart + nameLength + extraLength;
+    const dataEnd = dataStart + compressedSize;
+
+    if (method !== 0 || dataEnd > buffer.byteLength) {
+      throw new Error("暂不支持压缩过的 ZIP，请导入 Character Studio 导出的完整备份");
+    }
+
+    const name = decoder.decode(new Uint8Array(buffer, nameStart, nameLength));
+    entries.push({
+      name,
+      blob: new Blob([buffer.slice(dataStart, dataEnd)]),
+    });
+    offset = dataEnd;
+  }
+
+  if (entries.length === 0) {
+    throw new Error("ZIP 文件中没有可读取的备份内容");
+  }
+
+  return entries;
 }
 
 async function capturePreviewCanvas(element: HTMLElement) {

@@ -7,7 +7,7 @@ import {
   exportCharacterSnapshotsZip,
   exportCharacterJson,
   exportCharactersCsv,
-  exportFullBackupJson,
+  exportFullBackupZip,
   exportSelectedCharactersJson,
   importCharactersFromFiles,
 } from "../utils/importExport";
@@ -446,9 +446,13 @@ export function Dashboard({
     showToast("选中角色 JSON 已导出");
   }
 
-  function handleExportCharacterJson(character: Character) {
-    exportCharacterJson(character);
-    showToast("当前角色 JSON 已导出");
+  async function handleExportCharacterJson(character: Character) {
+    try {
+      await exportCharacterJson(character);
+      showToast("当前角色 JSON 已导出");
+    } catch {
+      showToast("当前角色 JSON 导出失败", "error");
+    }
   }
 
   async function handleCardExport(format: "json" | "pdf" | "jpg" | "png") {
@@ -460,7 +464,7 @@ export function Dashboard({
     setExportTarget(null);
 
     if (format === "json") {
-      handleExportCharacterJson(target);
+      void handleExportCharacterJson(target);
       return;
     }
 
@@ -649,8 +653,8 @@ export function Dashboard({
     setIsMoreMenuOpen(false);
 
     try {
-      await exportFullBackupJson(characters);
-      showToast("完整备份 JSON 已导出", "success");
+      await exportFullBackupZip(characters);
+      showToast("完整备份 ZIP 已导出", "success");
     } catch {
       showToast("完整备份导出失败", "error");
     } finally {
@@ -1133,7 +1137,7 @@ export function Dashboard({
                 ["drafts", "打开草稿箱", ""],
                 ["favorites", "打开收藏夹", ""],
                 ["import", "导入角色", ""],
-                ["export", "导出全部 JSON", ""],
+                ["export", "导出角色 JSON", ""],
                 ["theme", "切换主题", ""],
               ].map(([id, label, shortcut]) => (
                 <button key={id} onClick={() => runCommand(id)} type="button">
@@ -1242,6 +1246,16 @@ export function Dashboard({
               <article>
                 <h3>Changelog</h3>
                 <p>Sprint 6 优化了 Dashboard、草稿箱、Avatar Picker、导入导出、主题切换和 Preview 展示体验。</p>
+              </article>
+              <article>
+                <h3>Import / Export Guide</h3>
+                <ul className="about-list">
+                  <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
+                  <li>角色 JSON：仅角色文字数据，不含头像，适合轻量备份。</li>
+                  <li>完整备份 ZIP：包含角色、manifest 与头像素材，适合跨设备迁移。</li>
+                  <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
+                  <li>CSV、PDF、JPG、PNG：用于文字归档或展示，不用于重新导入。</li>
+                </ul>
               </article>
             </div>
             <p className="about-footer">RINTO © 2026</p>
@@ -1380,13 +1394,13 @@ export function Dashboard({
                 <h3>Data</h3>
                 <div className="settings-actions">
                   <button className="ghost-button" onClick={handleExportAllJson} type="button">
-                    导出全部 JSON
+                    导出角色 JSON
                   </button>
                   <button className="ghost-button" onClick={() => void handleExportFullBackup()} type="button">
-                    导出完整备份 JSON
+                    导出完整备份 ZIP
                   </button>
                   <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
-                    导入 JSON
+                    导入角色
                   </button>
                   <button className="danger-button" onClick={() => setIsClearDataOpen(true)} type="button">
                     清空本地数据
@@ -1668,7 +1682,7 @@ export function Dashboard({
           </button>
           <div className="dashboard-actions" ref={moreMenuRef}>
             <input
-              accept="application/json,.json"
+              accept="application/json,.json,application/zip,.zip"
               className="hidden-input"
               multiple
               onChange={(event) => handleImportJson(event.target.files)}
@@ -1734,10 +1748,10 @@ export function Dashboard({
                   导入角色
                 </button>
                 <button onClick={handleExportAllJson} type="button">
-                  导出全部 JSON
+                  导出角色 JSON
                 </button>
                 <button onClick={() => void handleExportFullBackup()} type="button">
-                  导出完整备份 JSON
+                  导出完整备份 ZIP
                 </button>
                 <button onClick={handleExportCsv} type="button">
                   导出 CSV
@@ -2421,10 +2435,13 @@ export function Dashboard({
         <button onClick={() => setIsAboutOpen(true)} type="button">
           About Character Studio
         </button>
-        <span>RINTO © 2026</span>
+        <button onClick={() => setIsSettingsOpen(true)} type="button">
+          Asset Library
+        </button>
         <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
           Settings
         </button>
+        <span>RINTO © 2026</span>
       </footer>
     </section>
   );
