@@ -36,6 +36,7 @@ function App() {
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
+  const [isAppAssetLibraryOpen, setIsAppAssetLibraryOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
   const [isAppClearDataOpen, setIsAppClearDataOpen] = useState(false);
   const [pendingAppAssetDelete, setPendingAppAssetDelete] = useState<AvatarAssetRecord | null>(null);
@@ -99,6 +100,7 @@ function App() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsThemeMenuOpen(false);
+        setIsAppAssetLibraryOpen(false);
         setPendingAppAssetDelete(null);
         setIsAppAssetCleanupOpen(false);
         setIsAppClearDataOpen(false);
@@ -135,12 +137,12 @@ function App() {
   }, [themeMode]);
 
   useEffect(() => {
-    if (!isAppSettingsOpen) {
+    if (!isAppSettingsOpen && !isAppAssetLibraryOpen) {
       return;
     }
 
     void refreshAvatarAssetStats();
-  }, [isAppSettingsOpen]);
+  }, [isAppSettingsOpen, isAppAssetLibraryOpen]);
 
   async function refreshAvatarAssetStats() {
     try {
@@ -305,6 +307,7 @@ function App() {
     setIsThemeMenuOpen(false);
     setIsAppAboutOpen(false);
     setIsAppSettingsOpen(false);
+    setIsAppAssetLibraryOpen(false);
     setIsAppAssetCleanupOpen(false);
     setIsAppClearDataOpen(false);
     setPendingAppAssetDelete(null);
@@ -320,6 +323,7 @@ function App() {
       setPage(nextPage === "form" || nextPage === "preview" ? nextPage : "dashboard");
       setIsAppAboutOpen(false);
       setIsAppSettingsOpen(false);
+      setIsAppAssetLibraryOpen(false);
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -502,6 +506,7 @@ function App() {
   const isAppOverlayOpen =
     isAppAboutOpen ||
     isAppSettingsOpen ||
+    isAppAssetLibraryOpen ||
     isAppAssetCleanupOpen ||
     isAppClearDataOpen ||
     Boolean(pendingAppAssetDelete) ||
@@ -736,7 +741,7 @@ function App() {
           <button onClick={() => setIsAppAboutOpen(true)} type="button">
             About Character Studio
           </button>
-          <button onClick={() => setIsAppSettingsOpen(true)} type="button">
+          <button onClick={() => setIsAppAssetLibraryOpen(true)} type="button">
             Asset Library
           </button>
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
@@ -845,60 +850,44 @@ function App() {
                   本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。轻量 JSON 不包含头像图片二进制。
                 </p>
                 <p className="muted">图片只保存在当前浏览器 IndexedDB，换设备不会自动同步。</p>
-                {avatarAssets.length > 0 ? (
-                  <>
-                    <div className="settings-asset-toolbar">
-                      <button className="ghost-button" onClick={toggleAllAppAssetsSelected} type="button">
-                        {selectedAppAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
-                      </button>
-                      <button className="ghost-button" disabled={selectedAppAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAppAssetIds)} type="button">
-                        导出所选素材
-                      </button>
-                      <button className="ghost-button" disabled={selectedAppAssetIds.length === 0} onClick={() => void deleteSelectedAppUnusedAssets()} type="button">
-                        删除未使用
-                      </button>
-                      <button className="danger-button" disabled={selectedAppAssetIds.length === 0} onClick={requestSelectedAppAssetDelete} type="button">
-                        删除所选
-                      </button>
-                    </div>
-                    <div className="settings-asset-list">
-                      {avatarAssets.map((asset) => {
-                        const usageCount = getAssetUsageCount(asset.id);
+                <div className="settings-actions">
+                  <button
+                    className="ghost-button"
+                    onClick={() => {
+                      setIsAppSettingsOpen(false);
+                      setIsAppAssetLibraryOpen(true);
+                    }}
+                    type="button"
+                  >
+                    打开 Asset Library
+                  </button>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
 
-                        return (
-                          <div className="settings-asset-item" key={asset.id}>
-                            <label className="asset-select-check">
-                              <input
-                                checked={selectedAppAssetIds.includes(asset.id)}
-                                onChange={() => toggleAppAssetSelected(asset.id)}
-                                type="checkbox"
-                              />
-                              <span className="sr-only">选择素材</span>
-                            </label>
-                            <AvatarDisplay assetId={asset.id} className="settings-asset-thumb" emoji="🙂" />
-                            <div>
-                              <strong>{asset.name || "avatar"}</strong>
-                              <span>
-                                {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
-                                {formatAssetSize(asset.size || asset.blob?.size || 0)}
-                              </span>
-                              <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
-                            </div>
-                            <button
-                              className={usageCount > 0 ? "danger-button" : "ghost-button"}
-                              onClick={() => void requestAppAssetDelete(asset)}
-                              type="button"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <p className="muted">暂无本地头像素材。</p>
-                )}
+      {isAppAssetLibraryOpen && (
+        <div className="modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setIsAppAssetLibraryOpen(false);
+        }} role="presentation">
+          <div className="settings-dialog asset-library-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Asset Library</p>
+                <h2>本地素材库</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAppAssetLibraryOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="settings-grid">
+              <article>
+                <h3>头像素材</h3>
+                <p className="muted">
+                  共 {avatarAssetStats.count} 个素材，占用约 {formatAssetSize(avatarAssetStats.size)}。素材仅保存在当前浏览器 IndexedDB。
+                </p>
                 <div className="settings-actions">
                   <input
                     accept="application/json,.json"
@@ -908,17 +897,81 @@ function App() {
                     type="file"
                   />
                   <button className="ghost-button" onClick={() => appAssetImportInputRef.current?.click()} type="button">
-                    导入素材
+                    导入头像素材
                   </button>
                   <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
-                    导出素材
+                    导出头像素材
                   </button>
                   <button className="ghost-button" onClick={() => setIsAppAssetCleanupOpen(true)} type="button">
-                    清理未使用头像素材
+                    清理未使用素材
                   </button>
                 </div>
               </article>
+              <article>
+                <h3>素材统计</h3>
+                <div className="import-preview-stats">
+                  <span>素材总数量：{avatarAssetStats.count}</span>
+                  <span>已绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) > 0).length}</span>
+                  <span>未绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) === 0).length}</span>
+                  <span>引用角色数量：{characters.filter((character) => character.avatarAssetId).length}</span>
+                  <span>总占用空间：{formatAssetSize(avatarAssetStats.size)}</span>
+                </div>
+              </article>
             </div>
+            {avatarAssets.length > 0 ? (
+              <>
+                <div className="settings-asset-toolbar">
+                  <button className="ghost-button" onClick={toggleAllAppAssetsSelected} type="button">
+                    {selectedAppAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
+                  </button>
+                  <button className="ghost-button" disabled={selectedAppAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAppAssetIds)} type="button">
+                    导出所选
+                  </button>
+                  <button className="ghost-button" disabled={selectedAppAssetIds.length === 0} onClick={() => void deleteSelectedAppUnusedAssets()} type="button">
+                    删除未使用
+                  </button>
+                  <button className="danger-button" disabled={selectedAppAssetIds.length === 0} onClick={requestSelectedAppAssetDelete} type="button">
+                    删除所选
+                  </button>
+                </div>
+                <div className="settings-asset-list">
+                  {avatarAssets.map((asset) => {
+                    const usageCount = getAssetUsageCount(asset.id);
+
+                    return (
+                      <div className="settings-asset-item" key={asset.id}>
+                        <label className="asset-select-check">
+                          <input
+                            checked={selectedAppAssetIds.includes(asset.id)}
+                            onChange={() => toggleAppAssetSelected(asset.id)}
+                            type="checkbox"
+                          />
+                          <span className="sr-only">选择素材</span>
+                        </label>
+                        <AvatarDisplay assetId={asset.id} className="settings-asset-thumb" emoji="🙂" />
+                        <div>
+                          <strong>{asset.name || "avatar"}</strong>
+                          <span>
+                            {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
+                            {formatAssetSize(asset.size || asset.blob?.size || 0)}
+                          </span>
+                          <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
+                        </div>
+                        <button
+                          className={usageCount > 0 ? "danger-button" : "ghost-button"}
+                          onClick={() => void requestAppAssetDelete(asset)}
+                          type="button"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="muted">暂无本地头像素材。</p>
+            )}
           </div>
         </div>
       )}

@@ -2625,6 +2625,25 @@ textarea {
   margin-bottom: 14px;
 }
 
+.import-preview-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.import-preview-stats span {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  overflow-wrap: anywhere;
+}
+
 .command-list {
   display: grid;
   gap: 8px;

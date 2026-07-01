@@ -9,7 +9,9 @@ import {
   exportCharactersCsv,
   exportFullBackupZip,
   exportSelectedCharactersJson,
-  importCharactersFromFiles,
+  commitCharacterImport,
+  prepareCharacterImport,
+  type PreparedCharacterImport,
 } from "../utils/importExport";
 import {
   clearAvatarAssets,
@@ -112,6 +114,8 @@ export function Dashboard({
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
+  const [importPlan, setImportPlan] = useState<PreparedCharacterImport | null>(null);
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [isAssetCleanupOpen, setIsAssetCleanupOpen] = useState(false);
   const [pendingAssetDelete, setPendingAssetDelete] = useState<AvatarAssetRecord | null>(null);
@@ -195,6 +199,8 @@ export function Dashboard({
         setIsCommandOpen(false);
         setIsAboutOpen(false);
         setIsSettingsOpen(false);
+        setIsAssetLibraryOpen(false);
+        setImportPlan(null);
         setIsClearDataOpen(false);
         setIsAssetCleanupOpen(false);
         setPendingAssetDelete(null);
@@ -260,6 +266,8 @@ export function Dashboard({
       isCommandOpen ||
       isAboutOpen ||
       isSettingsOpen ||
+      isAssetLibraryOpen ||
+      Boolean(importPlan) ||
       isClearDataOpen ||
       isAssetCleanupOpen ||
       Boolean(pendingAssetDelete) ||
@@ -278,6 +286,8 @@ export function Dashboard({
     isCommandOpen,
     isAboutOpen,
     isSettingsOpen,
+    isAssetLibraryOpen,
+    importPlan,
     isClearDataOpen,
     isAssetCleanupOpen,
     pendingAssetDelete,
@@ -285,12 +295,12 @@ export function Dashboard({
   ]);
 
   useEffect(() => {
-    if (!isSettingsOpen) {
+    if (!isSettingsOpen && !isAssetLibraryOpen) {
       return;
     }
 
     void refreshAvatarAssetStats();
-  }, [isSettingsOpen]);
+  }, [isSettingsOpen, isAssetLibraryOpen]);
 
   useEffect(() => {
     if (searchSignal === searchSignalRef.current) {
@@ -880,9 +890,8 @@ export function Dashboard({
     setIsMoreMenuOpen(false);
 
     try {
-      const nextCharacters = await importCharactersFromFiles(files, characters);
-      onImport(nextCharacters);
-      showToast(`成功导入 ${nextCharacters.length - characters.length} 个角色`);
+      const nextImportPlan = await prepareCharacterImport(files, characters);
+      setImportPlan(nextImportPlan);
     } catch {
       showToast("导入失败：JSON 文件不合法", "error");
     } finally {
@@ -891,6 +900,29 @@ export function Dashboard({
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+    }
+  }
+
+  async function confirmImportPlan() {
+    if (!importPlan) {
+      return;
+    }
+
+    setLoadingAction("import");
+
+    try {
+      const result = await commitCharacterImport(importPlan, characters);
+      onImport(result.characters);
+      setImportPlan(null);
+      await refreshAvatarAssetStats();
+      showToast(
+        `已导入 ${result.importedCharacterCount} 个角色，${result.importedAvatarCount} 个头像素材，自动绑定 ${result.autoBoundAvatarCount} 个`,
+        "success",
+      );
+    } catch {
+      showToast("导入失败：写入数据时出现问题", "error");
+    } finally {
+      setLoadingAction(null);
     }
   }
 
@@ -1416,84 +1448,15 @@ export function Dashboard({
                   图片存储在当前浏览器 IndexedDB 中，轻量 JSON 不包含头像图片二进制。
                 </p>
                 <div className="settings-actions">
-                  <input
-                    accept="application/json,.json"
-                    className="hidden-input"
-                    onChange={(event) => void handleImportAvatarAssets(event.target.files?.[0])}
-                    ref={assetImportInputRef}
-                    type="file"
-                  />
-                  <button className="ghost-button" onClick={() => assetImportInputRef.current?.click()} type="button">
-                    导入素材
-                  </button>
-                  <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
-                    导出全部素材
-                  </button>
-                </div>
-                {avatarAssets.length > 0 ? (
-                  <>
-                    <div className="settings-asset-toolbar">
-                      <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAssetIds)} type="button">
-                        导出所选素材
-                      </button>
-                      <button className="ghost-button" onClick={toggleAllAssetsSelected} type="button">
-                        {selectedAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
-                      </button>
-                      <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void deleteSelectedUnusedAssets()} type="button">
-                        删除未使用
-                      </button>
-                      <button className="danger-button" disabled={selectedAssetIds.length === 0} onClick={requestSelectedAssetDelete} type="button">
-                        删除所选
-                      </button>
-                    </div>
-                    <div className="settings-asset-list">
-                      {avatarAssets.map((asset) => {
-                        const usageCount = getAssetUsageCount(asset.id);
-                        const createdAt = asset.createdAt
-                          ? new Date(asset.createdAt).toLocaleDateString()
-                          : "未知";
-
-                        return (
-                          <div className="settings-asset-item" key={asset.id}>
-                            <label className="asset-select-check">
-                              <input
-                                checked={selectedAssetIds.includes(asset.id)}
-                                onChange={() => toggleAssetSelected(asset.id)}
-                                type="checkbox"
-                              />
-                              <span className="sr-only">选择素材</span>
-                            </label>
-                            <AvatarDisplay
-                              assetId={asset.id}
-                              className="settings-asset-thumb"
-                              emoji="🙂"
-                            />
-                            <div>
-                              <strong>{asset.name || "avatar"}</strong>
-                              <span>
-                                {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
-                                {formatAssetSize(asset.size || asset.blob?.size || 0)} · {createdAt}
-                              </span>
-                              <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
-                            </div>
-                            <button
-                              className={usageCount > 0 ? "danger-button" : "ghost-button"}
-                              onClick={() => void requestAssetDelete(asset)}
-                              type="button"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                ) : (
-                  <p className="muted">暂无本地头像素材。</p>
-                )}
-                <div className="settings-actions">
-                  <button className="ghost-button" onClick={() => setIsAssetCleanupOpen(true)} type="button">
-                    清理未使用头像素材
+                  <button
+                    className="ghost-button"
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      setIsAssetLibraryOpen(true);
+                    }}
+                    type="button"
+                  >
+                    打开 Asset Library
                   </button>
                 </div>
               </article>
@@ -1502,6 +1465,189 @@ export function Dashboard({
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步，清除浏览器缓存可能导致数据丢失。</p>
               </article>
             </div>
+          </div>
+        </div>
+      )}
+
+      {importPlan && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setImportPlan(null);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="settings-dialog compact-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Import Preview</p>
+                <h2>确认导入</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setImportPlan(null)} type="button">
+                取消
+              </button>
+            </div>
+            <div className="settings-grid import-preview-grid">
+              <article>
+                <h3>导入内容</h3>
+                <p className="muted">请确认以下内容。点击确认前，不会写入角色数据或头像素材。</p>
+                <div className="import-preview-stats">
+                  <span>角色数量：{importPlan.preview.roleCount}</span>
+                  <span>头像数量：{importPlan.preview.avatarCount}</span>
+                  <span>自动匹配头像：{importPlan.preview.autoMatchedAvatarCount}</span>
+                  <span>未匹配头像：{importPlan.preview.unmatchedAvatarCount}</span>
+                  <span>重复素材：{importPlan.preview.duplicateAssetCount}</span>
+                  <span>同名角色：{importPlan.preview.duplicateCharacterCount}</span>
+                  <span>包含 backup-info：{importPlan.preview.hasBackupInfo ? "是" : "否"}</span>
+                  <span>数据版本：{importPlan.preview.dataVersion}</span>
+                </div>
+              </article>
+              <article>
+                <h3>冲突处理</h3>
+                <p className="muted">
+                  当前策略为保留全部角色；同 ID 会自动生成新 ID，重复头像素材会自动复用，头像绑定只依据 manifest 或单角色内嵌头像数据。
+                </p>
+                <p className="muted">
+                  如果取消导入，所有解析出的角色与头像素材都会被丢弃，不会写入本地数据。
+                </p>
+              </article>
+            </div>
+            <div className="dialog-actions">
+              <button className="ghost-button" onClick={() => setImportPlan(null)} type="button">
+                取消
+              </button>
+              <button
+                className="primary-button"
+                disabled={loadingAction === "import"}
+                onClick={() => void confirmImportPlan()}
+                type="button"
+              >
+                {loadingAction === "import" ? "正在导入..." : "确认导入"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isAssetLibraryOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAssetLibraryOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="settings-dialog asset-library-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Asset Library</p>
+                <h2>本地素材库</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="settings-grid">
+              <article>
+                <h3>头像素材</h3>
+                <p className="muted">
+                  共 {avatarAssetStats.count} 个素材，占用约 {formatAssetSize(avatarAssetStats.size)}。素材仅保存在当前浏览器 IndexedDB。
+                </p>
+                <div className="settings-actions">
+                  <input
+                    accept="application/json,.json"
+                    className="hidden-input"
+                    onChange={(event) => void handleImportAvatarAssets(event.target.files?.[0])}
+                    ref={assetImportInputRef}
+                    type="file"
+                  />
+                  <button className="ghost-button" onClick={() => assetImportInputRef.current?.click()} type="button">
+                    导入头像素材
+                  </button>
+                  <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
+                    导出头像素材
+                  </button>
+                  <button className="ghost-button" onClick={() => setIsAssetCleanupOpen(true)} type="button">
+                    清理未使用素材
+                  </button>
+                </div>
+              </article>
+              <article>
+                <h3>素材统计</h3>
+                <div className="import-preview-stats">
+                  <span>素材总数量：{avatarAssetStats.count}</span>
+                  <span>已绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) > 0).length}</span>
+                  <span>未绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) === 0).length}</span>
+                  <span>引用角色数量：{characters.filter((character) => character.avatarAssetId).length}</span>
+                  <span>总占用空间：{formatAssetSize(avatarAssetStats.size)}</span>
+                </div>
+              </article>
+            </div>
+            {avatarAssets.length > 0 ? (
+              <>
+                <div className="settings-asset-toolbar">
+                  <button className="ghost-button" onClick={toggleAllAssetsSelected} type="button">
+                    {selectedAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
+                  </button>
+                  <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAssetIds)} type="button">
+                    导出所选
+                  </button>
+                  <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void deleteSelectedUnusedAssets()} type="button">
+                    删除未使用
+                  </button>
+                  <button className="danger-button" disabled={selectedAssetIds.length === 0} onClick={requestSelectedAssetDelete} type="button">
+                    删除所选
+                  </button>
+                </div>
+                <div className="settings-asset-list">
+                  {avatarAssets.map((asset) => {
+                    const usageCount = getAssetUsageCount(asset.id);
+                    const createdAt = asset.createdAt
+                      ? new Date(asset.createdAt).toLocaleDateString()
+                      : "未知";
+
+                    return (
+                      <div className="settings-asset-item" key={asset.id}>
+                        <label className="asset-select-check">
+                          <input
+                            checked={selectedAssetIds.includes(asset.id)}
+                            onChange={() => toggleAssetSelected(asset.id)}
+                            type="checkbox"
+                          />
+                          <span className="sr-only">选择素材</span>
+                        </label>
+                        <AvatarDisplay
+                          assetId={asset.id}
+                          className="settings-asset-thumb"
+                          emoji="🙂"
+                        />
+                        <div>
+                          <strong>{asset.name || "avatar"}</strong>
+                          <span>
+                            {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
+                            {formatAssetSize(asset.size || asset.blob?.size || 0)} · {createdAt}
+                          </span>
+                          <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
+                        </div>
+                        <button
+                          className={usageCount > 0 ? "danger-button" : "ghost-button"}
+                          onClick={() => void requestAssetDelete(asset)}
+                          type="button"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="muted">暂无本地头像素材。</p>
+            )}
           </div>
         </div>
       )}
@@ -2435,7 +2581,7 @@ export function Dashboard({
         <button onClick={() => setIsAboutOpen(true)} type="button">
           About Character Studio
         </button>
-        <button onClick={() => setIsSettingsOpen(true)} type="button">
+        <button onClick={() => setIsAssetLibraryOpen(true)} type="button">
           Asset Library
         </button>
         <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">

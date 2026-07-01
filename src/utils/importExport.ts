@@ -23,6 +23,44 @@ type ZipEntry = {
   blob: Blob;
 };
 
+type PreparedAvatarAsset = {
+  sourceKey: string;
+  name: string;
+  blob: Blob;
+  dataUrl: string;
+};
+
+type PreparedCharacter = {
+  character: Character;
+  avatarSourceKey?: string;
+};
+
+export type CharacterImportPreview = {
+  roleCount: number;
+  avatarCount: number;
+  autoMatchedAvatarCount: number;
+  unmatchedAvatarCount: number;
+  duplicateAssetCount: number;
+  duplicateCharacterCount: number;
+  hasBackupInfo: boolean;
+  dataVersion: string;
+  importType: "json" | "zip" | "mixed";
+};
+
+export type PreparedCharacterImport = {
+  characters: PreparedCharacter[];
+  avatarAssets: PreparedAvatarAsset[];
+  preview: CharacterImportPreview;
+};
+
+export type CharacterImportCommitResult = {
+  characters: Character[];
+  importedCharacterCount: number;
+  importedAvatarCount: number;
+  autoBoundAvatarCount: number;
+  unboundAvatarCount: number;
+};
+
 const csvHeaders = [
   "名字",
   "性别",
@@ -440,53 +478,188 @@ export async function importCharactersFromFiles(
   files: FileList,
   existingCharacters: Character[],
 ) {
+  const plan = await prepareCharacterImport(files, existingCharacters);
+  const result = await commitCharacterImport(plan, existingCharacters);
+
+  return result.characters;
+}
+
+export async function prepareCharacterImport(
+  files: FileList,
+  existingCharacters: Character[],
+): Promise<PreparedCharacterImport> {
   const existingIds = new Set(existingCharacters.map((character) => character.id));
-  const importedCharacters: Character[] = [];
+  const preparedCharacters: PreparedCharacter[] = [];
+  const preparedAssets: PreparedAvatarAsset[] = [];
+  let hasZip = false;
+  let hasJson = false;
+  let hasBackupInfo = false;
+  let dataVersion = "旧版 JSON";
 
   for (const file of Array.from(files)) {
     if (isZipFile(file)) {
-      importedCharacters.push(...(await importCharactersFromBackupZip(file, existingIds)));
+      hasZip = true;
+      const prepared = await prepareCharactersFromBackupZip(file, existingIds);
+      preparedCharacters.push(...prepared.characters);
+      preparedAssets.push(...prepared.avatarAssets);
+      hasBackupInfo = hasBackupInfo || prepared.hasBackupInfo;
+      dataVersion = prepared.dataVersion || dataVersion;
       continue;
     }
 
-    const text = await file.text();
-    const parsedValue = JSON.parse(text) as unknown;
-    const avatarIdMap = await restoreAvatarAssets(parsedValue);
-    const candidates = getCharacterCandidates(parsedValue);
-
-    for (const candidate of candidates) {
-      const character = normalizeCharacter(candidate, existingIds);
-
-      if (character) {
-        if (isRecord(candidate)) {
-          const avatarAssetData = asAvatarAssetData(candidate.avatarAssetData);
-          if (avatarAssetData?.dataUrl) {
-            const asset = await saveAvatarBlob(
-              dataUrlToBlob(avatarAssetData.dataUrl),
-              avatarAssetData.name || `${character.name || "avatar"}-avatar`,
-            );
-            character.avatarAssetId = asset.id;
-          }
-        }
-        character.avatarAssetId =
-          avatarIdMap.get(character.avatarAssetId || "") || character.avatarAssetId;
-        importedCharacters.push(character);
-      }
-    }
+    hasJson = true;
+    const prepared = await prepareCharactersFromJson(file, existingIds);
+    preparedCharacters.push(...prepared.characters);
+    preparedAssets.push(...prepared.avatarAssets);
+    hasBackupInfo = hasBackupInfo || prepared.hasBackupInfo;
+    dataVersion = prepared.dataVersion || dataVersion;
   }
 
-  if (importedCharacters.length === 0) {
+  if (preparedCharacters.length === 0) {
     throw new Error("没有找到可导入的角色数据");
   }
 
-  return [...importedCharacters, ...existingCharacters];
+  const existingNames = new Set(
+    existingCharacters.map((character) => character.name.trim()).filter(Boolean),
+  );
+  const existingAssets = await listAvatarAssets();
+  const existingDataUrls = new Set<string>();
+
+  await Promise.all(
+    existingAssets.map(async (asset) => {
+      existingDataUrls.add(await blobToDataUrl(asset.blob));
+    }),
+  );
+
+  const uniqueSourceKeys = new Set(preparedAssets.map((asset) => asset.sourceKey));
+  const autoMatchedAvatarCount = preparedCharacters.filter(
+    (item) => item.avatarSourceKey && uniqueSourceKeys.has(item.avatarSourceKey),
+  ).length;
+
+  return {
+    characters: preparedCharacters,
+    avatarAssets: dedupePreparedAssets(preparedAssets),
+    preview: {
+      roleCount: preparedCharacters.length,
+      avatarCount: dedupePreparedAssets(preparedAssets).length,
+      autoMatchedAvatarCount,
+      unmatchedAvatarCount: Math.max(0, dedupePreparedAssets(preparedAssets).length - autoMatchedAvatarCount),
+      duplicateAssetCount: dedupePreparedAssets(preparedAssets).filter((asset) =>
+        existingDataUrls.has(asset.dataUrl),
+      ).length,
+      duplicateCharacterCount: preparedCharacters.filter((item) =>
+        existingNames.has(item.character.name.trim()),
+      ).length,
+      hasBackupInfo,
+      dataVersion,
+      importType: hasZip && hasJson ? "mixed" : hasZip ? "zip" : "json",
+    },
+  };
+}
+
+export async function commitCharacterImport(
+  plan: PreparedCharacterImport,
+  existingCharacters: Character[],
+): Promise<CharacterImportCommitResult> {
+  const existingAssets = await listAvatarAssets();
+  const dataUrlToAssetId = new Map<string, string>();
+  let importedAvatarCount = 0;
+
+  await Promise.all(
+    existingAssets.map(async (asset) => {
+      dataUrlToAssetId.set(await blobToDataUrl(asset.blob), asset.id);
+    }),
+  );
+
+  const sourceAssetToNewAsset = new Map<string, string>();
+
+  for (const asset of plan.avatarAssets) {
+    const existingId = dataUrlToAssetId.get(asset.dataUrl);
+
+    if (existingId) {
+      sourceAssetToNewAsset.set(asset.sourceKey, existingId);
+      continue;
+    }
+
+    const savedAsset = await saveAvatarBlob(asset.blob, asset.name);
+    sourceAssetToNewAsset.set(asset.sourceKey, savedAsset.id);
+    dataUrlToAssetId.set(asset.dataUrl, savedAsset.id);
+    importedAvatarCount += 1;
+  }
+
+  let autoBoundAvatarCount = 0;
+  const importedCharacters = plan.characters.map(({ character, avatarSourceKey }) => {
+    const nextCharacter = { ...character };
+
+    if (avatarSourceKey && sourceAssetToNewAsset.has(avatarSourceKey)) {
+      nextCharacter.avatarAssetId = sourceAssetToNewAsset.get(avatarSourceKey);
+      autoBoundAvatarCount += 1;
+    } else {
+      nextCharacter.avatarAssetId = "";
+    }
+
+    return nextCharacter;
+  });
+
+  return {
+    characters: [...importedCharacters, ...existingCharacters],
+    importedCharacterCount: importedCharacters.length,
+    importedAvatarCount,
+    autoBoundAvatarCount,
+    unboundAvatarCount: Math.max(0, plan.avatarAssets.length - autoBoundAvatarCount),
+  };
 }
 
 function isZipFile(file: File) {
   return file.name.toLowerCase().endsWith(".zip") || file.type === "application/zip";
 }
 
-async function importCharactersFromBackupZip(file: File, existingIds: Set<string>) {
+async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
+  const text = await file.text();
+  const parsedValue = JSON.parse(text) as unknown;
+  const sourceAssetKeys = collectJsonAvatarAssets(parsedValue);
+  const preparedAssets = Array.from(sourceAssetKeys.values());
+  const candidates = getCharacterCandidates(parsedValue);
+  const preparedCharacters: PreparedCharacter[] = [];
+
+  for (const candidate of candidates) {
+    const character = normalizeCharacter(candidate, existingIds);
+
+    if (!character) {
+      continue;
+    }
+
+    let avatarSourceKey = "";
+
+    if (isRecord(candidate)) {
+      const avatarAssetData = asAvatarAssetData(candidate.avatarAssetData);
+
+      if (avatarAssetData?.dataUrl) {
+        avatarSourceKey = `inline:${character.id}`;
+        preparedAssets.push({
+          sourceKey: avatarSourceKey,
+          name: avatarAssetData.name || `${character.name || "avatar"}-avatar`,
+          blob: dataUrlToBlob(avatarAssetData.dataUrl),
+          dataUrl: avatarAssetData.dataUrl,
+        });
+      } else if (character.avatarAssetId && sourceAssetKeys.has(character.avatarAssetId)) {
+        avatarSourceKey = character.avatarAssetId;
+      }
+    }
+
+    character.avatarAssetId = "";
+    preparedCharacters.push({ character, avatarSourceKey });
+  }
+
+  return {
+    characters: preparedCharacters,
+    avatarAssets: preparedAssets,
+    hasBackupInfo: isRecord(parsedValue) && isRecord(parsedValue["backup-info"]),
+    dataVersion: getJsonDataVersion(parsedValue),
+  };
+}
+
+async function prepareCharactersFromBackupZip(file: File, existingIds: Set<string>) {
   const entries = await readStoredZip(file);
   const entryByName = new Map(entries.map((entry) => [entry.name, entry]));
   const charactersEntry = entryByName.get("characters.json");
@@ -500,9 +673,13 @@ async function importCharactersFromBackupZip(file: File, existingIds: Set<string
   const manifestValue = manifestEntry
     ? (JSON.parse(await manifestEntry.blob.text()) as unknown)
     : undefined;
-  const sourceAssetToNewAsset = await restoreZipAvatarAssets(entries, manifestValue);
+  const backupInfoEntry = entryByName.get("backup-info.json");
+  const backupInfoValue = backupInfoEntry
+    ? (JSON.parse(await backupInfoEntry.blob.text()) as unknown)
+    : undefined;
+  const preparedAssets = await collectZipAvatarAssets(entries, manifestValue);
   const candidates = getCharacterCandidates(charactersValue);
-  const importedCharacters: Character[] = [];
+  const preparedCharacters: PreparedCharacter[] = [];
 
   for (const candidate of candidates) {
     const sourceCharacterId = isRecord(candidate) ? asString(candidate.id) : "";
@@ -512,34 +689,29 @@ async function importCharactersFromBackupZip(file: File, existingIds: Set<string
       continue;
     }
 
-    const boundAssetId = findManifestBoundAssetId(
+    const avatarSourceKey = findManifestBoundAssetKey(
       manifestValue,
       sourceCharacterId,
-      sourceAssetToNewAsset,
     );
 
-    character.avatarAssetId = boundAssetId || "";
-    importedCharacters.push(character);
+    character.avatarAssetId = "";
+    preparedCharacters.push({ character, avatarSourceKey });
   }
 
-  return importedCharacters;
+  return {
+    characters: preparedCharacters,
+    avatarAssets: preparedAssets,
+    hasBackupInfo: Boolean(backupInfoEntry),
+    dataVersion: getBackupDataVersion(backupInfoValue),
+  };
 }
 
-async function restoreAvatarAssets(value: unknown) {
-  const avatarIdMap = new Map<string, string>();
+function collectJsonAvatarAssets(value: unknown) {
+  const avatarAssets = new Map<string, PreparedAvatarAsset>();
 
   if (!isRecord(value) || !Array.isArray(value.avatarAssets)) {
-    return avatarIdMap;
+    return avatarAssets;
   }
-
-  const existingAssets = await listAvatarAssets();
-  const existingDataUrls = new Map<string, string>();
-
-  await Promise.all(
-    existingAssets.map(async (asset) => {
-      existingDataUrls.set(await blobToDataUrl(asset.blob), asset.id);
-    }),
-  );
 
   for (const item of value.avatarAssets) {
     if (!isRecord(item)) {
@@ -553,54 +725,77 @@ async function restoreAvatarAssets(value: unknown) {
       continue;
     }
 
-    const existingId = existingDataUrls.get(dataUrl);
-
-    if (existingId) {
-      avatarIdMap.set(sourceId, existingId);
-      continue;
-    }
-
-    const blob = dataUrlToBlob(dataUrl);
-    const asset = await saveAvatarBlob(blob, asString(item.name) || "avatar");
-    avatarIdMap.set(sourceId, asset.id);
-    existingDataUrls.set(dataUrl, asset.id);
+    avatarAssets.set(sourceId, {
+      sourceKey: sourceId,
+      name: asString(item.name) || "avatar",
+      blob: dataUrlToBlob(dataUrl),
+      dataUrl,
+    });
   }
 
-  return avatarIdMap;
+  return avatarAssets;
 }
 
-async function restoreZipAvatarAssets(entries: ZipEntry[], manifestValue: unknown) {
-  const sourceAssetToNewAsset = new Map<string, string>();
+async function collectZipAvatarAssets(entries: ZipEntry[], manifestValue: unknown) {
+  const assets = new Map<string, PreparedAvatarAsset>();
   const assetEntries = entries.filter((entry) => entry.name.startsWith("assets/avatar/"));
   const bindings = getManifestBindings(manifestValue);
-  const existingAssets = await listAvatarAssets();
-  const existingDataUrls = new Map<string, string>();
-
-  await Promise.all(
-    existingAssets.map(async (asset) => {
-      existingDataUrls.set(await blobToDataUrl(asset.blob), asset.id);
-    }),
-  );
 
   for (const entry of assetEntries) {
     const mimeType = mimeTypeFromFileName(entry.name);
     const blob = new Blob([await entry.blob.arrayBuffer()], { type: mimeType });
     const dataUrl = await blobToDataUrl(blob);
-    const existingId = existingDataUrls.get(dataUrl);
-    const asset = existingId
-      ? { id: existingId }
-      : await saveAvatarBlob(blob, entry.name.split("/").pop() || "avatar");
-
-    if (!existingId) {
-      existingDataUrls.set(dataUrl, asset.id);
-    }
 
     bindings
       .filter((binding) => binding.assetFile === entry.name && binding.sourceAssetKey)
-      .forEach((binding) => sourceAssetToNewAsset.set(binding.sourceAssetKey, asset.id));
+      .forEach((binding) => {
+        assets.set(binding.sourceAssetKey, {
+          sourceKey: binding.sourceAssetKey,
+          name: entry.name.split("/").pop() || "avatar",
+          blob,
+          dataUrl,
+        });
+      });
+
+    if (!bindings.some((binding) => binding.assetFile === entry.name)) {
+      assets.set(`unbound:${entry.name}`, {
+        sourceKey: `unbound:${entry.name}`,
+        name: entry.name.split("/").pop() || "avatar",
+        blob,
+        dataUrl,
+      });
+    }
   }
 
-  return sourceAssetToNewAsset;
+  return Array.from(assets.values());
+}
+
+function dedupePreparedAssets(assets: PreparedAvatarAsset[]) {
+  const assetMap = new Map<string, PreparedAvatarAsset>();
+
+  assets.forEach((asset) => {
+    if (!assetMap.has(asset.sourceKey)) {
+      assetMap.set(asset.sourceKey, asset);
+    }
+  });
+
+  return Array.from(assetMap.values());
+}
+
+function getJsonDataVersion(value: unknown) {
+  if (!isRecord(value)) {
+    return "旧版 JSON";
+  }
+
+  return asString(value.schemaVersion) || asString(value.exportType) || "JSON";
+}
+
+function getBackupDataVersion(value: unknown) {
+  if (!isRecord(value)) {
+    return "ZIP";
+  }
+
+  return asString(value.schemaVersion) || asString(value.exportType) || "ZIP";
 }
 
 function getManifestBindings(value: unknown) {
@@ -618,10 +813,9 @@ function getManifestBindings(value: unknown) {
     .filter((binding) => binding.assetFile);
 }
 
-function findManifestBoundAssetId(
+function findManifestBoundAssetKey(
   manifestValue: unknown,
   sourceCharacterId: string,
-  sourceAssetToNewAsset: Map<string, string>,
 ) {
   if (!sourceCharacterId) {
     return "";
@@ -631,7 +825,7 @@ function findManifestBoundAssetId(
     (item) => item.sourceCharacterId === sourceCharacterId,
   );
 
-  return binding ? sourceAssetToNewAsset.get(binding.sourceAssetKey) || "" : "";
+  return binding?.sourceAssetKey || "";
 }
 
 function mimeTypeFromFileName(fileName: string) {
