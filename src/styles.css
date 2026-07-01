@@ -1915,6 +1915,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .workspace-content {
   display: grid;
   gap: 14px;
+  padding-bottom: 96px;
 }
 
 .workspace-card {
@@ -2625,13 +2626,15 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-footer {
-  position: sticky;
+  position: fixed;
+  right: max(16px, calc((100vw - 1120px) / 2));
   bottom: calc(12px + env(safe-area-inset-bottom));
-  z-index: 70;
+  left: max(16px, calc((100vw - 1120px) / 2));
+  z-index: 90;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
+  width: auto;
   gap: 12px;
   margin-top: 10px;
   border: 1px solid var(--border);
@@ -3747,6 +3750,7 @@ kbd {
   .workspace-footer {
     align-items: stretch;
     flex-direction: column;
+    width: auto;
   }
 
   .footer-danger-actions,

@@ -2754,7 +2754,7 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设世界观"
-                        value=""
+                        value={worldviewOptions.includes(formData.worldview || "") ? "" : "__custom"}
                         onChange={(event) => {
                           if (event.target.value !== "__custom") {
                             updateField("worldview", event.target.value);
@@ -2781,7 +2781,7 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设视觉风格"
-                        value=""
+                        value={visualStyleOptions.includes(formData.visualStyle || "") ? "" : "__custom"}
                         onChange={(event) => {
                           if (event.target.value !== "__custom") {
                             updateField("visualStyle", event.target.value);
