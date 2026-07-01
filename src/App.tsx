@@ -432,7 +432,7 @@ function App() {
             onClick={() => handleEdit(selectedCharacter)}
             type="button"
           >
-            ✎
+            ⌁
           </button>
         )}
         {page === "form" && (

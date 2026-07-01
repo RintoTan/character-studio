@@ -200,7 +200,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
                 type="button"
               >
                 <span className="desktop-label">编辑</span>
-                <span className="mobile-icon">✎</span>
+                <span className="mobile-icon">⌁</span>
               </button>
             )}
             {onToggleFavorite && (
@@ -215,7 +215,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
                 type="button"
               >
                 <span className="desktop-label">{isFavorite ? "移出收藏" : "收藏"}</span>
-                <span className="mobile-icon">♥</span>
+                <span className="mobile-icon">{isFavorite ? "♥" : "♡"}</span>
               </button>
             )}
             <button
@@ -228,7 +228,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
               type="button"
             >
               <span className="desktop-label">复制完整设定</span>
-              <span className="mobile-icon">⧉</span>
+              <span className="mobile-icon">□</span>
             </button>
             <button
               aria-label="导出"
@@ -239,7 +239,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
               type="button"
             >
               <span className="desktop-label">{loadingAction ? "导出中..." : "导出"}</span>
-              <span className="mobile-icon">{loadingAction ? "…" : "⇩"}</span>
+              <span className="mobile-icon">{loadingAction ? "…" : "↓"}</span>
             </button>
             <button
               aria-label="返回"

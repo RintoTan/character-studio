@@ -793,6 +793,9 @@ export function CharacterForm({
       | "backstory";
     label: string;
     value: string;
+    example: string;
+    inspiration: string;
+    tip: string;
   } | null>(null);
   const [isHelperReplaceConfirmOpen, setIsHelperReplaceConfirmOpen] = useState(false);
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
@@ -1122,8 +1125,16 @@ export function CharacterForm({
       return;
     }
 
+    applyHelperValue(helperSuggestion.value, mode);
+  }
+
+  function applyHelperValue(value: string, mode: "replace" | "append") {
+    if (!helperSuggestion) {
+      return;
+    }
+
     if (helperSuggestion.field === "personalityTags") {
-      const nextTags = helperSuggestion.value
+      const nextTags = value
         .split(/[、，,\s]+/)
         .map((tag) => tag.trim())
         .filter(Boolean);
@@ -1135,9 +1146,9 @@ export function CharacterForm({
             : Array.from(new Set([...(current.personalityTags || []), ...nextTags])),
       }));
     } else if (mode === "replace") {
-      updateField(helperSuggestion.field, helperSuggestion.value);
+      updateField(helperSuggestion.field, value);
     } else {
-      appendToField(helperSuggestion.field, helperSuggestion.value);
+      appendToField(helperSuggestion.field, value);
     }
 
     showToast(mode === "replace" ? "内容已应用" : "内容已追加");
@@ -1147,19 +1158,19 @@ export function CharacterForm({
   function showHelperSuggestion(
     sectionId: Exclude<SectionId, "basic" | "prompt">,
     field: "personalityTags" | "appearanceDescription" | "abilityDescription" | "backstory",
-    label: string,
     value?: string,
   ) {
     const helper = helperText[sectionId];
-    const content =
-      value ||
-      (label === "随机灵感"
-        ? pickRandom(helperInspirationLibrary[sectionId])
-        : label === "写作提示"
-          ? helper.tip
-          : helper.example);
+    const inspiration = value || pickRandom(helperInspirationLibrary[sectionId]);
 
-    setHelperSuggestion({ field, label, value: content });
+    setHelperSuggestion({
+      field,
+      label: "随机灵感",
+      value: inspiration,
+      example: helper.example,
+      inspiration,
+      tip: helper.tip,
+    });
   }
 
   function buildCharacter(isDraft: boolean) {
@@ -1287,24 +1298,10 @@ export function CharacterForm({
       <div className="helper-row">
         <button
           className="ghost-button"
-          onClick={() => showHelperSuggestion(sectionId, field, "示例")}
-          type="button"
-        >
-          示例
-        </button>
-        <button
-          className="ghost-button"
-          onClick={() => showHelperSuggestion(sectionId, field, "随机灵感")}
+          onClick={() => showHelperSuggestion(sectionId, field)}
           type="button"
         >
           随机灵感
-        </button>
-        <button
-          className="ghost-button"
-          onClick={() => showHelperSuggestion(sectionId, field, "写作提示")}
-          type="button"
-        >
-          写作提示
         </button>
         <button
           className="ghost-button"
@@ -1412,34 +1409,48 @@ export function CharacterForm({
           <div className="confirm-dialog helper-dialog" role="dialog" aria-modal="true">
             <p className="eyebrow">{helperSuggestion.label}</p>
             <h2>创作辅助</h2>
-            <p>{helperSuggestion.value}</p>
+            <div className="helper-suggestion-list">
+              {[
+                ["示例", helperSuggestion.example],
+                ["随机灵感", helperSuggestion.inspiration],
+                ["写作提示", helperSuggestion.tip],
+              ].map(([title, value]) => (
+                <article key={title}>
+                  <h3>{title}</h3>
+                  <p>{value}</p>
+                  <div className="helper-suggestion-actions">
+                    <button
+                      className="ghost-button"
+                      onClick={() => copyText(value, "辅助内容已复制")}
+                      type="button"
+                    >
+                      复制
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() => applyHelperValue(value, "append")}
+                      type="button"
+                    >
+                      追加
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() => {
+                        setHelperSuggestion((current) =>
+                          current ? { ...current, value } : current,
+                        );
+                        setIsHelperReplaceConfirmOpen(true);
+                      }}
+                      type="button"
+                    >
+                      替换
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
             <div className="form-actions">
-              <button
-                className="ghost-button"
-                onClick={() => copyText(helperSuggestion.value, "辅助内容已复制")}
-                type="button"
-              >
-                复制
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => applyHelperSuggestion("append")}
-                type="button"
-              >
-                追加
-              </button>
-              <button
-                className="primary-button"
-                onClick={() => setIsHelperReplaceConfirmOpen(true)}
-                type="button"
-              >
-                应用
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() => setHelperSuggestion(null)}
-                type="button"
-              >
+              <button className="ghost-button" onClick={() => setHelperSuggestion(null)} type="button">
                 关闭
               </button>
             </div>
@@ -1838,24 +1849,10 @@ export function CharacterForm({
                 <div className="helper-row">
                   <button
                     className="ghost-button"
-                    onClick={() => showHelperSuggestion("personality", "personalityTags", "示例", "克制、笨拙")}
-                    type="button"
-                  >
-                    示例
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() => showHelperSuggestion("personality", "personalityTags", "随机灵感")}
+                    onClick={() => showHelperSuggestion("personality", "personalityTags", "克制、笨拙")}
                     type="button"
                   >
                     随机灵感
-                  </button>
-                  <button
-                    className="ghost-button"
-                    onClick={() => showHelperSuggestion("personality", "personalityTags", "写作提示")}
-                    type="button"
-                  >
-                    写作提示
                   </button>
                   <button
                     className="ghost-button"

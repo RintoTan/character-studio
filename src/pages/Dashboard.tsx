@@ -1139,7 +1139,7 @@ export function Dashboard({
             onClick={() => setIsSearchPanelOpen((current) => !current)}
             type="button"
           >
-            🔍
+            ⌕
             <span className="mobile-search-label">搜索</span>
           </button>
           <button
@@ -1149,7 +1149,7 @@ export function Dashboard({
             onClick={onCreate}
             type="button"
           >
-            ＋
+            +
           </button>
           <button
             aria-label="草稿箱"
@@ -1167,7 +1167,7 @@ export function Dashboard({
             }
             type="button"
           >
-            ◫
+            □
             {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
           </button>
           <button
@@ -1186,7 +1186,7 @@ export function Dashboard({
             }
             type="button"
           >
-            ♥
+            ♡
           </button>
           <button
             aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
@@ -1199,7 +1199,7 @@ export function Dashboard({
             }
             type="button"
           >
-            {prefs.viewMode === "cards" ? "☷" : "▦"}
+            {prefs.viewMode === "cards" ? "☰" : "▦"}
           </button>
           <div className="dashboard-actions" ref={moreMenuRef}>
             <input
@@ -1218,7 +1218,7 @@ export function Dashboard({
               onClick={() => setIsMoreMenuOpen((current) => !current)}
               type="button"
             >
-              {loadingAction ? "…" : "⋯"}
+              {loadingAction ? "…" : "···"}
             </button>
             {isMoreMenuOpen && (
               <div className="export-menu">
@@ -1479,7 +1479,7 @@ export function Dashboard({
                   type="button"
                 >
                   <span className="desktop-label">批量选择</span>
-                  <span className="mobile-icon">☑</span>
+                  <span className="mobile-icon">□</span>
                 </button>
               )}
             </div>
@@ -1584,7 +1584,7 @@ export function Dashboard({
                       ) : (
                         <>
                           <button className="bare-icon-button table-edit-button" onClick={() => onEdit(character)} type="button">
-                            ✎
+                            ⌁
                           </button>
                           <div className="card-menu-wrap table-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
                             <button
@@ -1598,7 +1598,7 @@ export function Dashboard({
                               }}
                               type="button"
                             >
-                              ⋯
+                              ···
                             </button>
                             {openCardMenuId === character.id && (
                               <div className="card-menu table-card-menu" onClick={(event) => event.stopPropagation()}>
@@ -1759,7 +1759,7 @@ export function Dashboard({
                         title="编辑"
                         type="button"
                       >
-                        ✎
+                        ⌁
                       </button>
                       <div className="card-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
                         <button
@@ -1773,7 +1773,7 @@ export function Dashboard({
                           }}
                           type="button"
                         >
-                          ⋯
+                          ···
                         </button>
                         {openCardMenuId === character.id && (
                           <div className="card-menu" onClick={(event) => event.stopPropagation()}>
@@ -1838,7 +1838,7 @@ export function Dashboard({
                         title={isFavorite ? "取消收藏" : "收藏"}
                         type="button"
                       >
-                        ♥
+                        {isFavorite ? "♥" : "♡"}
                       </button>
                       <button
                         className="card-time-button preview-hit"

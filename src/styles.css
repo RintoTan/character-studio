@@ -279,17 +279,19 @@ button:disabled {
 }
 
 .hero-icon-button,
-.bare-icon-button {
+.bare-icon-button,
+.mini-icon,
+.floating-action {
   position: relative;
   display: grid;
+  flex: 0 0 auto;
   width: 32px;
   min-height: 32px;
   height: 32px;
   place-items: center;
-  border: 0;
+  border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
-  border: 1px solid var(--border);
   color: var(--text-soft);
   padding: 0;
   font-size: 15px;
@@ -304,7 +306,9 @@ button:disabled {
 
 .hero-icon-button:hover,
 .hero-icon-button.active,
-.bare-icon-button:hover {
+.bare-icon-button:hover,
+.mini-icon:hover,
+.floating-action:hover {
   border-color: var(--border-strong);
   background: var(--surface-subtle);
   color: var(--text);
@@ -822,6 +826,8 @@ h2 {
   width: 34px;
   height: 34px;
   min-width: 34px;
+  flex: 0 0 34px;
+  aspect-ratio: 1 / 1;
   place-items: center;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -938,6 +944,7 @@ h2 {
 .avatar-placeholder {
   display: grid;
   flex: 0 0 58px;
+  flex-shrink: 0;
   width: 58px;
   height: 58px;
   aspect-ratio: 1 / 1;
@@ -1149,31 +1156,15 @@ h2 {
 }
 
 .mini-icon {
-  display: grid;
   width: 32px;
   min-height: 32px;
   height: 32px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
   color: #9ca3af;
-  padding: 0;
   font-size: 13px;
-  line-height: 1;
-  text-align: center;
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease,
-    transform 150ms ease;
 }
 
 .mini-icon:hover {
-  border-color: var(--border-strong);
   color: var(--text);
-  background: var(--surface-subtle);
-  transform: scale(1.05);
 }
 
 .mini-icon.active {
@@ -1486,8 +1477,11 @@ textarea {
 .preview-avatar {
   display: grid;
   flex: 0 0 58px;
+  flex-shrink: 0;
   width: 58px;
   height: 58px;
+  min-width: 58px;
+  aspect-ratio: 1 / 1;
   place-items: center;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1657,8 +1651,11 @@ textarea {
 .avatar-current {
   display: grid;
   flex: 0 0 54px;
+  flex-shrink: 0;
   width: 54px;
   height: 54px;
+  min-width: 54px;
+  aspect-ratio: 1 / 1;
   place-items: center;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -1779,6 +1776,47 @@ textarea {
   min-height: 34px;
   padding: 0 12px;
   font-size: 13px;
+}
+
+.helper-dialog {
+  width: min(640px, calc(100vw - 32px));
+}
+
+.helper-suggestion-list {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.helper-suggestion-list article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 12px;
+}
+
+.helper-suggestion-list h3 {
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.helper-suggestion-list p {
+  margin-bottom: 10px;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.helper-suggestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.helper-suggestion-actions .ghost-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .workspace-footer {
@@ -2507,6 +2545,24 @@ kbd {
     justify-items: stretch;
   }
 
+  .section-title {
+    align-items: center;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .section-title > div:first-child {
+    min-width: 0;
+  }
+
+  .section-title h2,
+  .section-title span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .form-row,
   .preview-grid,
   .preview-layout,
@@ -2663,10 +2719,22 @@ kbd {
   }
 
   .avatar-placeholder {
+    flex: 0 0 52px;
+    flex-shrink: 0;
     width: 52px;
     min-width: 52px;
     height: 52px;
+    aspect-ratio: 1 / 1;
+    border-radius: 12px;
     font-size: 28px;
+  }
+
+  .table-avatar,
+  .workspace-avatar,
+  .preview-avatar,
+  .avatar-current {
+    flex-shrink: 0;
+    aspect-ratio: 1 / 1;
   }
 
   .card-tags {
@@ -2757,6 +2825,8 @@ kbd {
   }
 
   .bulk-actions {
+    width: auto;
+    max-width: 58%;
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
