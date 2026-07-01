@@ -504,31 +504,44 @@ const helperInspirationLibrary: Record<
 };
 
 const helperFragments = {
+  shared: {
+    identities: ["被注销身份的继承人", "临时顶替的守门人", "逃离剧团的替身", "被城市误认为不存在的人", "旧档案里的幸存者", "边境站最后一名记录员"],
+    contrasts: ["负责救援却害怕触碰别人", "外表像贵族却靠修理废品生活", "擅长谈判但从不说真名", "被称为英雄却一直逃避公开露面", "看似冷漠却记得每个人的忌口"],
+    secrets: ["藏着一份会改写身份的旧契约", "每晚都会忘记一个重要名字", "曾经亲手放走真正的灾厄", "身体里封存着另一个人的证词", "一直替敌人保管遗物"],
+    desires: ["想被某个人正式记住", "想亲眼确认预言是错的", "想拥有一间不用逃跑的房间", "想把旧城区从地图上救回来", "想偿还一场无人知晓的善意"],
+    fears: ["害怕安静房间里的回声", "害怕再次被留下看守出口", "害怕镜子里出现不属于自己的表情", "害怕别人说出自己的旧称呼", "害怕能力失效时仍被期待"],
+    relationships: ["与前搭档只靠加密留言联系", "把仇人的孩子当作学生照顾", "和一位失踪多年的亲人互相隐瞒身份", "被某个组织当作吉祥物保护", "欠一名陌生医生三次人情"],
+    symbols: ["裂开的白瓷面具", "写满旧地址的手套", "无法点燃的火柴盒", "总是慢一分钟的怀表", "刻着错误生日的铭牌"],
+    catchphrases: ["“先别下结论。”", "“我只负责把门打开。”", "“名字这种东西，借用一下也可以吧。”", "“如果灯灭了，就跟着我的声音走。”", "“这次我会留下。”"],
+  },
   appearance: {
-    features: ["异色瞳", "浅色旧伤", "微光义眼", "被剪短的发尾", "兽耳或尖耳", "颈侧编号", "手背纹路"],
-    clothing: ["旧风衣", "改造校服", "高领斗篷", "战术外套", "礼服式制服", "宽大雨衣", "层叠披肩"],
-    accessories: ["不成对耳坠", "磨损通行证", "玻璃药瓶", "坏掉的钥匙串", "护身符", "旧式录音笔", "折叠工具"],
-    actions: ["紧张时会整理袖口", "说谎时会避开光源", "走路几乎没有声响", "总把手藏进袖子里"],
+    features: ["异色瞳", "浅色旧伤", "微光义眼", "被剪短的发尾", "兽耳或尖耳", "颈侧编号", "手背纹路", "瞳孔像碎玻璃", "指尖有墨色烧痕", "影子边缘偶尔延迟半拍"],
+    clothing: ["旧风衣", "改造校服", "高领斗篷", "战术外套", "礼服式制服", "宽大雨衣", "层叠披肩", "沾着盐粒的水手外套", "缝着不同徽章的短斗篷", "过于正式的黑色手套"],
+    accessories: ["不成对耳坠", "磨损通行证", "玻璃药瓶", "坏掉的钥匙串", "护身符", "旧式录音笔", "折叠工具", "空白学生证", "封蜡信筒", "只剩一半的地图"],
+    actions: ["紧张时会整理袖口", "说谎时会避开光源", "走路几乎没有声响", "总把手藏进袖子里", "听见钟声会停顿一下", "靠近门口时会先确认退路", "独处时会练习陌生人的签名"],
   },
   personality: {
-    traits: ["克制", "执着", "笨拙", "警觉", "矛盾", "嘴硬心软", "过度礼貌", "慢热"],
-    behaviors: ["遇到危险先观察出口", "习惯替别人收拾残局", "总把玩笑当真", "做决定前会反复记录"],
-    hobbies: ["收集旧车票", "修理坏掉的小物件", "给陌生人写未寄出的信", "整理怪谈剪报"],
-    flaws: ["不擅长求助", "容易过度负责", "害怕被留下", "会把沉默误认为拒绝"],
+    traits: ["克制", "执着", "笨拙", "警觉", "矛盾", "嘴硬心软", "过度礼貌", "慢热", "危险地温柔", "习惯性自嘲", "对规则异常虔诚"],
+    behaviors: ["遇到危险先观察出口", "习惯替别人收拾残局", "总把玩笑当真", "做决定前会反复记录", "与人争吵后会默默留下药和水", "听别人说话时会记下关键词"],
+    hobbies: ["收集旧车票", "修理坏掉的小物件", "给陌生人写未寄出的信", "整理怪谈剪报", "给无名墓碑拍照", "临摹城市里的禁令标识"],
+    flaws: ["不擅长求助", "容易过度负责", "害怕被留下", "会把沉默误认为拒绝", "面对亲近的人反而说不出真话", "一旦承诺就很难停手"],
   },
   ability: {
-    powers: ["读取残留记忆", "短暂操控雾气", "预演三秒后的行动", "与机械共感", "封存一段记忆", "看见谎言的线"],
-    costs: ["消耗体温", "短暂失聪", "遗忘一件小事", "失去方向感", "情绪被放大", "必须说出真实姓名"],
-    triggers: ["触碰目标后", "听到特定频率时", "在雨中", "强光消失后", "完成契约文字时", "进入安静空间后"],
-    limits: ["无法判断动机", "连续使用会失控", "对熟人效果变弱", "会暴露自己的位置", "需要安静准备"],
+    powers: ["读取残留记忆", "短暂操控雾气", "预演三秒后的行动", "与机械共感", "封存一段记忆", "看见谎言的线", "让影子替自己回答一次问题", "把伤口转移到无生命物件上", "听见建筑物的恐惧"],
+    costs: ["消耗体温", "短暂失聪", "遗忘一件小事", "失去方向感", "情绪被放大", "必须说出真实姓名", "失去一段梦境", "让身边电子设备短暂失灵"],
+    triggers: ["触碰目标后", "听到特定频率时", "在雨中", "强光消失后", "完成契约文字时", "进入安静空间后", "读出完整地址时", "被对方叫出旧名字后"],
+    limits: ["无法判断动机", "连续使用会失控", "对熟人效果变弱", "会暴露自己的位置", "需要安静准备", "不能对同一对象连续生效", "会留下可追踪的气味或噪点"],
   },
   backstory: {
-    events: ["城市停电", "学院失踪案", "边境灾难", "秘密实验", "午夜店铺继承", "匿名委托", "异常天气事故"],
-    secrets: ["真实身份被记录为死亡", "保管着不该存在的档案", "一直收到未来的信", "曾短暂成为仪式祭品"],
-    goals: ["寻找失踪的家人", "证明预言错误", "偿还一笔旧债", "守住某个温柔约定", "找回被删除的记忆"],
-    anchors: ["一张旧地图", "一枚龙鳞", "一封没有署名的信", "一只只在梦里出现的鸟", "一间午夜营业的小店"],
+    events: ["城市停电", "学院失踪案", "边境灾难", "秘密实验", "午夜店铺继承", "匿名委托", "异常天气事故", "列车消失三分钟", "港口出现第二个月亮", "旧神祭典被临时取消"],
+    secrets: ["真实身份被记录为死亡", "保管着不该存在的档案", "一直收到未来的信", "曾短暂成为仪式祭品", "知道某位英雄其实没有死", "亲眼见过世界线被重写"],
+    goals: ["寻找失踪的家人", "证明预言错误", "偿还一笔旧债", "守住某个温柔约定", "找回被删除的记忆", "把某个名字重新写回城市档案", "让一位敌人获得迟来的葬礼"],
+    anchors: ["一张旧地图", "一枚龙鳞", "一封没有署名的信", "一只只在梦里出现的鸟", "一间午夜营业的小店", "刻着两个人名字的车票", "一枚无法被拍照记录的徽章"],
+    conflicts: ["官方档案坚持说这件事从未发生", "同伴认为真相不值得公开", "能力越接近答案越容易失控", "关键证人只在梦里出现", "追查对象正是曾经救过自己的人"],
   },
 };
+
+const recentHelperOutputs: string[] = [];
 
 const promptValueMap: Record<string, string> = {
   女: "female",
@@ -677,47 +690,72 @@ function generateHelperSet(sectionId: HelperSectionId) {
 }
 
 function generateHelperContent(sectionId: HelperSectionId, kind: HelperKind) {
+  const shared = helperFragments.shared;
+  const unique = (builder: () => string) => {
+    for (let index = 0; index < 8; index += 1) {
+      const value = builder();
+      if (!recentHelperOutputs.includes(value)) {
+        recentHelperOutputs.unshift(value);
+        recentHelperOutputs.splice(12);
+        return value;
+      }
+    }
+
+    const fallback = builder();
+    recentHelperOutputs.unshift(fallback);
+    recentHelperOutputs.splice(12);
+    return fallback;
+  };
+
   if (sectionId === "appearance") {
     const parts = helperFragments.appearance;
-    if (kind === "example") {
-      return `${pickRandom(parts.features)}，穿着${pickRandom(parts.clothing)}，随身带着${pickRandom(parts.accessories)}。`;
-    }
-    if (kind === "tip") {
-      return `从${pickRandom(parts.features)}、${pickRandom(parts.clothing)}和${pickRandom(parts.actions)}三个层面写，让外观同时服务识别度和故事感。`;
-    }
-    return `加入${pickRandom(parts.accessories)}作为线索，并让角色${pickRandom(parts.actions)}，暗示过去经历。`;
+    return unique(() => {
+      if (kind === "example") {
+        return `${pickRandom(parts.features)}，穿着${pickRandom(parts.clothing)}，随身带着${pickRandom(parts.accessories)}；${pickRandom(parts.actions)}。`;
+      }
+      if (kind === "tip") {
+        return `外貌可以同时写“识别点 + 生活痕迹 + 情绪动作”：例如${pickRandom(parts.features)}、${pickRandom(parts.clothing)}，再让角色${pickRandom(parts.actions)}。`;
+      }
+      return `${pickRandom(shared.identities)}的外观线索：${pickRandom(parts.accessories)}被反复修补，${pickRandom(parts.features)}在${pickRandom(shared.fears)}时会变得明显。`;
+    });
   }
 
   if (sectionId === "personality") {
     const parts = helperFragments.personality;
-    if (kind === "example") {
-      return `${pickRandom(parts.traits)}、${pickRandom(parts.flaws)}`;
-    }
-    if (kind === "tip") {
-      return `${pickRandom(parts.traits)}、${pickRandom(parts.hobbies)}、${pickRandom(parts.behaviors)}`;
-    }
-    return `${pickRandom(parts.traits)}、${pickRandom(parts.flaws)}、${pickRandom(parts.hobbies)}`;
+    return unique(() => {
+      if (kind === "example") {
+        return `${pickRandom(parts.traits)}，但${pickRandom(parts.flaws)}；平时${pickRandom(parts.behaviors)}。`;
+      }
+      if (kind === "tip") {
+        return `写性格时加入矛盾：${pickRandom(shared.contrasts)}。再给 TA 一个私人习惯，比如${pickRandom(parts.hobbies)}。`;
+      }
+      return `${pickRandom(parts.traits)}的外层下藏着${pickRandom(shared.desires)}，所以遇到${pickRandom(shared.relationships)}时会${pickRandom(parts.behaviors)}。`;
+    });
   }
 
   if (sectionId === "ability") {
     const parts = helperFragments.ability;
-    if (kind === "example") {
-      return `可以${pickRandom(parts.powers)}，但每次都会${pickRandom(parts.costs)}。`;
-    }
-    if (kind === "tip") {
-      return `把能力写成“触发条件 + 效果 + 代价”：例如${pickRandom(parts.triggers)}可以${pickRandom(parts.powers)}，限制是${pickRandom(parts.limits)}。`;
-    }
-    return `${pickRandom(parts.triggers)}，角色可以${pickRandom(parts.powers)}；代价是${pickRandom(parts.costs)}，并且${pickRandom(parts.limits)}。`;
+    return unique(() => {
+      if (kind === "example") {
+        return `${pickRandom(parts.triggers)}可以${pickRandom(parts.powers)}，但代价是${pickRandom(parts.costs)}，且${pickRandom(parts.limits)}。`;
+      }
+      if (kind === "tip") {
+        return `能力要有“可利用的限制”：让${pickRandom(parts.limits)}成为剧情解法，而不只是削弱设定。`;
+      }
+      return `把能力和秘密绑定：因为${pickRandom(shared.secrets)}，TA 在${pickRandom(parts.triggers)}才敢${pickRandom(parts.powers)}。`;
+    });
   }
 
   const parts = helperFragments.backstory;
-  if (kind === "example") {
-    return `经历过${pickRandom(parts.events)}后，角色一直带着${pickRandom(parts.anchors)}，并试图${pickRandom(parts.goals)}。`;
-  }
-  if (kind === "tip") {
-    return `给背景留下一个“未解决问题”：${pickRandom(parts.secrets)}，现在的目标是${pickRandom(parts.goals)}。`;
-  }
-  return `把${pickRandom(parts.events)}和${pickRandom(parts.secrets)}连接起来，再用${pickRandom(parts.anchors)}作为故事锚点。`;
+  return unique(() => {
+    if (kind === "example") {
+      return `经历过${pickRandom(parts.events)}后，角色一直带着${pickRandom(parts.anchors)}，表面目标是${pickRandom(parts.goals)}，真正害怕的是${pickRandom(shared.fears)}。`;
+    }
+    if (kind === "tip") {
+      return `背景故事可以写成“过去事件 + 当前欲望 + 阻碍”：${pickRandom(parts.events)}留下了${pickRandom(parts.secrets)}，但${pickRandom(parts.conflicts)}。`;
+    }
+    return `${pickRandom(shared.identities)}卷入${pickRandom(parts.events)}，留下${pickRandom(parts.anchors)}作为标志物；现在 TA 必须${pickRandom(parts.goals)}，否则${pickRandom(parts.conflicts)}。`;
+  });
 }
 
 function chooseAvatarForCharacter(character: Pick<CharacterDraft, "species" | "occupation" | "worldview" | "abilityDescription" | "gender">) {
@@ -1894,7 +1932,15 @@ export function CharacterForm({
         </div>
       )}
       {helperSuggestion && (
-        <div className="modal-backdrop" role="presentation">
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setHelperSuggestion(null);
+            }
+          }}
+          role="presentation"
+        >
           <div className="confirm-dialog helper-dialog" role="dialog" aria-modal="true">
             <p className="eyebrow">{helperSuggestion.label}</p>
             <div className="helper-dialog-head">
@@ -2417,12 +2463,22 @@ export function CharacterForm({
                     </select>
                   </label>
                   <label>
-                    年龄
-                    <input
-                      value={formData.age}
-                      onChange={(event) => setManualAge(event.target.value)}
-                      placeholder="例如：19"
-                    />
+                    年龄 / 出生日期
+                    <div className="age-combo">
+                      <input
+                        value={formData.age}
+                        onChange={(event) => setManualAge(event.target.value)}
+                        placeholder="年龄，例如：19"
+                      />
+                      <input
+                        type="date"
+                        value={formData.birthDate}
+                        onChange={(event) => setBirthDate(event.target.value)}
+                      />
+                    </div>
+                    <span className="field-hint">
+                      {ageMode === "manual" ? "当前使用手动年龄。" : "已根据出生日期自动推导年龄。"}
+                    </span>
                   </label>
                   <label>
                     种族
@@ -2447,20 +2503,6 @@ export function CharacterForm({
 
                 <div className="form-row">
                   <label>
-                    出生日期
-                    <input
-                      type="date"
-                      value={formData.birthDate}
-                      onChange={(event) => setBirthDate(event.target.value)}
-                    />
-                  </label>
-                  <div className="age-hint">
-                    当前方式：{ageMode === "manual" ? "手动年龄" : "出生日期"}
-                  </div>
-                </div>
-
-                <div className="form-row">
-                  <label>
                     职业
                     <input
                       value={formData.occupation}
@@ -2471,8 +2513,12 @@ export function CharacterForm({
                   <label>
                     世界观
                     <select
-                      value={formData.worldview}
-                      onChange={(event) => updateField("worldview", event.target.value)}
+                      value={!formData.worldview ? "" : worldviewOptions.includes(formData.worldview) ? formData.worldview : "__custom"}
+                      onChange={(event) => {
+                        if (event.target.value !== "__custom") {
+                          updateField("worldview", event.target.value);
+                        }
+                      }}
                     >
                       <option value="">请选择世界观</option>
                       {worldviewOptions.map((worldview) => (
@@ -2480,13 +2526,23 @@ export function CharacterForm({
                           {worldview}
                         </option>
                       ))}
+                      <option value="__custom">自定义</option>
                     </select>
+                    <input
+                      value={formData.worldview}
+                      onChange={(event) => updateField("worldview", event.target.value)}
+                      placeholder="或输入自定义世界观"
+                    />
                   </label>
                   <label>
                     视觉风格
                     <select
-                      value={formData.visualStyle}
-                      onChange={(event) => updateField("visualStyle", event.target.value)}
+                      value={!formData.visualStyle ? "" : visualStyleOptions.includes(formData.visualStyle) ? formData.visualStyle : "__custom"}
+                      onChange={(event) => {
+                        if (event.target.value !== "__custom") {
+                          updateField("visualStyle", event.target.value);
+                        }
+                      }}
                     >
                       <option value="">请选择视觉风格</option>
                       {visualStyleOptions.map((style) => (
@@ -2494,7 +2550,13 @@ export function CharacterForm({
                           {style}
                         </option>
                       ))}
+                      <option value="__custom">自定义</option>
                     </select>
+                    <input
+                      value={formData.visualStyle}
+                      onChange={(event) => updateField("visualStyle", event.target.value)}
+                      placeholder="或输入自定义视觉风格"
+                    />
                   </label>
                 </div>
               </div>

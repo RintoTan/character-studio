@@ -1261,7 +1261,15 @@ export function Dashboard({
       )}
 
       {isAboutOpen && (
-        <div className="modal-backdrop" role="presentation">
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAboutOpen(false);
+            }
+          }}
+          role="presentation"
+        >
           <div className="about-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
@@ -1366,6 +1374,20 @@ export function Dashboard({
                   <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
                   <li>CSV、PDF、JPG、PNG：用于文字归档或展示，不用于重新导入。</li>
                 </ul>
+              </article>
+              <article>
+                <h3>项目信息</h3>
+                <div className="project-link-grid">
+                  <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
+                    <span>GitHub</span>
+                    <strong>项目仓库</strong>
+                  </a>
+                  <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">
+                    <span>Handbook</span>
+                    <strong>开发手册</strong>
+                  </a>
+                </div>
+                <p className="muted">RINTO 联合 Codex 共同开发 2026。</p>
               </article>
             </div>
             <p className="about-footer">RINTO © 2026</p>

@@ -78,15 +78,36 @@
   background-clip: content-box;
 }
 
+html {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  overflow-x: hidden;
+  background: var(--bg);
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
+}
+
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   overflow-x: hidden;
   background: var(--bg);
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: none;
   transition:
     background 180ms ease,
     color 180ms ease;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
 }
 
 button,
@@ -128,12 +149,21 @@ button:disabled {
 }
 
 .brand-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
   border: 0;
   background: transparent;
   color: var(--text);
   font-size: 20px;
   font-weight: 800;
   padding: 8px 0;
+}
+
+.brand-mark {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
 }
 
 .nav-actions,
@@ -1484,6 +1514,12 @@ textarea {
   line-height: 1.45;
 }
 
+.age-combo {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 8px;
+}
+
 input[type="checkbox"],
 input[type="radio"] {
   position: relative;
@@ -1648,6 +1684,7 @@ input[type="number"]::-webkit-inner-spin-button {
   place-items: center;
   background: rgba(17, 24, 39, 0.32);
   padding: 20px;
+  animation: backdrop-in var(--duration-medium) var(--ease-standard);
 }
 
 .confirm-dialog {
@@ -1657,6 +1694,7 @@ input[type="number"]::-webkit-inner-spin-button {
   background: var(--surface);
   box-shadow: var(--shadow-strong);
   padding: 24px;
+  animation: dialog-in var(--duration-medium) var(--ease-standard);
 }
 
 .confirm-dialog h2 {
@@ -2055,6 +2093,7 @@ input[type="number"]::-webkit-inner-spin-button {
   background: var(--surface);
   box-shadow: var(--shadow-strong);
   padding: 18px;
+  animation: dialog-in var(--duration-medium) var(--ease-standard);
 }
 
 .crop-dialog {
@@ -2762,6 +2801,7 @@ input[type="number"]::-webkit-inner-spin-button {
   padding: 10px 16px;
   font-weight: 700;
   transform: translateX(-50%);
+  animation: toast-in var(--duration-medium) var(--ease-standard);
 }
 
 .theme-select {
@@ -2798,6 +2838,7 @@ input[type="number"]::-webkit-inner-spin-button {
   background: var(--surface);
   box-shadow: var(--shadow-strong);
   padding: 22px;
+  animation: dialog-in var(--duration-medium) var(--ease-standard);
 }
 
 .command-palette h2 {
@@ -2986,6 +3027,50 @@ kbd {
 .about-grid h3 {
   margin-bottom: 8px;
   font-size: 15px;
+}
+
+.project-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.project-link-grid a {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+  text-decoration: none;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.project-link-grid a:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+  transform: translateY(-1px);
+}
+
+.project-link-grid span,
+.project-link-grid strong {
+  display: block;
+}
+
+.project-link-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.project-link-grid strong {
+  margin-top: 2px;
+  font-size: 13px;
 }
 
 .about-grid h4 {
@@ -3193,6 +3278,40 @@ kbd {
   }
 }
 
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
 @keyframes menu-in {
   from {
     opacity: 0;
@@ -3202,6 +3321,17 @@ kbd {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
   }
 }
 
@@ -3240,6 +3370,10 @@ kbd {
 }
 
 @media (max-width: 720px) {
+  .age-combo {
+    grid-template-columns: 1fr;
+  }
+
   .app-shell {
     width: min(100% - 20px, 1120px);
     padding-top: 16px;

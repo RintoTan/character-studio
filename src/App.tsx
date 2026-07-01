@@ -515,6 +515,7 @@ function App() {
     <main className="app-shell">
       <nav className="topbar">
         <button className="brand-button" onClick={goDashboard}>
+          <img alt="" className="brand-mark" src="/favicon.svg" />
           Character Studio
         </button>
         <div className="nav-actions">
@@ -777,6 +778,44 @@ function App() {
                 </ul>
               </article>
               <article>
+                <h3>快捷键</h3>
+                <dl className="shortcut-list">
+                  <div><dt>N</dt><dd>新建角色</dd></div>
+                  <div><dt>/</dt><dd>打开搜索</dd></div>
+                  <div><dt>Esc</dt><dd>关闭弹层</dd></div>
+                  <div><dt>⌘K / Ctrl+K</dt><dd>打开 Command Palette</dd></div>
+                  <div><dt>Enter</dt><dd>打开搜索结果</dd></div>
+                  <div><dt>Tab</dt><dd>切换输入焦点</dd></div>
+                </dl>
+              </article>
+              <article>
+                <h3>Roadmap</h3>
+                <div className="roadmap-columns">
+                  <div>
+                    <h4>已完成</h4>
+                    <ul className="about-list">
+                      <li>Dashboard</li>
+                      <li>Character Editor</li>
+                      <li>Character Preview</li>
+                      <li>Draft Box</li>
+                      <li>Favorites</li>
+                      <li>Theme</li>
+                      <li>JSON / CSV / PDF 导入导出</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h4>计划开发</h4>
+                    <ul className="about-list">
+                      <li>Character Relationship</li>
+                      <li>Timeline</li>
+                      <li>World Manager</li>
+                      <li>AI Assistant</li>
+                      <li>Cloud Sync</li>
+                    </ul>
+                  </div>
+                </div>
+              </article>
+              <article>
                 <h3>导入 / 导出说明</h3>
                 <ul className="about-list">
                   <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
@@ -785,6 +824,28 @@ function App() {
                   <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
                   <li>CSV、PDF、JPG、PNG：用于查看、归档或展示，不用于重新导入。</li>
                 </ul>
+              </article>
+              <article>
+                <h3>项目信息</h3>
+                <div className="project-link-grid">
+                  <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
+                    <span>GitHub</span>
+                    <strong>项目仓库</strong>
+                  </a>
+                  <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">
+                    <span>Handbook</span>
+                    <strong>开发手册</strong>
+                  </a>
+                </div>
+                <p className="muted">RINTO 联合 Codex 共同开发 2026。</p>
+              </article>
+              <article>
+                <h3>鸣谢</h3>
+                <p>感谢 OpenAI Codex、React、TypeScript、Vite、jsPDF 与 html2canvas 提供支持。</p>
+              </article>
+              <article>
+                <h3>Changelog</h3>
+                <p>近期版本重点完善了 Avatar、头像素材库、导入导出、Design System 与移动端体验。</p>
               </article>
               <article>
                 <h3>首次提示</h3>
