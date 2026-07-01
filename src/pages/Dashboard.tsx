@@ -2129,13 +2129,13 @@ export function Dashboard({
                 <div className="card-main">
                   <button
                     aria-label={`预览 ${character.name || "未命名角色"}`}
-                    className="avatar-placeholder preview-hit"
+                    className="avatar-click-target preview-hit"
                     onClick={() => onPreview(character)}
                     type="button"
                   >
                     <AvatarDisplay
                       assetId={character.avatarAssetId}
-                      className="avatar-inner"
+                      className="avatar-placeholder"
                       emoji={character.avatarEmoji || "🙂"}
                     />
                   </button>

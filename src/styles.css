@@ -1000,6 +1000,15 @@ h2 {
   overflow: hidden;
 }
 
+.avatar-click-target {
+  display: block;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  line-height: 0;
+}
+
 .avatar-inner {
   display: grid;
   width: 100%;
