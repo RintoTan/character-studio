@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
+import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
 
 type CharacterPreviewProps = {
@@ -48,6 +49,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
   const [toastMessage, setToastMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
   const previewRef = useRef<HTMLDivElement>(null);
   const isFavorite = Boolean(character.favorite ?? character.isFavorite);
 
@@ -60,6 +62,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsExportOpen(false);
+        closeAvatarPreview();
       }
     }
 
@@ -131,6 +134,35 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
     void handleExportImage(format);
   }
 
+  async function openAvatarPreview() {
+    if (!character.avatarAssetId) {
+      showToast("当前角色使用 Emoji 头像");
+      return;
+    }
+
+    try {
+      const asset = await getAvatarAsset(character.avatarAssetId);
+
+      if (!asset) {
+        showToast("头像图片读取失败，已回退 Emoji");
+        return;
+      }
+
+      setAvatarPreviewUrl(URL.createObjectURL(asset.blob));
+    } catch {
+      showToast("头像图片读取失败，已回退 Emoji");
+    }
+  }
+
+  function closeAvatarPreview() {
+    setAvatarPreviewUrl((current) => {
+      if (current) {
+        URL.revokeObjectURL(current);
+      }
+      return "";
+    });
+  }
+
   return (
     <section className="preview-page">
       {toastMessage && <div className="toast">{toastMessage}</div>}
@@ -175,15 +207,41 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
           </div>
         </div>
       )}
+      {avatarPreviewUrl && (
+        <div
+          className="modal-backdrop avatar-preview-backdrop"
+          data-pdf-hidden="true"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeAvatarPreview();
+            }
+          }}
+          role="presentation"
+        >
+          <div className="avatar-preview-dialog" role="dialog" aria-modal="true">
+            <button className="ghost-button" onClick={closeAvatarPreview} type="button">
+              关闭
+            </button>
+            <img alt="" src={avatarPreviewUrl} />
+          </div>
+        </div>
+      )}
 
       <div ref={previewRef} data-pdf-export-root="true">
         <div className="preview-hero">
           <div className="preview-identity">
-            <AvatarDisplay
-              assetId={character.avatarAssetId}
-              className="preview-avatar"
-              emoji={character.avatarEmoji || "🙂"}
-            />
+            <button
+              aria-label="查看头像大图"
+              className="preview-avatar-button"
+              onClick={() => void openAvatarPreview()}
+              type="button"
+            >
+              <AvatarDisplay
+                assetId={character.avatarAssetId}
+                className="preview-avatar"
+                emoji={character.avatarEmoji || "🙂"}
+              />
+            </button>
             <div>
             <p className="eyebrow">Character Preview</p>
             <h1>{displayValue(character.name)}</h1>

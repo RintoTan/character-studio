@@ -6,10 +6,15 @@ const SUPPORTED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export type AvatarAssetRecord = {
   id: string;
+  type?: "avatar";
+  name?: string;
+  mimeType?: string;
   blob: Blob;
-  type: string;
   size: number;
+  width?: number;
+  height?: number;
   createdAt: string;
+  updatedAt?: string;
 };
 
 function openAvatarDb() {
@@ -106,6 +111,79 @@ export async function compressAvatarFile(file: File) {
   return blob;
 }
 
+export async function compressImageToAvatarBlob(image: HTMLImageElement, crop: {
+  offsetX: number;
+  offsetY: number;
+  zoom: number;
+}) {
+  const size = 512;
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("浏览器不支持头像压缩");
+  }
+
+  canvas.width = size;
+  canvas.height = size;
+
+  const sourceSize = Math.min(image.naturalWidth, image.naturalHeight) / crop.zoom;
+  const displayScale = Math.max(image.naturalWidth, image.naturalHeight) / 280;
+  const sourceX = Math.max(
+    0,
+    Math.min(
+      image.naturalWidth - sourceSize,
+      (image.naturalWidth - sourceSize) / 2 - crop.offsetX * displayScale / crop.zoom,
+    ),
+  );
+  const sourceY = Math.max(
+    0,
+    Math.min(
+      image.naturalHeight - sourceSize,
+      (image.naturalHeight - sourceSize) / 2 - crop.offsetY * displayScale / crop.zoom,
+    ),
+  );
+
+  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+
+  const webpBlob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/webp", 0.8),
+  );
+
+  if (webpBlob) {
+    return webpBlob;
+  }
+
+  const jpegBlob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.82),
+  );
+
+  if (!jpegBlob) {
+    throw new Error("头像压缩失败");
+  }
+
+  return jpegBlob;
+}
+
+export async function saveAvatarBlob(blob: Blob, name = "avatar") {
+  const now = new Date().toISOString();
+  const record: AvatarAssetRecord = {
+    id: crypto.randomUUID(),
+    type: "avatar",
+    name,
+    mimeType: blob.type || "image/webp",
+    blob,
+    size: blob.size,
+    width: 512,
+    height: 512,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await withStore("readwrite", (store) => store.put(record));
+  return record;
+}
+
 export async function saveAvatarAsset(file: File) {
   const validationError = validateAvatarFile(file);
 
@@ -114,16 +192,7 @@ export async function saveAvatarAsset(file: File) {
   }
 
   const blob = await compressAvatarFile(file);
-  const record: AvatarAssetRecord = {
-    id: crypto.randomUUID(),
-    blob,
-    type: blob.type || "image/webp",
-    size: blob.size,
-    createdAt: new Date().toISOString(),
-  };
-
-  await withStore("readwrite", (store) => store.put(record));
-  return record;
+  return saveAvatarBlob(blob, file.name || "avatar");
 }
 
 export async function getAvatarAsset(id?: string) {

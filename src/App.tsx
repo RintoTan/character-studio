@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { CharacterForm } from "./pages/CharacterForm";
 import { CharacterPreview } from "./pages/CharacterPreview";
 import { Dashboard } from "./pages/Dashboard";
+import { AvatarDisplay } from "./components/AvatarDisplay";
 import {
   deleteCharacter,
   duplicateCharacter,
@@ -12,8 +13,11 @@ import {
 import type { Character } from "./types/character";
 import {
   cleanupUnusedAvatarAssets,
+  deleteAvatarAsset,
   formatAssetSize,
   getAvatarAssetStats,
+  listAvatarAssets,
+  type AvatarAssetRecord,
 } from "./utils/avatarAssets";
 
 type Page = "dashboard" | "form" | "preview";
@@ -29,6 +33,8 @@ function App() {
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
+  const [pendingAppAssetDelete, setPendingAppAssetDelete] = useState<AvatarAssetRecord | null>(null);
+  const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [editorSaveSignal, setEditorSaveSignal] = useState(0);
@@ -79,6 +85,8 @@ function App() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsThemeMenuOpen(false);
+        setPendingAppAssetDelete(null);
+        setIsAppAssetCleanupOpen(false);
       }
     }
 
@@ -120,9 +128,16 @@ function App() {
 
   async function refreshAvatarAssetStats() {
     try {
-      setAvatarAssetStats(await getAvatarAssetStats());
+      const [stats, assets] = await Promise.all([
+        getAvatarAssetStats(),
+        listAvatarAssets(),
+      ]);
+
+      setAvatarAssetStats(stats);
+      setAvatarAssets(assets);
     } catch {
       setAvatarAssetStats({ count: 0, size: 0 });
+      setAvatarAssets([]);
     }
   }
 
@@ -134,6 +149,41 @@ function App() {
     await cleanupUnusedAvatarAssets(usedAssetIds);
     await refreshAvatarAssetStats();
     setIsAppAssetCleanupOpen(false);
+  }
+
+  function getAssetUsageCount(assetId: string) {
+    return characters.filter((character) => character.avatarAssetId === assetId).length;
+  }
+
+  async function requestAppAssetDelete(asset: AvatarAssetRecord) {
+    if (getAssetUsageCount(asset.id) > 0) {
+      setPendingAppAssetDelete(asset);
+      return;
+    }
+
+    await deleteAvatarAsset(asset.id);
+    await refreshAvatarAssetStats();
+  }
+
+  async function confirmAppAssetDelete() {
+    if (!pendingAppAssetDelete) {
+      return;
+    }
+
+    await deleteAvatarAsset(pendingAppAssetDelete.id);
+    const nextCharacters = characters.map((character) =>
+      character.avatarAssetId === pendingAppAssetDelete.id
+        ? { ...character, avatarAssetId: "", updatedAt: new Date().toISOString() }
+        : character,
+    );
+
+    saveCharacters(nextCharacters);
+    setCharacters(nextCharacters);
+    if (selectedCharacter?.avatarAssetId === pendingAppAssetDelete.id) {
+      setSelectedCharacter({ ...selectedCharacter, avatarAssetId: "" });
+    }
+    setPendingAppAssetDelete(null);
+    await refreshAvatarAssetStats();
   }
 
   useEffect(() => {
@@ -564,6 +614,37 @@ function App() {
                 <p className="muted">
                   本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。轻量 JSON 不包含头像图片二进制。
                 </p>
+                <p className="muted">图片只保存在当前浏览器 IndexedDB，换设备不会自动同步。</p>
+                {avatarAssets.length > 0 ? (
+                  <div className="settings-asset-list">
+                    {avatarAssets.map((asset) => {
+                      const usageCount = getAssetUsageCount(asset.id);
+
+                      return (
+                        <div className="settings-asset-item" key={asset.id}>
+                          <AvatarDisplay assetId={asset.id} className="settings-asset-thumb" emoji="🙂" />
+                          <div>
+                            <strong>{asset.name || "avatar"}</strong>
+                            <span>
+                              {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
+                              {formatAssetSize(asset.size || asset.blob?.size || 0)}
+                            </span>
+                            <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用"}</small>
+                          </div>
+                          <button
+                            className={usageCount > 0 ? "danger-button" : "ghost-button"}
+                            onClick={() => void requestAppAssetDelete(asset)}
+                            type="button"
+                          >
+                            删除
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="muted">暂无本地头像素材。</p>
+                )}
                 <div className="settings-actions">
                   <button className="ghost-button" onClick={() => setIsAppAssetCleanupOpen(true)} type="button">
                     清理未使用头像素材
@@ -586,6 +667,26 @@ function App() {
               </button>
               <button className="danger-button" onClick={confirmAppAssetCleanup} type="button">
                 确认清理
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAppAssetDelete && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>删除正在使用的头像素材</h2>
+            <p>
+              这个头像素材正在被 {getAssetUsageCount(pendingAppAssetDelete.id)} 个角色使用。
+              删除后这些角色会自动回退到 Emoji 头像。
+            </p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setPendingAppAssetDelete(null)} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={() => void confirmAppAssetDelete()} type="button">
+                确认删除
               </button>
             </div>
           </div>

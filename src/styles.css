@@ -1708,6 +1708,233 @@ textarea {
   gap: 8px;
 }
 
+.crop-dialog,
+.asset-library-dialog,
+.avatar-preview-dialog {
+  width: min(100%, 560px);
+  max-height: min(86vh, 720px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 18px;
+}
+
+.crop-stage {
+  position: relative;
+  width: min(100%, 360px);
+  height: min(68vw, 360px);
+  max-height: 360px;
+  margin: 16px auto;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-subtle);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.crop-stage:active {
+  cursor: grabbing;
+}
+
+.crop-stage img,
+.crop-preview img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+.crop-frame {
+  position: absolute;
+  inset: 36px;
+  border: 2px solid rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 999px rgba(15, 23, 42, 0.36),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+}
+
+.crop-slider {
+  display: grid;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.crop-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.crop-preview {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
+.asset-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.asset-item {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  color: var(--text);
+  padding: 10px;
+  text-align: center;
+}
+
+.asset-item:hover,
+.asset-item.active {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+
+.asset-item span {
+  overflow: hidden;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.asset-thumb,
+.settings-asset-thumb {
+  display: grid;
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  aspect-ratio: 1 / 1;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background:
+    linear-gradient(0deg, var(--avatar-tint), var(--avatar-tint)),
+    var(--surface);
+  font-size: 30px;
+}
+
+.asset-thumb img,
+.settings-asset-thumb img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.settings-asset-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.settings-asset-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-subtle);
+  padding: 10px;
+}
+
+.settings-asset-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 11px;
+  font-size: 22px;
+}
+
+.settings-asset-item strong,
+.settings-asset-item span,
+.settings-asset-item small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-asset-item strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.settings-asset-item span,
+.settings-asset-item small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-asset-item button {
+  min-height: 30px;
+  padding: 0 10px;
+}
+
+.preview-avatar-button {
+  display: block;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 20px;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.preview-avatar-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.avatar-preview-backdrop {
+  z-index: 160;
+}
+
+.avatar-preview-dialog {
+  display: grid;
+  width: min(100%, 720px);
+  justify-items: end;
+  gap: 12px;
+}
+
+.avatar-preview-dialog img {
+  width: 100%;
+  max-height: min(72vh, 720px);
+  object-fit: contain;
+  border-radius: 14px;
+  background: var(--surface-subtle);
+}
+
 .avatar-picker {
   display: grid;
   gap: 10px;

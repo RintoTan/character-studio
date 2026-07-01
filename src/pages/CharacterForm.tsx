@@ -8,7 +8,13 @@ import {
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
-import { saveAvatarAsset } from "../utils/avatarAssets";
+import {
+  compressImageToAvatarBlob,
+  listAvatarAssets,
+  saveAvatarBlob,
+  validateAvatarFile,
+  type AvatarAssetRecord,
+} from "../utils/avatarAssets";
 import { CharacterPreview } from "./CharacterPreview";
 
 type CharacterDraft = Omit<Character, "id" | "updatedAt">;
@@ -864,6 +870,16 @@ export function CharacterForm({
     avatarCategories[0].id,
   );
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
+  const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
+  const [cropDraft, setCropDraft] = useState<{
+    fileName: string;
+    imageUrl: string;
+    offsetX: number;
+    offsetY: number;
+    zoom: number;
+  } | null>(null);
+  const [cropDrag, setCropDrag] = useState<{ x: number; y: number } | null>(null);
   const [recentAvatars, setRecentAvatars] = useState(loadRecentAvatars);
   const [pendingClear, setPendingClear] = useState<{
     field:
@@ -902,6 +918,7 @@ export function CharacterForm({
   const lastAutoSavedSnapshotRef = useRef("");
   const saveSignalRef = useRef(saveSignal);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const cropImageRef = useRef<HTMLImageElement>(null);
 
   const previewCharacter = useMemo<Character>(
     () => ({
@@ -1017,6 +1034,22 @@ export function CharacterForm({
     saveCurrentCharacter();
   }, [saveSignal]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      if (cropDraft) {
+        closeCropDialog();
+      }
+      setIsAssetLibraryOpen(false);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [cropDraft]);
+
   function updateField(field: keyof CharacterDraft, value: string | string[]) {
     setFormData((current) => ({ ...current, [field]: value }));
   }
@@ -1032,22 +1065,67 @@ export function CharacterForm({
       return;
     }
 
-    try {
-      const asset = await saveAvatarAsset(file);
+    const validationError = validateAvatarFile(file);
 
-      setFormData((current) => ({
-        ...current,
-        avatarAssetId: asset.id,
-      }));
-
-      showToast("头像图片已上传并压缩");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "头像上传失败");
-    } finally {
+    if (validationError) {
+      showToast(validationError);
       if (avatarFileInputRef.current) {
         avatarFileInputRef.current.value = "";
       }
+      return;
     }
+
+    setCropDraft({
+      fileName: file.name || "avatar",
+      imageUrl: URL.createObjectURL(file),
+      offsetX: 0,
+      offsetY: 0,
+      zoom: 1,
+    });
+
+    if (avatarFileInputRef.current) {
+      avatarFileInputRef.current.value = "";
+    }
+  }
+
+  async function confirmCropAvatar() {
+    if (!cropDraft || !cropImageRef.current) {
+      return;
+    }
+
+    try {
+      const blob = await compressImageToAvatarBlob(cropImageRef.current, cropDraft);
+      const asset = await saveAvatarBlob(blob, cropDraft.fileName);
+
+      setFormData((current) => ({ ...current, avatarAssetId: asset.id }));
+      closeCropDialog();
+      showToast("头像图片已裁剪并保存");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "头像保存失败");
+    }
+  }
+
+  function closeCropDialog() {
+    if (cropDraft?.imageUrl) {
+      URL.revokeObjectURL(cropDraft.imageUrl);
+    }
+    setCropDraft(null);
+    setCropDrag(null);
+  }
+
+  async function openAssetLibrary() {
+    try {
+      setAvatarAssets(await listAvatarAssets());
+      setIsAssetLibraryOpen(true);
+    } catch {
+      showToast("本地素材库读取失败");
+    }
+  }
+
+  function selectAvatarAsset(assetId: string) {
+    setFormData((current) => ({ ...current, avatarAssetId: assetId }));
+    setIsAssetLibraryOpen(false);
+    showToast("已应用本地素材头像");
   }
 
   function removeAvatarImage() {
@@ -1632,6 +1710,131 @@ export function CharacterForm({
           </div>
         </div>
       )}
+      {cropDraft && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="crop-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Avatar Crop</p>
+                <h2>裁剪头像</h2>
+              </div>
+              <button className="ghost-button" onClick={closeCropDialog} type="button">
+                取消
+              </button>
+            </div>
+            <div
+              className="crop-stage"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setCropDrag({ x: event.clientX, y: event.clientY });
+              }}
+              onPointerMove={(event) => {
+                if (!cropDrag) {
+                  return;
+                }
+                const deltaX = event.clientX - cropDrag.x;
+                const deltaY = event.clientY - cropDrag.y;
+                setCropDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        offsetX: Math.max(-120, Math.min(120, current.offsetX + deltaX)),
+                        offsetY: Math.max(-120, Math.min(120, current.offsetY + deltaY)),
+                      }
+                    : current,
+                );
+                setCropDrag({ x: event.clientX, y: event.clientY });
+              }}
+              onPointerUp={() => setCropDrag(null)}
+            >
+              <img
+                alt=""
+                ref={cropImageRef}
+                src={cropDraft.imageUrl}
+                style={{
+                  transform: `translate(calc(-50% + ${cropDraft.offsetX}px), calc(-50% + ${cropDraft.offsetY}px)) scale(${cropDraft.zoom})`,
+                }}
+              />
+              <div className="crop-frame" />
+            </div>
+            <label className="crop-slider">
+              缩放
+              <input
+                max="2.4"
+                min="1"
+                onChange={(event) =>
+                  setCropDraft((current) =>
+                    current ? { ...current, zoom: Number(event.target.value) } : current,
+                  )
+                }
+                step="0.05"
+                type="range"
+                value={cropDraft.zoom}
+              />
+            </label>
+            <div className="crop-preview-row">
+              <span>预览</span>
+              <div className="crop-preview">
+                <img
+                  alt=""
+                  src={cropDraft.imageUrl}
+                  style={{
+                    transform: `translate(calc(-50% + ${cropDraft.offsetX / 2}px), calc(-50% + ${cropDraft.offsetY / 2}px)) scale(${cropDraft.zoom})`,
+                  }}
+                />
+              </div>
+            </div>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={closeCropDialog} type="button">
+                取消裁剪
+              </button>
+              <button className="primary-button" onClick={() => void confirmCropAvatar()} type="button">
+                确认裁剪
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isAssetLibraryOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAssetLibraryOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="asset-library-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Local Assets</p>
+                <h2>选择本地头像素材</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            {avatarAssets.length > 0 ? (
+              <div className="asset-library-grid">
+                {avatarAssets.map((asset) => (
+                  <button
+                    className={formData.avatarAssetId === asset.id ? "asset-item active" : "asset-item"}
+                    key={asset.id}
+                    onClick={() => selectAvatarAsset(asset.id)}
+                    type="button"
+                  >
+                    <AvatarDisplay assetId={asset.id} className="asset-thumb" emoji="🙂" />
+                    <span>{asset.name || "avatar"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">暂无本地头像素材。</p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="panel workspace-hero">
         <div className="workspace-title-block">
@@ -1744,6 +1947,9 @@ export function CharacterForm({
                         type="button"
                       >
                         上传头像
+                      </button>
+                      <button className="ghost-button" onClick={() => void openAssetLibrary()} type="button">
+                        本地素材库
                       </button>
                       {formData.avatarAssetId && (
                         <button className="ghost-button" onClick={removeAvatarImage} type="button">
