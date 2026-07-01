@@ -1,5 +1,10 @@
 import type { Character, CharacterTag } from "../types/character";
-import { getAvatarAsset } from "./avatarAssets";
+import {
+  dataUrlToBlob,
+  getAvatarAsset,
+  listAvatarAssets,
+  saveAvatarBlob,
+} from "./avatarAssets";
 
 const csvHeaders = [
   "名字",
@@ -45,6 +50,15 @@ function asStringArray(value: unknown) {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function asTags(value: unknown): CharacterTag[] {
@@ -189,6 +203,52 @@ export function exportAllCharactersJson(characters: Character[]) {
   downloadBlob(JSON.stringify(payload, null, 2), filename, "application/json");
 }
 
+export async function exportFullBackupJson(characters: Character[]) {
+  const usedAssetIds = Array.from(
+    new Set(
+      characters
+        .map((character) => character.avatarAssetId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const avatarAssets = (
+    await Promise.all(
+      usedAssetIds.map(async (assetId) => {
+        const asset = await getAvatarAsset(assetId);
+
+        if (!asset) {
+          return null;
+        }
+
+        return {
+          sourceId: asset.id,
+          name: asset.name || "avatar",
+          mimeType: asset.mimeType || asset.blob.type || "image/webp",
+          size: asset.size || asset.blob.size,
+          width: asset.width || 512,
+          height: asset.height || 512,
+          createdAt: asset.createdAt,
+          updatedAt: asset.updatedAt,
+          dataUrl: await blobToDataUrl(asset.blob),
+        };
+      }),
+    )
+  ).filter((asset): asset is NonNullable<typeof asset> => asset !== null);
+  const payload = {
+    exportType: "character-studio-full-backup",
+    exportedAt: new Date().toISOString(),
+    note: "完整备份包含当前浏览器 IndexedDB 中可读取的头像图片。轻量 JSON 不包含头像图片，跨设备不会自动恢复图片。",
+    characters,
+    avatarAssets,
+  };
+
+  downloadBlob(
+    JSON.stringify(payload, null, 2),
+    `character-studio-full-backup-${dateStamp()}.json`,
+    "application/json",
+  );
+}
+
 export function exportSelectedCharactersJson(characters: Character[]) {
   const filename = `character-studio-selected-${dateStamp()}.json`;
   const payload = characters.length === 1 ? characters[0] : characters;
@@ -234,12 +294,15 @@ export async function importCharactersFromFiles(
   for (const file of Array.from(files)) {
     const text = await file.text();
     const parsedValue = JSON.parse(text) as unknown;
+    const avatarIdMap = await restoreAvatarAssets(parsedValue);
     const candidates = getCharacterCandidates(parsedValue);
 
     for (const candidate of candidates) {
       const character = normalizeCharacter(candidate, existingIds);
 
       if (character) {
+        character.avatarAssetId =
+          avatarIdMap.get(character.avatarAssetId || "") || character.avatarAssetId;
         importedCharacters.push(character);
       }
     }
@@ -250,6 +313,50 @@ export async function importCharactersFromFiles(
   }
 
   return [...importedCharacters, ...existingCharacters];
+}
+
+async function restoreAvatarAssets(value: unknown) {
+  const avatarIdMap = new Map<string, string>();
+
+  if (!isRecord(value) || !Array.isArray(value.avatarAssets)) {
+    return avatarIdMap;
+  }
+
+  const existingAssets = await listAvatarAssets();
+  const existingDataUrls = new Map<string, string>();
+
+  await Promise.all(
+    existingAssets.map(async (asset) => {
+      existingDataUrls.set(await blobToDataUrl(asset.blob), asset.id);
+    }),
+  );
+
+  for (const item of value.avatarAssets) {
+    if (!isRecord(item)) {
+      continue;
+    }
+
+    const sourceId = asString(item.sourceId) || asString(item.id);
+    const dataUrl = asString(item.dataUrl);
+
+    if (!sourceId || !dataUrl.startsWith("data:image/")) {
+      continue;
+    }
+
+    const existingId = existingDataUrls.get(dataUrl);
+
+    if (existingId) {
+      avatarIdMap.set(sourceId, existingId);
+      continue;
+    }
+
+    const blob = dataUrlToBlob(dataUrl);
+    const asset = await saveAvatarBlob(blob, asString(item.name) || "avatar");
+    avatarIdMap.set(sourceId, asset.id);
+    existingDataUrls.set(dataUrl, asset.id);
+  }
+
+  return avatarIdMap;
 }
 
 async function capturePreviewCanvas(element: HTMLElement) {
@@ -400,15 +507,6 @@ async function createPreviewPdfBlob(element: HTMLElement) {
 export async function exportPreviewPdf(element: HTMLElement, characterName: string) {
   const blob = await createPreviewPdfBlob(element);
   downloadBlob(blob, exportNodeName(characterName, "pdf"), "application/pdf");
-}
-
-function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }
 
 async function getAvatarSnapshotHtml(character: Character) {

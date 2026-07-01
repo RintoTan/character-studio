@@ -7,6 +7,7 @@ import {
   exportCharacterSnapshotsZip,
   exportCharacterJson,
   exportCharactersCsv,
+  exportFullBackupJson,
   exportSelectedCharactersJson,
   importCharactersFromFiles,
 } from "../utils/importExport";
@@ -109,7 +110,9 @@ export function Dashboard({
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [isAssetCleanupOpen, setIsAssetCleanupOpen] = useState(false);
   const [pendingAssetDelete, setPendingAssetDelete] = useState<AvatarAssetRecord | null>(null);
+  const [pendingAssetBatchDeleteIds, setPendingAssetBatchDeleteIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [prefs, setPrefs] = useState<DashboardPrefs>(loadDashboardPrefs);
@@ -188,6 +191,7 @@ export function Dashboard({
         setIsClearDataOpen(false);
         setIsAssetCleanupOpen(false);
         setPendingAssetDelete(null);
+        setPendingAssetBatchDeleteIds([]);
         setIsBulkMode(false);
         setSelectedIds([]);
       }
@@ -584,6 +588,25 @@ export function Dashboard({
     window.setTimeout(() => setLoadingAction(null), 300);
   }
 
+  async function handleExportFullBackup() {
+    if (characters.length === 0) {
+      showToast("暂无角色可导出", "warning");
+      return;
+    }
+
+    setLoadingAction("full-backup");
+    setIsMoreMenuOpen(false);
+
+    try {
+      await exportFullBackupJson(characters);
+      showToast("完整备份 JSON 已导出", "success");
+    } catch {
+      showToast("完整备份导出失败", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
   function openFirstSearchResult() {
     if (visibleCharacters.length > 0) {
       onPreview(visibleCharacters[0]);
@@ -609,9 +632,13 @@ export function Dashboard({
 
       setAvatarAssetStats(stats);
       setAvatarAssets(assets);
+      setSelectedAssetIds((current) =>
+        current.filter((id) => assets.some((asset) => asset.id === id)),
+      );
     } catch {
       setAvatarAssetStats({ count: 0, size: 0 });
       setAvatarAssets([]);
+      setSelectedAssetIds([]);
     }
   }
 
@@ -669,6 +696,75 @@ export function Dashboard({
     } catch {
       showToast("删除头像素材失败", "error");
     }
+  }
+
+  function toggleAssetSelected(assetId: string) {
+    setSelectedAssetIds((current) =>
+      current.includes(assetId)
+        ? current.filter((id) => id !== assetId)
+        : [...current, assetId],
+    );
+  }
+
+  function toggleAllAssetsSelected() {
+    setSelectedAssetIds((current) =>
+      current.length === avatarAssets.length ? [] : avatarAssets.map((asset) => asset.id),
+    );
+  }
+
+  async function deleteAssets(assetIds: string[]) {
+    await Promise.all(assetIds.map((id) => deleteAvatarAsset(id)));
+    const deletedSet = new Set(assetIds);
+    const nextCharacters = characters.map((character) =>
+      character.avatarAssetId && deletedSet.has(character.avatarAssetId)
+        ? { ...character, avatarAssetId: "", updatedAt: new Date().toISOString() }
+        : character,
+    );
+
+    if (nextCharacters.some((character, index) => character !== characters[index])) {
+      onImport(nextCharacters);
+    }
+
+    setSelectedAssetIds([]);
+    await refreshAvatarAssetStats();
+  }
+
+  async function deleteSelectedUnusedAssets() {
+    const unusedIds = selectedAssetIds.filter((id) => getAssetUsageCount(id) === 0);
+
+    if (unusedIds.length === 0) {
+      showToast("没有选中未使用素材", "warning");
+      return;
+    }
+
+    await deleteAssets(unusedIds);
+    showToast(`已删除 ${unusedIds.length} 个未使用头像素材`);
+  }
+
+  function requestSelectedAssetDelete() {
+    if (selectedAssetIds.length === 0) {
+      showToast("请先选择头像素材", "warning");
+      return;
+    }
+
+    const usedIds = selectedAssetIds.filter((id) => getAssetUsageCount(id) > 0);
+
+    if (usedIds.length > 0) {
+      setPendingAssetBatchDeleteIds(selectedAssetIds);
+      return;
+    }
+
+    void deleteAssets(selectedAssetIds).then(() => showToast("所选头像素材已删除"));
+  }
+
+  async function confirmAssetBatchDelete() {
+    if (pendingAssetBatchDeleteIds.length === 0) {
+      return;
+    }
+
+    await deleteAssets(pendingAssetBatchDeleteIds);
+    showToast("所选头像素材已删除，相关角色已回退 Emoji");
+    setPendingAssetBatchDeleteIds([]);
   }
 
   function runCommand(command: string) {
@@ -1212,6 +1308,9 @@ export function Dashboard({
                   <button className="ghost-button" onClick={handleExportAllJson} type="button">
                     导出全部 JSON
                   </button>
+                  <button className="ghost-button" onClick={() => void handleExportFullBackup()} type="button">
+                    导出完整备份 JSON
+                  </button>
                   <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
                     导入 JSON
                   </button>
@@ -1229,39 +1328,60 @@ export function Dashboard({
                   图片存储在当前浏览器 IndexedDB 中，轻量 JSON 不包含头像图片二进制。
                 </p>
                 {avatarAssets.length > 0 ? (
-                  <div className="settings-asset-list">
-                    {avatarAssets.map((asset) => {
-                      const usageCount = getAssetUsageCount(asset.id);
-                      const createdAt = asset.createdAt
-                        ? new Date(asset.createdAt).toLocaleDateString()
-                        : "未知";
+                  <>
+                    <div className="settings-asset-toolbar">
+                      <button className="ghost-button" onClick={toggleAllAssetsSelected} type="button">
+                        {selectedAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
+                      </button>
+                      <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void deleteSelectedUnusedAssets()} type="button">
+                        删除未使用
+                      </button>
+                      <button className="danger-button" disabled={selectedAssetIds.length === 0} onClick={requestSelectedAssetDelete} type="button">
+                        删除所选
+                      </button>
+                    </div>
+                    <div className="settings-asset-list">
+                      {avatarAssets.map((asset) => {
+                        const usageCount = getAssetUsageCount(asset.id);
+                        const createdAt = asset.createdAt
+                          ? new Date(asset.createdAt).toLocaleDateString()
+                          : "未知";
 
-                      return (
-                        <div className="settings-asset-item" key={asset.id}>
-                          <AvatarDisplay
-                            assetId={asset.id}
-                            className="settings-asset-thumb"
-                            emoji="🙂"
-                          />
-                          <div>
-                            <strong>{asset.name || "avatar"}</strong>
-                            <span>
-                              {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
-                              {formatAssetSize(asset.size || asset.blob?.size || 0)} · {createdAt}
-                            </span>
-                            <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用"}</small>
+                        return (
+                          <div className="settings-asset-item" key={asset.id}>
+                            <label className="asset-select-check">
+                              <input
+                                checked={selectedAssetIds.includes(asset.id)}
+                                onChange={() => toggleAssetSelected(asset.id)}
+                                type="checkbox"
+                              />
+                              <span className="sr-only">选择素材</span>
+                            </label>
+                            <AvatarDisplay
+                              assetId={asset.id}
+                              className="settings-asset-thumb"
+                              emoji="🙂"
+                            />
+                            <div>
+                              <strong>{asset.name || "avatar"}</strong>
+                              <span>
+                                {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
+                                {formatAssetSize(asset.size || asset.blob?.size || 0)} · {createdAt}
+                              </span>
+                              <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
+                            </div>
+                            <button
+                              className={usageCount > 0 ? "danger-button" : "ghost-button"}
+                              onClick={() => void requestAssetDelete(asset)}
+                              type="button"
+                            >
+                              删除
+                            </button>
                           </div>
-                          <button
-                            className={usageCount > 0 ? "danger-button" : "ghost-button"}
-                            onClick={() => void requestAssetDelete(asset)}
-                            type="button"
-                          >
-                            删除
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 ) : (
                   <p className="muted">暂无本地头像素材。</p>
                 )}
@@ -1327,6 +1447,25 @@ export function Dashboard({
                 取消
               </button>
               <button className="danger-button" onClick={() => void confirmAssetDelete()} type="button">
+                确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingAssetBatchDeleteIds.length > 0 && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>批量删除头像素材</h2>
+            <p>
+              选中的素材中有正在被角色使用的头像。删除后相关角色会自动回退到 Emoji 头像。
+            </p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setPendingAssetBatchDeleteIds([])} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={() => void confirmAssetBatchDelete()} type="button">
                 确认删除
               </button>
             </div>
@@ -1504,6 +1643,9 @@ export function Dashboard({
                 </button>
                 <button onClick={handleExportAllJson} type="button">
                   导出全部 JSON
+                </button>
+                <button onClick={() => void handleExportFullBackup()} type="button">
+                  导出完整备份 JSON
                 </button>
                 <button onClick={handleExportCsv} type="button">
                   导出 CSV

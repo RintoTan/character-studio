@@ -870,8 +870,14 @@ export function CharacterForm({
     avatarCategories[0].id,
   );
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [isAvatarImageMenuOpen, setIsAvatarImageMenuOpen] = useState(false);
   const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
   const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
+  const [pendingAvatar, setPendingAvatar] = useState<{
+    blob: Blob;
+    name: string;
+    previewUrl: string;
+  } | null>(null);
   const [cropDraft, setCropDraft] = useState<{
     fileName: string;
     imageUrl: string;
@@ -919,6 +925,8 @@ export function CharacterForm({
   const saveSignalRef = useRef(saveSignal);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
+  const cropStageRef = useRef<HTMLDivElement>(null);
+  const cropFrameRef = useRef<HTMLDivElement>(null);
 
   const previewCharacter = useMemo<Character>(
     () => ({
@@ -977,6 +985,7 @@ export function CharacterForm({
     }
     setFormError("");
     setEditorMode("edit");
+    clearPendingAvatar();
   }, [character?.id]);
 
   useEffect(() => {
@@ -1031,8 +1040,16 @@ export function CharacterForm({
     }
 
     saveSignalRef.current = saveSignal;
-    saveCurrentCharacter();
+    void saveCurrentCharacter();
   }, [saveSignal]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingAvatar?.previewUrl) {
+        URL.revokeObjectURL(pendingAvatar.previewUrl);
+      }
+    };
+  }, [pendingAvatar?.previewUrl]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -1044,6 +1061,7 @@ export function CharacterForm({
         closeCropDialog();
       }
       setIsAssetLibraryOpen(false);
+      setIsAvatarImageMenuOpen(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
@@ -1088,21 +1106,126 @@ export function CharacterForm({
     }
   }
 
-  async function confirmCropAvatar() {
+  function getVisibleCrop() {
     if (!cropDraft || !cropImageRef.current) {
+      return null;
+    }
+
+    const image = cropImageRef.current;
+    const stage = cropStageRef.current;
+    const frame = cropFrameRef.current;
+
+    if (!stage || !frame) {
+      return null;
+    }
+
+    const stageRect = stage.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    const imageAspect = image.naturalWidth / image.naturalHeight;
+    const stageAspect = stageRect.width / stageRect.height;
+    const baseWidth = imageAspect >= stageAspect
+      ? stageRect.width
+      : stageRect.height * imageAspect;
+    const baseHeight = imageAspect >= stageAspect
+      ? stageRect.width / imageAspect
+      : stageRect.height;
+    const renderedWidth = baseWidth * cropDraft.zoom;
+    const renderedHeight = baseHeight * cropDraft.zoom;
+    const imageLeft = stageRect.left + stageRect.width / 2 + cropDraft.offsetX - renderedWidth / 2;
+    const imageTop = stageRect.top + stageRect.height / 2 + cropDraft.offsetY - renderedHeight / 2;
+    const frameLeft = frameRect.left;
+    const frameTop = frameRect.top;
+    const frameSize = Math.min(frameRect.width, frameRect.height);
+    const sourceX = ((frameLeft - imageLeft) / renderedWidth) * image.naturalWidth;
+    const sourceY = ((frameTop - imageTop) / renderedHeight) * image.naturalHeight;
+    const sourceSize = (frameSize / renderedWidth) * image.naturalWidth;
+
+    return { sourceX, sourceY, sourceSize };
+  }
+
+  function getCropMetrics(zoom = cropDraft?.zoom || 1) {
+    if (!cropImageRef.current || !cropStageRef.current || !cropFrameRef.current) {
+      return null;
+    }
+
+    const image = cropImageRef.current;
+    const stageRect = cropStageRef.current.getBoundingClientRect();
+    const frameRect = cropFrameRef.current.getBoundingClientRect();
+    const imageAspect = image.naturalWidth / image.naturalHeight;
+    const stageAspect = stageRect.width / stageRect.height;
+    const baseWidth = imageAspect >= stageAspect
+      ? stageRect.width
+      : stageRect.height * imageAspect;
+    const baseHeight = imageAspect >= stageAspect
+      ? stageRect.width / imageAspect
+      : stageRect.height;
+    const minZoom = Math.max(1, frameRect.width / baseWidth, frameRect.height / baseHeight);
+    const nextZoom = Math.max(zoom, minZoom);
+    const renderedWidth = baseWidth * nextZoom;
+    const renderedHeight = baseHeight * nextZoom;
+    const frameLeft = frameRect.left - stageRect.left;
+    const frameTop = frameRect.top - stageRect.top;
+    const frameRight = frameLeft + frameRect.width;
+    const frameBottom = frameTop + frameRect.height;
+    const minX = frameRight - renderedWidth / 2 - stageRect.width / 2;
+    const maxX = frameLeft + renderedWidth / 2 - stageRect.width / 2;
+    const minY = frameBottom - renderedHeight / 2 - stageRect.height / 2;
+    const maxY = frameTop + renderedHeight / 2 - stageRect.height / 2;
+
+    return { minZoom, zoom: nextZoom, minX, maxX, minY, maxY };
+  }
+
+  function clampCropDraft(nextDraft: typeof cropDraft) {
+    if (!nextDraft) {
+      return nextDraft;
+    }
+
+    const metrics = getCropMetrics(nextDraft.zoom);
+
+    if (!metrics) {
+      return nextDraft;
+    }
+
+    return {
+      ...nextDraft,
+      zoom: metrics.zoom,
+      offsetX: Math.max(metrics.minX, Math.min(metrics.maxX, nextDraft.offsetX)),
+      offsetY: Math.max(metrics.minY, Math.min(metrics.maxY, nextDraft.offsetY)),
+    };
+  }
+
+  async function confirmCropAvatar() {
+    const visibleCrop = getVisibleCrop();
+
+    if (!cropDraft || !cropImageRef.current || !visibleCrop) {
       return;
     }
 
     try {
-      const blob = await compressImageToAvatarBlob(cropImageRef.current, cropDraft);
-      const asset = await saveAvatarBlob(blob, cropDraft.fileName);
+      const blob = await compressImageToAvatarBlob(cropImageRef.current, {
+        ...cropDraft,
+        ...visibleCrop,
+      });
+      const previewUrl = URL.createObjectURL(blob);
 
-      setFormData((current) => ({ ...current, avatarAssetId: asset.id }));
+      clearPendingAvatar();
+      setPendingAvatar({ blob, name: cropDraft.fileName, previewUrl });
+      setFormData((current) => ({ ...current, avatarAssetId: "" }));
       closeCropDialog();
-      showToast("头像图片已裁剪并保存");
+      showToast("头像已裁剪，保存角色后会写入本地素材库");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "头像保存失败");
     }
+  }
+
+  function clearPendingAvatar() {
+    setPendingAvatar((current) => {
+      if (current?.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+
+      return null;
+    });
   }
 
   function closeCropDialog() {
@@ -1123,13 +1246,17 @@ export function CharacterForm({
   }
 
   function selectAvatarAsset(assetId: string) {
+    clearPendingAvatar();
     setFormData((current) => ({ ...current, avatarAssetId: assetId }));
     setIsAssetLibraryOpen(false);
+    setIsAvatarImageMenuOpen(false);
     showToast("已应用本地素材头像");
   }
 
   function removeAvatarImage() {
+    clearPendingAvatar();
     setFormData((current) => ({ ...current, avatarAssetId: "" }));
+    setIsAvatarImageMenuOpen(false);
     showToast("已恢复 Emoji 头像");
   }
 
@@ -1384,16 +1511,24 @@ export function CharacterForm({
     );
   }
 
-  function buildCharacter(isDraft: boolean) {
+  async function buildCharacter(isDraft: boolean) {
     if (!formData.name.trim()) {
       setFormError("请先填写角色名字");
       showToast("请先填写角色名字");
       return null;
     }
 
+    let avatarAssetId = formData.avatarAssetId;
+
+    if (pendingAvatar) {
+      const asset = await saveAvatarBlob(pendingAvatar.blob, pendingAvatar.name);
+      avatarAssetId = asset.id;
+    }
+
     setFormError("");
     return {
       ...formData,
+      avatarAssetId,
       id: character?.id || crypto.randomUUID(),
       createdAt: character?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -1403,8 +1538,8 @@ export function CharacterForm({
     };
   }
 
-  function saveCurrentCharacter() {
-    const nextCharacter = buildCharacter(false);
+  async function saveCurrentCharacter() {
+    const nextCharacter = await buildCharacter(false);
 
     if (!nextCharacter) {
       return;
@@ -1412,11 +1547,13 @@ export function CharacterForm({
 
     setSaveStatus("saving");
     onSave(nextCharacter);
+    clearPendingAvatar();
+    setFormData((current) => ({ ...current, avatarAssetId: nextCharacter.avatarAssetId || "" }));
     setSaveStatus("saved");
   }
 
-  function saveDraftCharacter() {
-    const nextCharacter = buildCharacter(true);
+  async function saveDraftCharacter() {
+    const nextCharacter = await buildCharacter(true);
 
     if (!nextCharacter) {
       return;
@@ -1424,6 +1561,8 @@ export function CharacterForm({
 
     setSaveStatus("saving");
     onDraftSave(nextCharacter);
+    clearPendingAvatar();
+    setFormData((current) => ({ ...current, avatarAssetId: nextCharacter.avatarAssetId || "" }));
     setSaveStatus("saved");
   }
 
@@ -1448,6 +1587,7 @@ export function CharacterForm({
     };
 
     setFormData(nextData);
+    clearPendingAvatar();
     setCustomTag("");
     setCustomGender("");
     setGenderMode("");
@@ -1493,7 +1633,7 @@ export function CharacterForm({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    saveCurrentCharacter();
+    void saveCurrentCharacter();
   }
 
   function renderHelperButtons(
@@ -1724,6 +1864,7 @@ export function CharacterForm({
             </div>
             <div
               className="crop-stage"
+              ref={cropStageRef}
               onPointerDown={(event) => {
                 event.currentTarget.setPointerCapture(event.pointerId);
                 setCropDrag({ x: event.clientX, y: event.clientY });
@@ -1735,13 +1876,15 @@ export function CharacterForm({
                 const deltaX = event.clientX - cropDrag.x;
                 const deltaY = event.clientY - cropDrag.y;
                 setCropDraft((current) =>
-                  current
-                    ? {
-                        ...current,
-                        offsetX: Math.max(-120, Math.min(120, current.offsetX + deltaX)),
-                        offsetY: Math.max(-120, Math.min(120, current.offsetY + deltaY)),
-                      }
-                    : current,
+                  clampCropDraft(
+                    current
+                      ? {
+                          ...current,
+                          offsetX: current.offsetX + deltaX,
+                          offsetY: current.offsetY + deltaY,
+                        }
+                      : current,
+                  ),
                 );
                 setCropDrag({ x: event.clientX, y: event.clientY });
               }}
@@ -1750,12 +1893,13 @@ export function CharacterForm({
               <img
                 alt=""
                 ref={cropImageRef}
+                onLoad={() => setCropDraft((current) => clampCropDraft(current))}
                 src={cropDraft.imageUrl}
                 style={{
                   transform: `translate(calc(-50% + ${cropDraft.offsetX}px), calc(-50% + ${cropDraft.offsetY}px)) scale(${cropDraft.zoom})`,
                 }}
               />
-              <div className="crop-frame" />
+              <div className="crop-frame" ref={cropFrameRef} />
             </div>
             <label className="crop-slider">
               缩放
@@ -1764,7 +1908,9 @@ export function CharacterForm({
                 min="1"
                 onChange={(event) =>
                   setCropDraft((current) =>
-                    current ? { ...current, zoom: Number(event.target.value) } : current,
+                    clampCropDraft(
+                      current ? { ...current, zoom: Number(event.target.value) } : current,
+                    ),
                   )
                 }
                 step="0.05"
@@ -1842,6 +1988,7 @@ export function CharacterForm({
             assetId={formData.avatarAssetId}
             className="workspace-avatar"
             emoji={formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
+            previewImageUrl={pendingAvatar?.previewUrl}
           />
           <div>
             <p className="eyebrow">{character ? "Character Workspace" : "New Character"}</p>
@@ -1919,6 +2066,7 @@ export function CharacterForm({
                         assetId={formData.avatarAssetId}
                         className="avatar-current"
                         emoji={formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
+                        previewImageUrl={pendingAvatar?.previewUrl}
                         label="当前头像"
                       />
                       <div>
@@ -1941,20 +2089,40 @@ export function CharacterForm({
                       >
                         {isAvatarPickerOpen ? "收起 Emoji" : "选择 Emoji"}
                       </button>
-                      <button
-                        className="ghost-button"
-                        onClick={() => avatarFileInputRef.current?.click()}
-                        type="button"
-                      >
-                        上传头像
-                      </button>
-                      <button className="ghost-button" onClick={() => void openAssetLibrary()} type="button">
-                        本地素材库
-                      </button>
-                      {formData.avatarAssetId && (
-                        <button className="ghost-button" onClick={removeAvatarImage} type="button">
-                          移除图片
+                      <div className="avatar-image-menu-wrap">
+                        <button
+                          className="ghost-button"
+                          onClick={() => setIsAvatarImageMenuOpen((current) => !current)}
+                          type="button"
+                        >
+                          更换头像
                         </button>
+                        {isAvatarImageMenuOpen && (
+                          <div className="avatar-image-menu">
+                            <button
+                              onClick={() => {
+                                setIsAvatarImageMenuOpen(false);
+                                avatarFileInputRef.current?.click();
+                              }}
+                              type="button"
+                            >
+                              上传新头像
+                            </button>
+                            <button onClick={() => void openAssetLibrary()} type="button">
+                              从素材库选择
+                            </button>
+                            <button
+                              disabled={!formData.avatarAssetId && !pendingAvatar}
+                              onClick={removeAvatarImage}
+                              type="button"
+                            >
+                              移除头像图片
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {pendingAvatar && (
+                        <span className="pending-avatar-note">待保存</span>
                       )}
                     </div>
                   </div>
@@ -2401,7 +2569,7 @@ export function CharacterForm({
               <button className="ghost-button" type="button" onClick={onCancel}>
                 取消
               </button>
-              <button className="ghost-button" type="button" onClick={saveDraftCharacter}>
+              <button className="ghost-button" type="button" onClick={() => void saveDraftCharacter()}>
                 临时保存
               </button>
               <button className="primary-button" type="submit">

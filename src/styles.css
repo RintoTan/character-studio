@@ -852,12 +852,27 @@ h2 {
 .avatar-inner img,
 .workspace-avatar img,
 .preview-avatar img,
-.avatar-current img {
+.avatar-current img,
+.asset-thumb img,
+.settings-asset-thumb img {
   width: 100%;
   height: 100%;
   display: block;
   border-radius: inherit;
   object-fit: cover;
+}
+
+.table-avatar,
+.avatar-placeholder,
+.avatar-inner,
+.workspace-avatar,
+.preview-avatar,
+.avatar-current,
+.asset-thumb,
+.settings-asset-thumb {
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  contain: layout paint;
 }
 
 .table-tags {
@@ -1510,11 +1525,11 @@ textarea {
 .workspace-avatar,
 .preview-avatar {
   display: grid;
-  flex: 0 0 58px;
+  flex: 0 0 72px;
   flex-shrink: 0;
-  width: 58px;
-  height: 58px;
-  min-width: 58px;
+  width: 72px;
+  height: 72px;
+  min-width: 72px;
   aspect-ratio: 1 / 1;
   place-items: center;
   border: 1px solid var(--border);
@@ -1523,9 +1538,18 @@ textarea {
     linear-gradient(0deg, var(--avatar-tint), var(--avatar-tint)),
     var(--surface-subtle);
   color: var(--text);
-  font-size: 30px;
+  font-size: 36px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
   overflow: hidden;
+}
+
+.preview-avatar {
+  flex-basis: 92px;
+  width: 92px;
+  height: 92px;
+  min-width: 92px;
+  border-radius: 22px;
+  font-size: 46px;
 }
 
 .workspace-toolbar,
@@ -1685,11 +1709,11 @@ textarea {
 
 .avatar-current {
   display: grid;
-  flex: 0 0 54px;
+  flex: 0 0 72px;
   flex-shrink: 0;
-  width: 54px;
-  height: 54px;
-  min-width: 54px;
+  width: 72px;
+  height: 72px;
+  min-width: 72px;
   aspect-ratio: 1 / 1;
   place-items: center;
   border: 1px solid var(--border);
@@ -1697,7 +1721,7 @@ textarea {
   background:
     linear-gradient(0deg, var(--avatar-tint), var(--avatar-tint)),
     var(--surface-subtle);
-  font-size: 28px;
+  font-size: 34px;
   overflow: hidden;
 }
 
@@ -1708,12 +1732,63 @@ textarea {
   gap: 8px;
 }
 
+.avatar-image-menu-wrap {
+  position: relative;
+}
+
+.avatar-image-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 70;
+  display: grid;
+  min-width: 180px;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 6px;
+}
+
+.avatar-image-menu button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 9px 10px;
+  text-align: left;
+}
+
+.avatar-image-menu button:hover:not(:disabled) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+
+.avatar-image-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.pending-avatar-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid rgba(180, 83, 9, 0.24);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-soft);
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .crop-dialog,
 .asset-library-dialog,
 .avatar-preview-dialog {
   width: min(100%, 560px);
-  max-height: min(86vh, 720px);
-  overflow: auto;
+  max-height: min(calc(100vh - 32px), 720px);
+  overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: var(--surface);
@@ -1859,9 +1934,21 @@ textarea {
   margin: 12px 0;
 }
 
+.settings-asset-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.settings-asset-toolbar button {
+  min-height: 32px;
+  padding: 0 10px;
+}
+
 .settings-asset-item {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   border: 1px solid var(--border);
@@ -1899,6 +1986,26 @@ textarea {
 .settings-asset-item button {
   min-height: 30px;
   padding: 0 10px;
+}
+
+.asset-select-check {
+  display: grid;
+  place-items: center;
+}
+
+.asset-select-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .preview-avatar-button {

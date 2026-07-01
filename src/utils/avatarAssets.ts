@@ -115,6 +115,9 @@ export async function compressImageToAvatarBlob(image: HTMLImageElement, crop: {
   offsetX: number;
   offsetY: number;
   zoom: number;
+  sourceX?: number;
+  sourceY?: number;
+  sourceSize?: number;
 }) {
   const size = 512;
   const canvas = document.createElement("canvas");
@@ -127,21 +130,21 @@ export async function compressImageToAvatarBlob(image: HTMLImageElement, crop: {
   canvas.width = size;
   canvas.height = size;
 
-  const sourceSize = Math.min(image.naturalWidth, image.naturalHeight) / crop.zoom;
-  const displayScale = Math.max(image.naturalWidth, image.naturalHeight) / 280;
+  const sourceSize = Math.max(
+    1,
+    Math.min(
+      crop.sourceSize || Math.min(image.naturalWidth, image.naturalHeight) / crop.zoom,
+      image.naturalWidth,
+      image.naturalHeight,
+    ),
+  );
   const sourceX = Math.max(
     0,
-    Math.min(
-      image.naturalWidth - sourceSize,
-      (image.naturalWidth - sourceSize) / 2 - crop.offsetX * displayScale / crop.zoom,
-    ),
+    Math.min(image.naturalWidth - sourceSize, crop.sourceX ?? (image.naturalWidth - sourceSize) / 2),
   );
   const sourceY = Math.max(
     0,
-    Math.min(
-      image.naturalHeight - sourceSize,
-      (image.naturalHeight - sourceSize) / 2 - crop.offsetY * displayScale / crop.zoom,
-    ),
+    Math.min(image.naturalHeight - sourceSize, crop.sourceY ?? (image.naturalHeight - sourceSize) / 2),
   );
 
   context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
@@ -163,6 +166,19 @@ export async function compressImageToAvatarBlob(image: HTMLImageElement, crop: {
   }
 
   return jpegBlob;
+}
+
+export function dataUrlToBlob(dataUrl: string) {
+  const [header, data] = dataUrl.split(",");
+  const mimeType = header.match(/data:(.*?);base64/)?.[1] || "image/webp";
+  const binary = atob(data || "");
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
 }
 
 export async function saveAvatarBlob(blob: Blob, name = "avatar") {

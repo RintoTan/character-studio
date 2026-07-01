@@ -6,6 +6,7 @@ type AvatarDisplayProps = {
   emoji?: string;
   className: string;
   label?: string;
+  previewImageUrl?: string;
 };
 
 export function AvatarDisplay({
@@ -13,6 +14,7 @@ export function AvatarDisplay({
   emoji = "🙂",
   className,
   label,
+  previewImageUrl,
 }: AvatarDisplayProps) {
   const [imageUrl, setImageUrl] = useState("");
 
@@ -51,9 +53,11 @@ export function AvatarDisplay({
     };
   }, [assetId]);
 
+  const visibleImageUrl = previewImageUrl || imageUrl;
+
   return (
-    <span className={className} aria-label={label} data-avatar-image={Boolean(imageUrl)}>
-      {imageUrl ? <img alt="" src={imageUrl} /> : emoji}
+    <span className={className} aria-label={label} data-avatar-image={Boolean(visibleImageUrl)}>
+      {visibleImageUrl ? <img alt="" src={visibleImageUrl} /> : emoji}
     </span>
   );
 }
