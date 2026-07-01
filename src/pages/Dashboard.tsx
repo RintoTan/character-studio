@@ -48,6 +48,8 @@ type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
 type ScopeMode = "all" | "favorites" | "drafts";
 type ViewMode = "cards" | "list";
 type ThemeMode = "system" | "light" | "dark";
+type CharacterExportScope = "all" | "selected";
+type CharacterExportChoice = "json" | "zip" | "csv" | "pdf" | "jpg" | "png";
 
 const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 const DASHBOARD_FLAGS_KEY = "character-studio.dashboard-flags";
@@ -111,11 +113,14 @@ export function Dashboard({
   const [exportTarget, setExportTarget] = useState<Character | null>(null);
   const [isBulkExportOpen, setIsBulkExportOpen] = useState(false);
   const [isBulkMoreOpen, setIsBulkMoreOpen] = useState(false);
+  const [characterExportScope, setCharacterExportScope] = useState<CharacterExportScope | null>(null);
+  const [characterExportChoice, setCharacterExportChoice] = useState<CharacterExportChoice>("json");
   const [isCommandOpen, setIsCommandOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
   const [importPlan, setImportPlan] = useState<PreparedCharacterImport | null>(null);
+  const [isImportDetailOpen, setIsImportDetailOpen] = useState(false);
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [isAssetCleanupOpen, setIsAssetCleanupOpen] = useState(false);
   const [pendingAssetDelete, setPendingAssetDelete] = useState<AvatarAssetRecord | null>(null);
@@ -195,6 +200,7 @@ export function Dashboard({
         setExportTarget(null);
         setIsBulkExportOpen(false);
         setIsBulkMoreOpen(false);
+        setCharacterExportScope(null);
         setIsSearchPanelOpen(false);
         setIsCommandOpen(false);
         setIsAboutOpen(false);
@@ -263,6 +269,7 @@ export function Dashboard({
       Boolean(exportTarget) ||
       isBulkExportOpen ||
       isBulkMoreOpen ||
+      Boolean(characterExportScope) ||
       isCommandOpen ||
       isAboutOpen ||
       isSettingsOpen ||
@@ -283,6 +290,7 @@ export function Dashboard({
     exportTarget,
     isBulkExportOpen,
     isBulkMoreOpen,
+    characterExportScope,
     isCommandOpen,
     isAboutOpen,
     isSettingsOpen,
@@ -454,6 +462,70 @@ export function Dashboard({
 
     exportSelectedCharactersJson(selected);
     showToast("选中角色 JSON 已导出");
+  }
+
+  async function handleExportSelectedFullBackup() {
+    const selected = selectedCharacters();
+
+    if (selected.length === 0) {
+      showToast("请先选择角色");
+      return;
+    }
+
+    setLoadingAction("selected-full-backup");
+
+    try {
+      await exportFullBackupZip(selected);
+      showToast("选中角色完整备份 ZIP 已导出", "success");
+    } catch {
+      showToast("完整备份导出失败", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
+  function openCharacterExportDialog(scope: CharacterExportScope) {
+    if (scope === "selected" && selectedCharacters().length === 0) {
+      showToast("请先选择角色", "warning");
+      return;
+    }
+
+    if (scope === "all" && characters.length === 0) {
+      showToast("暂无角色可导出", "warning");
+      return;
+    }
+
+    setCharacterExportChoice("json");
+    setCharacterExportScope(scope);
+    setIsBulkExportOpen(false);
+    setIsMoreMenuOpen(false);
+  }
+
+  async function startCharacterExport() {
+    const scope = characterExportScope;
+    const choice = characterExportChoice;
+
+    if (!scope) {
+      return;
+    }
+
+    if (scope === "selected") {
+      if (choice === "json") {
+        handleExportSelectedJson();
+      } else if (choice === "zip") {
+        await handleExportSelectedFullBackup();
+      } else if (choice === "pdf" || choice === "jpg" || choice === "png") {
+        await handleBulkSnapshotExport(choice);
+      }
+    } else if (choice === "json") {
+      handleExportAllJson();
+    } else if (choice === "zip") {
+      await handleExportFullBackup();
+    } else if (choice === "csv") {
+      handleExportCsv();
+    }
+
+    setCharacterExportScope(null);
   }
 
   async function handleExportCharacterJson(character: Character) {
@@ -873,7 +945,7 @@ export function Dashboard({
       fileInputRef.current?.click();
     }
     if (command === "export") {
-      handleExportAllJson();
+      openCharacterExportDialog("all");
     }
     if (command === "theme") {
       onToggleTheme();
@@ -892,6 +964,7 @@ export function Dashboard({
     try {
       const nextImportPlan = await prepareCharacterImport(files, characters);
       setImportPlan(nextImportPlan);
+      setIsImportDetailOpen(false);
     } catch {
       showToast("导入失败：JSON 文件不合法", "error");
     } finally {
@@ -1054,12 +1127,12 @@ export function Dashboard({
         </div>
       )}
 
-      {isBulkExportOpen && (
+      {characterExportScope && (
         <div
           className="modal-backdrop export-backdrop"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
-              setIsBulkExportOpen(false);
+              setCharacterExportScope(null);
             }
           }}
           role="presentation"
@@ -1067,41 +1140,47 @@ export function Dashboard({
           <div className="export-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Export</p>
-                <h2>导出选中角色</h2>
+                <p className="eyebrow">导出</p>
+                <h2>{characterExportScope === "selected" ? "导出选中角色" : "导出角色"}</h2>
+                <p className="muted">请选择导出方式</p>
               </div>
               <button
                 className="ghost-button"
-                onClick={() => setIsBulkExportOpen(false)}
+                onClick={() => setCharacterExportScope(null)}
                 type="button"
               >
                 关闭
               </button>
             </div>
-            <div className="export-dialog-list">
-              <button onClick={() => handleBulkExport("json")} type="button">
-                JSON
+            <div className="export-choice-list">
+              {getCharacterExportOptions(characterExportScope).map((option) => (
+                <label className="export-choice-item" key={option.value}>
+                  <input
+                    checked={characterExportChoice === option.value}
+                    onChange={() => setCharacterExportChoice(option.value)}
+                    type="radio"
+                  />
+                  <span>
+                    <strong>{option.label}</strong>
+                    <small>{option.description}</small>
+                  </span>
+                </label>
+              ))}
+            </div>
+            {exportProgress && loadingAction?.startsWith("bulk-") && (
+              <p className="muted">导出进度：{exportProgress}</p>
+            )}
+            <div className="dialog-actions">
+              <button className="ghost-button" onClick={() => setCharacterExportScope(null)} type="button">
+                取消
               </button>
               <button
-                disabled={loadingAction === "bulk-pdf"}
-                onClick={() => handleBulkExport("pdf")}
+                className="primary-button"
+                disabled={loadingAction !== null}
+                onClick={() => void startCharacterExport()}
                 type="button"
               >
-                {loadingAction === "bulk-pdf" ? `导出中 ${exportProgress}` : "PDF"}
-              </button>
-              <button
-                disabled={loadingAction === "bulk-jpg"}
-                onClick={() => handleBulkExport("jpg")}
-                type="button"
-              >
-                {loadingAction === "bulk-jpg" ? `导出中 ${exportProgress}` : "JPG"}
-              </button>
-              <button
-                disabled={loadingAction === "bulk-png"}
-                onClick={() => handleBulkExport("png")}
-                type="button"
-              >
-                {loadingAction === "bulk-png" ? `导出中 ${exportProgress}` : "PNG"}
+                {loadingAction ? "正在导出..." : "开始导出"}
               </button>
             </div>
           </div>
@@ -1168,8 +1247,8 @@ export function Dashboard({
                 ["search", "搜索角色", "/"],
                 ["drafts", "打开草稿箱", ""],
                 ["favorites", "打开收藏夹", ""],
-                ["import", "导入角色", ""],
-                ["export", "导出角色 JSON", ""],
+                ["import", "导入角色 JSON/ZIP", ""],
+                ["export", "导出角色 JSON/ZIP", ""],
                 ["theme", "切换主题", ""],
               ].map(([id, label, shortcut]) => (
                 <button key={id} onClick={() => runCommand(id)} type="button">
@@ -1284,7 +1363,7 @@ export function Dashboard({
                 <ul className="about-list">
                   <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
                   <li>角色 JSON：仅角色文字数据，不含头像，适合轻量备份。</li>
-                  <li>完整备份 ZIP：包含角色、manifest 与头像素材，适合跨设备迁移。</li>
+                  <li>完整备份 ZIP：包含角色、头像绑定信息与头像素材，适合跨设备迁移。</li>
                   <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
                   <li>CSV、PDF、JPG、PNG：用于文字归档或展示，不用于重新导入。</li>
                 </ul>
@@ -1425,14 +1504,11 @@ export function Dashboard({
               <article>
                 <h3>Data</h3>
                 <div className="settings-actions">
-                  <button className="ghost-button" onClick={handleExportAllJson} type="button">
-                    导出角色 JSON
-                  </button>
-                  <button className="ghost-button" onClick={() => void handleExportFullBackup()} type="button">
-                    导出完整备份 ZIP
+                  <button className="ghost-button" onClick={() => openCharacterExportDialog("all")} type="button">
+                    导出角色 JSON/ZIP
                   </button>
                   <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
-                    导入角色
+                    导入角色 JSON/ZIP
                   </button>
                   <button className="danger-button" onClick={() => setIsClearDataOpen(true)} type="button">
                     清空本地数据
@@ -1440,7 +1516,7 @@ export function Dashboard({
                 </div>
               </article>
               <article>
-                <h3>Local Avatar Assets</h3>
+                <h3>头像素材库</h3>
                 <p className="muted">
                   本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。
                 </p>
@@ -1456,7 +1532,7 @@ export function Dashboard({
                     }}
                     type="button"
                   >
-                    打开 Asset Library
+                    打开头像素材库
                   </button>
                 </div>
               </article>
@@ -1482,7 +1558,7 @@ export function Dashboard({
           <div className="settings-dialog compact-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Import Preview</p>
+                <p className="eyebrow">导入预览</p>
                 <h2>确认导入</h2>
               </div>
               <button className="ghost-button" onClick={() => setImportPlan(null)} type="button">
@@ -1491,26 +1567,38 @@ export function Dashboard({
             </div>
             <div className="settings-grid import-preview-grid">
               <article>
-                <h3>导入内容</h3>
-                <p className="muted">请确认以下内容。点击确认前，不会写入角色数据或头像素材。</p>
+                <h3>即将导入</h3>
+                <p className="muted">确认前不会写入角色或头像素材。</p>
                 <div className="import-preview-stats">
-                  <span>角色数量：{importPlan.preview.roleCount}</span>
-                  <span>头像数量：{importPlan.preview.avatarCount}</span>
-                  <span>自动匹配头像：{importPlan.preview.autoMatchedAvatarCount}</span>
-                  <span>未匹配头像：{importPlan.preview.unmatchedAvatarCount}</span>
-                  <span>重复素材：{importPlan.preview.duplicateAssetCount}</span>
-                  <span>同名角色：{importPlan.preview.duplicateCharacterCount}</span>
-                  <span>包含 backup-info：{importPlan.preview.hasBackupInfo ? "是" : "否"}</span>
-                  <span>数据版本：{importPlan.preview.dataVersion}</span>
+                  <span>角色：{importPlan.preview.roleCount} 个</span>
+                  <span>头像素材：{importPlan.preview.avatarCount} 个</span>
+                  <span>导入类型：{getImportTypeLabel(importPlan.preview.importType)}</span>
                 </div>
+                <button
+                  className="ghost-button import-detail-toggle"
+                  onClick={() => setIsImportDetailOpen((current) => !current)}
+                  type="button"
+                >
+                  {isImportDetailOpen ? "收起详细信息 ▲" : "查看详细信息 ▼"}
+                </button>
+                {isImportDetailOpen && (
+                  <div className="import-preview-stats">
+                    <span>自动绑定头像：{importPlan.preview.autoMatchedAvatarCount} 个</span>
+                    <span>未绑定头像：{importPlan.preview.unmatchedAvatarCount} 个</span>
+                    <span>重复头像素材：{importPlan.preview.duplicateAssetCount} 个</span>
+                    <span>同名角色：{importPlan.preview.duplicateCharacterCount} 个</span>
+                    <span>数据版本：{getDataVersionLabel(importPlan.preview.dataVersion)}</span>
+                    <span>完整备份信息：{importPlan.preview.hasBackupInfo ? "包含" : "未包含"}</span>
+                  </div>
+                )}
               </article>
               <article>
                 <h3>冲突处理</h3>
                 <p className="muted">
-                  当前策略为保留全部角色；同 ID 会自动生成新 ID，重复头像素材会自动复用，头像绑定只依据 manifest 或单角色内嵌头像数据。
+                  当前策略为保留全部角色；同 ID 会自动生成新 ID，重复头像素材会自动复用。
                 </p>
                 <p className="muted">
-                  如果取消导入，所有解析出的角色与头像素材都会被丢弃，不会写入本地数据。
+                  头像只根据备份内的头像绑定信息或单角色内嵌头像恢复，不会靠文件名猜测。
                 </p>
               </article>
             </div>
@@ -1544,8 +1632,8 @@ export function Dashboard({
           <div className="settings-dialog asset-library-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Asset Library</p>
-                <h2>本地素材库</h2>
+                <p className="eyebrow">头像素材库</p>
+                <h2>头像素材库</h2>
               </div>
               <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
                 关闭
@@ -1566,7 +1654,7 @@ export function Dashboard({
                     type="file"
                   />
                   <button className="ghost-button" onClick={() => assetImportInputRef.current?.click()} type="button">
-                    导入头像素材
+                  导入头像素材
                   </button>
                   <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
                     导出头像素材
@@ -1891,13 +1979,10 @@ export function Dashboard({
                   onClick={() => fileInputRef.current?.click()}
                   type="button"
                 >
-                  导入角色
+                  导入角色 JSON/ZIP
                 </button>
-                <button onClick={handleExportAllJson} type="button">
-                  导出角色 JSON
-                </button>
-                <button onClick={() => void handleExportFullBackup()} type="button">
-                  导出完整备份 ZIP
+                <button onClick={() => openCharacterExportDialog("all")} type="button">
+                  导出角色 JSON/ZIP
                 </button>
                 <button onClick={handleExportCsv} type="button">
                   导出 CSV
@@ -2069,7 +2154,7 @@ export function Dashboard({
                         <button
                           className="ghost-button"
                           disabled={selectedIds.length === 0 || loadingAction !== null}
-                          onClick={() => setIsBulkExportOpen(true)}
+                          onClick={() => openCharacterExportDialog("selected")}
                           type="button"
                         >
                           导出
@@ -2131,7 +2216,7 @@ export function Dashboard({
                         <button
                           className="ghost-button"
                           disabled={selectedIds.length === 0 || loadingAction !== null}
-                          onClick={() => setIsBulkExportOpen(true)}
+                          onClick={() => openCharacterExportDialog("selected")}
                           type="button"
                         >
                           <span>↓</span>
@@ -2582,7 +2667,7 @@ export function Dashboard({
           About Character Studio
         </button>
         <button onClick={() => setIsAssetLibraryOpen(true)} type="button">
-          Asset Library
+          头像素材库
         </button>
         <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
           Settings
@@ -2610,6 +2695,87 @@ function getPersonalityTags(character: Character) {
   return Array.from(
     new Set((character.personalityTags || []).filter((tag) => tag.trim())),
   );
+}
+
+function getCharacterExportOptions(scope: CharacterExportScope): Array<{
+  value: CharacterExportChoice;
+  label: string;
+  description: string;
+}> {
+  const baseOptions: Array<{
+    value: CharacterExportChoice;
+    label: string;
+    description: string;
+  }> = [
+    {
+      value: "json",
+      label: "导出角色 JSON",
+      description: "仅角色数据，适合轻量备份",
+    },
+    {
+      value: "zip",
+      label: "导出完整备份 ZIP",
+      description: "包含角色与头像，推荐跨设备迁移",
+    },
+  ];
+
+  if (scope === "all") {
+    return [
+      ...baseOptions,
+      {
+        value: "csv",
+        label: "导出 CSV",
+        description: "导出文字资料",
+      },
+    ];
+  }
+
+  return [
+    ...baseOptions,
+    {
+      value: "pdf",
+      label: "导出 PDF",
+      description: "展示用途，不可重新导入",
+    },
+    {
+      value: "jpg",
+      label: "导出 JPG",
+      description: "图片分享，体积较小",
+    },
+    {
+      value: "png",
+      label: "导出 PNG",
+      description: "图片分享，画质更清晰",
+    },
+  ];
+}
+
+function getImportTypeLabel(importType: "json" | "zip" | "mixed") {
+  if (importType === "zip") {
+    return "完整备份 ZIP";
+  }
+
+  if (importType === "mixed") {
+    return "角色 JSON 与完整备份 ZIP";
+  }
+
+  return "角色 JSON";
+}
+
+function getDataVersionLabel(dataVersion: string) {
+  if (!dataVersion || dataVersion === "JSON") {
+    return "角色数据";
+  }
+
+  if (dataVersion === "ZIP") {
+    return "完整备份";
+  }
+
+  if (dataVersion.includes("full-backup")) {
+    return "完整备份";
+  }
+
+  return dataVersion.replace(/schemaVersion|manifest|backup-info|assetKey/gi, "数据");
 }
 
 function getVisibleCharacters(

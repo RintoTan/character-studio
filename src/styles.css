@@ -560,7 +560,7 @@ h2 {
 }
 
 .export-dialog {
-  width: min(360px, 100%);
+  width: min(440px, 100%);
   max-height: min(520px, calc(100vh - 32px));
   overflow: auto;
   border: 1px solid var(--border);
@@ -600,6 +600,58 @@ h2 {
   background: var(--surface-subtle);
   color: var(--text);
   transform: translateY(-1px);
+}
+
+.export-choice-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.export-choice-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 12px;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.export-choice-item:hover,
+.export-choice-item:has(input:checked) {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.export-choice-item input {
+  margin-top: 3px;
+}
+
+.export-choice-item strong,
+.export-choice-item small {
+  display: block;
+}
+
+.export-choice-item small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
 }
 
 .empty-state {
@@ -2642,6 +2694,10 @@ textarea {
   line-height: 1.4;
   padding: 8px 10px;
   overflow-wrap: anywhere;
+}
+
+.import-detail-toggle {
+  margin-top: 12px;
 }
 
 .command-list {

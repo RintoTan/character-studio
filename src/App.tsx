@@ -742,7 +742,7 @@ function App() {
             About Character Studio
           </button>
           <button onClick={() => setIsAppAssetLibraryOpen(true)} type="button">
-            Asset Library
+            头像素材库
           </button>
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
             Settings
@@ -782,7 +782,7 @@ function App() {
                 <ul className="about-list">
                   <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
                   <li>角色 JSON：仅角色文字数据，不含头像，适合轻量备份。</li>
-                  <li>完整备份 ZIP：包含角色、manifest 与头像素材，适合跨设备迁移。</li>
+                  <li>完整备份 ZIP：包含角色、头像绑定信息与头像素材，适合跨设备迁移。</li>
                   <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
                   <li>CSV、PDF、JPG、PNG：用于查看、归档或展示，不用于重新导入。</li>
                 </ul>
@@ -845,7 +845,7 @@ function App() {
                 </div>
               </article>
               <article>
-                <h3>Local Avatar Assets</h3>
+                <h3>头像素材库</h3>
                 <p className="muted">
                   本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。轻量 JSON 不包含头像图片二进制。
                 </p>
@@ -859,7 +859,7 @@ function App() {
                     }}
                     type="button"
                   >
-                    打开 Asset Library
+                    打开头像素材库
                   </button>
                 </div>
               </article>
@@ -875,8 +875,8 @@ function App() {
           <div className="settings-dialog asset-library-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Asset Library</p>
-                <h2>本地素材库</h2>
+                <p className="eyebrow">头像素材库</p>
+                <h2>头像素材库</h2>
               </div>
               <button className="ghost-button" onClick={() => setIsAppAssetLibraryOpen(false)} type="button">
                 关闭
