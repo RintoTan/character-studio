@@ -6,6 +6,7 @@ type CharacterPreviewProps = {
   character: Character;
   onBack: () => void;
   onEdit?: () => void;
+  onToggleFavorite?: () => void;
 };
 
 const basicFields: Array<[keyof Character, string]> = [
@@ -42,11 +43,12 @@ function buildFullCharacterText(character: Character) {
   ].join("\n");
 }
 
-export function CharacterPreview({ character, onBack, onEdit }: CharacterPreviewProps) {
+export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }: CharacterPreviewProps) {
   const [toastMessage, setToastMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const isFavorite = Boolean(character.favorite ?? character.isFavorite);
 
   function showToast(message: string) {
     setToastMessage(message);
@@ -190,29 +192,64 @@ export function CharacterPreview({ character, onBack, onEdit }: CharacterPreview
           </div>
           <div className="preview-actions" data-pdf-hidden="true">
             {onEdit && (
-              <button className="ghost-button" onClick={onEdit} type="button">
-                编辑
+              <button
+                aria-label="编辑"
+                className="ghost-button preview-action-button"
+                data-tooltip="编辑"
+                onClick={onEdit}
+                type="button"
+              >
+                <span className="desktop-label">编辑</span>
+                <span className="mobile-icon">✎</span>
+              </button>
+            )}
+            {onToggleFavorite && (
+              <button
+                aria-label={isFavorite ? "移出收藏" : "加入收藏"}
+                className={isFavorite ? "ghost-button preview-action-button active" : "ghost-button preview-action-button"}
+                data-tooltip={isFavorite ? "移出收藏" : "加入收藏"}
+                onClick={() => {
+                  onToggleFavorite();
+                  showToast(isFavorite ? "已移出收藏" : "已加入收藏");
+                }}
+                type="button"
+              >
+                <span className="desktop-label">{isFavorite ? "移出收藏" : "收藏"}</span>
+                <span className="mobile-icon">♥</span>
               </button>
             )}
             <button
-              className="ghost-button"
+              aria-label="复制完整设定"
+              className="ghost-button preview-action-button"
+              data-tooltip="复制"
               onClick={() =>
                 copyText(buildFullCharacterText(character), "完整角色设定已复制")
               }
               type="button"
             >
-              复制完整设定
+              <span className="desktop-label">复制完整设定</span>
+              <span className="mobile-icon">⧉</span>
             </button>
             <button
-              className="ghost-button"
+              aria-label="导出"
+              className="ghost-button preview-action-button"
+              data-tooltip="导出"
               disabled={loadingAction !== null}
               onClick={() => setIsExportOpen(true)}
               type="button"
             >
-              {loadingAction ? "导出中..." : "导出"}
+              <span className="desktop-label">{loadingAction ? "导出中..." : "导出"}</span>
+              <span className="mobile-icon">{loadingAction ? "…" : "⇩"}</span>
             </button>
-            <button className="ghost-button" onClick={onBack} type="button">
-              返回
+            <button
+              aria-label="返回"
+              className="ghost-button preview-action-button"
+              data-tooltip="返回"
+              onClick={onBack}
+              type="button"
+            >
+              <span className="desktop-label">返回</span>
+              <span className="mobile-icon">←</span>
             </button>
           </div>
         </div>

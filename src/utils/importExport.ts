@@ -120,6 +120,8 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     id,
     name: asString(value.name) || "未命名角色",
     avatarEmoji: asString(value.avatarEmoji),
+    favorite: value.favorite === true || value.isFavorite === true,
+    isFavorite: undefined,
     isDraft: value.isDraft === true,
     draftOfId: asString(value.draftOfId),
     gender: asString(value.gender),

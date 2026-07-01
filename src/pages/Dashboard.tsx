@@ -21,6 +21,7 @@ type DashboardProps = {
   onBulkDuplicate: (characters: Character[]) => void;
   onImport: (characters: Character[]) => void;
   onPromoteDraft: (character: Character) => void;
+  onToggleFavorite: (character: Character) => void;
   isLoading?: boolean;
   onToggleTheme: () => void;
   themeMode: ThemeMode;
@@ -76,6 +77,7 @@ export function Dashboard({
   onBulkDuplicate,
   onImport,
   onPromoteDraft,
+  onToggleFavorite,
   isLoading = false,
   onToggleTheme,
   themeMode,
@@ -135,6 +137,8 @@ export function Dashboard({
   const heroCopy = getHeroCopy(prefs.favoriteMode);
   const listTitle = getListTitle(prefs, hasSearchOrFilter);
   const stats = getDashboardStats(characters, flags);
+  const isFavoriteView = prefs.favoriteMode === "favorites";
+  const isDraftView = prefs.favoriteMode === "drafts";
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -220,6 +224,22 @@ export function Dashboard({
   useEffect(() => {
     localStorage.setItem(DASHBOARD_FLAGS_KEY, JSON.stringify(flags));
   }, [flags]);
+
+  useEffect(() => {
+    if (flags.favoriteIds.length === 0) {
+      return;
+    }
+
+    const legacyFavoriteIds = new Set(flags.favoriteIds);
+    const nextCharacters = characters.map((character) =>
+      legacyFavoriteIds.has(character.id) && !character.isDraft
+        ? { ...character, favorite: true, isFavorite: undefined }
+        : character,
+    );
+
+    onImport(nextCharacters);
+    setFlags((current) => ({ ...current, favoriteIds: [] }));
+  }, [characters, flags.favoriteIds, onImport]);
 
   function showToast(
     message: string,
@@ -424,13 +444,43 @@ export function Dashboard({
       return;
     }
 
+    const legacyFavoriteIds = new Set(flags.favoriteIds);
+    let changedCount = 0;
+    let skippedCount = 0;
+    const selectedSet = new Set(selectedIds);
+    const nextCharacters = characters.map((character) => {
+      if (!selectedSet.has(character.id) || character.isDraft) {
+        return character;
+      }
+
+      const currentFavorite = isCharacterFavorite(character, legacyFavoriteIds);
+      if (currentFavorite === shouldFavorite) {
+        skippedCount += 1;
+        return character;
+      }
+
+      changedCount += 1;
+      return {
+        ...character,
+        favorite: shouldFavorite,
+        isFavorite: undefined,
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    onImport(nextCharacters);
     setFlags((current) => ({
       ...current,
-      favoriteIds: shouldFavorite
-        ? Array.from(new Set([...current.favoriteIds, ...selectedIds]))
-        : current.favoriteIds.filter((id) => !selectedIds.includes(id)),
+      favoriteIds: current.favoriteIds.filter((id) => !selectedSet.has(id)),
     }));
-    showToast(shouldFavorite ? "已批量收藏" : "已批量取消收藏");
+    setSelectedIds([]);
+
+    if (shouldFavorite) {
+      showToast(`新增收藏 ${changedCount} 个，已跳过 ${skippedCount} 个。`);
+      return;
+    }
+
+    showToast(`已移出收藏 ${changedCount} 个，已跳过 ${skippedCount} 个。`);
   }
 
   function clearSearchAndFilters() {
@@ -450,16 +500,23 @@ export function Dashboard({
   }
 
   function toggleFavorite(characterId: string) {
-    setFlags((current) => {
-      const isFavorite = current.favoriteIds.includes(characterId);
-      return {
-        ...current,
-        favoriteIds: isFavorite
-          ? current.favoriteIds.filter((id) => id !== characterId)
-          : [...current.favoriteIds, characterId],
-      };
+    const character = characters.find((item) => item.id === characterId);
+    if (!character) {
+      return;
+    }
+
+    const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
+    onToggleFavorite({
+      ...character,
+      favorite: isFavorite,
+      isFavorite: undefined,
     });
+    setFlags((current) => ({
+      ...current,
+      favoriteIds: current.favoriteIds.filter((id) => id !== characterId),
+    }));
     setOpenCardMenuId(null);
+    showToast(isFavorite ? "已移出收藏" : "已加入收藏");
   }
 
   function togglePinned(characterId: string) {
@@ -1346,24 +1403,27 @@ export function Dashboard({
                       ? "取消全选"
                       : "全选"}
                   </button>
-                  {prefs.favoriteMode !== "drafts" && (
+                  {!isDraftView && (
                     <>
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length === 0}
-                        onClick={() => bulkSetFavorite(true)}
-                        type="button"
-                      >
-                        批量收藏
-                      </button>
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length === 0}
-                        onClick={() => bulkSetFavorite(false)}
-                        type="button"
-                      >
-                        取消收藏
-                      </button>
+                      {isFavoriteView ? (
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length === 0}
+                          onClick={() => bulkSetFavorite(false)}
+                          type="button"
+                        >
+                          移出收藏
+                        </button>
+                      ) : (
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length === 0}
+                          onClick={() => bulkSetFavorite(true)}
+                          type="button"
+                        >
+                          加入收藏
+                        </button>
+                      )}
                       <button
                         className="ghost-button"
                         disabled={selectedIds.length === 0 || loadingAction !== null}
@@ -1380,7 +1440,7 @@ export function Dashboard({
                     onClick={handleBulkDuplicate}
                     type="button"
                   >
-                    批量复制
+                    {isDraftView ? "复制" : "批量复制"}
                   </button>
                   <button
                     className="danger-button"
@@ -1392,25 +1452,26 @@ export function Dashboard({
                     }
                     type="button"
                   >
-                    批量删除
+                    {isDraftView ? "删除" : "批量删除"}
                   </button>
-                  {prefs.favoriteMode !== "drafts" && (
-                    <button
-                      className="ghost-button"
-                      onClick={exitBulkMode}
-                      type="button"
-                    >
-                      取消选择
-                    </button>
-                  )}
+                  <button
+                    className="ghost-button"
+                    onClick={exitBulkMode}
+                    type="button"
+                  >
+                    取消选择
+                  </button>
                 </>
               ) : (
                 <button
-                  className="ghost-button"
+                  className="ghost-button bulk-select-button"
+                  aria-label="批量选择"
+                  data-tooltip="批量选择"
                   onClick={enterBulkMode}
                   type="button"
                 >
-                  批量选择
+                  <span className="desktop-label">批量选择</span>
+                  <span className="mobile-icon">☑</span>
                 </button>
               )}
             </div>
@@ -1468,7 +1529,7 @@ export function Dashboard({
                 <span>操作</span>
               </div>
               {visibleCharacters.map((character) => {
-                const isFavorite = flags.favoriteIds.includes(character.id);
+                const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
                 const isDraft = character.isDraft === true;
 
                 return (
@@ -1507,12 +1568,76 @@ export function Dashboard({
                         />
                       ) : (
                         <>
-                          <button className="bare-icon-button" onClick={() => onEdit(character)} type="button">
+                          <button className="bare-icon-button table-edit-button" onClick={() => onEdit(character)} type="button">
                             ✎
                           </button>
-                          <button className="bare-icon-button" onClick={() => onPreview(character)} type="button">
-                            ⋯
-                          </button>
+                          <div className="card-menu-wrap table-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
+                            <button
+                              aria-label="更多"
+                              className="bare-icon-button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenCardMenuId((current) =>
+                                  current === character.id ? null : character.id,
+                                );
+                              }}
+                              type="button"
+                            >
+                              ⋯
+                            </button>
+                            {openCardMenuId === character.id && (
+                              <div className="card-menu table-card-menu" onClick={(event) => event.stopPropagation()}>
+                                <button onClick={() => onPreview(character)} type="button">
+                                  预览
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    onEdit(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  编辑
+                                </button>
+                                {!isDraft && (
+                                  <button
+                                    onClick={() => toggleFavorite(character.id)}
+                                    type="button"
+                                  >
+                                    {isFavorite ? "移出收藏" : "加入收藏"}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    onDuplicate(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  复制
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setExportTarget(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  导出
+                                </button>
+                                <button
+                                  className="menu-danger"
+                                  onClick={() => {
+                                    setPendingDelete(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </>
                       )}
                     </div>
@@ -1526,7 +1651,7 @@ export function Dashboard({
             {visibleCharacters.map((character) => {
               const tags = getPersonalityTags(character);
               const visibleTags = tags.slice(0, 5);
-              const isFavorite = flags.favoriteIds.includes(character.id);
+              const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
               const isPinned = flags.pinnedIds.includes(character.id);
               const isDraft = character.isDraft === true;
 
@@ -1757,10 +1882,10 @@ export function Dashboard({
         <button onClick={() => setIsAboutOpen(true)} type="button">
           About Character Studio
         </button>
-        <button onClick={() => setIsSettingsOpen(true)} type="button">
+        <span>RINTO © 2026</span>
+        <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
           Settings
         </button>
-        <span>RINTO © 2026</span>
       </footer>
     </section>
   );
@@ -1819,7 +1944,8 @@ function getVisibleCharacters(
           ? isDraft
           : !isDraft &&
             (prefs.favoriteMode === "all" ||
-              (prefs.favoriteMode === "favorites" && favoriteIds.has(character.id)));
+              (prefs.favoriteMode === "favorites" &&
+                isCharacterFavorite(character, favoriteIds)));
 
       return (
         matchesSearch &&
@@ -1905,9 +2031,15 @@ function getDashboardStats(characters: Character[], flags: DashboardFlags) {
     officialCount: officialCharacters.length,
     draftCount,
     favoriteCount: officialCharacters.filter((character) =>
-      favoriteIds.has(character.id),
+      isCharacterFavorite(character, favoriteIds),
     ).length,
   };
+}
+
+function isCharacterFavorite(character: Character, legacyFavoriteIds = new Set<string>()) {
+  return Boolean(
+    character.favorite ?? character.isFavorite ?? legacyFavoriteIds.has(character.id),
+  );
 }
 
 function getListTitle(prefs: DashboardPrefs, hasSearchOrFilter: boolean) {

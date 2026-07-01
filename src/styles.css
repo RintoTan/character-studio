@@ -760,7 +760,7 @@ h2 {
 }
 
 .character-table-wrap {
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .character-table {
@@ -837,6 +837,14 @@ h2 {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.table-menu-wrap {
+  position: relative;
+}
+
+.table-card-menu {
+  z-index: 20;
 }
 
 .select-circle.inline {
@@ -1220,8 +1228,9 @@ h2 {
 
 .dashboard-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  gap: 10px;
+  gap: 10px 14px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
@@ -1248,6 +1257,14 @@ h2 {
 
 .card-menu .menu-danger {
   color: var(--danger);
+}
+
+.mobile-icon {
+  display: none;
+}
+
+.bulk-select-button {
+  min-width: 32px;
 }
 
 .character-form {
@@ -2433,6 +2450,22 @@ kbd {
     flex: 1;
   }
 
+  .desktop-label {
+    display: none;
+  }
+
+  .mobile-icon {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .bulk-select-button {
+    flex: 0 0 34px !important;
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+
   .dashboard-action-groups {
     justify-items: stretch;
   }
@@ -2508,6 +2541,21 @@ kbd {
     padding: 18px;
   }
 
+  .preview-actions {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .preview-actions .preview-action-button {
+    flex: 0 0 34px;
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+  }
+
   .intro-panel {
     align-items: flex-start;
     gap: 14px;
@@ -2538,8 +2586,8 @@ kbd {
 
   .character-card {
     aspect-ratio: auto;
-    min-height: 220px;
-    padding: 52px 12px 50px;
+    min-height: 236px;
+    padding: 58px 12px 54px;
   }
 
   .card-edit-button {
@@ -2559,9 +2607,9 @@ kbd {
 
   .card-tags {
     left: 12px;
-    right: 12px;
-    max-width: calc(100% - 24px);
-    max-height: 38px;
+    right: 54px;
+    max-width: calc(100% - 66px);
+    max-height: 42px;
   }
 
   .card-tags button:nth-of-type(n + 5) {

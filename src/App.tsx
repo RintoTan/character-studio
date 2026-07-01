@@ -195,6 +195,21 @@ function App() {
     setCharacters(duplicateCharacter(character));
   }
 
+  function handleToggleFavorite(character: Character) {
+    const isFavorite = character.favorite ?? character.isFavorite ?? false;
+    const updatedCharacter = {
+      ...character,
+      favorite: !isFavorite,
+      isFavorite: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+    setCharacters(upsertCharacter(updatedCharacter));
+
+    if (selectedCharacter?.id === character.id) {
+      setSelectedCharacter(updatedCharacter);
+    }
+  }
+
   function handleBulkDelete(characterIds: string[]) {
     const nextCharacters = characters.filter(
       (character) => !characterIds.includes(character.id),
@@ -310,6 +325,7 @@ function App() {
           onBulkDuplicate={handleBulkDuplicate}
           onImport={handleImport}
           onPromoteDraft={handlePromoteDraft}
+          onToggleFavorite={handleToggleFavorite}
           isLoading={isLoading}
           onToggleTheme={toggleTheme}
           themeMode={themeMode}
@@ -334,6 +350,7 @@ function App() {
           character={selectedCharacter}
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
+          onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}
         />
       )}
 

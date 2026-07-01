@@ -10,6 +10,8 @@ export function loadCharacters(): Character[] {
     return characters.map((character) => ({
       ...character,
       avatarEmoji: character.avatarEmoji || "🙂",
+      favorite: Boolean(character.favorite ?? character.isFavorite),
+      isFavorite: undefined,
       isDraft: character.isDraft === true,
       draftOfId: character.draftOfId,
       createdAt: character.createdAt || character.updatedAt || new Date().toISOString(),
