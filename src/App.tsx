@@ -35,6 +35,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
+  const [isFirstAboutOpen, setIsFirstAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isAppAssetLibraryOpen, setIsAppAssetLibraryOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
@@ -66,6 +67,7 @@ function App() {
     setCharacters(loadCharacters());
     setIsLoading(false);
     if (localStorage.getItem(ABOUT_SEEN_KEY) !== "true") {
+      setIsFirstAboutOpen(true);
       setIsAppAboutOpen(true);
     }
   }, []);
@@ -100,6 +102,8 @@ function App() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsThemeMenuOpen(false);
+        setIsAppAboutOpen(false);
+        setIsFirstAboutOpen(false);
         setIsAppAssetLibraryOpen(false);
         setPendingAppAssetDelete(null);
         setIsAppAssetCleanupOpen(false);
@@ -306,6 +310,7 @@ function App() {
   function closeAppOverlays() {
     setIsThemeMenuOpen(false);
     setIsAppAboutOpen(false);
+    setIsFirstAboutOpen(false);
     setIsAppSettingsOpen(false);
     setIsAppAssetLibraryOpen(false);
     setIsAppAssetCleanupOpen(false);
@@ -322,6 +327,7 @@ function App() {
       const nextPage = event.state?.characterStudioPage;
       setPage(nextPage === "form" || nextPage === "preview" ? nextPage : "dashboard");
       setIsAppAboutOpen(false);
+      setIsFirstAboutOpen(false);
       setIsAppSettingsOpen(false);
       setIsAppAssetLibraryOpen(false);
     }
@@ -515,7 +521,10 @@ function App() {
     <main className="app-shell">
       <nav className="topbar">
         <button className="brand-button" onClick={goDashboard}>
-          <img alt="" className="brand-mark" src="/favicon.svg" />
+          <svg className="brand-mark" aria-hidden="true" viewBox="0 0 566.43 637.56">
+            <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
+            <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
+          </svg>
           Character Studio
         </button>
         <div className="nav-actions">
@@ -738,7 +747,10 @@ function App() {
 
       {page !== "dashboard" && (
         <footer className="dashboard-footer app-footer" data-pdf-hidden="true">
-          <button onClick={() => setIsAppAboutOpen(true)} type="button">
+          <button onClick={() => {
+            setIsFirstAboutOpen(false);
+            setIsAppAboutOpen(true);
+          }} type="button">
             About Character Studio
           </button>
           <button onClick={() => setIsAppAssetLibraryOpen(true)} type="button">
@@ -753,7 +765,10 @@ function App() {
 
       {isAppAboutOpen && (
         <div className="modal-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget) setIsAppAboutOpen(false);
+          if (event.target === event.currentTarget) {
+            setIsAppAboutOpen(false);
+            setIsFirstAboutOpen(false);
+          }
         }} role="presentation">
           <div className="about-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
@@ -761,7 +776,10 @@ function App() {
                 <p className="eyebrow">About</p>
                 <h2>About Character Studio</h2>
               </div>
-              <button className="ghost-button" onClick={() => setIsAppAboutOpen(false)} type="button">
+              <button className="ghost-button" onClick={() => {
+                setIsAppAboutOpen(false);
+                setIsFirstAboutOpen(false);
+              }} type="button">
                 关闭
               </button>
             </div>
@@ -777,44 +795,48 @@ function App() {
                   <li>主题切换、导入导出、PDF / JPG / PNG 输出。</li>
                 </ul>
               </article>
-              <article>
-                <h3>快捷键</h3>
-                <dl className="shortcut-list">
-                  <div><dt>N</dt><dd>新建角色</dd></div>
-                  <div><dt>/</dt><dd>打开搜索</dd></div>
-                  <div><dt>Esc</dt><dd>关闭弹层</dd></div>
-                  <div><dt>⌘K / Ctrl+K</dt><dd>打开 Command Palette</dd></div>
-                  <div><dt>Enter</dt><dd>打开搜索结果</dd></div>
-                  <div><dt>Tab</dt><dd>切换输入焦点</dd></div>
-                </dl>
-              </article>
-              <article>
-                <h3>Roadmap</h3>
-                <div className="roadmap-columns">
-                  <div>
-                    <h4>已完成</h4>
-                    <ul className="about-list">
-                      <li>Dashboard</li>
-                      <li>Character Editor</li>
-                      <li>Character Preview</li>
-                      <li>Draft Box</li>
-                      <li>Favorites</li>
-                      <li>Theme</li>
-                      <li>JSON / CSV / PDF 导入导出</li>
-                    </ul>
+              {!isFirstAboutOpen && (
+                <article>
+                  <h3>快捷键</h3>
+                  <dl className="shortcut-list">
+                    <div><dt>N</dt><dd>新建角色</dd></div>
+                    <div><dt>/</dt><dd>打开搜索</dd></div>
+                    <div><dt>Esc</dt><dd>关闭弹层</dd></div>
+                    <div><dt>⌘K / Ctrl+K</dt><dd>打开 Command Palette</dd></div>
+                    <div><dt>Enter</dt><dd>打开搜索结果</dd></div>
+                    <div><dt>Tab</dt><dd>切换输入焦点</dd></div>
+                  </dl>
+                </article>
+              )}
+              {!isFirstAboutOpen && (
+                <article>
+                  <h3>Roadmap</h3>
+                  <div className="roadmap-columns">
+                    <div>
+                      <h4>已完成</h4>
+                      <ul className="about-list">
+                        <li>Dashboard</li>
+                        <li>Character Editor</li>
+                        <li>Character Preview</li>
+                        <li>Draft Box</li>
+                        <li>Favorites</li>
+                        <li>Theme</li>
+                        <li>JSON / CSV / PDF 导入导出</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <h4>计划开发</h4>
+                      <ul className="about-list">
+                        <li>Character Relationship</li>
+                        <li>Timeline</li>
+                        <li>World Manager</li>
+                        <li>AI Assistant</li>
+                        <li>Cloud Sync</li>
+                      </ul>
+                    </div>
                   </div>
-                  <div>
-                    <h4>计划开发</h4>
-                    <ul className="about-list">
-                      <li>Character Relationship</li>
-                      <li>Timeline</li>
-                      <li>World Manager</li>
-                      <li>AI Assistant</li>
-                      <li>Cloud Sync</li>
-                    </ul>
-                  </div>
-                </div>
-              </article>
+                </article>
+              )}
               <article>
                 <h3>导入 / 导出说明</h3>
                 <ul className="about-list">
@@ -839,26 +861,32 @@ function App() {
                 </div>
                 <p className="muted">RINTO 联合 Codex 共同开发 2026。</p>
               </article>
-              <article>
-                <h3>鸣谢</h3>
-                <p>感谢 OpenAI Codex、React、TypeScript、Vite、jsPDF 与 html2canvas 提供支持。</p>
-              </article>
-              <article>
-                <h3>Changelog</h3>
-                <p>近期版本重点完善了 Avatar、头像素材库、导入导出、Design System 与移动端体验。</p>
-              </article>
-              <article>
-                <h3>首次提示</h3>
-                <label className="settings-check">
-                  <input
-                    type="checkbox"
-                    onChange={(event) =>
-                      localStorage.setItem(ABOUT_SEEN_KEY, String(event.target.checked))
-                    }
-                  />
-                  <span>不再自动显示</span>
-                </label>
-              </article>
+              {!isFirstAboutOpen && (
+                <article>
+                  <h3>鸣谢</h3>
+                  <p>感谢 OpenAI Codex、React、TypeScript、Vite、jsPDF 与 html2canvas 提供支持。</p>
+                </article>
+              )}
+              {!isFirstAboutOpen && (
+                <article>
+                  <h3>Changelog</h3>
+                  <p>近期版本重点完善了 Avatar、头像素材库、导入导出、Design System 与移动端体验。</p>
+                </article>
+              )}
+              {isFirstAboutOpen && (
+                <article>
+                  <h3>首次提示</h3>
+                  <label className="settings-check">
+                    <input
+                      type="checkbox"
+                      onChange={(event) =>
+                        localStorage.setItem(ABOUT_SEEN_KEY, String(event.target.checked))
+                      }
+                    />
+                    <span>不再自动显示</span>
+                  </label>
+                </article>
+              )}
             </div>
             <p className="about-footer">RINTO © 2026</p>
           </div>

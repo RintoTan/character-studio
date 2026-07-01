@@ -86,8 +86,7 @@ html {
   background: var(--bg);
   text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
-  overscroll-behavior-x: none;
-  overscroll-behavior-y: none;
+  overflow-y: auto;
 }
 
 body {
@@ -97,8 +96,7 @@ body {
   min-height: 100dvh;
   overflow-x: hidden;
   background: var(--bg);
-  overscroll-behavior-x: none;
-  overscroll-behavior-y: none;
+  overflow-y: auto;
   transition:
     background 180ms ease,
     color 180ms ease;
@@ -108,6 +106,14 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   overflow-x: clip;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  html,
+  body {
+    overscroll-behavior-x: none;
+    overscroll-behavior-y: none;
+  }
 }
 
 button,
@@ -164,6 +170,18 @@ button:disabled {
   width: 22px;
   height: 22px;
   flex: 0 0 auto;
+}
+
+.brand-mark-primary {
+  fill: #222937;
+}
+
+.brand-mark-accent {
+  fill: #635ab2;
+}
+
+:root[data-theme="dark"] .brand-mark-primary {
+  fill: #efefef;
 }
 
 .nav-actions,
