@@ -1390,7 +1390,36 @@ export function Dashboard({
                 <p className="muted">RINTO 联合 Codex 共同开发 2026。</p>
               </article>
             </div>
-            <p className="about-footer">RINTO © 2026</p>
+            <div className="about-brand-footer">
+              <svg className="about-brand-logo" aria-hidden="true" viewBox="0 0 566.43 637.56">
+                <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
+                <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
+              </svg>
+              <div className="about-brand-meta">
+                <h3>Character Studio</h3>
+                <p>Version 1.0.0</p>
+                <p>Sprint 7.84</p>
+                <p>Released 2026</p>
+              </div>
+              <p className="about-brand-tagline">轻量、高效、专注于原创角色创作。</p>
+              <div className="about-brand-links">
+                <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
+                  GitHub
+                </a>
+                <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">
+                  Developer Handbook
+                </a>
+              </div>
+              <div className="about-brand-credit">
+                <span>Designed &amp; Developed by</span>
+                <strong>RINTO × Codex</strong>
+                <span>2026</span>
+              </div>
+              <p className="about-brand-copyright">
+                © 2026 RINTO<br />
+                All Rights Reserved.
+              </p>
+            </div>
           </div>
         </div>
       )}

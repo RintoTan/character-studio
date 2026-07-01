@@ -3264,6 +3264,101 @@ kbd {
   text-align: center;
 }
 
+.about-brand-footer {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
+  text-align: center;
+}
+
+.about-brand-logo {
+  width: 72px;
+  height: auto;
+  margin-bottom: 2px;
+}
+
+.about-brand-meta {
+  display: grid;
+  gap: 2px;
+}
+
+.about-brand-meta h3 {
+  margin: 0 0 2px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.about-brand-meta p,
+.about-brand-tagline,
+.about-brand-credit span,
+.about-brand-copyright {
+  margin: 0;
+  color: var(--muted);
+}
+
+.about-brand-meta p {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.about-brand-tagline {
+  font-size: 13px;
+}
+
+.about-brand-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.about-brand-links a {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    transform var(--duration-fast) var(--ease-standard);
+}
+
+.about-brand-links a:hover {
+  border-color: var(--primary);
+  background: var(--surface-subtle);
+  transform: translateY(-1px);
+}
+
+.about-brand-credit {
+  display: grid;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.about-brand-credit strong {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.about-brand-credit span,
+.about-brand-copyright {
+  font-size: 11px;
+}
+
+.about-brand-copyright {
+  line-height: 1.45;
+}
+
 .toast button {
   margin-left: 12px;
   border: 1px solid rgba(255, 255, 255, 0.35);
