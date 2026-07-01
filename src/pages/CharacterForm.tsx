@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import type { Character } from "../types/character";
 import {
   compressImageToAvatarBlob,
@@ -541,6 +542,78 @@ const helperFragments = {
   },
 };
 
+type HelperFragmentGroups = typeof helperFragments;
+type HelperFragmentGroupName = keyof HelperFragmentGroups;
+
+function parseRawInspirationFragments(rawValue: string) {
+  const result: Record<string, Record<string, string[]>> = {};
+  let currentGroup = "";
+  let currentField = "";
+
+  rawValue.split(/\r?\n/).forEach((line) => {
+    const sectionMatch = line.match(/^\/\/\s*=+\s*([\w.]+)/);
+
+    if (sectionMatch) {
+      const [group = "", field = ""] = sectionMatch[1].split(".");
+      currentGroup = group;
+      currentField = field;
+
+      if (currentGroup && currentField) {
+        result[currentGroup] = result[currentGroup] || {};
+        result[currentGroup][currentField] = result[currentGroup][currentField] || [];
+      }
+
+      return;
+    }
+
+    if (!currentGroup || !currentField) {
+      return;
+    }
+
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine.startsWith("\"")) {
+      return;
+    }
+
+    try {
+      const value = JSON.parse(trimmedLine.replace(/,$/, "")) as unknown;
+
+      if (typeof value === "string" && value.trim()) {
+        result[currentGroup][currentField].push(value.trim());
+      }
+    } catch {
+      // Ignore malformed resource lines and keep the built-in fallback library usable.
+    }
+  });
+
+  return result;
+}
+
+function mergeInspirationFragments(
+  base: HelperFragmentGroups,
+  additions: Record<string, Record<string, string[]>>,
+) {
+  const merged = Object.fromEntries(
+    Object.entries(base).map(([groupName, fields]) => [
+      groupName,
+      Object.fromEntries(
+        Object.entries(fields).map(([fieldName, values]) => {
+          const extraValues = additions[groupName]?.[fieldName] || [];
+          return [fieldName, [...values, ...extraValues]];
+        }),
+      ),
+    ]),
+  ) as HelperFragmentGroups;
+
+  return merged;
+}
+
+const inspirationFragments = mergeInspirationFragments(
+  helperFragments,
+  parseRawInspirationFragments(externalInspirationLibraryRaw),
+);
+
 const recentHelperOutputs: string[] = [];
 
 const promptValueMap: Record<string, string> = {
@@ -652,6 +725,27 @@ function pickRandom(options: string[]) {
   return options[Math.floor(Math.random() * options.length)];
 }
 
+function chance(probability: number) {
+  return Math.random() < probability;
+}
+
+function pickOptional(options: string[], probability = 0.72) {
+  return chance(probability) ? pickRandom(options) : "";
+}
+
+function joinClauses(parts: Array<string | undefined | false>) {
+  return compactParts(parts).join("，");
+}
+
+function finishSentence(value: string) {
+  const cleanedValue = cleanText(value);
+  return cleanedValue ? `${cleanedValue}。` : "";
+}
+
+function pickFragmentGroup<T extends HelperFragmentGroupName>(groupName: T) {
+  return inspirationFragments[groupName];
+}
+
 function loadRecentAvatars() {
   try {
     const value = localStorage.getItem(RECENT_AVATAR_KEY);
@@ -690,7 +784,7 @@ function generateHelperSet(sectionId: HelperSectionId) {
 }
 
 function generateHelperContent(sectionId: HelperSectionId, kind: HelperKind) {
-  const shared = helperFragments.shared;
+  const shared = pickFragmentGroup("shared");
   const unique = (builder: () => string) => {
     for (let index = 0; index < 8; index += 1) {
       const value = builder();
@@ -708,54 +802,189 @@ function generateHelperContent(sectionId: HelperSectionId, kind: HelperKind) {
   };
 
   if (sectionId === "appearance") {
-    const parts = helperFragments.appearance;
+    const parts = pickFragmentGroup("appearance");
     return unique(() => {
+      const visualHook = joinClauses([
+        pickOptional(parts.features, 0.9),
+        pickOptional(parts.clothing, 0.75) && `穿着${pickRandom(parts.clothing)}`,
+        pickOptional(parts.accessories, 0.68) && `随身带着${pickRandom(parts.accessories)}`,
+        pickOptional(parts.actions, 0.55),
+      ]);
+
       if (kind === "example") {
-        return `${pickRandom(parts.features)}，穿着${pickRandom(parts.clothing)}，随身带着${pickRandom(parts.accessories)}；${pickRandom(parts.actions)}。`;
+        return finishSentence(
+          pickRandom([
+            visualHook,
+            `${pickRandom(shared.identities)}的识别点是${joinClauses([pickRandom(parts.features), pickOptional(parts.accessories, 0.8)])}`,
+            `${pickRandom(parts.clothing)}被反复修补，${pickRandom(parts.actions)}`,
+          ]),
+        );
       }
       if (kind === "tip") {
-        return `外貌可以同时写“识别点 + 生活痕迹 + 情绪动作”：例如${pickRandom(parts.features)}、${pickRandom(parts.clothing)}，再让角色${pickRandom(parts.actions)}。`;
+        return finishSentence(
+          pickRandom([
+            `外貌可以从“识别点、生活痕迹、情绪动作”里随机挑两项，例如${joinClauses([pickRandom(parts.features), pickRandom(parts.actions)])}`,
+            `让一个象征物参与外观：${pickRandom(shared.symbols)}可以解释服装、伤痕或动作习惯`,
+            `不要只写漂亮或帅气，可以加入反差：${pickRandom(shared.contrasts)}`,
+          ]),
+        );
       }
-      return `${pickRandom(shared.identities)}的外观线索：${pickRandom(parts.accessories)}被反复修补，${pickRandom(parts.features)}在${pickRandom(shared.fears)}时会变得明显。`;
+      return finishSentence(
+        joinClauses([
+          chance(0.65) ? `${pickRandom(shared.identities)}留下的外观线索` : "新的视觉灵感",
+          pickRandom(parts.features),
+          pickOptional(parts.clothing, 0.6) && `外搭${pickRandom(parts.clothing)}`,
+          pickOptional(shared.symbols, 0.5) && `与${pickRandom(shared.symbols)}有关`,
+          pickOptional(shared.fears, 0.45) && `在害怕${pickRandom(shared.fears)}时变得明显`,
+        ]),
+      );
     });
   }
 
   if (sectionId === "personality") {
-    const parts = helperFragments.personality;
+    const parts = pickFragmentGroup("personality");
     return unique(() => {
       if (kind === "example") {
-        return `${pickRandom(parts.traits)}，但${pickRandom(parts.flaws)}；平时${pickRandom(parts.behaviors)}。`;
+        return finishSentence(
+          joinClauses([
+            pickRandom(parts.traits),
+            chance(0.72) ? `但${pickRandom(parts.flaws)}` : "",
+            chance(0.62) ? `平时${pickRandom(parts.behaviors)}` : "",
+            chance(0.42) ? `私下喜欢${pickRandom(parts.hobbies)}` : "",
+          ]),
+        );
       }
       if (kind === "tip") {
-        return `写性格时加入矛盾：${pickRandom(shared.contrasts)}。再给 TA 一个私人习惯，比如${pickRandom(parts.hobbies)}。`;
+        return finishSentence(
+          pickRandom([
+            `用“性格矛盾 + 行为证据”写人，例如${pickRandom(shared.contrasts)}，再让 TA ${pickRandom(parts.behaviors)}`,
+            `给角色一个会泄露情绪的小动作，再配一个缺点：${pickRandom(parts.flaws)}`,
+            `性格可以被欲望推动：${pickRandom(shared.desires)}，但又害怕${pickRandom(shared.fears)}`,
+          ]),
+        );
       }
-      return `${pickRandom(parts.traits)}的外层下藏着${pickRandom(shared.desires)}，所以遇到${pickRandom(shared.relationships)}时会${pickRandom(parts.behaviors)}。`;
+      return finishSentence(
+        joinClauses([
+          `${pickRandom(parts.traits)}的外层下藏着${pickRandom(shared.desires)}`,
+          chance(0.6) ? `遇到${pickRandom(shared.relationships)}时会${pickRandom(parts.behaviors)}` : "",
+          chance(0.5) ? `说话方式接近${pickRandom(shared.catchphrases)}` : "",
+          chance(0.45) ? `最大弱点是${pickRandom(parts.flaws)}` : "",
+        ]),
+      );
     });
   }
 
   if (sectionId === "ability") {
-    const parts = helperFragments.ability;
+    const parts = pickFragmentGroup("ability");
     return unique(() => {
       if (kind === "example") {
-        return `${pickRandom(parts.triggers)}可以${pickRandom(parts.powers)}，但代价是${pickRandom(parts.costs)}，且${pickRandom(parts.limits)}。`;
+        return finishSentence(
+          joinClauses([
+            `${pickRandom(parts.triggers)}可以${pickRandom(parts.powers)}`,
+            chance(0.82) ? `代价是${pickRandom(parts.costs)}` : "",
+            chance(0.62) ? pickRandom(parts.limits) : "",
+          ]),
+        );
       }
       if (kind === "tip") {
-        return `能力要有“可利用的限制”：让${pickRandom(parts.limits)}成为剧情解法，而不只是削弱设定。`;
+        return finishSentence(
+          pickRandom([
+            `能力限制最好能反过来推动剧情：${pickRandom(parts.limits)}可以成为破局方法`,
+            `把能力代价和秘密绑定：${pickRandom(shared.secrets)}，所以每次使用都会更危险`,
+            `触发条件越具体越好，例如${pickRandom(parts.triggers)}，会让能力更有画面感`,
+          ]),
+        );
       }
-      return `把能力和秘密绑定：因为${pickRandom(shared.secrets)}，TA 在${pickRandom(parts.triggers)}才敢${pickRandom(parts.powers)}。`;
+      return finishSentence(
+        joinClauses([
+          chance(0.55) ? `因为${pickRandom(shared.secrets)}` : `${pickRandom(shared.identities)}的能力设定`,
+          `${pickRandom(parts.triggers)}才会${pickRandom(parts.powers)}`,
+          chance(0.75) ? `能力代价是${pickRandom(parts.costs)}` : "",
+          chance(0.55) ? `限制为${pickRandom(parts.limits)}` : "",
+        ]),
+      );
     });
   }
 
-  const parts = helperFragments.backstory;
+  const parts = pickFragmentGroup("backstory");
   return unique(() => {
     if (kind === "example") {
-      return `经历过${pickRandom(parts.events)}后，角色一直带着${pickRandom(parts.anchors)}，表面目标是${pickRandom(parts.goals)}，真正害怕的是${pickRandom(shared.fears)}。`;
+      return finishSentence(
+        joinClauses([
+          `经历过${pickRandom(parts.events)}后`,
+          chance(0.7) ? `一直带着${pickRandom(parts.anchors)}` : "",
+          chance(0.78) ? `目标是${pickRandom(parts.goals)}` : "",
+          chance(0.58) ? `真正害怕的是${pickRandom(shared.fears)}` : "",
+        ]),
+      );
     }
     if (kind === "tip") {
-      return `背景故事可以写成“过去事件 + 当前欲望 + 阻碍”：${pickRandom(parts.events)}留下了${pickRandom(parts.secrets)}，但${pickRandom(parts.conflicts)}。`;
+      return finishSentence(
+        pickRandom([
+          `背景故事可以随机抽取“事件、秘密、目标、冲突”中的三项：${pickRandom(parts.events)}留下了${pickRandom(parts.secrets)}`,
+          `让身份影响秘密：${pickRandom(shared.identities)}不一定知道自己其实${pickRandom(parts.secrets)}`,
+          `给角色一个小而明确的目标，例如${pickRandom(parts.goals)}，再设置阻碍：${pickRandom(parts.conflicts)}`,
+        ]),
+      );
     }
-    return `${pickRandom(shared.identities)}卷入${pickRandom(parts.events)}，留下${pickRandom(parts.anchors)}作为标志物；现在 TA 必须${pickRandom(parts.goals)}，否则${pickRandom(parts.conflicts)}。`;
+    return finishSentence(
+      joinClauses([
+        `${pickRandom(shared.identities)}卷入${pickRandom(parts.events)}`,
+        chance(0.64) ? `留下${pickRandom(parts.anchors)}作为标志物` : "",
+        chance(0.7) ? `现在必须${pickRandom(parts.goals)}` : "",
+        chance(0.62) ? `否则${pickRandom(parts.conflicts)}` : "",
+        chance(0.42) ? `秘密是${pickRandom(parts.secrets)}` : "",
+      ]),
+    );
   });
+}
+
+function buildRandomAppearanceDescription(personalityTags: string[], worldviewDetail: string) {
+  const shared = pickFragmentGroup("shared");
+  const parts = pickFragmentGroup("appearance");
+
+  return finishSentence(
+    joinClauses([
+      pickRandom(parts.features),
+      chance(0.78) ? `穿着${pickRandom(parts.clothing)}` : "",
+      chance(0.68) ? `随身带着${pickRandom(parts.accessories)}` : "",
+      chance(0.58) ? pickRandom(parts.actions) : "",
+      chance(0.5) ? `整体气质偏${pickRandom(personalityTags)}` : "",
+      chance(0.42) ? `适合出现在${worldviewDetail}` : "",
+      chance(0.34) ? `象征物是${pickRandom(shared.symbols)}` : "",
+    ]),
+  );
+}
+
+function buildRandomAbilityDescription() {
+  const shared = pickFragmentGroup("shared");
+  const parts = pickFragmentGroup("ability");
+
+  return finishSentence(
+    joinClauses([
+      `${pickRandom(parts.triggers)}可以${pickRandom(parts.powers)}`,
+      chance(0.78) ? `代价是${pickRandom(parts.costs)}` : "",
+      chance(0.62) ? pickRandom(parts.limits) : "",
+      chance(0.36) ? `能力与${pickRandom(shared.secrets)}有关` : "",
+    ]),
+  );
+}
+
+function buildRandomBackstoryDescription(worldviewDetail: string) {
+  const shared = pickFragmentGroup("shared");
+  const parts = pickFragmentGroup("backstory");
+
+  return finishSentence(
+    joinClauses([
+      chance(0.55) ? pickRandom(shared.identities) : "",
+      `经历过${pickRandom(parts.events)}`,
+      chance(0.66) ? `留下${pickRandom(parts.anchors)}` : "",
+      chance(0.74) ? `目标是${pickRandom(parts.goals)}` : "",
+      chance(0.52) ? `主要活动地点与${worldviewDetail}有关` : "",
+      chance(0.48) ? `隐藏秘密是${pickRandom(parts.secrets)}` : "",
+      chance(0.42) ? `冲突在于${pickRandom(parts.conflicts)}` : "",
+    ]),
+  );
 }
 
 function chooseAvatarForCharacter(character: Pick<CharacterDraft, "species" | "occupation" | "worldview" | "abilityDescription" | "gender">) {
@@ -1537,7 +1766,9 @@ export function CharacterForm({
     const personalityTags = pickRandomTags();
     const species = pickRandom(randomSpecies);
     const occupation = pickRandom(randomOccupations);
-    const abilityDescription = pickRandom(randomAbilities);
+    const abilityDescription = chance(0.82)
+      ? buildRandomAbilityDescription()
+      : pickRandom(randomAbilities);
     const gender = pickRandom(randomGenders);
     const randomCharacter: CharacterDraft = {
       name: pickRandom(randomNames),
@@ -1550,9 +1781,13 @@ export function CharacterForm({
       occupation,
       worldview,
       personalityTags,
-      appearanceDescription: `${pickRandom(randomAppearances)}整体气质偏${pickRandom(personalityTags)}，适合出现在${worldviewDetail}。`,
+      appearanceDescription: chance(0.82)
+        ? buildRandomAppearanceDescription(personalityTags, worldviewDetail)
+        : `${pickRandom(randomAppearances)}整体气质偏${pickRandom(personalityTags)}，适合出现在${worldviewDetail}。`,
       abilityDescription,
-      backstory: `${pickRandom(randomBackstories)}主要活动地点与${worldviewDetail}有关。`,
+      backstory: chance(0.82)
+        ? buildRandomBackstoryDescription(worldviewDetail)
+        : `${pickRandom(randomBackstories)}主要活动地点与${worldviewDetail}有关。`,
       visualStyle: pickRandom(visualStyleOptions),
       characterKeywords: "",
       imagePrompt: "",
