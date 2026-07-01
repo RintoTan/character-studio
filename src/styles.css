@@ -2936,6 +2936,7 @@ kbd {
 }
 
 .settings-check input[type="checkbox"] {
+  display: inline-block;
   flex: 0 0 auto;
   width: 38px;
   min-width: 38px;
@@ -2943,6 +2944,8 @@ kbd {
   border-radius: 999px;
   background: var(--surface);
   padding: 2px;
+  place-items: initial;
+  vertical-align: middle;
 }
 
 .settings-check span {
@@ -2951,6 +2954,7 @@ kbd {
 }
 
 .settings-check input[type="checkbox"]::after {
+  display: block;
   width: 16px;
   height: 16px;
   border: 0;
