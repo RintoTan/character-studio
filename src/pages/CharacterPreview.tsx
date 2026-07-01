@@ -276,7 +276,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
             {character.personalityTags?.length ? (
               <div className="preview-tags">
                 {character.personalityTags.slice(0, 5).map((tag) => (
-                  <span key={tag}>{tag}</span>
+                  <span className={`tag-tone-${getTagTone(tag)}`} key={tag}>{tag}</span>
                 ))}
               </div>
             ) : (
@@ -350,4 +350,9 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }
       </div>
     </section>
   );
+}
+
+function getTagTone(tag: string) {
+  const total = Array.from(tag).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return total % 18;
 }

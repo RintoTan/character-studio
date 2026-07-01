@@ -202,6 +202,22 @@ const randomNames = [
   "伊森",
   "森野萤",
   "罗莎琳",
+  "朝仓千鹤",
+  "林烬",
+  "阿黛拉",
+  "卫星河",
+  "柏冬",
+  "莉莉安",
+  "唐九歌",
+  "尤里安",
+  "折原真昼",
+  "西泽尔",
+  "孟临川",
+  "薇尔汀",
+  "白鹿鸣",
+  "奥菲莉亚",
+  "韩雾灯",
+  "伊芙琳",
 ];
 
 const randomGenders = ["女", "男", "非二元", "其他", "无性别", "性别流动", "未知"];
@@ -237,6 +253,18 @@ const randomSpecies = [
   "数据幽魂",
   "深海遗民",
   "灾厄容器",
+  "猫又",
+  "狼人",
+  "雪原巫族",
+  "星舰仿生人",
+  "黑塔实验体",
+  "雾海亡灵",
+  "树海精怪",
+  "蜂群意识体",
+  "龙血术士",
+  "旧日观测者",
+  "义体兽人",
+  "水晶人偶",
 ];
 
 const randomOccupations = [
@@ -272,6 +300,18 @@ const randomOccupations = [
   "观测站值夜员",
   "地下剧团演员",
   "灵异案件顾问",
+  "星舰领航员",
+  "怪物生态学者",
+  "梦境调音师",
+  "秘密社团会计",
+  "地下诊所护士",
+  "符文枪手",
+  "失物回收员",
+  "异界导游",
+  "灾后植物学家",
+  "异常气象播报员",
+  "恶魔契约律师",
+  "龙骑见习生",
 ];
 
 const randomAppearances = [
@@ -297,6 +337,14 @@ const randomAppearances = [
   "短发凌乱，背包上挂满护身符和坏掉的钥匙。",
   "额前有一道浅色印记，衣服层叠但配色克制。",
   "穿着改造过的校服，袖口缝着细密的防护符线。",
+  "头发像被月光漂白，颈侧有细小编号，随身带着玻璃药瓶。",
+  "宽大的风衣里藏着折叠工具，眼睛在暗处会泛出冷白色。",
+  "制服外套总扣错一颗纽扣，腰间挂着磨损严重的通行证。",
+  "角质耳尖被银饰遮住，手背有像枝叶一样延展的纹路。",
+  "斗篷内衬缀满星图，走动时会发出极轻的金属声。",
+  "短发剪得很不整齐，脸上贴着旧创可贴，眼神却异常锐利。",
+  "尾巴或兽耳被帽兜遮住，只在紧张时露出细微动作。",
+  "半边身体覆盖透明义体，能看见内部缓慢流动的光线。",
 ];
 
 const randomAbilities = [
@@ -322,6 +370,14 @@ const randomAbilities = [
   "可以短暂进入镜面空间，停留太久会迷失方向。",
   "擅长拆解结界和安全系统，但需要安静的准备时间。",
   "能把梦境片段投影成幻象，越真实越消耗精神。",
+  "可以和动物短暂共享视野，但会继承它们的本能反应。",
+  "能把一段记忆封存在物品里，物品损坏时记忆也会破碎。",
+  "可以操纵雾气隐藏行踪，但在强光下能力会失效。",
+  "能读取电子设备的最后一条指令，因此常被卷入危险系统。",
+  "可以让植物在废土中快速生长，但会消耗自身水分。",
+  "能召唤一件失物回到手边，但必须知道它被谁遗忘。",
+  "可以短暂预演三秒后的行动结果，却无法连续使用。",
+  "能用契约文字限制敌人的动作，前提是对方听见完整条款。",
 ];
 
 const randomBackstories = [
@@ -347,6 +403,14 @@ const randomBackstories = [
   "曾短暂成为某个仪式的祭品，因此获得了不稳定的力量。",
   "在废墟中醒来时只记得一个名字，正试图找回自己的身份。",
   "被记录为早已死亡的人，却以新的身份安静生活至今。",
+  "在一场城市停电中发现自己能听懂地下传来的广播。",
+  "被迫继承家族的怪物档案，里面第一份记录正是自己。",
+  "曾作为实验对象逃离研究所，仍会收到来自旧编号的召回信号。",
+  "在异世界醒来后没有成为勇者，而是被安排管理边境失物处。",
+  "为了寻找失踪的兄长，加入了一个专门处理异常天气的小队。",
+  "从小被预言会毁灭某座城，因此一直试图证明预言错误。",
+  "在梦里与某个不存在的人交换日记，醒来后内容开始成真。",
+  "曾经守护一头幼龙，如今必须隐藏它留下的最后一枚鳞片。",
 ];
 
 const randomWorldviewDetails: Record<string, string[]> = {
@@ -524,6 +588,34 @@ function pickRandomTags() {
     .slice(0, Math.floor(Math.random() * 3) + 2);
 }
 
+function chooseAvatarForCharacter(character: Pick<CharacterDraft, "species" | "occupation" | "worldview" | "abilityDescription" | "gender">) {
+  const text = [
+    character.species,
+    character.occupation,
+    character.worldview,
+    character.abilityDescription,
+    character.gender,
+  ].join(" ");
+
+  const avatarRules: Array<[string[], string[]]> = [
+    [["魔法", "巫", "术士", "炼金", "结界"], ["🧙", "🧙‍♀️", "🧙‍♂️"]],
+    [["动物", "兽", "狼", "猫又", "狼人"], ["🐺", "🐱", "🦊"]],
+    [["机械", "义体", "仿生", "机器人", "数据", "赛博"], ["🤖", "👾", "🧑‍🚀"]],
+    [["幽灵", "亡灵", "怪物", "梦魇", "克苏鲁", "旧日"], ["👻", "💀", "👽"]],
+    [["龙", "龙裔", "龙骑"], ["🐉", "🐲"]],
+    [["精灵", "妖精", "树海"], ["🧝", "🧚", "🧝‍♀️", "🧝‍♂️"]],
+    [["英雄", "雇佣兵", "枪手", "守卫"], ["🦸", "🥷", "🧑‍🚒"]],
+    [["女"], ["👩", "👩‍🦰", "👸"]],
+    [["男"], ["👨", "👨‍🦱", "🤴"]],
+  ];
+
+  const matchedRule = avatarRules.find(([keywords]) =>
+    keywords.some((keyword) => text.includes(keyword)),
+  );
+
+  return matchedRule ? pickRandom(matchedRule[1]) : pickRandom(["🙂", "😐", "😎", "🧑", "🧒"]);
+}
+
 function generateKeywords(character: CharacterDraft) {
   return compactParts([
     character.name && `名字：${character.name}`,
@@ -638,7 +730,7 @@ export function CharacterForm({
   const [customTag, setCustomTag] = useState("");
   const [customGender, setCustomGender] = useState("");
   const [genderMode, setGenderMode] = useState("自定义");
-  const [ageMode, setAgeMode] = useState<"manual" | "birthDate" | "birthYear">(
+  const [ageMode, setAgeMode] = useState<"manual" | "birthDate">(
     "manual",
   );
   const [formError, setFormError] = useState("");
@@ -658,6 +750,15 @@ export function CharacterForm({
       | "characterKeywords"
       | "imagePrompt";
     label: string;
+  } | null>(null);
+  const [helperSuggestion, setHelperSuggestion] = useState<{
+    field:
+      | "personalityTags"
+      | "appearanceDescription"
+      | "abilityDescription"
+      | "backstory";
+    label: string;
+    value: string;
   } | null>(null);
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("basic");
@@ -721,7 +822,7 @@ export function CharacterForm({
     setFormData(nextData);
     lastAutoSavedSnapshotRef.current = JSON.stringify(nextData);
     setSaveStatus(character ? "saved" : "idle");
-    setAgeMode(character?.birthDate ? "birthDate" : character?.birthYear ? "birthYear" : "manual");
+    setAgeMode(character?.birthDate ? "birthDate" : "manual");
     if (character?.gender && genderOptions.includes(character.gender)) {
       setGenderMode(character.gender);
       setCustomGender("");
@@ -863,17 +964,6 @@ export function CharacterForm({
     }));
   }
 
-  function setBirthYear(value: string) {
-    const numericValue = value.replace(/[^\d]/g, "").slice(0, 4);
-    setAgeMode("birthYear");
-    setFormData((current) => ({
-      ...current,
-      age: calculateAgeFromYear(numericValue),
-      birthDate: "",
-      birthYear: numericValue,
-    }));
-  }
-
   function addCustomTag() {
     const nextTag = customTag.trim();
 
@@ -909,24 +999,29 @@ export function CharacterForm({
     const worldview = pickRandom(worldviewOptions);
     const worldviewDetail = pickRandom(randomWorldviewDetails[worldview]);
     const personalityTags = pickRandomTags();
+    const species = pickRandom(randomSpecies);
+    const occupation = pickRandom(randomOccupations);
+    const abilityDescription = pickRandom(randomAbilities);
+    const gender = pickRandom(randomGenders);
     const randomCharacter: CharacterDraft = {
       name: pickRandom(randomNames),
-      avatarEmoji: pickRandom(avatarEmojiOptions),
-      gender: pickRandom(randomGenders),
+      avatarEmoji: DEFAULT_AVATAR_EMOJI,
+      gender,
       age: pickRandom(randomAges),
       birthDate: "",
       birthYear: "",
-      species: pickRandom(randomSpecies),
-      occupation: pickRandom(randomOccupations),
+      species,
+      occupation,
       worldview,
       personalityTags,
       appearanceDescription: `${pickRandom(randomAppearances)}整体气质偏${pickRandom(personalityTags)}，适合出现在${worldviewDetail}。`,
-      abilityDescription: pickRandom(randomAbilities),
+      abilityDescription,
       backstory: `${pickRandom(randomBackstories)}主要活动地点与${worldviewDetail}有关。`,
       visualStyle: pickRandom(visualStyleOptions),
       characterKeywords: "",
       imagePrompt: "",
     };
+    randomCharacter.avatarEmoji = chooseAvatarForCharacter(randomCharacter);
 
     setFormData({
       ...randomCharacter,
@@ -985,6 +1080,33 @@ export function CharacterForm({
         [field]: currentValue ? `${currentValue}\n${value}` : value,
       };
     });
+  }
+
+  function applyHelperSuggestion(mode: "replace" | "append") {
+    if (!helperSuggestion) {
+      return;
+    }
+
+    if (helperSuggestion.field === "personalityTags") {
+      const nextTags = helperSuggestion.value
+        .split(/[、，,\s]+/)
+        .map((tag) => tag.trim())
+        .filter(Boolean);
+      setFormData((current) => ({
+        ...current,
+        personalityTags:
+          mode === "replace"
+            ? nextTags
+            : Array.from(new Set([...(current.personalityTags || []), ...nextTags])),
+      }));
+    } else if (mode === "replace") {
+      updateField(helperSuggestion.field, helperSuggestion.value);
+    } else {
+      appendToField(helperSuggestion.field, helperSuggestion.value);
+    }
+
+    showToast(mode === "replace" ? "内容已应用" : "内容已追加");
+    setHelperSuggestion(null);
   }
 
   function buildCharacter(isDraft: boolean) {
@@ -1113,21 +1235,21 @@ export function CharacterForm({
       <div className="helper-row">
         <button
           className="ghost-button"
-          onClick={() => appendToField(field, helper.example)}
+          onClick={() => setHelperSuggestion({ field, label: "示例", value: helper.example })}
           type="button"
         >
           示例
         </button>
         <button
           className="ghost-button"
-          onClick={() => appendToField(field, helper.inspiration)}
+          onClick={() => setHelperSuggestion({ field, label: "随机灵感", value: helper.inspiration })}
           type="button"
         >
           随机灵感
         </button>
         <button
           className="ghost-button"
-          onClick={() => appendToField(field, helper.tip)}
+          onClick={() => setHelperSuggestion({ field, label: "写作提示", value: helper.tip })}
           type="button"
         >
           写作提示
@@ -1228,6 +1350,45 @@ export function CharacterForm({
               </button>
               <button className="danger-button" onClick={confirmFormAction} type="button">
                 {pendingFormAction === "clear" ? "确认清空" : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {helperSuggestion && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog helper-dialog" role="dialog" aria-modal="true">
+            <p className="eyebrow">{helperSuggestion.label}</p>
+            <h2>创作辅助</h2>
+            <p>{helperSuggestion.value}</p>
+            <div className="form-actions">
+              <button
+                className="ghost-button"
+                onClick={() => copyText(helperSuggestion.value, "辅助内容已复制")}
+                type="button"
+              >
+                复制
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() => applyHelperSuggestion("append")}
+                type="button"
+              >
+                追加
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => applyHelperSuggestion("replace")}
+                type="button"
+              >
+                应用
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() => setHelperSuggestion(null)}
+                type="button"
+              >
+                关闭
               </button>
             </div>
           </div>
@@ -1459,16 +1620,8 @@ export function CharacterForm({
                       onChange={(event) => setBirthDate(event.target.value)}
                     />
                   </label>
-                  <label>
-                    出生年份
-                    <input
-                      value={formData.birthYear}
-                      onChange={(event) => setBirthYear(event.target.value)}
-                      placeholder="例如：2001"
-                    />
-                  </label>
                   <div className="age-hint">
-                    当前方式：{ageMode === "manual" ? "手动年龄" : ageMode === "birthDate" ? "出生日期" : "出生年份"}
+                    当前方式：{ageMode === "manual" ? "手动年龄" : "出生日期"}
                   </div>
                 </div>
 
@@ -1606,10 +1759,13 @@ export function CharacterForm({
                 <div className="helper-row">
                   <button
                     className="ghost-button"
-                    onClick={() => {
-                      togglePersonalityTag("克制");
-                      togglePersonalityTag("笨拙");
-                    }}
+                    onClick={() =>
+                      setHelperSuggestion({
+                        field: "personalityTags",
+                        label: "示例",
+                        value: "克制、笨拙",
+                      })
+                    }
                     type="button"
                   >
                     示例
@@ -1619,8 +1775,11 @@ export function CharacterForm({
                     onClick={() => {
                       const helper = helperText.personality;
                       const nextTag = pickRandom(["矛盾", "克制", "执着", "笨拙"]);
-                      togglePersonalityTag(nextTag);
-                      showToast(helper.inspiration);
+                      setHelperSuggestion({
+                        field: "personalityTags",
+                        label: "随机灵感",
+                        value: `${nextTag}。${helper.inspiration}`,
+                      });
                     }}
                     type="button"
                   >
@@ -1628,7 +1787,13 @@ export function CharacterForm({
                   </button>
                   <button
                     className="ghost-button"
-                    onClick={() => showToast(helperText.personality.tip)}
+                    onClick={() =>
+                      setHelperSuggestion({
+                        field: "personalityTags",
+                        label: "写作提示",
+                        value: helperText.personality.tip,
+                      })
+                    }
                     type="button"
                   >
                     写作提示

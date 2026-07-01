@@ -1140,6 +1140,7 @@ export function Dashboard({
             type="button"
           >
             🔍
+            <span className="mobile-search-label">搜索</span>
           </button>
           <button
             aria-label="新建角色"
@@ -1292,17 +1293,35 @@ export function Dashboard({
         <div className="dashboard-controls">
           <label>
             搜索
-            <input
-              ref={searchInputRef}
-              value={prefs.searchTerm}
-              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  openFirstSearchResult();
-                }
-              }}
-              placeholder="搜索角色名、职业、世界观、性格标签"
-            />
+            <span className="search-input-wrap">
+              <input
+                ref={searchInputRef}
+                value={prefs.searchTerm}
+                onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    openFirstSearchResult();
+                  }
+                }}
+                placeholder="搜索角色名、职业、世界观、性格标签"
+              />
+              <button
+                aria-label={prefs.searchTerm.trim() ? "清空搜索" : "收起搜索"}
+                className="search-clear-button"
+                data-tooltip={prefs.searchTerm.trim() ? "清空搜索" : "收起搜索"}
+                onClick={() => {
+                  if (prefs.searchTerm.trim()) {
+                    updatePrefs({ searchTerm: "" });
+                    return;
+                  }
+
+                  setIsSearchPanelOpen(false);
+                }}
+                type="button"
+              >
+                ×
+              </button>
+            </span>
           </label>
           <label>
             范围
@@ -1533,7 +1552,14 @@ export function Dashboard({
                 const isDraft = character.isDraft === true;
 
                 return (
-                  <div className="character-table-row" key={character.id}>
+                  <div
+                    className={
+                      openCardMenuId === character.id
+                        ? "character-table-row menu-open"
+                        : "character-table-row"
+                    }
+                    key={character.id}
+                  >
                     <button className="table-main" onClick={() => onPreview(character)} type="button">
                       <span className="table-avatar">{character.avatarEmoji || "🙂"}</span>
                       <strong>{character.name || "未命名角色"}</strong>
@@ -1662,6 +1688,7 @@ export function Dashboard({
                     "character-card",
                     selectedIds.includes(character.id) ? "selected" : "",
                     isBulkMode ? "bulk-mode" : "",
+                    openCardMenuId === character.id ? "menu-open" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")

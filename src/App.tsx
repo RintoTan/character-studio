@@ -21,6 +21,8 @@ function App() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
+  const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [editorSaveSignal, setEditorSaveSignal] = useState(0);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
@@ -33,6 +35,7 @@ function App() {
     null,
   );
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const isHistoryNavigationRef = useRef(false);
 
   useEffect(() => {
     setCharacters(loadCharacters());
@@ -99,6 +102,39 @@ function App() {
     mediaQuery.addEventListener("change", applyTheme);
     return () => mediaQuery.removeEventListener("change", applyTheme);
   }, [themeMode]);
+
+  useEffect(() => {
+    window.history.replaceState({ characterStudioPage: "dashboard" }, "", window.location.href);
+
+    function handlePopState(event: PopStateEvent) {
+      isHistoryNavigationRef.current = true;
+      const nextPage = event.state?.characterStudioPage;
+      setPage(nextPage === "form" || nextPage === "preview" ? nextPage : "dashboard");
+      setIsAppAboutOpen(false);
+      setIsAppSettingsOpen(false);
+    }
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    if (isHistoryNavigationRef.current) {
+      isHistoryNavigationRef.current = false;
+      return;
+    }
+
+    window.history.pushState({ characterStudioPage: page }, "", window.location.href);
+  }, [page]);
+
+  function goBack() {
+    if (window.history.state?.characterStudioPage && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    setPage("dashboard");
+  }
 
   function handleSave(character: Character) {
     if (character.isDraft) {
@@ -368,6 +404,17 @@ function App() {
         )}
         {page !== "dashboard" && (
           <button
+            aria-label="返回"
+            className="floating-action"
+            data-tooltip="返回"
+            onClick={goBack}
+            type="button"
+          >
+            ←
+          </button>
+        )}
+        {page !== "dashboard" && (
+          <button
             aria-label="回到主页"
             className="floating-action"
             data-tooltip="回到主页"
@@ -400,6 +447,89 @@ function App() {
           </button>
         )}
       </div>
+
+      {page !== "dashboard" && (
+        <footer className="dashboard-footer app-footer" data-pdf-hidden="true">
+          <button onClick={() => setIsAppAboutOpen(true)} type="button">
+            About Character Studio
+          </button>
+          <span>RINTO © 2026</span>
+          <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
+            Settings
+          </button>
+        </footer>
+      )}
+
+      {isAppAboutOpen && (
+        <div className="modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setIsAppAboutOpen(false);
+        }} role="presentation">
+          <div className="about-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">About</p>
+                <h2>About Character Studio</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAppAboutOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="about-grid">
+              <article>
+                <h3>Character Studio 是什么</h3>
+                <p>一个面向 OC 创作的轻量角色工作台，用于整理角色资料、草稿、预览和备份。</p>
+              </article>
+              <article>
+                <h3>核心功能</h3>
+                <ul className="about-list">
+                  <li>Dashboard、Editor、Preview、草稿箱与收藏夹。</li>
+                  <li>主题切换、导入导出、PDF / JPG / PNG 输出。</li>
+                </ul>
+              </article>
+            </div>
+            <p className="about-footer">RINTO © 2026</p>
+          </div>
+        </div>
+      )}
+
+      {isAppSettingsOpen && (
+        <div className="modal-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setIsAppSettingsOpen(false);
+        }} role="presentation">
+          <div className="settings-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Settings</p>
+                <h2>设置</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAppSettingsOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="settings-grid">
+              <article>
+                <h3>Appearance</h3>
+                <div className="segmented-row">
+                  {(["system", "light", "dark"] as const).map((mode) => (
+                    <button
+                      className={themeMode === mode ? "active" : ""}
+                      key={mode}
+                      onClick={() => setThemeMode(mode)}
+                      type="button"
+                    >
+                      {mode === "system" ? "Follow System" : mode === "light" ? "Light" : "Dark"}
+                    </button>
+                  ))}
+                </div>
+              </article>
+              <article>
+                <h3>About Data</h3>
+                <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步。</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
