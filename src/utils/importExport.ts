@@ -1084,7 +1084,7 @@ async function createSnapshotElement(character: Character) {
         `职业：${character.occupation || "未填写"}`,
         `世界观：${character.worldview || "未填写"}`,
       ].join("\\n"))}
-      ${snapshotCard("性格标签", character.personalityTags?.join("、") || "未填写")}
+      ${snapshotTagsCard(character.personalityTags || [])}
       ${snapshotCard("外貌描述", character.appearanceDescription || "未填写")}
       ${snapshotCard("能力描述", character.abilityDescription || "未填写")}
       ${snapshotCard("背景故事", character.backstory || "未填写")}
@@ -1186,6 +1186,31 @@ function snapshotCard(title: string, content: string) {
       <p>${escapeHtml(content)}</p>
     </article>
   `;
+}
+
+function snapshotTagsCard(tags: string[]) {
+  const visibleTags = tags.filter((tag) => tag.trim()).slice(0, 5);
+
+  return `
+    <article class="preview-card wide-card">
+      <div class="preview-card-title"><h2>性格标签</h2></div>
+      ${
+        visibleTags.length > 0
+          ? `<div class="preview-tags">${visibleTags
+              .map(
+                (tag) =>
+                  `<span class="tag-tone-${getTagTone(tag)}">${escapeHtml(tag)}</span>`,
+              )
+              .join("")}</div>`
+          : "<p>未填写</p>"
+      }
+    </article>
+  `;
+}
+
+function getTagTone(tag: string) {
+  const total = Array.from(tag).reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return total % 18;
 }
 
 async function createZipBlob(files: Array<{ name: string; blob: Blob }>) {

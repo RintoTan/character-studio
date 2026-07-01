@@ -631,7 +631,6 @@ export function Dashboard({
         ...character,
         favorite: shouldFavorite,
         isFavorite: undefined,
-        updatedAt: new Date().toISOString(),
       };
     });
 
@@ -1475,7 +1474,7 @@ export function Dashboard({
               <article>
                 <h3>Export</h3>
                 <label>
-                  JPG Quality
+                  JPG 导出质量
                   <input
                     defaultValue={localStorage.getItem("character-studio.settings.jpg-quality") || "0.9"}
                     min="0.1"
@@ -1486,6 +1485,7 @@ export function Dashboard({
                     step="0.1"
                     type="number"
                   />
+                  <span className="field-hint">数值越高，图片越清晰，文件越大。</span>
                 </label>
                 <label className="settings-check">
                   <input

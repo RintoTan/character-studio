@@ -452,7 +452,6 @@ function App() {
       ...character,
       favorite: !isFavorite,
       isFavorite: undefined,
-      updatedAt: new Date().toISOString(),
     };
     setCharacters(upsertCharacter(updatedCharacter));
 
