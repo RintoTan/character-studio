@@ -862,6 +862,56 @@ function App() {
                 关闭
               </button>
             </div>
+            {isFirstAboutOpen ? (
+              <div className="first-about">
+                <div className="first-about-hero">
+                  <svg className="first-about-logo" aria-hidden="true" viewBox="0 0 566.43 637.56">
+                    <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
+                    <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
+                  </svg>
+                  <h2>Character Studio</h2>
+                  <p>轻量、高效、专注于原创角色创作</p>
+                  <div className="about-version-row">
+                    <span className="status-badge">Version 1.0.0</span>
+                    <span className="status-badge">Sprint 7.91</span>
+                    <span className="status-badge">Build 2026</span>
+                  </div>
+                </div>
+                <div className="first-about-cards">
+                  <article>
+                    <h3>这是什么</h3>
+                    <p>一个面向 OC 创作的本地优先工作台，用来整理角色资料、草稿、预览与备份。</p>
+                  </article>
+                  <article>
+                    <h3>核心功能</h3>
+                    <p>Dashboard 管理角色，Editor 编写设定，Preview 生成分享展示，并支持头像素材库。</p>
+                  </article>
+                  <article>
+                    <h3>导入 / 导出</h3>
+                    <p>支持单角色 JSON、完整备份 ZIP、CSV，以及 PDF / JPG / PNG 展示导出。</p>
+                  </article>
+                </div>
+                <div className="first-about-links">
+                  <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
+                    GitHub 项目仓库
+                  </a>
+                  <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">
+                    Developer Handbook 开发手册
+                  </a>
+                </div>
+                <p className="first-about-credit">RINTO × Codex 共同开发 2026</p>
+                <label className="settings-check first-about-switch">
+                  <input
+                    type="checkbox"
+                    onChange={(event) =>
+                      localStorage.setItem(ABOUT_SEEN_KEY, String(event.target.checked))
+                    }
+                  />
+                  <span>不再自动显示</span>
+                </label>
+              </div>
+            ) : (
+              <>
             <div className="about-grid">
               <article>
                 <h3>Character Studio 是什么</h3>
@@ -1010,6 +1060,8 @@ function App() {
               </div>
             ) : (
               <p className="about-footer">RINTO © 2026</p>
+            )}
+              </>
             )}
           </div>
         </div>
