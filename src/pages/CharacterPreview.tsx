@@ -41,6 +41,11 @@ function buildFullCharacterText(character: Character) {
     `外貌描述：${displayValue(character.appearanceDescription)}`,
     `能力描述：${displayValue(character.abilityDescription)}`,
     `背景故事：${displayValue(character.backstory)}`,
+    `喜好：${displayValue(character.likes)}`,
+    `厌恶：${displayValue(character.dislikes)}`,
+    `习惯：${displayValue(character.habits)}`,
+    `重要物品：${displayValue(character.importantItems)}`,
+    `人际关系关键词：${displayValue(character.relationshipKeywords)}`,
     `中文人物关键词：${displayValue(character.characterKeywords)}`,
     `英文 AI Prompt：${displayValue(character.imagePrompt)}`,
   ].join("\n");
@@ -388,6 +393,34 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
               <h2>背景故事</h2>
             </div>
             <p>{displayValue(character.backstory)}</p>
+          </article>
+
+          <article className="preview-card wide-card">
+            <div className="preview-card-title">
+              <h2>个人偏好</h2>
+            </div>
+            <div className="preference-preview-grid">
+              <div>
+                <span>喜好</span>
+                <p>{displayValue(character.likes)}</p>
+              </div>
+              <div>
+                <span>厌恶</span>
+                <p>{displayValue(character.dislikes)}</p>
+              </div>
+              <div>
+                <span>习惯</span>
+                <p>{displayValue(character.habits)}</p>
+              </div>
+              <div>
+                <span>重要物品</span>
+                <p>{displayValue(character.importantItems)}</p>
+              </div>
+              <div>
+                <span>人际关系关键词</span>
+                <p>{displayValue(character.relationshipKeywords)}</p>
+              </div>
+            </div>
           </article>
 
           <article className="preview-card wide-card">

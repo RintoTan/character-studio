@@ -25,6 +25,11 @@ export type Character = {
   appearanceDescription?: string;
   abilityDescription?: string;
   backstory?: string;
+  likes?: string;
+  dislikes?: string;
+  habits?: string;
+  importantItems?: string;
+  relationshipKeywords?: string;
   visualStyle?: string;
   characterKeywords?: string;
   imagePrompt?: string;

@@ -51,7 +51,12 @@ type HelperField =
   | "personalityTags"
   | "appearanceDescription"
   | "abilityDescription"
-  | "backstory";
+  | "backstory"
+  | "likes"
+  | "dislikes"
+  | "habits"
+  | "importantItems"
+  | "relationshipKeywords";
 type HelperKind = "example" | "inspiration" | "tip";
 
 const DEFAULT_AVATAR_EMOJI = "🙂";
@@ -136,6 +141,11 @@ const initialCharacter: CharacterDraft = {
   appearanceDescription: "",
   abilityDescription: "",
   backstory: "",
+  likes: "",
+  dislikes: "",
+  habits: "",
+  importantItems: "",
+  relationshipKeywords: "",
   visualStyle: "",
   characterKeywords: "",
   imagePrompt: "",
@@ -1049,6 +1059,11 @@ function generateKeywords(character: CharacterDraft) {
       `外貌：${character.appearanceDescription}`,
     character.abilityDescription && `能力：${character.abilityDescription}`,
     character.backstory && `背景：${character.backstory}`,
+    character.likes && `喜好：${character.likes}`,
+    character.dislikes && `厌恶：${character.dislikes}`,
+    character.habits && `习惯：${character.habits}`,
+    character.importantItems && `重要物品：${character.importantItems}`,
+    character.relationshipKeywords && `人际关系：${character.relationshipKeywords}`,
   ])
     .map(normalizeChineseText)
     .filter(Boolean)
@@ -1072,6 +1087,11 @@ function generateImagePrompt(character: CharacterDraft) {
     character.abilityDescription &&
       `ability: ${promptText(character.abilityDescription)}`,
     character.backstory && `backstory: ${promptText(character.backstory)}`,
+    character.likes && `likes: ${promptText(character.likes)}`,
+    character.dislikes && `dislikes: ${promptText(character.dislikes)}`,
+    character.habits && `habits: ${promptText(character.habits)}`,
+    character.importantItems && `important items: ${promptText(character.importantItems)}`,
+    character.relationshipKeywords && `relationship keywords: ${promptText(character.relationshipKeywords)}`,
     character.visualStyle && `visual style: ${promptText(character.visualStyle)}`,
     "high quality, detailed character concept art",
   ])
@@ -1222,6 +1242,7 @@ export function CharacterForm({
   const saveSignalRef = useRef(saveSignal);
   const draftSaveSignalRef = useRef(draftSaveSignal);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
+  const avatarImageMenuRef = useRef<HTMLDivElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
   const cropStageRef = useRef<HTMLDivElement>(null);
   const cropFrameRef = useRef<HTMLDivElement>(null);
@@ -1260,6 +1281,11 @@ export function CharacterForm({
           appearanceDescription: character.appearanceDescription || "",
           abilityDescription: character.abilityDescription || "",
           backstory: character.backstory || "",
+          likes: character.likes || "",
+          dislikes: character.dislikes || "",
+          habits: character.habits || "",
+          importantItems: character.importantItems || "",
+          relationshipKeywords: character.relationshipKeywords || "",
           visualStyle: character.visualStyle || "",
           characterKeywords: character.characterKeywords || "",
           imagePrompt: character.imagePrompt || "",
@@ -1369,13 +1395,36 @@ export function CharacterForm({
       }
       setIsAssetLibraryOpen(false);
       setIsAvatarImageMenuOpen(false);
+      setIsAvatarPickerOpen(false);
       setIsAvatarUrlOpen(false);
       setAvatarUrlValue("");
+      setHelperSuggestion(null);
+      setIsHelperReplaceConfirmOpen(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [cropDraft]);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      if (!isAvatarImageMenuOpen) {
+        return;
+      }
+
+      if (avatarImageMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setIsAvatarImageMenuOpen(false);
+      setIsAvatarUrlOpen(false);
+      setAvatarUrlValue("");
+      setIsAvatarDragActive(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [isAvatarImageMenuOpen]);
 
   useEffect(() => {
     function handlePaste(event: ClipboardEvent) {
@@ -1411,9 +1460,20 @@ export function CharacterForm({
     updateField("avatarEmoji", emoji);
     setRecentAvatars(saveRecentAvatar(emoji));
     setIsAvatarPickerOpen(false);
+    setIsAvatarImageMenuOpen(false);
+  }
+
+  function closeAvatarOverlays() {
+    setIsAvatarImageMenuOpen(false);
+    setIsAvatarPickerOpen(false);
+    setIsAvatarUrlOpen(false);
+    setAvatarUrlValue("");
+    setIsAvatarDragActive(false);
   }
 
   function openAvatarCrop(file: File) {
+    closeAvatarOverlays();
+    setIsAssetLibraryOpen(false);
     setCropDraft({
       fileName: file.name || "avatar",
       imageUrl: URL.createObjectURL(file),
@@ -1666,6 +1726,9 @@ export function CharacterForm({
 
   async function openAssetLibrary() {
     try {
+      closeAvatarOverlays();
+      setHelperSuggestion(null);
+      setPendingClear(null);
       setAvatarAssets(await listAvatarAssets());
       setIsAssetLibraryOpen(true);
     } catch {
@@ -1865,7 +1928,12 @@ export function CharacterForm({
       | "abilityDescription"
       | "backstory"
       | "characterKeywords"
-      | "imagePrompt",
+      | "imagePrompt"
+      | "likes"
+      | "dislikes"
+      | "habits"
+      | "importantItems"
+      | "relationshipKeywords",
     value: string,
   ) {
     setFormData((current) => {
@@ -1913,6 +1981,8 @@ export function CharacterForm({
   }
 
   function showHelperSuggestion(sectionId: HelperSectionId, field: HelperField) {
+    closeAvatarOverlays();
+    setIsAssetLibraryOpen(false);
     const nextSet = generateHelperSet(sectionId);
     setHelperSuggestion({
       sectionId,
@@ -2082,18 +2152,20 @@ export function CharacterForm({
 
     return (
       <div className="helper-row">
+        <div className="helper-main-actions">
+          <button
+            className="ghost-button"
+            onClick={() => showHelperSuggestion(sectionId, field)}
+            type="button"
+          >
+            随机灵感
+          </button>
+          <button className="ghost-button" disabled type="button">
+            AI 创作 🚧
+          </button>
+        </div>
         <button
-          className="ghost-button"
-          onClick={() => showHelperSuggestion(sectionId, field)}
-          type="button"
-        >
-          随机灵感
-        </button>
-        <button className="ghost-button" disabled type="button">
-          AI 创作 🚧
-        </button>
-        <button
-          className="ghost-button"
+          className="ghost-button helper-clear-button"
           onClick={() => setPendingClear({ field, label: labels[field] })}
           type="button"
         >
@@ -2512,30 +2584,9 @@ export function CharacterForm({
           ))}
         </aside>
 
-        <div className="form-actions workspace-footer">
-          <div className="footer-danger-actions">
-            <button className="ghost-button" type="button" onClick={() => setPendingFormAction("clear")}>
-              清空
-            </button>
-            <button className="danger-button" type="button" onClick={() => setPendingFormAction("delete")}>
-              删除
-            </button>
-          </div>
-          <div className="footer-main-actions">
-            <button className="ghost-button" type="button" onClick={onCancel}>
-              取消
-            </button>
-            <button className="ghost-button" type="button" onClick={() => void saveDraftCharacter()}>
-              临时保存
-            </button>
-            <button className="primary-button" type="submit">
-              保存角色
-            </button>
-          </div>
-        </div>
-
-        <div className="workspace-content">
-          {formError && <div className="form-error">{formError}</div>}
+        <div className="workspace-main">
+          <div className="workspace-content">
+            {formError && <div className="form-error">{formError}</div>}
 
           <section className="workspace-card" id="workspace-basic">
             <button
@@ -2581,10 +2632,14 @@ export function CharacterForm({
                       >
                         {isAvatarPickerOpen ? "收起 Emoji" : "选择 Emoji"}
                       </button>
-                      <div className="avatar-image-menu-wrap">
+                      <div className="avatar-image-menu-wrap" ref={avatarImageMenuRef}>
                         <button
                           className="ghost-button"
-                          onClick={() => setIsAvatarImageMenuOpen((current) => !current)}
+                          onClick={() => {
+                            setIsAvatarImageMenuOpen((current) => !current);
+                            setIsAvatarPickerOpen(false);
+                            setHelperSuggestion(null);
+                          }}
                           type="button"
                         >
                           更换头像
@@ -2942,18 +2997,20 @@ export function CharacterForm({
                   )}
                 </fieldset>
                 <div className="helper-row">
+                  <div className="helper-main-actions">
+                    <button
+                      className="ghost-button"
+                      onClick={() => showHelperSuggestion("personality", "personalityTags")}
+                      type="button"
+                    >
+                      随机灵感
+                    </button>
+                    <button className="ghost-button" disabled type="button">
+                      AI 创作 🚧
+                    </button>
+                  </div>
                   <button
-                    className="ghost-button"
-                    onClick={() => showHelperSuggestion("personality", "personalityTags")}
-                    type="button"
-                  >
-                    随机灵感
-                  </button>
-                  <button className="ghost-button" disabled type="button">
-                    AI 创作 🚧
-                  </button>
-                  <button
-                    className="ghost-button"
+                    className="ghost-button helper-clear-button"
                     onClick={() =>
                       setPendingClear({
                         field: "personalityTags",
@@ -2967,6 +3024,79 @@ export function CharacterForm({
                 </div>
               </div>
             )}
+          </section>
+
+          <section className="workspace-card" id="workspace-preferences">
+            <div className="workspace-card-head static-head">
+              <span>
+                <strong>个人偏好</strong>
+                <small>补充角色的日常倾向、物品与关系线索。</small>
+              </span>
+              <em>
+                {[formData.likes, formData.dislikes, formData.habits, formData.importantItems, formData.relationshipKeywords].filter(Boolean).length
+                  ? "部分完成"
+                  : "未完成"}
+              </em>
+            </div>
+            <div className="workspace-card-body">
+              <div className="preference-grid">
+                <label>
+                  喜好
+                  <textarea
+                    value={formData.likes}
+                    onChange={(event) => {
+                      updateField("likes", event.target.value);
+                      autoGrowTextArea(event);
+                    }}
+                    placeholder="角色喜欢的人、事物、环境、食物或仪式感。"
+                  />
+                </label>
+                <label>
+                  厌恶
+                  <textarea
+                    value={formData.dislikes}
+                    onChange={(event) => {
+                      updateField("dislikes", event.target.value);
+                      autoGrowTextArea(event);
+                    }}
+                    placeholder="角色排斥、害怕或不愿面对的事物。"
+                  />
+                </label>
+                <label>
+                  习惯
+                  <textarea
+                    value={formData.habits}
+                    onChange={(event) => {
+                      updateField("habits", event.target.value);
+                      autoGrowTextArea(event);
+                    }}
+                    placeholder="口头禅、小动作、作息、收纳方式或社交习惯。"
+                  />
+                </label>
+                <label>
+                  重要物品
+                  <textarea
+                    value={formData.importantItems}
+                    onChange={(event) => {
+                      updateField("importantItems", event.target.value);
+                      autoGrowTextArea(event);
+                    }}
+                    placeholder="随身物、纪念品、武器、信物或不能丢失的东西。"
+                  />
+                </label>
+                <label className="preference-wide">
+                  人际关系关键词
+                  <textarea
+                    value={formData.relationshipKeywords}
+                    onChange={(event) => {
+                      updateField("relationshipKeywords", event.target.value);
+                      autoGrowTextArea(event);
+                    }}
+                    placeholder="亲友、敌人、阵营、契约、亏欠、羁绊或关系关键词。"
+                  />
+                </label>
+              </div>
+            </div>
           </section>
 
           <section className="workspace-card" id="workspace-ability">
@@ -3106,6 +3236,29 @@ export function CharacterForm({
             )}
           </section>
 
+          </div>
+
+          <div className="form-actions workspace-footer">
+            <div className="footer-danger-actions">
+              <button className="ghost-button" type="button" onClick={() => setPendingFormAction("clear")}>
+                清空
+              </button>
+              <button className="danger-button" type="button" onClick={() => setPendingFormAction("delete")}>
+                删除
+              </button>
+            </div>
+            <div className="footer-main-actions">
+              <button className="ghost-button" type="button" onClick={onCancel}>
+                取消
+              </button>
+              <button className="ghost-button" type="button" onClick={() => void saveDraftCharacter()}>
+                临时保存
+              </button>
+              <button className="primary-button" type="submit">
+                保存角色
+              </button>
+            </div>
+          </div>
         </div>
       </form>
     </section>
