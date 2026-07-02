@@ -1479,6 +1479,51 @@ export function Dashboard({
                   </button>
                 </div>
               </article>
+              <article className="ai-settings-card">
+                <div className="settings-card-head">
+                  <h3>AI Settings</h3>
+                  <span className="status-badge">🚧 Coming Soon</span>
+                </div>
+                <p className="muted">开发中。当前不会调用 AI，也不会上传任何用户数据。</p>
+                <div className="settings-form-grid">
+                  <label>
+                    Provider
+                    <select defaultValue={localStorage.getItem("character-studio.ai.provider") || "custom"} onChange={(event) => localStorage.setItem("character-studio.ai.provider", event.target.value)}>
+                      <option value="custom">Custom</option>
+                      <option value="openai">OpenAI Compatible</option>
+                    </select>
+                  </label>
+                  <label>
+                    API Key
+                    <input type="password" placeholder="暂不需要填写" defaultValue={localStorage.getItem("character-studio.ai.api-key") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.api-key", event.target.value)} />
+                  </label>
+                  <label>
+                    Base URL
+                    <input placeholder="https://api.example.com/v1" defaultValue={localStorage.getItem("character-studio.ai.base-url") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.base-url", event.target.value)} />
+                  </label>
+                  <label>
+                    Model
+                    <input placeholder="model-name" defaultValue={localStorage.getItem("character-studio.ai.model") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.model", event.target.value)} />
+                  </label>
+                  <label>
+                    Temperature
+                    <input type="number" min="0" max="2" step="0.1" defaultValue={localStorage.getItem("character-studio.ai.temperature") || "0.8"} onChange={(event) => localStorage.setItem("character-studio.ai.temperature", event.target.value)} />
+                  </label>
+                  <label>
+                    Top P
+                    <input type="number" min="0" max="1" step="0.05" defaultValue={localStorage.getItem("character-studio.ai.top-p") || "1"} onChange={(event) => localStorage.setItem("character-studio.ai.top-p", event.target.value)} />
+                  </label>
+                  <label>
+                    Max Tokens
+                    <input type="number" min="1" step="1" defaultValue={localStorage.getItem("character-studio.ai.max-tokens") || "1200"} onChange={(event) => localStorage.setItem("character-studio.ai.max-tokens", event.target.value)} />
+                  </label>
+                  <label className="settings-check">
+                    <input type="checkbox" defaultChecked={localStorage.getItem("character-studio.ai.streaming") === "true"} onChange={(event) => localStorage.setItem("character-studio.ai.streaming", String(event.target.checked))} />
+                    <span>Streaming</span>
+                  </label>
+                </div>
+                <button className="ghost-button" disabled type="button">Connection Test</button>
+              </article>
               <article>
                 <h3>Mobile</h3>
                 <label className="settings-check">

@@ -21,6 +21,7 @@
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --duration-fast: 150ms;
   --duration-medium: 190ms;
+  --emoji-font: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
   color: var(--text-soft);
   background: var(--bg);
   font-family:
@@ -709,6 +710,89 @@ h2 {
   margin-top: 18px;
 }
 
+.settings-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ai-settings-card {
+  grid-column: 1 / -1;
+}
+
+.about-version-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.developer-page {
+  display: grid;
+  gap: 18px;
+}
+
+.developer-hero {
+  padding: 28px;
+}
+
+.developer-hero h1 {
+  margin: 4px 0 8px;
+}
+
+.developer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.developer-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.developer-card h2 {
+  margin-bottom: 10px;
+  font-size: 16px;
+}
+
+.developer-card p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.overview-card {
+  grid-column: span 3;
+}
+
+.developer-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.developer-chip-list span {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  color: var(--text-soft);
+  padding: 5px 7px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .empty-state {
   border: 1px dashed var(--border-strong);
   border-radius: 8px;
@@ -980,6 +1064,18 @@ h2 {
   aspect-ratio: 1 / 1;
   flex-shrink: 0;
   contain: layout paint;
+}
+
+.table-avatar,
+.avatar-placeholder,
+.avatar-inner,
+.workspace-avatar,
+.preview-avatar,
+.avatar-current,
+.emoji-picker,
+.emoji-option,
+.avatar-tab {
+  font-family: var(--emoji-font);
 }
 
 .table-tags {
@@ -1538,6 +1634,11 @@ select {
   padding-right: 36px;
 }
 
+select option {
+  background: var(--surface);
+  color: var(--text);
+}
+
 textarea {
   min-height: 110px;
   overflow: hidden;
@@ -1555,6 +1656,10 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
   gap: 8px;
+}
+
+.age-combo input {
+  min-width: 0;
 }
 
 .combo-field {
@@ -3758,6 +3863,15 @@ kbd {
     align-items: stretch;
     flex-direction: column;
     width: auto;
+  }
+
+  .settings-form-grid,
+  .developer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-card {
+    grid-column: auto;
   }
 
   .footer-danger-actions,

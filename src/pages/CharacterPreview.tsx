@@ -395,6 +395,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
               <h2>中文人物关键词</h2>
               <button
                 className="ghost-button"
+                data-pdf-hidden="true"
                 onClick={() =>
                   copyText(
                     displayValue(character.characterKeywords),
@@ -414,6 +415,7 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
               <h2>英文 AI Prompt</h2>
               <button
                 className="ghost-button"
+                data-pdf-hidden="true"
                 onClick={() =>
                   copyText(displayValue(character.imagePrompt), "英文 Prompt 已复制")
                 }

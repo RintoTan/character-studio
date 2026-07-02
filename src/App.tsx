@@ -23,14 +23,82 @@ import {
   type AvatarAssetRecord,
 } from "./utils/avatarAssets";
 
-type Page = "dashboard" | "form" | "preview";
+type Page = "dashboard" | "form" | "preview" | "developer";
 type ThemeMode = "system" | "light" | "dark";
 
 const THEME_KEY = "character-studio.theme";
 const ABOUT_SEEN_KEY = "character-studio.about-seen";
 
+const developerSections = [
+  {
+    title: "Application",
+    items: ["Version", "Build", "Release", "About", "Footer", "Links"],
+  },
+  {
+    title: "Brand Assets",
+    items: ["Logo", "Icon", "Favicon", "Default Avatar"],
+  },
+  {
+    title: "Design Tokens",
+    items: ["Typography", "Radius", "Border", "Shadow", "Motion", "Spacing"],
+  },
+  {
+    title: "Components",
+    items: ["Button", "Card", "Dialog", "Input", "Select", "Badge", "Tag"],
+  },
+  {
+    title: "Content",
+    items: ["External Inspiration Library", "Prompt Templates", "Writing Presets", "Random Rules"],
+  },
+  {
+    title: "Theme",
+    items: ["Theme Tokens", "Accent Color"],
+  },
+  {
+    title: "Experimental",
+    items: ["Beta Feature", "Feature Flag"],
+  },
+  {
+    title: "Debug",
+    items: ["localStorage", "IndexedDB", "Import Export Debug"],
+  },
+];
+
+function DeveloperCenter() {
+  return (
+    <section className="developer-page">
+      <div className="panel developer-hero">
+        <p className="eyebrow">Developer Center</p>
+        <h1>开发者中心</h1>
+        <p className="muted">
+          面向项目开发者与维护人员的高级配置入口。本页当前为基础框架，用于后续集中管理设计、内容、实验功能和调试工具。
+        </p>
+      </div>
+      <div className="developer-grid">
+        <article className="developer-card overview-card">
+          <h2>Overview</h2>
+          <p>Developer Center 不面向普通用户默认展示。可通过 /developer 或未来的开发者模式进入。</p>
+          <span className="status-badge">Framework Ready</span>
+        </article>
+        {developerSections.map((section) => (
+          <article className="developer-card" key={section.title}>
+            <h2>{section.title}</h2>
+            <div className="developer-chip-list">
+              {section.items.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function App() {
-  const [page, setPage] = useState<Page>("dashboard");
+  const [page, setPage] = useState<Page>(() =>
+    window.location.pathname === "/developer" ? "developer" : "dashboard",
+  );
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
@@ -320,12 +388,17 @@ function App() {
   }
 
   useEffect(() => {
-    window.history.replaceState({ characterStudioPage: "dashboard" }, "", window.location.href);
+    const initialPage = window.location.pathname === "/developer" ? "developer" : "dashboard";
+    window.history.replaceState({ characterStudioPage: initialPage }, "", window.location.href);
 
     function handlePopState(event: PopStateEvent) {
       isHistoryNavigationRef.current = true;
       const nextPage = event.state?.characterStudioPage;
-      setPage(nextPage === "form" || nextPage === "preview" ? nextPage : "dashboard");
+      setPage(
+        nextPage === "form" || nextPage === "preview" || nextPage === "developer"
+          ? nextPage
+          : "dashboard",
+      );
       setIsAppAboutOpen(false);
       setIsFirstAboutOpen(false);
       setIsAppSettingsOpen(false);
@@ -342,7 +415,11 @@ function App() {
       return;
     }
 
-    window.history.pushState({ characterStudioPage: page }, "", window.location.href);
+    window.history.pushState(
+      { characterStudioPage: page },
+      "",
+      page === "developer" ? "/developer" : window.location.pathname === "/developer" ? "/" : window.location.href,
+    );
   }, [page]);
 
   function goBack() {
@@ -632,6 +709,8 @@ function App() {
         />
       )}
 
+      {page === "developer" && <DeveloperCenter />}
+
       <div className="floating-actions" aria-label="快捷操作">
         {showQuickBackToTop && (
           <button
@@ -795,6 +874,16 @@ function App() {
                   <li>主题切换、导入导出、PDF / JPG / PNG 输出。</li>
                 </ul>
               </article>
+              {isFirstAboutOpen && (
+                <article>
+                  <h3>当前版本</h3>
+                  <div className="about-version-row">
+                    <span className="status-badge">Version 1.0.0</span>
+                    <span className="status-badge">Sprint 7.9</span>
+                    <span className="status-badge">Build 2026</span>
+                  </div>
+                </article>
+              )}
               {!isFirstAboutOpen && (
                 <article>
                   <h3>快捷键</h3>
@@ -955,6 +1044,51 @@ function App() {
                     </button>
                   ))}
                 </div>
+              </article>
+              <article className="ai-settings-card">
+                <div className="settings-card-head">
+                  <h3>AI Settings</h3>
+                  <span className="status-badge">🚧 Coming Soon</span>
+                </div>
+                <p className="muted">开发中。当前不会调用 AI，也不会上传任何用户数据。</p>
+                <div className="settings-form-grid">
+                  <label>
+                    Provider
+                    <select defaultValue={localStorage.getItem("character-studio.ai.provider") || "custom"} onChange={(event) => localStorage.setItem("character-studio.ai.provider", event.target.value)}>
+                      <option value="custom">Custom</option>
+                      <option value="openai">OpenAI Compatible</option>
+                    </select>
+                  </label>
+                  <label>
+                    API Key
+                    <input type="password" placeholder="暂不需要填写" defaultValue={localStorage.getItem("character-studio.ai.api-key") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.api-key", event.target.value)} />
+                  </label>
+                  <label>
+                    Base URL
+                    <input placeholder="https://api.example.com/v1" defaultValue={localStorage.getItem("character-studio.ai.base-url") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.base-url", event.target.value)} />
+                  </label>
+                  <label>
+                    Model
+                    <input placeholder="model-name" defaultValue={localStorage.getItem("character-studio.ai.model") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.model", event.target.value)} />
+                  </label>
+                  <label>
+                    Temperature
+                    <input type="number" min="0" max="2" step="0.1" defaultValue={localStorage.getItem("character-studio.ai.temperature") || "0.8"} onChange={(event) => localStorage.setItem("character-studio.ai.temperature", event.target.value)} />
+                  </label>
+                  <label>
+                    Top P
+                    <input type="number" min="0" max="1" step="0.05" defaultValue={localStorage.getItem("character-studio.ai.top-p") || "1"} onChange={(event) => localStorage.setItem("character-studio.ai.top-p", event.target.value)} />
+                  </label>
+                  <label>
+                    Max Tokens
+                    <input type="number" min="1" step="1" defaultValue={localStorage.getItem("character-studio.ai.max-tokens") || "1200"} onChange={(event) => localStorage.setItem("character-studio.ai.max-tokens", event.target.value)} />
+                  </label>
+                  <label className="settings-check">
+                    <input type="checkbox" defaultChecked={localStorage.getItem("character-studio.ai.streaming") === "true"} onChange={(event) => localStorage.setItem("character-studio.ai.streaming", String(event.target.checked))} />
+                    <span>Streaming</span>
+                  </label>
+                </div>
+                <button className="ghost-button" disabled type="button">Connection Test</button>
               </article>
               <article>
                 <h3>About Data</h3>

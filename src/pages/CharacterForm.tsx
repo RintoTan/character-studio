@@ -702,6 +702,7 @@ function cleanText(value?: string) {
   return value
     ?.trim()
     .replace(/\s+/g, " ")
+    .replace(/[；;，,。.、]+/g, (match) => match[0])
     .replace(/[；;，,。.、]+$/g, "");
 }
 
@@ -719,6 +720,23 @@ function promptText(value?: string) {
   }
 
   return promptValueMap[cleanedValue] || cleanedValue.replace(/[，；、。]/g, ", ");
+}
+
+function normalizeChineseText(value?: string) {
+  return cleanText(value)
+    ?.replace(/\s*([，、；。])\s*/g, "$1")
+    .replace(/[，、]{2,}/g, "、")
+    .replace(/；{2,}/g, "；")
+    .replace(/。{2,}/g, "。")
+    .replace(/[，、；。]+$/g, "") || "";
+}
+
+function normalizePromptPart(value?: string) {
+  return cleanText(value)
+    ?.replace(/\s*,\s*/g, ", ")
+    .replace(/,\s*,+/g, ",")
+    .replace(/\s+/g, " ")
+    .replace(/[,.，；、。]+$/g, "") || "";
 }
 
 function pickRandom(options: string[]) {
@@ -1031,29 +1049,35 @@ function generateKeywords(character: CharacterDraft) {
       `外貌：${character.appearanceDescription}`,
     character.abilityDescription && `能力：${character.abilityDescription}`,
     character.backstory && `背景：${character.backstory}`,
-  ]).join("；");
+  ])
+    .map(normalizeChineseText)
+    .filter(Boolean)
+    .join("；");
 }
 
 function generateImagePrompt(character: CharacterDraft) {
-  const personality = character.personalityTags?.map(promptText).join(", ");
+  const personality = character.personalityTags?.map(promptText).map(normalizePromptPart).filter(Boolean).join(", ");
 
   return compactParts([
     "original character design",
     character.name && `named ${promptText(character.name)}`,
-    promptText(character.gender),
-    character.age && `${promptText(character.age)} years old`,
-    promptText(character.species),
+    character.gender && `gender: ${promptText(character.gender)}`,
+    character.age && `age: ${promptText(character.age)}`,
+    character.species && `race: ${promptText(character.species)}`,
     character.occupation && `occupation: ${promptText(character.occupation)}`,
-    character.worldview && `set in ${promptText(character.worldview)}`,
+    character.worldview && `world: ${promptText(character.worldview)}`,
     personality && `personality: ${personality}`,
     character.appearanceDescription &&
       `appearance: ${promptText(character.appearanceDescription)}`,
     character.abilityDescription &&
-      `abilities: ${promptText(character.abilityDescription)}`,
-    character.backstory && `backstory mood: ${promptText(character.backstory)}`,
+      `ability: ${promptText(character.abilityDescription)}`,
+    character.backstory && `backstory: ${promptText(character.backstory)}`,
     character.visualStyle && `visual style: ${promptText(character.visualStyle)}`,
     "high quality, detailed character concept art",
-  ]).join(", ");
+  ])
+    .map(normalizePromptPart)
+    .filter(Boolean)
+    .join(", ");
 }
 
 function calculateAgeFromDate(value: string) {
@@ -2065,6 +2089,9 @@ export function CharacterForm({
         >
           随机灵感
         </button>
+        <button className="ghost-button" disabled type="button">
+          AI 创作 🚧
+        </button>
         <button
           className="ghost-button"
           onClick={() => setPendingClear({ field, label: labels[field] })}
@@ -2899,6 +2926,9 @@ export function CharacterForm({
                     type="button"
                   >
                     随机灵感
+                  </button>
+                  <button className="ghost-button" disabled type="button">
+                    AI 创作 🚧
                   </button>
                   <button
                     className="ghost-button"
