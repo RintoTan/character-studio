@@ -22,7 +22,6 @@
   --duration-fast: 150ms;
   --duration-medium: 190ms;
   --emoji-font: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
-  --z-sticky-footer: 30;
   --z-dropdown: 80;
   --z-modal-overlay: 900;
   --z-modal-content: 910;
@@ -2265,15 +2264,14 @@ input[type="number"]::-webkit-inner-spin-button {
   grid-column: 2;
   display: grid;
   align-items: start;
+  gap: 14px;
   min-width: 0;
 }
 
 .workspace-content {
-  grid-area: 1 / 1;
   display: grid;
   gap: 14px;
   min-width: 0;
-  padding-bottom: 96px;
 }
 
 .workspace-card {
@@ -2997,11 +2995,6 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-footer {
-  grid-area: 1 / 1;
-  align-self: start;
-  position: sticky;
-  top: calc(100dvh - 86px - env(safe-area-inset-bottom));
-  z-index: var(--z-sticky-footer);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3010,10 +3003,9 @@ input[type="number"]::-webkit-inner-spin-button {
   margin-top: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  background: var(--surface);
   box-shadow: var(--shadow-strong);
   padding: 12px;
-  backdrop-filter: blur(10px);
 }
 
 .workspace-card-head.static-head {
@@ -4170,14 +4162,9 @@ kbd {
   }
 
   .workspace-footer {
-    top: calc(100dvh - 132px - env(safe-area-inset-bottom));
     align-items: stretch;
     flex-direction: column;
     width: auto;
-  }
-
-  .workspace-content {
-    padding-bottom: 140px;
   }
 
   .helper-row {
@@ -4569,10 +4556,6 @@ kbd {
   .floating-actions {
     right: 14px;
     bottom: calc(14px + env(safe-area-inset-bottom));
-  }
-
-  body:has(.workspace-shell) .floating-actions {
-    bottom: calc(112px + env(safe-area-inset-bottom));
   }
 
   .floating-action {

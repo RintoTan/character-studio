@@ -2547,6 +2547,20 @@ export function CharacterForm({
           >
             {isRandomizing ? "生成中..." : "随机生成角色"}
           </button>
+          <button
+            className="ghost-button helper-clear-button"
+            type="button"
+            onClick={() => setPendingFormAction("clear")}
+          >
+            清空
+          </button>
+          <button
+            className="ghost-button helper-clear-button"
+            type="button"
+            onClick={() => setPendingFormAction("delete")}
+          >
+            删除
+          </button>
           <span className={`save-status ${saveStatus}`}>
             {saveStatus === "saving"
               ? "正在保存"
