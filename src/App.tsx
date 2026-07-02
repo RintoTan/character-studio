@@ -31,65 +31,208 @@ const ABOUT_SEEN_KEY = "character-studio.about-seen";
 
 const developerSections = [
   {
-    title: "Application",
-    items: ["Version", "Build", "Release", "About", "Footer", "Links"],
+    id: "overview",
+    icon: "📊",
+    title: "项目概览",
+    subtitle: "Overview",
+    description: "查看项目版本、主题、数据状态和核心维护链接。",
+    items: ["Version", "Sprint", "Build", "Theme", "Data Version", "Prompt Library"],
   },
   {
-    title: "Brand Assets",
-    items: ["Logo", "Icon", "Favicon", "Default Avatar"],
+    id: "brand",
+    icon: "🎨",
+    title: "品牌资源",
+    subtitle: "Brand Assets",
+    description: "统一管理 Logo、图标、Favicon、默认头像等品牌资产入口。",
+    items: ["Logo", "Dark Logo", "Light Logo", "SVG Logo", "PNG Logo", "Favicon", "App Icon", "PWA Icon", "Emoji 默认资源"],
   },
   {
-    title: "Design Tokens",
-    items: ["Typography", "Radius", "Border", "Shadow", "Motion", "Spacing"],
+    id: "design",
+    icon: "🧩",
+    title: "设计系统",
+    subtitle: "Design System",
+    description: "沉淀 Character Studio 的 UI Token 与组件规范，暂不修改现有 UI。",
+    items: ["颜色", "字体", "字号", "圆角", "边框", "阴影", "动画", "间距", "Button", "Card", "Dialog", "Input", "Tag", "Badge", "Switch", "Checkbox", "Radio"],
   },
   {
-    title: "Components",
-    items: ["Button", "Card", "Dialog", "Input", "Select", "Badge", "Tag"],
+    id: "content",
+    icon: "📝",
+    title: "内容中心",
+    subtitle: "Content",
+    description: "集中管理项目文案目录，未来支持文案维护与多版本说明。",
+    items: ["About", "首次 About", "Settings", "Footer", "导入说明", "导出说明", "Toast", "Dialog", "Developer Handbook", "更新日志"],
   },
   {
-    title: "Content",
-    items: ["External Inspiration Library", "Prompt Templates", "Writing Presets", "Random Rules"],
+    id: "prompt",
+    icon: "✨",
+    title: "Prompt 中心",
+    subtitle: "Prompt Center",
+    description: "管理随机灵感、示例、写作提示和外挂词库的未来入口。",
+    items: ["随机灵感", "示例", "写作提示", "Prompt 模板", "外挂词库", "Prompt Library", "未来 Prompt 编辑器", "external-inspiration-library.txt"],
   },
   {
-    title: "Theme",
-    items: ["Theme Tokens", "Accent Color"],
+    id: "ai",
+    icon: "🤖",
+    title: "AI 开发",
+    subtitle: "AI Development",
+    description: "开发控制页面，不属于普通用户 AI 设置；当前不接入 AI。",
+    items: ["🚧 开发中", "Prompt Engine", "Provider", "Template", "Debug", "API Workflow", "Connection Flow"],
   },
   {
-    title: "Experimental",
-    items: ["Beta Feature", "Feature Flag"],
+    id: "application",
+    icon: "⚙",
+    title: "应用配置",
+    subtitle: "Application",
+    description: "展示默认主题、语言、导出格式、预览与 Emoji 等应用级配置入口。",
+    items: ["默认主题", "默认语言", "默认导出格式", "默认 JPG", "默认 PDF", "默认 Preview", "默认 Emoji"],
   },
   {
-    title: "Debug",
-    items: ["localStorage", "IndexedDB", "Import Export Debug"],
+    id: "experimental",
+    icon: "🧪",
+    title: "实验功能",
+    subtitle: "Experimental",
+    description: "集中放置未来仍在验证中的功能方向。",
+    items: ["开发中", "关系图", "地图", "时间线", "AI Prompt V2", "Prompt Editor"],
+  },
+  {
+    id: "debug",
+    icon: "🪲",
+    title: "调试工具",
+    subtitle: "Debug",
+    description: "只展示当前调试入口目录，不执行危险操作。",
+    items: ["localStorage", "IndexedDB", "Theme", "Export", "Import", "Build", "Version", "Route", "Log"],
+  },
+  {
+    id: "data",
+    icon: "💾",
+    title: "数据管理",
+    subtitle: "Data",
+    description: "展示角色、头像、素材和浏览器存储概况。",
+    items: ["角色数量", "头像数量", "素材数量", "IndexedDB 大小", "localStorage 大小", "Prompt Library"],
+  },
+  {
+    id: "update",
+    icon: "📦",
+    title: "更新中心",
+    subtitle: "Update",
+    description: "整理版本、Sprint、Roadmap 与 Changelog 的维护入口。",
+    items: ["Version", "Sprint", "Build", "GitHub", "Developer Handbook", "Roadmap", "Changelog"],
   },
 ];
 
-function DeveloperCenter() {
+type DeveloperCenterProps = {
+  characters: Character[];
+  avatarAssetStats: { count: number; size: number };
+  themeMode: ThemeMode;
+};
+
+function getLocalStorageFootprint() {
+  let total = 0;
+
+  for (let index = 0; index < localStorage.length; index += 1) {
+    const key = localStorage.key(index) || "";
+    total += key.length + (localStorage.getItem(key)?.length || 0);
+  }
+
+  return total;
+}
+
+function DeveloperCenter({ characters, avatarAssetStats, themeMode }: DeveloperCenterProps) {
+  const formalCharacters = characters.filter((character) => !character.isDraft).length;
+  const draftCharacters = characters.filter((character) => character.isDraft).length;
+  const avatarBindings = characters.filter((character) => character.avatarAssetId).length;
+  const localStorageSize = getLocalStorageFootprint();
+
   return (
     <section className="developer-page">
       <div className="panel developer-hero">
-        <p className="eyebrow">Developer Center</p>
-        <h1>开发者中心</h1>
-        <p className="muted">
-          面向项目开发者与维护人员的高级配置入口。本页当前为基础框架，用于后续集中管理设计、内容、实验功能和调试工具。
-        </p>
+        <div>
+          <p className="eyebrow">Developer Center</p>
+          <h1>开发者中心</h1>
+          <p className="muted">Character Studio 项目开发控制中心</p>
+        </div>
+        <div className="developer-hero-badges">
+          <span className="status-badge">Version 1.0.0</span>
+          <span className="status-badge">Sprint 7.92</span>
+          <span className="status-badge">Build 2026</span>
+          <span className="status-badge">Theme：{themeMode}</span>
+          <span className="status-badge">数据版本：Local v1</span>
+          <span className="status-badge">Prompt Library：external-inspiration-library.txt</span>
+          <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">GitHub</a>
+          <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">Developer Handbook</a>
+        </div>
       </div>
-      <div className="developer-grid">
-        <article className="developer-card overview-card">
-          <h2>Overview</h2>
-          <p>Developer Center 不面向普通用户默认展示。可通过 /developer 或未来的开发者模式进入。</p>
-          <span className="status-badge">Framework Ready</span>
-        </article>
-        {developerSections.map((section) => (
-          <article className="developer-card" key={section.title}>
-            <h2>{section.title}</h2>
-            <div className="developer-chip-list">
-              {section.items.map((item) => (
-                <span key={item}>{item}</span>
-              ))}
+
+      <div className="developer-layout">
+        <aside className="developer-nav" aria-label="Developer Center 导航">
+          {developerSections.map((section) => (
+            <a href={`#developer-${section.id}`} key={section.id}>
+              <span aria-hidden="true">{section.icon}</span>
+              <strong>{section.title}</strong>
+              <small>{section.subtitle}</small>
+            </a>
+          ))}
+        </aside>
+
+        <div className="developer-content">
+          <article className="developer-card overview-card" id="developer-overview">
+            <div className="developer-card-title">
+              <span aria-hidden="true">📊</span>
+              <div>
+                <h2>项目概览</h2>
+                <p>Overview</p>
+              </div>
+            </div>
+            <svg className="developer-logo" aria-hidden="true" viewBox="0 0 566.43 637.56">
+              <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
+              <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
+            </svg>
+            <div className="developer-stat-grid">
+              <span><strong>Version</strong>1.0.0</span>
+              <span><strong>Sprint</strong>7.92</span>
+              <span><strong>Build</strong>2026</span>
+              <span><strong>当前主题</strong>{themeMode}</span>
+              <span><strong>数据版本</strong>Local v1</span>
+              <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
+              <span><strong>最后更新时间</strong>2026</span>
+              <span><strong>角色数量</strong>{characters.length}</span>
+            </div>
+            <div className="developer-link-row">
+              <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">GitHub 项目仓库</a>
+              <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">Developer Handbook</a>
             </div>
           </article>
-        ))}
+
+          {developerSections.filter((section) => section.id !== "overview").map((section) => (
+            <article className="developer-card" id={`developer-${section.id}`} key={section.id}>
+              <div className="developer-card-title">
+                <span aria-hidden="true">{section.icon}</span>
+                <div>
+                  <h2>{section.title}</h2>
+                  <p>{section.subtitle}</p>
+                </div>
+              </div>
+              <p>{section.description}</p>
+              {section.id === "data" && (
+                <div className="developer-stat-grid compact">
+                  <span><strong>角色数量</strong>{characters.length}</span>
+                  <span><strong>正式角色</strong>{formalCharacters}</span>
+                  <span><strong>草稿数量</strong>{draftCharacters}</span>
+                  <span><strong>头像素材</strong>{avatarAssetStats.count}</span>
+                  <span><strong>头像绑定</strong>{avatarBindings}</span>
+                  <span><strong>IndexedDB 估算</strong>{formatAssetSize(avatarAssetStats.size)}</span>
+                  <span><strong>localStorage 估算</strong>{formatAssetSize(localStorageSize)}</span>
+                  <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
+                </div>
+              )}
+              <div className="developer-chip-list">
+                {section.items.map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -709,7 +852,13 @@ function App() {
         />
       )}
 
-      {page === "developer" && <DeveloperCenter />}
+      {page === "developer" && (
+        <DeveloperCenter
+          avatarAssetStats={avatarAssetStats}
+          characters={characters}
+          themeMode={themeMode}
+        />
+      )}
 
       <div className="floating-actions" aria-label="快捷操作">
         {showQuickBackToTop && (
