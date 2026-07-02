@@ -2824,14 +2824,15 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .workspace-footer {
   position: sticky;
-  bottom: calc(12px + env(safe-area-inset-bottom));
+  top: calc(100dvh - 86px - env(safe-area-inset-bottom));
   z-index: 90;
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 0;
+  margin-bottom: -72px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface) 92%, transparent);
@@ -3943,9 +3944,11 @@ kbd {
   }
 
   .workspace-footer {
+    top: calc(100dvh - 132px - env(safe-area-inset-bottom));
     align-items: stretch;
     flex-direction: column;
     width: auto;
+    margin-bottom: -118px;
   }
 
   .settings-form-grid,
