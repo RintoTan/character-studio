@@ -2243,6 +2243,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-content {
+  grid-column: 2;
+  grid-row: 1;
   display: grid;
   gap: 14px;
   padding-bottom: 96px;
@@ -2956,6 +2958,9 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-footer {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
   position: sticky;
   top: calc(100dvh - 86px - env(safe-area-inset-bottom));
   z-index: 90;
@@ -4077,11 +4082,16 @@ kbd {
   }
 
   .workspace-footer {
+    grid-column: 1;
     top: calc(100dvh - 132px - env(safe-area-inset-bottom));
     align-items: stretch;
     flex-direction: column;
     width: auto;
     margin-bottom: -118px;
+  }
+
+  .workspace-content {
+    grid-column: 1;
   }
 
   .settings-form-grid,

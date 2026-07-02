@@ -2512,30 +2512,30 @@ export function CharacterForm({
           ))}
         </aside>
 
+        <div className="form-actions workspace-footer">
+          <div className="footer-danger-actions">
+            <button className="ghost-button" type="button" onClick={() => setPendingFormAction("clear")}>
+              清空
+            </button>
+            <button className="danger-button" type="button" onClick={() => setPendingFormAction("delete")}>
+              删除
+            </button>
+          </div>
+          <div className="footer-main-actions">
+            <button className="ghost-button" type="button" onClick={onCancel}>
+              取消
+            </button>
+            <button className="ghost-button" type="button" onClick={() => void saveDraftCharacter()}>
+              临时保存
+            </button>
+            <button className="primary-button" type="submit">
+              保存角色
+            </button>
+          </div>
+        </div>
+
         <div className="workspace-content">
           {formError && <div className="form-error">{formError}</div>}
-
-          <div className="form-actions workspace-footer">
-            <div className="footer-danger-actions">
-              <button className="ghost-button" type="button" onClick={() => setPendingFormAction("clear")}>
-                清空
-              </button>
-              <button className="danger-button" type="button" onClick={() => setPendingFormAction("delete")}>
-                删除
-              </button>
-            </div>
-            <div className="footer-main-actions">
-              <button className="ghost-button" type="button" onClick={onCancel}>
-                取消
-              </button>
-              <button className="ghost-button" type="button" onClick={() => void saveDraftCharacter()}>
-                临时保存
-              </button>
-              <button className="primary-button" type="submit">
-                保存角色
-              </button>
-            </div>
-          </div>
 
           <section className="workspace-card" id="workspace-basic">
             <button
