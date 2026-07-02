@@ -1020,6 +1020,156 @@ h2 {
   font-weight: 750;
 }
 
+.developer-brand-grid,
+.developer-component-grid,
+.developer-readonly-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.developer-brand-item,
+.developer-component-item,
+.developer-readonly-grid span,
+.developer-mini-card,
+.developer-mini-dialog {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 12px;
+}
+
+.developer-brand-item {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.developer-brand-item svg {
+  width: 48px;
+  height: 54px;
+}
+
+.developer-brand-item small,
+.developer-component-item small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.developer-emoji-sample {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--avatar-tint);
+  font-family: var(--emoji-font);
+  font-size: 28px;
+}
+
+.developer-component-item {
+  display: grid;
+  gap: 10px;
+}
+
+.developer-component-preview {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  gap: 8px;
+}
+
+.developer-mini-card,
+.developer-mini-dialog {
+  width: 120px;
+  box-shadow: var(--shadow);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.developer-mini-dialog {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-strong);
+}
+
+.switch-control,
+.checkbox-control,
+.radio-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.switch-control {
+  width: 42px;
+  height: 24px;
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.switch-control span {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.switch-control.active {
+  justify-content: flex-end;
+  background: var(--surface-subtle);
+}
+
+.checkbox-control,
+.radio-control {
+  width: 22px;
+  height: 22px;
+  justify-content: center;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.checkbox-control {
+  border-radius: 6px;
+}
+
+.radio-control {
+  border-radius: 999px;
+}
+
+.radio-control span {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.developer-readonly-grid span {
+  color: var(--text-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.developer-readonly-grid strong,
+.status-list strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.status-list span {
+  min-width: 140px;
+}
+
 .empty-state {
   border: 1px dashed var(--border-strong);
   border-radius: 8px;

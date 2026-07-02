@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import { APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
 import {
   exportAllCharactersJson,
@@ -1387,7 +1388,7 @@ export function Dashboard({
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 2026。</p>
+                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
               </article>
             </div>
             <div className="about-brand-footer">
@@ -1397,9 +1398,9 @@ export function Dashboard({
               </svg>
               <div className="about-brand-meta">
                 <h3>Character Studio</h3>
-                <p>Version 1.0.0</p>
-                <p>Sprint 7.84</p>
-                <p>Released 2026</p>
+                <p>Version {APP_VERSION}</p>
+                <p>Sprint {APP_SPRINT}</p>
+                <p>Released {RELEASE_YEAR}</p>
               </div>
               <p className="about-brand-tagline">轻量、高效、专注于原创角色创作。</p>
               <div className="about-brand-links">
@@ -1413,10 +1414,10 @@ export function Dashboard({
               <div className="about-brand-credit">
                 <span>Designed &amp; Developed by</span>
                 <strong>RINTO × Codex</strong>
-                <span>2026</span>
+                <span>{RELEASE_YEAR}</span>
               </div>
               <p className="about-brand-copyright">
-                © 2026 RINTO<br />
+                © {RELEASE_YEAR} RINTO<br />
                 All Rights Reserved.
               </p>
             </div>
@@ -1481,10 +1482,10 @@ export function Dashboard({
               </article>
               <article className="ai-settings-card">
                 <div className="settings-card-head">
-                  <h3>AI Settings</h3>
+                  <h3>AI 设置 / AI Settings</h3>
                   <span className="status-badge">🚧 Coming Soon</span>
                 </div>
-                <p className="muted">开发中。当前不会调用 AI，也不会上传任何用户数据。</p>
+                <p className="muted">面向所有用户，开发中。当前不会调用 AI，也不会上传任何用户数据；未来可填写自己的 API Key。</p>
                 <div className="settings-form-grid">
                   <label>
                     Provider
@@ -1522,7 +1523,7 @@ export function Dashboard({
                     <span>Streaming</span>
                   </label>
                 </div>
-                <button className="ghost-button" disabled type="button">Connection Test</button>
+                <button className="ghost-button" disabled type="button">连接测试 / Connection Test</button>
               </article>
               <article>
                 <h3>Mobile</h3>
@@ -2768,7 +2769,7 @@ export function Dashboard({
         <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
           Settings
         </button>
-        <span>RINTO © 2026</span>
+        <span>RINTO © {RELEASE_YEAR}</span>
       </footer>
     </section>
   );

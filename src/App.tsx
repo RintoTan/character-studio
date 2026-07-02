@@ -4,6 +4,14 @@ import { CharacterPreview } from "./pages/CharacterPreview";
 import { Dashboard } from "./pages/Dashboard";
 import { AvatarDisplay } from "./components/AvatarDisplay";
 import {
+  APP_BUILD,
+  APP_RELEASE_LABEL,
+  APP_SPRINT,
+  APP_VERSION,
+  RELEASE_YEAR,
+} from "./config/version";
+import externalInspirationLibraryRaw from "./data/external-inspiration-library.txt?raw";
+import {
   deleteCharacter,
   duplicateCharacter,
   loadCharacters,
@@ -124,6 +132,8 @@ type DeveloperCenterProps = {
   characters: Character[];
   avatarAssetStats: { count: number; size: number };
   themeMode: ThemeMode;
+  currentPage: Page;
+  onOpenAssetLibrary: () => void;
 };
 
 function getLocalStorageFootprint() {
@@ -137,11 +147,99 @@ function getLocalStorageFootprint() {
   return total;
 }
 
-function DeveloperCenter({ characters, avatarAssetStats, themeMode }: DeveloperCenterProps) {
+function getSafeStorageStatus() {
+  try {
+    const key = "__character_studio_storage_check__";
+    localStorage.setItem(key, "1");
+    localStorage.removeItem(key);
+    return "可用";
+  } catch {
+    return "不可用";
+  }
+}
+
+function getSettingLabel(key: string, fallback: string) {
+  return localStorage.getItem(key) || fallback;
+}
+
+function getSettingBooleanLabel(key: string, fallback: boolean) {
+  const storedValue = localStorage.getItem(key);
+  const value = storedValue === null ? fallback : storedValue === "true";
+  return value ? "开启" : "关闭";
+}
+
+function getPromptLibraryStats() {
+  const lines = externalInspirationLibraryRaw
+    .split(/\r?\n/)
+    .filter((line) => line.trim()).length;
+  const size = new Blob([externalInspirationLibraryRaw]).size;
+
+  return { lines, size };
+}
+
+function DeveloperCenter({
+  characters,
+  avatarAssetStats,
+  themeMode,
+  currentPage,
+  onOpenAssetLibrary,
+}: DeveloperCenterProps) {
   const formalCharacters = characters.filter((character) => !character.isDraft).length;
   const draftCharacters = characters.filter((character) => character.isDraft).length;
-  const avatarBindings = characters.filter((character) => character.avatarAssetId).length;
+  const favoriteCharacters = characters.filter((character) => character.favorite || character.isFavorite).length;
+  const usedAvatarAssetIds = new Set(
+    characters
+      .map((character) => character.avatarAssetId)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const avatarBindings = usedAvatarAssetIds.size;
+  const unboundAvatarAssets = Math.max(avatarAssetStats.count - avatarBindings, 0);
   const localStorageSize = getLocalStorageFootprint();
+  const promptStats = getPromptLibraryStats();
+  const indexedDbStatus = typeof indexedDB === "undefined" ? "不可用" : "可用";
+  const appConfig = [
+    ["默认主题", themeMode],
+    ["默认视图", getSettingLabel("character-studio.dashboard.view-mode", "cards")],
+    ["JPG 导出质量", getSettingLabel("character-studio.settings.jpg-quality", "0.9")],
+    ["PDF Light Mode", getSettingBooleanLabel("character-studio.settings.pdf-light", true)],
+    ["小屏简洁模式", getSettingBooleanLabel("character-studio.settings.compact-mobile", true)],
+    ["默认展开搜索", getSettingBooleanLabel("character-studio.settings.open-search", false)],
+    ["自动隐藏低优先级信息", getSettingBooleanLabel("character-studio.settings.hide-low-priority", true)],
+  ];
+  const designComponents = [
+    ["Primary Button", "主要按钮", <button className="primary-button" type="button">保存</button>, "用于主要确认与提交。"],
+    ["Secondary Button", "次级按钮", <button className="ghost-button" type="button">取消</button>, "用于辅助操作。"],
+    ["Card", "卡片", <div className="developer-mini-card">Card Preview</div>, "承载分组信息。"],
+    ["Dialog", "弹窗", <div className="developer-mini-dialog">Dialog</div>, "用于确认、预览和设置。"],
+    ["Input", "输入框", <input readOnly value="Character Studio" />, "用于文本录入。"],
+    ["Select", "选择器", <select defaultValue="light"><option value="light">Light</option></select>, "用于有限选项选择。"],
+    ["Tag", "标签", <span className="tag-button selected">冷静</span>, "用于性格标签。"],
+    ["Badge", "徽章", <span className="status-badge">Active</span>, "用于状态信息。"],
+    ["Switch", "开关", <span className="switch-control active" aria-hidden="true"><span /></span>, "用于开关型设置。"],
+    ["Checkbox", "复选", <span className="checkbox-control checked" aria-hidden="true">✓</span>, "用于多选与确认。"],
+    ["Radio", "单选", <span className="radio-control checked" aria-hidden="true"><span /></span>, "用于导入导出方式选择。"],
+  ];
+  const contentCards = [
+    ["About", "项目介绍、功能说明、路线图与版权信息。"],
+    ["首次 About", "首次进入时的轻量欢迎页与上手说明。"],
+    ["Settings", "普通用户设置、AI 设置、导入导出与数据说明。"],
+    ["Footer", "About、头像素材库、Settings 与版权入口。"],
+    ["导入说明", "解释 JSON、ZIP、头像素材与导入确认流程。"],
+    ["导出说明", "解释轻量 JSON、完整备份 ZIP、CSV 与展示导出。"],
+    ["Toast", "成功、失败、警告、加载等即时反馈。"],
+    ["Dialog", "确认、导入预览、素材库、设置等弹窗文案。"],
+  ];
+  const experiments = [
+    ["关系网", "Planned"],
+    ["时间线", "Planned"],
+    ["世界观管理", "Planned"],
+    ["阵营系统", "Planned"],
+    ["地图", "Planned"],
+    ["大世界时间", "Planned"],
+    ["AI 创作辅助", "In Progress"],
+    ["Prompt 编辑器", "Coming Soon"],
+    ["词库编辑器", "Coming Soon"],
+  ];
 
   return (
     <section className="developer-page">
@@ -152,9 +250,9 @@ function DeveloperCenter({ characters, avatarAssetStats, themeMode }: DeveloperC
           <p className="muted">Character Studio 项目开发控制中心</p>
         </div>
         <div className="developer-hero-badges">
-          <span className="status-badge">Version 1.0.0</span>
-          <span className="status-badge">Sprint 7.92</span>
-          <span className="status-badge">Build 2026</span>
+          <span className="status-badge">Version {APP_VERSION}</span>
+          <span className="status-badge">Sprint {APP_SPRINT}</span>
+          <span className="status-badge">Build {APP_BUILD}</span>
           <span className="status-badge">Theme：{themeMode}</span>
           <span className="status-badge">数据版本：Local v1</span>
           <span className="status-badge">Prompt Library：external-inspiration-library.txt</span>
@@ -188,14 +286,18 @@ function DeveloperCenter({ characters, avatarAssetStats, themeMode }: DeveloperC
               <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
             </svg>
             <div className="developer-stat-grid">
-              <span><strong>Version</strong>1.0.0</span>
-              <span><strong>Sprint</strong>7.92</span>
-              <span><strong>Build</strong>2026</span>
+              <span><strong>Version</strong>{APP_VERSION}</span>
+              <span><strong>Sprint</strong>{APP_SPRINT}</span>
+              <span><strong>Build</strong>{APP_BUILD}</span>
               <span><strong>当前主题</strong>{themeMode}</span>
               <span><strong>数据版本</strong>Local v1</span>
               <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
-              <span><strong>最后更新时间</strong>2026</span>
+              <span><strong>最后更新时间</strong>{RELEASE_YEAR}</span>
               <span><strong>角色数量</strong>{characters.length}</span>
+              <span><strong>草稿数量</strong>{draftCharacters}</span>
+              <span><strong>头像素材</strong>{avatarAssetStats.count}</span>
+              <span><strong>localStorage</strong>{getSafeStorageStatus()} · {formatAssetSize(localStorageSize)}</span>
+              <span><strong>IndexedDB</strong>{indexedDbStatus} · {formatAssetSize(avatarAssetStats.size)}</span>
             </div>
             <div className="developer-link-row">
               <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">GitHub 项目仓库</a>
@@ -213,16 +315,119 @@ function DeveloperCenter({ characters, avatarAssetStats, themeMode }: DeveloperC
                 </div>
               </div>
               <p>{section.description}</p>
+              {section.id === "brand" && (
+                <div className="developer-brand-grid">
+                  {["Logo Light", "Logo Dark", "Favicon", "App Icon", "SVG Logo"].map((label) => (
+                    <div className="developer-brand-item" key={label}>
+                      <svg aria-hidden="true" viewBox="0 0 566.43 637.56">
+                        <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
+                        <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
+                      </svg>
+                      <strong>{label}</strong>
+                      <small>当前项目内置资源</small>
+                    </div>
+                  ))}
+                  <div className="developer-brand-item">
+                    <span className="developer-emoji-sample">🙂</span>
+                    <strong>Emoji fallback</strong>
+                    <small>Apple Color Emoji / Segoe UI Emoji / Noto Color Emoji / Twemoji Mozilla</small>
+                  </div>
+                </div>
+              )}
+              {section.id === "design" && (
+                <div className="developer-component-grid">
+                  {designComponents.map(([englishName, chineseName, preview, description]) => (
+                    <div className="developer-component-item" key={String(englishName)}>
+                      <div>
+                        <strong>{chineseName}</strong>
+                        <small>{englishName}</small>
+                      </div>
+                      <div className="developer-component-preview">{preview}</div>
+                      <p>{description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {section.id === "content" && (
+                <div className="developer-readonly-grid">
+                  {contentCards.map(([title, description]) => (
+                    <span key={title}><strong>{title}</strong>{description}</span>
+                  ))}
+                </div>
+              )}
+              {section.id === "prompt" && (
+                <div className="developer-stat-grid compact">
+                  <span><strong>当前词库</strong>external-inspiration-library.txt</span>
+                  <span><strong>接入状态</strong>已接入</span>
+                  <span><strong>用途</strong>随机灵感、示例、写作提示、随机角色生成</span>
+                  <span><strong>行数</strong>{promptStats.lines}</span>
+                  <span><strong>文本大小</strong>{formatAssetSize(promptStats.size)}</span>
+                  <span><strong>未来能力</strong>词库编辑器、Prompt 模板、导入导出</span>
+                </div>
+              )}
+              {section.id === "ai" && (
+                <div className="developer-readonly-grid">
+                  <span><strong>当前状态</strong>🚧 开发中</span>
+                  <span><strong>数据安全</strong>当前不调用 AI，不发送用户数据。</span>
+                  <span><strong>用户配置</strong>API Key 未来由 Settings → AI 设置填写。</span>
+                  <span><strong>开发原则</strong>Developer Center 不保存用户 API Key。</span>
+                  {["AI 人设生成", "AI 润色", "AI 翻译", "AI Prompt 优化", "AI 世界观生成"].map((item) => (
+                    <span key={item}><strong>{item}</strong>Coming Soon</span>
+                  ))}
+                </div>
+              )}
+              {section.id === "application" && (
+                <div className="developer-stat-grid compact">
+                  {appConfig.map(([label, value]) => (
+                    <span key={label}><strong>{label}</strong>{value}</span>
+                  ))}
+                </div>
+              )}
+              {section.id === "experimental" && (
+                <div className="developer-chip-list status-list">
+                  {experiments.map(([name, status]) => (
+                    <span key={name}><strong>{name}</strong>{status}</span>
+                  ))}
+                </div>
+              )}
+              {section.id === "debug" && (
+                <div className="developer-stat-grid compact">
+                  <span><strong>localStorage</strong>{getSafeStorageStatus()}</span>
+                  <span><strong>IndexedDB</strong>{indexedDbStatus}</span>
+                  <span><strong>当前 Theme</strong>{themeMode}</span>
+                  <span><strong>当前路由</strong>{currentPage === "developer" ? "/developer" : currentPage}</span>
+                  <span><strong>数据版本</strong>Local v1</span>
+                  <span><strong>角色数量</strong>{characters.length}</span>
+                  <span><strong>素材数量</strong>{avatarAssetStats.count}</span>
+                </div>
+              )}
               {section.id === "data" && (
                 <div className="developer-stat-grid compact">
                   <span><strong>角色数量</strong>{characters.length}</span>
                   <span><strong>正式角色</strong>{formalCharacters}</span>
                   <span><strong>草稿数量</strong>{draftCharacters}</span>
+                  <span><strong>收藏数量</strong>{favoriteCharacters}</span>
                   <span><strong>头像素材</strong>{avatarAssetStats.count}</span>
-                  <span><strong>头像绑定</strong>{avatarBindings}</span>
+                  <span><strong>已绑定头像</strong>{avatarBindings}</span>
+                  <span><strong>未绑定头像</strong>{unboundAvatarAssets}</span>
                   <span><strong>IndexedDB 估算</strong>{formatAssetSize(avatarAssetStats.size)}</span>
                   <span><strong>localStorage 估算</strong>{formatAssetSize(localStorageSize)}</span>
                   <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
+                </div>
+              )}
+              {section.id === "data" && (
+                <button className="ghost-button" onClick={onOpenAssetLibrary} type="button">
+                  打开头像素材库
+                </button>
+              )}
+              {section.id === "update" && (
+                <div className="developer-readonly-grid">
+                  <span><strong>Version</strong>{APP_VERSION}</span>
+                  <span><strong>Sprint</strong>{APP_SPRINT}</span>
+                  <span><strong>Build</strong>{APP_BUILD}</span>
+                  <span><strong>Roadmap</strong>关系网、时间线、世界观管理、AI 创作辅助。</span>
+                  <span><strong>最近记录</strong>Sprint {APP_SPRINT}：Developer Center 功能落地。</span>
+                  <span><strong>发布标签</strong>{APP_RELEASE_LABEL}</span>
                 </div>
               )}
               <div className="developer-chip-list">
@@ -856,6 +1061,11 @@ function App() {
         <DeveloperCenter
           avatarAssetStats={avatarAssetStats}
           characters={characters}
+          currentPage={page}
+          onOpenAssetLibrary={() => {
+            setIsAppAssetLibraryOpen(true);
+            void refreshAvatarAssetStats();
+          }}
           themeMode={themeMode}
         />
       )}
@@ -987,7 +1197,7 @@ function App() {
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
             Settings
           </button>
-          <span>RINTO © 2026</span>
+          <span>RINTO © {RELEASE_YEAR}</span>
         </footer>
       )}
 
@@ -1021,9 +1231,9 @@ function App() {
                   <h2>Character Studio</h2>
                   <p>轻量、高效、专注于原创角色创作</p>
                   <div className="about-version-row">
-                    <span className="status-badge">Version 1.0.0</span>
-                    <span className="status-badge">Sprint 7.91</span>
-                    <span className="status-badge">Build 2026</span>
+                    <span className="status-badge">Version {APP_VERSION}</span>
+                    <span className="status-badge">Sprint {APP_SPRINT}</span>
+                    <span className="status-badge">Build {APP_BUILD}</span>
                   </div>
                 </div>
                 <div className="first-about-cards">
@@ -1048,7 +1258,7 @@ function App() {
                     Developer Handbook 开发手册
                   </a>
                 </div>
-                <p className="first-about-credit">RINTO × Codex 共同开发 2026</p>
+                <p className="first-about-credit">RINTO × Codex 共同开发 {RELEASE_YEAR}</p>
                 <label className="settings-check first-about-switch">
                   <input
                     type="checkbox"
@@ -1077,9 +1287,9 @@ function App() {
                 <article>
                   <h3>当前版本</h3>
                   <div className="about-version-row">
-                    <span className="status-badge">Version 1.0.0</span>
-                    <span className="status-badge">Sprint 7.9</span>
-                    <span className="status-badge">Build 2026</span>
+                    <span className="status-badge">Version {APP_VERSION}</span>
+                    <span className="status-badge">Sprint {APP_SPRINT}</span>
+                    <span className="status-badge">Build {APP_BUILD}</span>
                   </div>
                 </article>
               )}
@@ -1147,7 +1357,7 @@ function App() {
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 2026。</p>
+                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
               </article>
               {!isFirstAboutOpen && (
                 <article>
@@ -1184,9 +1394,9 @@ function App() {
                 </svg>
                 <div className="about-brand-meta">
                   <h3>Character Studio</h3>
-                  <p>Version 1.0.0</p>
-                  <p>Sprint 7.84</p>
-                  <p>Released 2026</p>
+                  <p>Version {APP_VERSION}</p>
+                  <p>Sprint {APP_SPRINT}</p>
+                  <p>Released {RELEASE_YEAR}</p>
                 </div>
                 <p className="about-brand-tagline">轻量、高效、专注于原创角色创作。</p>
                 <div className="about-brand-links">
@@ -1200,15 +1410,15 @@ function App() {
                 <div className="about-brand-credit">
                   <span>Designed &amp; Developed by</span>
                   <strong>RINTO × Codex</strong>
-                  <span>2026</span>
+                  <span>{RELEASE_YEAR}</span>
                 </div>
                 <p className="about-brand-copyright">
-                  © 2026 RINTO<br />
+                  © {RELEASE_YEAR} RINTO<br />
                   All Rights Reserved.
                 </p>
               </div>
             ) : (
-              <p className="about-footer">RINTO © 2026</p>
+              <p className="about-footer">RINTO © {RELEASE_YEAR}</p>
             )}
               </>
             )}
@@ -1248,10 +1458,10 @@ function App() {
               </article>
               <article className="ai-settings-card">
                 <div className="settings-card-head">
-                  <h3>AI Settings</h3>
+                  <h3>AI 设置 / AI Settings</h3>
                   <span className="status-badge">🚧 Coming Soon</span>
                 </div>
-                <p className="muted">开发中。当前不会调用 AI，也不会上传任何用户数据。</p>
+                <p className="muted">面向所有用户，开发中。当前不会调用 AI，也不会上传任何用户数据；未来可填写自己的 API Key。</p>
                 <div className="settings-form-grid">
                   <label>
                     Provider
@@ -1289,7 +1499,7 @@ function App() {
                     <span>Streaming</span>
                   </label>
                 </div>
-                <button className="ghost-button" disabled type="button">Connection Test</button>
+                <button className="ghost-button" disabled type="button">连接测试 / Connection Test</button>
               </article>
               <article>
                 <h3>About Data</h3>
