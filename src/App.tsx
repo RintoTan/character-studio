@@ -770,6 +770,16 @@ function App() {
     );
   }, [page]);
 
+  useEffect(() => {
+    if (page !== "preview") {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+  }, [page, selectedCharacter?.id]);
+
   function goBack() {
     if (window.history.state?.characterStudioPage && window.history.length > 1) {
       window.history.back();

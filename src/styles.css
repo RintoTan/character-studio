@@ -4186,6 +4186,15 @@ kbd {
 
   .age-combo {
     grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .age-combo input,
+  .age-combo input[type="date"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    -webkit-min-logical-width: 0;
   }
 
   .combo-field {
@@ -4388,9 +4397,11 @@ kbd {
   .workspace-toolbar {
     flex: 0 0 auto;
     align-items: center;
+    align-self: center;
     flex-direction: row;
     justify-content: flex-end;
     gap: 7px;
+    min-width: max-content;
   }
 
   .desktop-editor-action {
@@ -4400,9 +4411,12 @@ kbd {
   .mobile-editor-primary,
   .mobile-editor-more {
     display: inline-flex;
+    align-items: center;
+    align-self: center;
   }
 
   .mobile-editor-primary {
+    height: 34px;
     min-height: 34px;
     padding: 0 12px;
     font-size: 13px;
@@ -4410,6 +4424,7 @@ kbd {
   }
 
   .mobile-editor-more > .ghost-button {
+    height: 34px;
     min-height: 34px;
     padding: 0 10px;
     font-size: 13px;
@@ -4417,6 +4432,10 @@ kbd {
 
   .save-status {
     order: -1;
+    display: inline-flex;
+    align-items: center;
+    align-self: center;
+    height: 26px;
     min-height: 26px;
     padding: 4px 8px;
     font-size: 11px;

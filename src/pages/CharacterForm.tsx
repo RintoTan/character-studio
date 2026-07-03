@@ -1793,6 +1793,13 @@ export function CharacterForm({
     action();
   }
 
+  function openEditorPreview() {
+    setEditorMode("preview");
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    });
+  }
+
   function togglePersonalityTag(tag: string) {
     setFormData((current) => {
       const currentTags = current.personalityTags || [];
@@ -2592,7 +2599,7 @@ export function CharacterForm({
           </span>
           <button
             className="ghost-button desktop-editor-action"
-            onClick={() => setEditorMode("preview")}
+            onClick={openEditorPreview}
             type="button"
           >
             预览
@@ -2627,7 +2634,7 @@ export function CharacterForm({
                 <button type="button" onClick={() => runEditorMoreAction(() => void saveDraftCharacter())}>
                   临时保存
                 </button>
-                <button type="button" onClick={() => runEditorMoreAction(() => setEditorMode("preview"))}>
+                <button type="button" onClick={() => runEditorMoreAction(openEditorPreview)}>
                   预览
                 </button>
                 <button type="button" onClick={() => runEditorMoreAction(onCancel)}>
