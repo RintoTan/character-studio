@@ -1225,6 +1225,7 @@ export function CharacterForm({
   } | null>(null);
   const [isHelperReplaceConfirmOpen, setIsHelperReplaceConfirmOpen] = useState(false);
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
+  const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<SectionId>("basic");
   const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>({
@@ -1400,6 +1401,7 @@ export function CharacterForm({
       setAvatarUrlValue("");
       setHelperSuggestion(null);
       setIsHelperReplaceConfirmOpen(false);
+      setIsEditorMoreOpen(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
@@ -1771,6 +1773,24 @@ export function CharacterForm({
         .getElementById(`workspace-${sectionId}`)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
+  }
+
+  function getSectionShortTitle(sectionId: SectionId) {
+    const shortTitles: Record<SectionId, string> = {
+      basic: "基础",
+      appearance: "外貌",
+      personality: "性格",
+      ability: "能力",
+      backstory: "背景",
+      prompt: "Prompt",
+    };
+
+    return shortTitles[sectionId];
+  }
+
+  function runEditorMoreAction(action: () => void) {
+    setIsEditorMoreOpen(false);
+    action();
   }
 
   function togglePersonalityTag(tag: string) {
@@ -2540,7 +2560,7 @@ export function CharacterForm({
         </div>
         <div className="workspace-toolbar">
           <button
-            className="ghost-button"
+            className="ghost-button desktop-editor-action"
             type="button"
             onClick={handleRandomCharacter}
             disabled={isRandomizing}
@@ -2548,14 +2568,14 @@ export function CharacterForm({
             {isRandomizing ? "生成中..." : "随机生成角色"}
           </button>
           <button
-            className="ghost-button helper-clear-button"
+            className="ghost-button helper-clear-button desktop-editor-action"
             type="button"
             onClick={() => setPendingFormAction("clear")}
           >
             清空
           </button>
           <button
-            className="ghost-button helper-clear-button"
+            className="ghost-button helper-clear-button desktop-editor-action"
             type="button"
             onClick={() => setPendingFormAction("delete")}
           >
@@ -2571,15 +2591,65 @@ export function CharacterForm({
                   : "未保存"}
           </span>
           <button
-            className="ghost-button"
+            className="ghost-button desktop-editor-action"
             onClick={() => setEditorMode("preview")}
             type="button"
           >
             预览
           </button>
-          <button className="ghost-button" onClick={onCancel} type="button">
+          <button className="ghost-button desktop-editor-action" onClick={onCancel} type="button">
             返回
           </button>
+          <button
+            className="primary-button mobile-editor-primary"
+            onClick={() => void saveCurrentCharacter()}
+            type="button"
+          >
+            保存角色
+          </button>
+          <div className="mobile-editor-more">
+            <button
+              className="ghost-button"
+              onClick={() => setIsEditorMoreOpen((current) => !current)}
+              type="button"
+            >
+              更多
+            </button>
+            {isEditorMoreOpen && (
+              <div className="mobile-editor-more-menu">
+                <button
+                  type="button"
+                  onClick={() => runEditorMoreAction(handleRandomCharacter)}
+                  disabled={isRandomizing}
+                >
+                  {isRandomizing ? "生成中..." : "随机生成角色"}
+                </button>
+                <button type="button" onClick={() => runEditorMoreAction(() => void saveDraftCharacter())}>
+                  临时保存
+                </button>
+                <button type="button" onClick={() => runEditorMoreAction(() => setEditorMode("preview"))}>
+                  预览
+                </button>
+                <button type="button" onClick={() => runEditorMoreAction(onCancel)}>
+                  返回
+                </button>
+                <button
+                  className="menu-danger"
+                  type="button"
+                  onClick={() => runEditorMoreAction(() => setPendingFormAction("clear"))}
+                >
+                  清空
+                </button>
+                <button
+                  className="menu-danger"
+                  type="button"
+                  onClick={() => runEditorMoreAction(() => setPendingFormAction("delete"))}
+                >
+                  删除
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -2592,8 +2662,14 @@ export function CharacterForm({
               onClick={() => jumpToSection(section.id)}
               type="button"
             >
-              <span>{section.title}</span>
-              <small>{completionStatus(section.id, formData)}</small>
+              <span>
+                <span className="nav-full">{section.title}</span>
+                <span className="nav-short">{getSectionShortTitle(section.id)}</span>
+              </span>
+              <small>
+                <span className="nav-status-dot" aria-hidden="true" />
+                {completionStatus(section.id, formData)}
+              </small>
             </button>
           ))}
         </aside>
