@@ -2115,6 +2115,40 @@ select {
     box-shadow var(--duration-fast) var(--ease-standard);
 }
 
+input[type="date"] {
+  min-width: 0;
+  min-height: var(--control-height);
+  height: var(--control-height);
+  line-height: 1.2;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input[type="date"]::-webkit-date-and-time-value {
+  min-height: 1.2em;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+input[type="date"]::-webkit-datetime-edit,
+input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field {
+  padding: 0;
+  line-height: 1.2;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+}
+
 input:hover,
 textarea:hover,
 select:hover {
@@ -4326,7 +4360,20 @@ kbd {
     width: 100%;
     max-width: 100%;
     min-width: 0;
+    height: var(--control-height);
+    box-sizing: border-box;
+    padding: 12px 14px;
+    line-height: 1.2;
     -webkit-min-logical-width: 0;
+  }
+
+  .age-combo input[type="date"]::-webkit-date-and-time-value {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    line-height: 1.2;
+    text-align: left;
   }
 
   .combo-field {
