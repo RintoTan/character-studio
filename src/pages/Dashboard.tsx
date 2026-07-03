@@ -43,6 +43,7 @@ type DashboardProps = {
   themeMode: ThemeMode;
   onSetThemeMode: (themeMode: ThemeMode) => void;
   searchSignal?: number;
+  footerText?: string;
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
@@ -102,6 +103,7 @@ export function Dashboard({
   themeMode,
   onSetThemeMode,
   searchSignal = 0,
+  footerText = `RINTO © ${RELEASE_YEAR}`,
 }: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
@@ -2769,7 +2771,7 @@ export function Dashboard({
         <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
           Settings
         </button>
-        <span>RINTO © {RELEASE_YEAR}</span>
+        <span>{footerText}</span>
       </footer>
     </section>
   );

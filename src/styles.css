@@ -26,6 +26,9 @@
   --z-modal-overlay: 900;
   --z-modal-content: 910;
   --z-toast: 1000;
+  --developer-card-radius: 8px;
+  --developer-button-radius: 8px;
+  --developer-font-scale: 1;
   color: var(--text-soft);
   background: var(--bg);
   font-family:
@@ -101,6 +104,7 @@ body {
   min-height: 100dvh;
   overflow-x: hidden;
   background: var(--bg);
+  font-size: calc(16px * var(--developer-font-scale));
   overflow-y: auto;
   transition:
     background 180ms ease,
@@ -126,6 +130,51 @@ input,
 textarea,
 select {
   font: inherit;
+}
+
+button,
+.primary-button,
+.ghost-button,
+.danger-button,
+.hero-icon-button,
+.floating-action {
+  border-radius: var(--developer-button-radius);
+}
+
+.panel,
+.character-card,
+.workspace-card,
+.preview-card,
+.developer-card,
+.settings-grid article,
+.about-grid article,
+.asset-library-dialog,
+.confirm-dialog {
+  border-radius: var(--developer-card-radius);
+}
+
+:root[data-compact-ui="true"] .panel,
+:root[data-compact-ui="true"] .workspace-card-body,
+:root[data-compact-ui="true"] .developer-card,
+:root[data-compact-ui="true"] .settings-grid article {
+  padding: 12px;
+}
+
+:root[data-show-app-logo="false"] .brand-mark,
+:root[data-show-header-logo="false"] .brand-mark {
+  display: none;
+}
+
+:root[data-about-logo-size="small"] .about-brand-logo {
+  width: 56px;
+}
+
+:root[data-about-logo-size="medium"] .about-brand-logo {
+  width: 82px;
+}
+
+:root[data-about-logo-size="large"] .about-brand-logo {
+  width: 112px;
 }
 
 button {
@@ -1022,7 +1071,8 @@ h2 {
 
 .developer-brand-grid,
 .developer-component-grid,
-.developer-readonly-grid {
+.developer-readonly-grid,
+.developer-settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
@@ -1168,6 +1218,88 @@ h2 {
 
 .status-list span {
   min-width: 140px;
+}
+
+.developer-setting-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 12px;
+}
+
+.developer-setting-field span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.developer-setting-field small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.developer-setting-field input,
+.developer-setting-field select {
+  width: min(180px, 36vw);
+}
+
+.developer-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 42px;
+  min-width: 42px;
+  height: 24px;
+  min-height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 2px;
+}
+
+.developer-switch span {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.developer-switch.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+}
+
+.developer-switch.active span {
+  background: var(--primary);
+  transform: translateX(18px);
+}
+
+.developer-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.developer-subtitle {
+  margin: 18px 0 8px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.developer-json-preview {
+  width: 100%;
+  min-height: 220px;
+  margin: 12px 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
 
 .empty-state {
@@ -4632,6 +4764,15 @@ kbd {
   .developer-hero {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .developer-setting-field {
+    grid-template-columns: 1fr;
+  }
+
+  .developer-setting-field input,
+  .developer-setting-field select {
+    width: 100%;
   }
 
   .developer-hero-badges {

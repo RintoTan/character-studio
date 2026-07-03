@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CharacterForm } from "./pages/CharacterForm";
 import { CharacterPreview } from "./pages/CharacterPreview";
 import { Dashboard } from "./pages/Dashboard";
@@ -10,6 +10,12 @@ import {
   APP_VERSION,
   RELEASE_YEAR,
 } from "./config/version";
+import {
+  defaultDeveloperSettings,
+  loadDeveloperSettings,
+  saveDeveloperSettings,
+  type DeveloperSettings,
+} from "./config/developerSettings";
 import externalInspirationLibraryRaw from "./data/external-inspiration-library.txt?raw";
 import {
   deleteCharacter,
@@ -30,6 +36,10 @@ import {
   listAvatarAssets,
   type AvatarAssetRecord,
 } from "./utils/avatarAssets";
+import {
+  exportAllCharactersJson,
+  exportFullBackupZip,
+} from "./utils/importExport";
 
 type Page = "dashboard" | "form" | "preview" | "developer";
 type ThemeMode = "system" | "light" | "dark";
@@ -134,6 +144,13 @@ type DeveloperCenterProps = {
   themeMode: ThemeMode;
   currentPage: Page;
   onOpenAssetLibrary: () => void;
+  settings: DeveloperSettings;
+  onSettingsChange: (settings: DeveloperSettings) => void;
+  onResetModule: (module: keyof DeveloperSettings) => void;
+  onResetAll: () => void;
+  onResetFirstAbout: () => void;
+  onExportCharactersJson: () => void;
+  onExportFullBackup: () => void;
 };
 
 function getLocalStorageFootprint() {
@@ -177,12 +194,57 @@ function getPromptLibraryStats() {
   return { lines, size };
 }
 
+function DeveloperField({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="developer-setting-field">
+      <span>
+        <strong>{title}</strong>
+        <small>{description}</small>
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function DeveloperSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      className={checked ? "developer-switch active" : "developer-switch"}
+      onClick={() => onChange(!checked)}
+      type="button"
+    >
+      <span />
+    </button>
+  );
+}
+
 function DeveloperCenter({
   characters,
   avatarAssetStats,
   themeMode,
   currentPage,
   onOpenAssetLibrary,
+  settings,
+  onSettingsChange,
+  onResetModule,
+  onResetAll,
+  onResetFirstAbout,
+  onExportCharactersJson,
+  onExportFullBackup,
 }: DeveloperCenterProps) {
   const formalCharacters = characters.filter((character) => !character.isDraft).length;
   const draftCharacters = characters.filter((character) => character.isDraft).length;
@@ -197,12 +259,25 @@ function DeveloperCenter({
   const localStorageSize = getLocalStorageFootprint();
   const promptStats = getPromptLibraryStats();
   const indexedDbStatus = typeof indexedDB === "undefined" ? "不可用" : "可用";
+  function updateDeveloperModule<T extends keyof DeveloperSettings>(
+    module: T,
+    value: Partial<DeveloperSettings[T]>,
+  ) {
+    onSettingsChange({
+      ...settings,
+      [module]: {
+        ...settings[module],
+        ...value,
+      },
+    });
+  }
+
   const appConfig = [
     ["默认主题", themeMode],
-    ["默认视图", getSettingLabel("character-studio.dashboard.view-mode", "cards")],
-    ["JPG 导出质量", getSettingLabel("character-studio.settings.jpg-quality", "0.9")],
-    ["PDF Light Mode", getSettingBooleanLabel("character-studio.settings.pdf-light", true)],
-    ["小屏简洁模式", getSettingBooleanLabel("character-studio.settings.compact-mobile", true)],
+    ["默认视图", settings.dashboardDefaults.viewMode],
+    ["JPG 导出质量", String(settings.exportDefaults.jpgQuality)],
+    ["PDF Light Mode", settings.exportDefaults.pdfLightMode ? "开启" : "关闭"],
+    ["小屏简洁模式", settings.editorDefaults.compactMobileEditor ? "开启" : "关闭"],
     ["默认展开搜索", getSettingBooleanLabel("character-studio.settings.open-search", false)],
     ["自动隐藏低优先级信息", getSettingBooleanLabel("character-studio.settings.hide-low-priority", true)],
   ];
@@ -303,6 +378,14 @@ function DeveloperCenter({
               <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">GitHub 项目仓库</a>
               <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">Developer Handbook</a>
             </div>
+            <div className="developer-actions-row">
+              <button className="ghost-button" onClick={() => onResetModule("appearance")} type="button">
+                恢复默认外观
+              </button>
+              <button className="danger-button" onClick={onResetAll} type="button">
+                重置全部 Developer 设置
+              </button>
+            </div>
           </article>
 
           {developerSections.filter((section) => section.id !== "overview").map((section) => (
@@ -316,37 +399,165 @@ function DeveloperCenter({
               </div>
               <p>{section.description}</p>
               {section.id === "brand" && (
-                <div className="developer-brand-grid">
-                  {["Logo Light", "Logo Dark", "Favicon", "App Icon", "SVG Logo"].map((label) => (
-                    <div className="developer-brand-item" key={label}>
-                      <svg aria-hidden="true" viewBox="0 0 566.43 637.56">
-                        <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
-                        <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
-                      </svg>
-                      <strong>{label}</strong>
-                      <small>当前项目内置资源</small>
-                    </div>
-                  ))}
-                  <div className="developer-brand-item">
-                    <span className="developer-emoji-sample">🙂</span>
-                    <strong>Emoji fallback</strong>
-                    <small>Apple Color Emoji / Segoe UI Emoji / Noto Color Emoji / Twemoji Mozilla</small>
+                <>
+                  <div className="developer-settings-grid">
+                    <DeveloperField title="App Logo" description="控制页面内品牌 Logo 是否显示。">
+                      <DeveloperSwitch
+                        checked={settings.brandAssets.showAppLogo}
+                        onChange={(showAppLogo) => updateDeveloperModule("brandAssets", { showAppLogo })}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="Header Logo" description="控制 Header 中 Logo 的显示预留。">
+                      <DeveloperSwitch
+                        checked={settings.brandAssets.showHeaderLogo}
+                        onChange={(showHeaderLogo) => updateDeveloperModule("brandAssets", { showHeaderLogo })}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="About Logo Size" description="控制 About 底部 Logo 的偏好尺寸。">
+                      <select
+                        value={settings.brandAssets.aboutLogoSize}
+                        onChange={(event) =>
+                          updateDeveloperModule("brandAssets", {
+                            aboutLogoSize: event.target.value as DeveloperSettings["brandAssets"]["aboutLogoSize"],
+                          })
+                        }
+                      >
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </DeveloperField>
                   </div>
-                </div>
+                  <div className="developer-brand-grid">
+                    {["Logo Light", "Logo Dark", "Favicon", "App Icon", "SVG Logo"].map((label) => (
+                      <div className="developer-brand-item" key={label}>
+                        <svg aria-hidden="true" viewBox="0 0 566.43 637.56">
+                          <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
+                          <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
+                        </svg>
+                        <strong>{label}</strong>
+                        <small>当前项目内置资源</small>
+                      </div>
+                    ))}
+                    <div className="developer-brand-item">
+                      <span className="developer-emoji-sample">🙂</span>
+                      <strong>Emoji fallback</strong>
+                      <small>Apple Color Emoji / Segoe UI Emoji / Noto Color Emoji / Twemoji Mozilla</small>
+                    </div>
+                  </div>
+                  <div className="developer-actions-row">
+                    <button
+                      className="ghost-button"
+                      onClick={() => navigator.clipboard?.writeText(document.querySelector("svg")?.outerHTML || "")}
+                      type="button"
+                    >
+                      复制 SVG
+                    </button>
+                    <button className="ghost-button" onClick={() => onResetModule("brandAssets")} type="button">
+                      恢复默认品牌设置
+                    </button>
+                  </div>
+                </>
               )}
               {section.id === "design" && (
-                <div className="developer-component-grid">
-                  {designComponents.map(([englishName, chineseName, preview, description]) => (
-                    <div className="developer-component-item" key={String(englishName)}>
-                      <div>
-                        <strong>{chineseName}</strong>
-                        <small>{englishName}</small>
+                <>
+                  <div className="developer-settings-grid">
+                    <DeveloperField title="Accent Color" description="控制主要按钮与强调色。">
+                      <input
+                        value={settings.appearance.accentColor}
+                        onChange={(event) => updateDeveloperModule("appearance", { accentColor: event.target.value })}
+                        type="color"
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="Card Radius" description="卡片圆角，实时应用。">
+                      <input
+                        max="18"
+                        min="4"
+                        onChange={(event) => updateDeveloperModule("appearance", { cardRadius: Number(event.target.value) })}
+                        type="range"
+                        value={settings.appearance.cardRadius}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="Button Radius" description="按钮圆角，实时应用。">
+                      <input
+                        max="18"
+                        min="4"
+                        onChange={(event) => updateDeveloperModule("appearance", { buttonRadius: Number(event.target.value) })}
+                        type="range"
+                        value={settings.appearance.buttonRadius}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="Input Radius" description="输入控件圆角，实时应用。">
+                      <input
+                        max="18"
+                        min="4"
+                        onChange={(event) => updateDeveloperModule("designTokens", { inputRadius: Number(event.target.value) })}
+                        type="range"
+                        value={settings.designTokens.inputRadius}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="Shadow Strength" description="控制全局阴影强度。">
+                      <select
+                        value={settings.appearance.shadowStrength}
+                        onChange={(event) =>
+                          updateDeveloperModule("appearance", {
+                            shadowStrength: event.target.value as DeveloperSettings["appearance"]["shadowStrength"],
+                          })
+                        }
+                      >
+                        <option value="none">None</option>
+                        <option value="soft">Soft</option>
+                        <option value="medium">Medium</option>
+                        <option value="strong">Strong</option>
+                      </select>
+                    </DeveloperField>
+                    <DeveloperField title="Motion Level" description="控制动画时长偏好。">
+                      <select
+                        value={settings.appearance.motionLevel}
+                        onChange={(event) =>
+                          updateDeveloperModule("appearance", {
+                            motionLevel: event.target.value as DeveloperSettings["appearance"]["motionLevel"],
+                          })
+                        }
+                      >
+                        <option value="none">None</option>
+                        <option value="reduced">Reduced</option>
+                        <option value="normal">Normal</option>
+                      </select>
+                    </DeveloperField>
+                    <DeveloperField title="Font Scale" description="整体字体缩放。">
+                      <input
+                        max="1.12"
+                        min="0.92"
+                        onChange={(event) => updateDeveloperModule("appearance", { fontScale: Number(event.target.value) })}
+                        step="0.01"
+                        type="range"
+                        value={settings.appearance.fontScale}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="Compact UI" description="降低界面间距密度。">
+                      <DeveloperSwitch
+                        checked={settings.appearance.compactUi}
+                        onChange={(compactUi) => updateDeveloperModule("appearance", { compactUi })}
+                      />
+                    </DeveloperField>
+                  </div>
+                  <div className="developer-component-grid">
+                    {designComponents.map(([englishName, chineseName, preview, description]) => (
+                      <div className="developer-component-item" key={String(englishName)}>
+                        <div>
+                          <strong>{chineseName}</strong>
+                          <small>{englishName}</small>
+                        </div>
+                        <div className="developer-component-preview">{preview}</div>
+                        <p>{description}</p>
                       </div>
-                      <div className="developer-component-preview">{preview}</div>
-                      <p>{description}</p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                  <button className="ghost-button" onClick={() => onResetModule("appearance")} type="button">
+                    恢复默认设计参数
+                  </button>
+                </>
               )}
               {section.id === "content" && (
                 <div className="developer-readonly-grid">
@@ -356,14 +567,61 @@ function DeveloperCenter({
                 </div>
               )}
               {section.id === "prompt" && (
-                <div className="developer-stat-grid compact">
-                  <span><strong>当前词库</strong>external-inspiration-library.txt</span>
-                  <span><strong>接入状态</strong>已接入</span>
-                  <span><strong>用途</strong>随机灵感、示例、写作提示、随机角色生成</span>
-                  <span><strong>行数</strong>{promptStats.lines}</span>
-                  <span><strong>文本大小</strong>{formatAssetSize(promptStats.size)}</span>
-                  <span><strong>未来能力</strong>词库编辑器、Prompt 模板、导入导出</span>
-                </div>
+                <>
+                  <div className="developer-settings-grid">
+                    <DeveloperField title="启用外挂词库" description="控制随机灵感是否优先使用外部词库。">
+                      <DeveloperSwitch
+                        checked={settings.promptCenter.externalLibraryEnabled}
+                        onChange={(externalLibraryEnabled) => updateDeveloperModule("promptCenter", { externalLibraryEnabled })}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="随机缺失字段" description="允许随机生成时部分字段留白，减少模板感。">
+                      <DeveloperSwitch
+                        checked={settings.promptCenter.randomMissingFields}
+                        onChange={(randomMissingFields) => updateDeveloperModule("promptCenter", { randomMissingFields })}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="随机复杂度" description="控制未来随机内容组合复杂度。">
+                      <select
+                        value={settings.promptCenter.complexity}
+                        onChange={(event) =>
+                          updateDeveloperModule("promptCenter", {
+                            complexity: event.target.value as DeveloperSettings["promptCenter"]["complexity"],
+                          })
+                        }
+                      >
+                        <option value="low">低</option>
+                        <option value="medium">中</option>
+                        <option value="high">高</option>
+                      </select>
+                    </DeveloperField>
+                    <DeveloperField title="重复控制" description="控制未来随机内容去重策略。">
+                      <select
+                        value={settings.promptCenter.repeatControl}
+                        onChange={(event) =>
+                          updateDeveloperModule("promptCenter", {
+                            repeatControl: event.target.value as DeveloperSettings["promptCenter"]["repeatControl"],
+                          })
+                        }
+                      >
+                        <option value="off">关闭</option>
+                        <option value="normal">普通</option>
+                        <option value="strict">严格</option>
+                      </select>
+                    </DeveloperField>
+                  </div>
+                  <div className="developer-stat-grid compact">
+                    <span><strong>当前词库</strong>external-inspiration-library.txt</span>
+                    <span><strong>接入状态</strong>{settings.promptCenter.externalLibraryEnabled ? "已启用" : "已停用"}</span>
+                    <span><strong>用途</strong>随机灵感、示例、写作提示、随机角色生成</span>
+                    <span><strong>行数</strong>{promptStats.lines}</span>
+                    <span><strong>文本大小</strong>{formatAssetSize(promptStats.size)}</span>
+                    <span><strong>未来能力</strong>词库编辑器、Prompt 模板、导入导出</span>
+                  </div>
+                  <button className="ghost-button" onClick={() => onResetModule("promptCenter")} type="button">
+                    恢复默认 Prompt 设置
+                  </button>
+                </>
               )}
               {section.id === "ai" && (
                 <div className="developer-readonly-grid">
@@ -377,29 +635,203 @@ function DeveloperCenter({
                 </div>
               )}
               {section.id === "application" && (
-                <div className="developer-stat-grid compact">
-                  {appConfig.map(([label, value]) => (
-                    <span key={label}><strong>{label}</strong>{value}</span>
-                  ))}
-                </div>
+                <>
+                  <div className="developer-settings-grid">
+                    <DeveloperField title="默认页面标题" description="立即同步到浏览器标题。">
+                      <input
+                        value={settings.application.pageTitle}
+                        onChange={(event) => updateDeveloperModule("application", { pageTitle: event.target.value })}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="默认 Footer 文案" description="控制 App/Footer 默认显示文案。">
+                      <input
+                        value={settings.application.footerText}
+                        onChange={(event) => updateDeveloperModule("application", { footerText: event.target.value })}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="语言显示方式" description="用于未来文案展示策略。">
+                      <select
+                        value={settings.application.languageMode}
+                        onChange={(event) =>
+                          updateDeveloperModule("application", {
+                            languageMode: event.target.value as DeveloperSettings["application"]["languageMode"],
+                          })
+                        }
+                      >
+                        <option value="zh">中文</option>
+                        <option value="bilingual">中英对照</option>
+                      </select>
+                    </DeveloperField>
+                    <DeveloperField title="首次显示 About" description="控制下次新环境是否自动展示首次 About。">
+                      <DeveloperSwitch
+                        checked={settings.application.showFirstAbout}
+                        onChange={(showFirstAbout) => updateDeveloperModule("application", { showFirstAbout })}
+                      />
+                    </DeveloperField>
+                    {(["showVersion", "showSprint", "showBuild"] as const).map((key) => (
+                      <DeveloperField key={key} title={key} description="控制版本信息显示偏好。">
+                        <DeveloperSwitch
+                          checked={settings.application[key]}
+                          onChange={(value) => updateDeveloperModule("application", { [key]: value })}
+                        />
+                      </DeveloperField>
+                    ))}
+                  </div>
+                  <div className="developer-actions-row">
+                    <button className="ghost-button" onClick={onResetFirstAbout} type="button">
+                      重置首次 About 显示状态
+                    </button>
+                    <button className="ghost-button" onClick={() => onResetModule("application")} type="button">
+                      恢复默认应用配置
+                    </button>
+                  </div>
+                  <h3 className="developer-subtitle">Editor / 编辑页默认行为</h3>
+                  <div className="developer-settings-grid">
+                    {Object.entries(settings.editorDefaults).map(([key, value]) => (
+                      <DeveloperField key={key} title={key} description="编辑页默认行为，本地保存。">
+                        <DeveloperSwitch
+                          checked={Boolean(value)}
+                          onChange={(nextValue) =>
+                            updateDeveloperModule("editorDefaults", {
+                              [key]: nextValue,
+                            } as Partial<DeveloperSettings["editorDefaults"]>)
+                          }
+                        />
+                      </DeveloperField>
+                    ))}
+                  </div>
+                  <h3 className="developer-subtitle">Dashboard / 主页默认行为</h3>
+                  <div className="developer-settings-grid">
+                    <DeveloperField title="默认视图" description="卡片 / 列表，写入现有 Dashboard 偏好。">
+                      <select
+                        value={settings.dashboardDefaults.viewMode}
+                        onChange={(event) =>
+                          updateDeveloperModule("dashboardDefaults", {
+                            viewMode: event.target.value as DeveloperSettings["dashboardDefaults"]["viewMode"],
+                          })
+                        }
+                      >
+                        <option value="cards">卡片</option>
+                        <option value="list">列表</option>
+                      </select>
+                    </DeveloperField>
+                    <DeveloperField title="默认排序" description="写入现有 Dashboard 偏好。">
+                      <select
+                        value={settings.dashboardDefaults.sortMode}
+                        onChange={(event) =>
+                          updateDeveloperModule("dashboardDefaults", {
+                            sortMode: event.target.value as DeveloperSettings["dashboardDefaults"]["sortMode"],
+                          })
+                        }
+                      >
+                        <option value="updated-desc">最近编辑</option>
+                        <option value="created-desc">最近创建</option>
+                        <option value="name-asc">名称 A-Z</option>
+                        <option value="name-desc">名称 Z-A</option>
+                      </select>
+                    </DeveloperField>
+                    <DeveloperField title="卡片标签数量" description="用于未来卡片展示密度控制。">
+                      <input
+                        max="8"
+                        min="0"
+                        onChange={(event) => updateDeveloperModule("dashboardDefaults", { cardTagCount: Number(event.target.value) })}
+                        type="number"
+                        value={settings.dashboardDefaults.cardTagCount}
+                      />
+                    </DeveloperField>
+                    {(["showDraftCount", "showFavoriteCount", "showUpdatedTime"] as const).map((key) => (
+                      <DeveloperField key={key} title={key} description="Dashboard 信息显示偏好。">
+                        <DeveloperSwitch
+                          checked={settings.dashboardDefaults[key]}
+                          onChange={(value) => updateDeveloperModule("dashboardDefaults", { [key]: value })}
+                        />
+                      </DeveloperField>
+                    ))}
+                  </div>
+                  <h3 className="developer-subtitle">Export / 导出默认值</h3>
+                  <div className="developer-settings-grid">
+                    <DeveloperField title="JPG 默认质量" description="同步到现有 JPG 导出设置。">
+                      <input
+                        max="1"
+                        min="0.1"
+                        onChange={(event) => updateDeveloperModule("exportDefaults", { jpgQuality: Number(event.target.value) })}
+                        step="0.1"
+                        type="number"
+                        value={settings.exportDefaults.jpgQuality}
+                      />
+                    </DeveloperField>
+                    <DeveloperField title="PNG 导出倍率" description="预留给后续图片导出倍率。">
+                      <input
+                        max="4"
+                        min="1"
+                        onChange={(event) => updateDeveloperModule("exportDefaults", { pngScale: Number(event.target.value) })}
+                        step="1"
+                        type="number"
+                        value={settings.exportDefaults.pngScale}
+                      />
+                    </DeveloperField>
+                    {(["pdfLightMode", "includeFooter", "includePromptSection", "includeTimeInfo"] as const).map((key) => (
+                      <DeveloperField key={key} title={key} description="展示导出偏好，本地保存。">
+                        <DeveloperSwitch
+                          checked={settings.exportDefaults[key]}
+                          onChange={(value) => updateDeveloperModule("exportDefaults", { [key]: value })}
+                        />
+                      </DeveloperField>
+                    ))}
+                  </div>
+                  <div className="developer-stat-grid compact">
+                    {appConfig.map(([label, value]) => (
+                      <span key={label}><strong>{label}</strong>{value}</span>
+                    ))}
+                  </div>
+                </>
               )}
               {section.id === "experimental" && (
-                <div className="developer-chip-list status-list">
-                  {experiments.map(([name, status]) => (
-                    <span key={name}><strong>{name}</strong>{status}</span>
-                  ))}
-                </div>
+                <>
+                  <div className="developer-settings-grid">
+                    {Object.entries(settings.featureFlags).map(([key, value]) => (
+                      <DeveloperField key={key} title={key} description="实验功能开关，仅保存本地配置。">
+                        <DeveloperSwitch
+                          checked={Boolean(value)}
+                          onChange={(nextValue) =>
+                            updateDeveloperModule("featureFlags", {
+                              [key]: nextValue,
+                            } as Partial<DeveloperSettings["featureFlags"]>)
+                          }
+                        />
+                      </DeveloperField>
+                    ))}
+                  </div>
+                  <div className="developer-chip-list status-list">
+                    {experiments.map(([name, status]) => (
+                      <span key={name}><strong>{name}</strong>{status}</span>
+                    ))}
+                  </div>
+                  <button className="ghost-button" onClick={() => onResetModule("featureFlags")} type="button">
+                    恢复默认实验功能
+                  </button>
+                </>
               )}
               {section.id === "debug" && (
-                <div className="developer-stat-grid compact">
-                  <span><strong>localStorage</strong>{getSafeStorageStatus()}</span>
-                  <span><strong>IndexedDB</strong>{indexedDbStatus}</span>
-                  <span><strong>当前 Theme</strong>{themeMode}</span>
-                  <span><strong>当前路由</strong>{currentPage === "developer" ? "/developer" : currentPage}</span>
-                  <span><strong>数据版本</strong>Local v1</span>
-                  <span><strong>角色数量</strong>{characters.length}</span>
-                  <span><strong>素材数量</strong>{avatarAssetStats.count}</span>
-                </div>
+                <>
+                  <div className="developer-stat-grid compact">
+                    <span><strong>localStorage</strong>{getSafeStorageStatus()}</span>
+                    <span><strong>IndexedDB</strong>{indexedDbStatus}</span>
+                    <span><strong>当前 Theme</strong>{themeMode}</span>
+                    <span><strong>当前路由</strong>{currentPage === "developer" ? "/developer" : currentPage}</span>
+                    <span><strong>数据版本</strong>Local v1</span>
+                    <span><strong>角色数量</strong>{characters.length}</span>
+                    <span><strong>素材数量</strong>{avatarAssetStats.count}</span>
+                  </div>
+                  <textarea className="developer-json-preview" readOnly value={JSON.stringify(settings, null, 2)} />
+                  <button
+                    className="ghost-button"
+                    onClick={() => void navigator.clipboard?.writeText(JSON.stringify(settings, null, 2))}
+                    type="button"
+                  >
+                    复制 Developer Settings JSON
+                  </button>
+                </>
               )}
               {section.id === "data" && (
                 <div className="developer-stat-grid compact">
@@ -416,9 +848,17 @@ function DeveloperCenter({
                 </div>
               )}
               {section.id === "data" && (
-                <button className="ghost-button" onClick={onOpenAssetLibrary} type="button">
-                  打开头像素材库
-                </button>
+                <div className="developer-actions-row">
+                  <button className="ghost-button" onClick={onOpenAssetLibrary} type="button">
+                    打开头像素材库
+                  </button>
+                  <button className="ghost-button" onClick={onExportCharactersJson} type="button">
+                    导出角色 JSON
+                  </button>
+                  <button className="ghost-button" onClick={onExportFullBackup} type="button">
+                    导出完整备份 ZIP
+                  </button>
+                </div>
               )}
               {section.id === "update" && (
                 <div className="developer-readonly-grid">
@@ -456,6 +896,7 @@ function App() {
   const [isAppAssetLibraryOpen, setIsAppAssetLibraryOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
   const [isAppClearDataOpen, setIsAppClearDataOpen] = useState(false);
+  const [isDeveloperResetOpen, setIsDeveloperResetOpen] = useState(false);
   const [pendingAppAssetDelete, setPendingAppAssetDelete] = useState<AvatarAssetRecord | null>(null);
   const [pendingAppAssetBatchDeleteIds, setPendingAppAssetBatchDeleteIds] = useState<string[]>([]);
   const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
@@ -466,6 +907,7 @@ function App() {
   const [editorDraftSaveSignal, setEditorDraftSaveSignal] = useState(0);
   const [previewExportSignal, setPreviewExportSignal] = useState(0);
   const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
+  const [developerSettings, setDeveloperSettings] = useState(loadDeveloperSettings);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
     return storedTheme === "light" || storedTheme === "dark" || storedTheme === "system"
@@ -524,6 +966,7 @@ function App() {
         setPendingAppAssetDelete(null);
         setIsAppAssetCleanupOpen(false);
         setIsAppClearDataOpen(false);
+        setIsDeveloperResetOpen(false);
         setPendingAppAssetBatchDeleteIds([]);
       }
     }
@@ -555,6 +998,77 @@ function App() {
     mediaQuery.addEventListener("change", applyTheme);
     return () => mediaQuery.removeEventListener("change", applyTheme);
   }, [themeMode]);
+
+  useEffect(() => {
+    saveDeveloperSettings(developerSettings);
+    document.title = developerSettings.application.pageTitle || "Character Studio";
+    document.documentElement.style.setProperty("--primary", developerSettings.appearance.accentColor);
+    document.documentElement.style.setProperty("--primary-hover", developerSettings.appearance.accentColor);
+    document.documentElement.style.setProperty("--control-radius", `${developerSettings.designTokens.inputRadius}px`);
+    document.documentElement.style.setProperty("--developer-card-radius", `${developerSettings.appearance.cardRadius}px`);
+    document.documentElement.style.setProperty("--developer-button-radius", `${developerSettings.appearance.buttonRadius}px`);
+    document.documentElement.style.setProperty("--developer-font-scale", String(developerSettings.appearance.fontScale));
+    document.documentElement.dataset.compactUi = developerSettings.appearance.compactUi ? "true" : "false";
+    document.documentElement.dataset.showAppLogo = developerSettings.brandAssets.showAppLogo ? "true" : "false";
+    document.documentElement.dataset.showHeaderLogo = developerSettings.brandAssets.showHeaderLogo ? "true" : "false";
+    document.documentElement.dataset.aboutLogoSize = developerSettings.brandAssets.aboutLogoSize;
+
+    const shadowMap = {
+      none: ["none", "none"],
+      soft: ["0 10px 28px rgba(15, 23, 42, 0.06)", "0 16px 34px rgba(15, 23, 42, 0.1)"],
+      medium: ["0 12px 32px rgba(15, 23, 42, 0.1)", "0 18px 42px rgba(15, 23, 42, 0.16)"],
+      strong: ["0 14px 38px rgba(15, 23, 42, 0.16)", "0 22px 54px rgba(15, 23, 42, 0.24)"],
+    }[developerSettings.appearance.shadowStrength];
+
+    document.documentElement.style.setProperty("--shadow", shadowMap[0]);
+    document.documentElement.style.setProperty("--shadow-strong", shadowMap[1]);
+
+    const motionMap = {
+      none: ["0ms", "0ms"],
+      reduced: ["90ms", "120ms"],
+      normal: ["150ms", "190ms"],
+    }[developerSettings.appearance.motionLevel];
+
+    document.documentElement.style.setProperty("--duration-fast", motionMap[0]);
+    document.documentElement.style.setProperty("--duration-medium", motionMap[1]);
+    localStorage.setItem("character-studio.settings.jpg-quality", String(developerSettings.exportDefaults.jpgQuality));
+    localStorage.setItem("character-studio.settings.pdf-light", String(developerSettings.exportDefaults.pdfLightMode));
+    localStorage.setItem("character-studio.settings.compact-mobile", String(developerSettings.editorDefaults.compactMobileEditor));
+
+    if (!developerSettings.application.showFirstAbout) {
+      localStorage.setItem(ABOUT_SEEN_KEY, "true");
+    }
+
+    try {
+      const dashboardPrefs = JSON.parse(localStorage.getItem("character-studio.dashboard-prefs") || "{}");
+      localStorage.setItem(
+        "character-studio.dashboard-prefs",
+        JSON.stringify({
+          searchTerm: "",
+          worldviewFilter: "全部",
+          genderFilter: "全部",
+          visualStyleFilter: "全部",
+          favoriteMode: "all",
+          ...dashboardPrefs,
+          viewMode: developerSettings.dashboardDefaults.viewMode,
+          sortMode: developerSettings.dashboardDefaults.sortMode,
+        }),
+      );
+    } catch {
+      localStorage.setItem(
+        "character-studio.dashboard-prefs",
+        JSON.stringify({
+          searchTerm: "",
+          worldviewFilter: "全部",
+          genderFilter: "全部",
+          visualStyleFilter: "全部",
+          favoriteMode: "all",
+          viewMode: developerSettings.dashboardDefaults.viewMode,
+          sortMode: developerSettings.dashboardDefaults.sortMode,
+        }),
+      );
+    }
+  }, [developerSettings]);
 
   useEffect(() => {
     if (!isAppSettingsOpen && !isAppAssetLibraryOpen) {
@@ -731,8 +1245,39 @@ function App() {
     setIsAppAssetLibraryOpen(false);
     setIsAppAssetCleanupOpen(false);
     setIsAppClearDataOpen(false);
+    setIsDeveloperResetOpen(false);
     setPendingAppAssetDelete(null);
     setPendingAppAssetBatchDeleteIds([]);
+  }
+
+  function updateDeveloperSettings(nextSettings: DeveloperSettings) {
+    setDeveloperSettings(nextSettings);
+  }
+
+  function resetDeveloperModule(module: keyof DeveloperSettings) {
+    setDeveloperSettings((current) => ({
+      ...current,
+      [module]: defaultDeveloperSettings[module],
+    }));
+  }
+
+  function confirmDeveloperSettingsReset() {
+    setDeveloperSettings(defaultDeveloperSettings);
+    setIsDeveloperResetOpen(false);
+  }
+
+  function resetFirstAboutState() {
+    localStorage.removeItem(ABOUT_SEEN_KEY);
+    setIsFirstAboutOpen(true);
+    setIsAppAboutOpen(true);
+  }
+
+  function exportDeveloperCharactersJson() {
+    exportAllCharactersJson(characters);
+  }
+
+  function exportDeveloperFullBackup() {
+    void exportFullBackupZip(characters);
   }
 
   useEffect(() => {
@@ -1041,6 +1586,7 @@ function App() {
           themeMode={themeMode}
           onSetThemeMode={setThemeMode}
           searchSignal={dashboardSearchSignal}
+          footerText={developerSettings.application.footerText}
         />
       )}
 
@@ -1072,10 +1618,17 @@ function App() {
           avatarAssetStats={avatarAssetStats}
           characters={characters}
           currentPage={page}
+          onExportCharactersJson={exportDeveloperCharactersJson}
+          onExportFullBackup={exportDeveloperFullBackup}
           onOpenAssetLibrary={() => {
             setIsAppAssetLibraryOpen(true);
             void refreshAvatarAssetStats();
           }}
+          onResetAll={() => setIsDeveloperResetOpen(true)}
+          onResetFirstAbout={resetFirstAboutState}
+          onResetModule={resetDeveloperModule}
+          onSettingsChange={updateDeveloperSettings}
+          settings={developerSettings}
           themeMode={themeMode}
         />
       )}
@@ -1207,7 +1760,7 @@ function App() {
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
             Settings
           </button>
-          <span>RINTO © {RELEASE_YEAR}</span>
+          <span>{developerSettings.application.footerText}</span>
         </footer>
       )}
 
@@ -1680,6 +2233,23 @@ function App() {
               </button>
               <button className="danger-button" onClick={() => void clearAppLocalData()} type="button">
                 确认清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeveloperResetOpen && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>重置 Developer Center 设置</h2>
+            <p>这只会恢复 Developer Center 的全局配置，不会删除角色、草稿、头像素材或导入导出数据。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsDeveloperResetOpen(false)} type="button">
+                取消
+              </button>
+              <button className="danger-button" onClick={confirmDeveloperSettingsReset} type="button">
+                确认重置
               </button>
             </div>
           </div>
