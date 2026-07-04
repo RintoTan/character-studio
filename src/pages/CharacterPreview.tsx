@@ -6,6 +6,13 @@ import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../ut
 
 type CharacterPreviewProps = {
   character: Character;
+  exportSettings?: {
+    jpgQuality: number;
+    pngScale: number;
+    pdfLightMode: boolean;
+    includePromptSection: boolean;
+    includeTimeInfo: boolean;
+  };
   onBack: () => void;
   onEdit?: () => void;
   onToggleFavorite?: () => void;
@@ -51,7 +58,7 @@ function buildFullCharacterText(character: Character) {
   ].join("\n");
 }
 
-export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, exportSignal = 0 }: CharacterPreviewProps) {
+export function CharacterPreview({ character, exportSettings, onBack, onEdit, onToggleFavorite, exportSignal = 0 }: CharacterPreviewProps) {
   const [toastMessage, setToastMessage] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -112,7 +119,10 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
     setLoadingAction("pdf");
 
     try {
-      await exportPreviewPdf(previewRef.current, character.name || "未命名角色");
+      await exportPreviewPdf(previewRef.current, character.name || "未命名角色", {
+        forceLightMode: exportSettings?.pdfLightMode !== false,
+        scale: exportSettings?.pngScale || 2,
+      });
       showToast("PDF 已导出");
     } catch (error) {
       showToast(error instanceof Error ? error.message : "PDF 导出失败，请稍后重试");
@@ -130,7 +140,16 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
     setLoadingAction(format);
 
     try {
-      await exportPreviewImage(previewRef.current, character.name || "未命名角色", format);
+      await exportPreviewImage(
+        previewRef.current,
+        character.name || "未命名角色",
+        format,
+        exportSettings?.jpgQuality || 0.9,
+        {
+          forceLightMode: exportSettings?.pdfLightMode !== false,
+          scale: exportSettings?.pngScale || 2,
+        },
+      );
       showToast(`${format.toUpperCase()} 已导出`);
     } catch (error) {
       showToast(error instanceof Error ? error.message : `${format.toUpperCase()} 导出失败`);
@@ -374,14 +393,20 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
             <p>{displayValue(character.visualStyle)}</p>
           </article>
 
-          <article className="preview-card wide-card">
+          <article
+            className="preview-card wide-card"
+            data-pdf-hidden={exportSettings?.includePromptSection === false ? "true" : undefined}
+          >
             <div className="preview-card-title">
               <h2>外貌描述</h2>
             </div>
             <p>{displayValue(character.appearanceDescription)}</p>
           </article>
 
-          <article className="preview-card wide-card">
+          <article
+            className="preview-card wide-card"
+            data-pdf-hidden={exportSettings?.includePromptSection === false ? "true" : undefined}
+          >
             <div className="preview-card-title">
               <h2>能力描述</h2>
             </div>
@@ -460,7 +485,10 @@ export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite, 
             <p>{displayValue(character.imagePrompt)}</p>
           </article>
 
-          <article className="preview-card wide-card preview-time-card">
+          <article
+            className="preview-card wide-card preview-time-card"
+            data-pdf-hidden={exportSettings?.includeTimeInfo === false ? "true" : undefined}
+          >
             <div>
               <span>创建时间</span>
               <strong>{formatPreviewTime(character.createdAt)}</strong>

@@ -1074,7 +1074,7 @@ h2 {
 .developer-readonly-grid,
 .developer-settings-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
   margin: 12px 0;
 }
@@ -1222,7 +1222,7 @@ h2 {
 
 .developer-setting-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, auto);
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -1232,7 +1232,11 @@ h2 {
   padding: 12px;
 }
 
-.developer-setting-field span {
+.developer-setting-field.coming-soon {
+  opacity: 0.78;
+}
+
+.developer-setting-copy {
   display: grid;
   min-width: 0;
   gap: 3px;
@@ -1244,9 +1248,45 @@ h2 {
   line-height: 1.35;
 }
 
+.developer-setting-control {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
 .developer-setting-field input,
 .developer-setting-field select {
-  width: min(180px, 36vw);
+  width: min(180px, 100%);
+  max-width: 100%;
+}
+
+.developer-setting-field input[type="range"] {
+  width: 160px;
+  min-width: 120px;
+}
+
+.developer-setting-field input[type="color"] {
+  width: 46px;
+  min-width: 46px;
+  padding: 4px;
+}
+
+.developer-coming-soon {
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.developer-setting-field :disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .developer-switch {
@@ -4817,8 +4857,16 @@ kbd {
     grid-template-columns: 1fr;
   }
 
+  .developer-setting-control {
+    justify-content: stretch;
+  }
+
   .developer-setting-field input,
   .developer-setting-field select {
+    width: 100%;
+  }
+
+  .developer-setting-field input[type="range"] {
     width: 100%;
   }
 

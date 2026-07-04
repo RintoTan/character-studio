@@ -11,6 +11,7 @@ import {
   RELEASE_YEAR,
 } from "./config/version";
 import {
+  applyDeveloperSettings,
   defaultDeveloperSettings,
   loadDeveloperSettings,
   saveDeveloperSettings,
@@ -153,6 +154,58 @@ type DeveloperCenterProps = {
   onExportFullBackup: () => void;
 };
 
+const editorSettingLabels: Record<keyof DeveloperSettings["editorDefaults"], string> = {
+  expandAllSections: "默认展开全部 Section",
+  collapseAllSections: "默认折叠全部 Section",
+  autoSave: "默认启用自动保存",
+  showPromptSection: "显示 AI Prompt 区",
+  showPersonalPreferences: "显示个人偏好字段",
+  compactMobileEditor: "小屏紧凑模式",
+};
+
+const editorSettingDescriptions: Record<keyof DeveloperSettings["editorDefaults"], string> = {
+  expandAllSections: "新进入编辑页时展开所有可折叠模块。",
+  collapseAllSections: "新进入编辑页时折叠所有非基础模块。",
+  autoSave: "草稿角色停止输入后自动保存。",
+  showPromptSection: "控制编辑页 AI Prompt 模块是否显示。",
+  showPersonalPreferences: "控制编辑页个人偏好模块是否显示。",
+  compactMobileEditor: "控制移动端编辑页是否启用紧凑样式。",
+};
+
+const dashboardSettingLabels: Record<
+  keyof Pick<DeveloperSettings["dashboardDefaults"], "showDraftCount" | "showFavoriteCount" | "showUpdatedTime">,
+  string
+> = {
+  showDraftCount: "显示草稿数量",
+  showFavoriteCount: "显示收藏数量",
+  showUpdatedTime: "显示角色更新时间",
+};
+
+const exportSettingLabels: Record<
+  keyof Pick<DeveloperSettings["exportDefaults"], "pdfLightMode" | "includeFooter" | "includePromptSection" | "includeTimeInfo">,
+  string
+> = {
+  pdfLightMode: "PDF Light Mode",
+  includeFooter: "导出 Footer",
+  includePromptSection: "导出 Prompt 区",
+  includeTimeInfo: "导出时间信息",
+};
+
+const featureFlagLabels: Record<keyof DeveloperSettings["featureFlags"], string> = {
+  developerCenter: "Developer Center",
+  aiSettings: "AI Settings",
+  promptCenter: "Prompt Center",
+  assetLibrary: "Asset Library",
+  personalPreferences: "Personal Preferences",
+  compactMobileEditor: "Compact Mobile Editor",
+  experimentalTimeline: "Experimental Timeline",
+  experimentalRelationshipGraph: "Experimental Relationship Graph",
+};
+
+function ComingSoonNote() {
+  return <span className="developer-coming-soon">Coming Soon · 当前仅展示，暂未应用</span>;
+}
+
 function getLocalStorageFootprint() {
   let total = 0;
 
@@ -198,18 +251,21 @@ function DeveloperField({
   title,
   description,
   children,
+  comingSoon = false,
 }: {
   title: string;
   description: string;
   children: ReactNode;
+  comingSoon?: boolean;
 }) {
   return (
-    <label className="developer-setting-field">
-      <span>
+    <label className={comingSoon ? "developer-setting-field coming-soon" : "developer-setting-field"}>
+      <span className="developer-setting-copy">
         <strong>{title}</strong>
         <small>{description}</small>
+        {comingSoon && <ComingSoonNote />}
       </span>
-      {children}
+      <span className="developer-setting-control">{children}</span>
     </label>
   );
 }
@@ -217,13 +273,16 @@ function DeveloperField({
 function DeveloperSwitch({
   checked,
   onChange,
+  disabled = false,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       className={checked ? "developer-switch active" : "developer-switch"}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
       type="button"
     >
@@ -325,9 +384,9 @@ function DeveloperCenter({
           <p className="muted">Character Studio 项目开发控制中心</p>
         </div>
         <div className="developer-hero-badges">
-          <span className="status-badge">Version {APP_VERSION}</span>
-          <span className="status-badge">Sprint {APP_SPRINT}</span>
-          <span className="status-badge">Build {APP_BUILD}</span>
+          {settings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
+          {settings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
+          {settings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
           <span className="status-badge">Theme：{themeMode}</span>
           <span className="status-badge">数据版本：Local v1</span>
           <span className="status-badge">Prompt Library：external-inspiration-library.txt</span>
@@ -462,14 +521,14 @@ function DeveloperCenter({
               {section.id === "design" && (
                 <>
                   <div className="developer-settings-grid">
-                    <DeveloperField title="Accent Color" description="控制主要按钮与强调色。">
+                    <DeveloperField title="Accent Color" description="控制主要按钮与强调色，实时应用到全站。">
                       <input
                         value={settings.appearance.accentColor}
                         onChange={(event) => updateDeveloperModule("appearance", { accentColor: event.target.value })}
                         type="color"
                       />
                     </DeveloperField>
-                    <DeveloperField title="Card Radius" description="卡片圆角，实时应用。">
+                    <DeveloperField title="Card Radius" description="控制 Card / Dialog 圆角，实时应用。">
                       <input
                         max="18"
                         min="4"
@@ -478,7 +537,7 @@ function DeveloperCenter({
                         value={settings.appearance.cardRadius}
                       />
                     </DeveloperField>
-                    <DeveloperField title="Button Radius" description="按钮圆角，实时应用。">
+                    <DeveloperField title="Button Radius" description="控制 Button / Icon Button 圆角，实时应用。">
                       <input
                         max="18"
                         min="4"
@@ -487,7 +546,7 @@ function DeveloperCenter({
                         value={settings.appearance.buttonRadius}
                       />
                     </DeveloperField>
-                    <DeveloperField title="Input Radius" description="输入控件圆角，实时应用。">
+                    <DeveloperField title="Input Radius" description="控制 Input / Select / Textarea 圆角，实时应用。">
                       <input
                         max="18"
                         min="4"
@@ -496,7 +555,7 @@ function DeveloperCenter({
                         value={settings.designTokens.inputRadius}
                       />
                     </DeveloperField>
-                    <DeveloperField title="Shadow Strength" description="控制全局阴影强度。">
+                    <DeveloperField title="Shadow Strength" description="控制 Card / Dialog 等全局阴影强度。">
                       <select
                         value={settings.appearance.shadowStrength}
                         onChange={(event) =>
@@ -511,7 +570,7 @@ function DeveloperCenter({
                         <option value="strong">Strong</option>
                       </select>
                     </DeveloperField>
-                    <DeveloperField title="Motion Level" description="控制动画时长偏好。">
+                    <DeveloperField title="Motion Level" description="控制全局基础动画时长。">
                       <select
                         value={settings.appearance.motionLevel}
                         onChange={(event) =>
@@ -525,7 +584,7 @@ function DeveloperCenter({
                         <option value="normal">Normal</option>
                       </select>
                     </DeveloperField>
-                    <DeveloperField title="Font Scale" description="整体字体缩放。">
+                    <DeveloperField title="Font Scale" description="控制页面整体字号缩放。">
                       <input
                         max="1.12"
                         min="0.92"
@@ -535,7 +594,7 @@ function DeveloperCenter({
                         value={settings.appearance.fontScale}
                       />
                     </DeveloperField>
-                    <DeveloperField title="Compact UI" description="降低界面间距密度。">
+                    <DeveloperField title="Compact UI" description="降低卡片和设置区域间距密度。">
                       <DeveloperSwitch
                         checked={settings.appearance.compactUi}
                         onChange={(compactUi) => updateDeveloperModule("appearance", { compactUi })}
@@ -554,7 +613,17 @@ function DeveloperCenter({
                       </div>
                     ))}
                   </div>
-                  <button className="ghost-button" onClick={() => onResetModule("appearance")} type="button">
+                  <button
+                    className="ghost-button"
+                    onClick={() =>
+                      onSettingsChange({
+                        ...settings,
+                        appearance: defaultDeveloperSettings.appearance,
+                        designTokens: defaultDeveloperSettings.designTokens,
+                      })
+                    }
+                    type="button"
+                  >
                     恢复默认设计参数
                   </button>
                 </>
@@ -566,7 +635,13 @@ function DeveloperCenter({
                   ))}
                 </div>
               )}
-              {section.id === "prompt" && (
+              {section.id === "prompt" && !settings.featureFlags.promptCenter && (
+                <div className="developer-readonly-grid">
+                  <span><strong>Prompt Center</strong><ComingSoonNote /></span>
+                  <span><strong>说明</strong>该模块已由 Feature Flag 暂停显示，随机系统继续使用当前已保存配置。</span>
+                </div>
+              )}
+              {section.id === "prompt" && settings.featureFlags.promptCenter && (
                 <>
                   <div className="developer-settings-grid">
                     <DeveloperField title="启用外挂词库" description="控制随机灵感是否优先使用外部词库。">
@@ -575,13 +650,13 @@ function DeveloperCenter({
                         onChange={(externalLibraryEnabled) => updateDeveloperModule("promptCenter", { externalLibraryEnabled })}
                       />
                     </DeveloperField>
-                    <DeveloperField title="随机缺失字段" description="允许随机生成时部分字段留白，减少模板感。">
+                    <DeveloperField title="随机缺失字段" description="控制随机角色生成时是否允许部分字段留白。">
                       <DeveloperSwitch
                         checked={settings.promptCenter.randomMissingFields}
                         onChange={(randomMissingFields) => updateDeveloperModule("promptCenter", { randomMissingFields })}
                       />
                     </DeveloperField>
-                    <DeveloperField title="随机复杂度" description="控制未来随机内容组合复杂度。">
+                    <DeveloperField title="随机复杂度" description="影响随机灵感组合密度。">
                       <select
                         value={settings.promptCenter.complexity}
                         onChange={(event) =>
@@ -595,7 +670,7 @@ function DeveloperCenter({
                         <option value="high">高</option>
                       </select>
                     </DeveloperField>
-                    <DeveloperField title="重复控制" description="控制未来随机内容去重策略。">
+                    <DeveloperField title="重复控制" description="控制随机灵感短期重复规避强度。">
                       <select
                         value={settings.promptCenter.repeatControl}
                         onChange={(event) =>
@@ -623,7 +698,13 @@ function DeveloperCenter({
                   </button>
                 </>
               )}
-              {section.id === "ai" && (
+              {section.id === "ai" && !settings.featureFlags.aiSettings && (
+                <div className="developer-readonly-grid">
+                  <span><strong>AI Development</strong><ComingSoonNote /></span>
+                  <span><strong>说明</strong>AI Settings 入口已由 Feature Flag 隐藏，当前不会调用 AI。</span>
+                </div>
+              )}
+              {section.id === "ai" && settings.featureFlags.aiSettings && (
                 <div className="developer-readonly-grid">
                   <span><strong>当前状态</strong>🚧 开发中</span>
                   <span><strong>数据安全</strong>当前不调用 AI，不发送用户数据。</span>
@@ -687,8 +768,8 @@ function DeveloperCenter({
                   </div>
                   <h3 className="developer-subtitle">Editor / 编辑页默认行为</h3>
                   <div className="developer-settings-grid">
-                    {Object.entries(settings.editorDefaults).map(([key, value]) => (
-                      <DeveloperField key={key} title={key} description="编辑页默认行为，本地保存。">
+                    {(Object.entries(settings.editorDefaults) as Array<[keyof DeveloperSettings["editorDefaults"], boolean]>).map(([key, value]) => (
+                      <DeveloperField key={key} title={editorSettingLabels[key]} description={editorSettingDescriptions[key]}>
                         <DeveloperSwitch
                           checked={Boolean(value)}
                           onChange={(nextValue) =>
@@ -730,7 +811,7 @@ function DeveloperCenter({
                         <option value="name-desc">名称 Z-A</option>
                       </select>
                     </DeveloperField>
-                    <DeveloperField title="卡片标签数量" description="用于未来卡片展示密度控制。">
+                    <DeveloperField title="卡片标签数量" description="控制 Dashboard 卡片最多展示多少个性格标签。">
                       <input
                         max="8"
                         min="0"
@@ -740,7 +821,7 @@ function DeveloperCenter({
                       />
                     </DeveloperField>
                     {(["showDraftCount", "showFavoriteCount", "showUpdatedTime"] as const).map((key) => (
-                      <DeveloperField key={key} title={key} description="Dashboard 信息显示偏好。">
+                      <DeveloperField key={key} title={dashboardSettingLabels[key]} description="Dashboard 信息显示偏好，实时应用。">
                         <DeveloperSwitch
                           checked={settings.dashboardDefaults[key]}
                           onChange={(value) => updateDeveloperModule("dashboardDefaults", { [key]: value })}
@@ -760,8 +841,9 @@ function DeveloperCenter({
                         value={settings.exportDefaults.jpgQuality}
                       />
                     </DeveloperField>
-                    <DeveloperField title="PNG 导出倍率" description="预留给后续图片导出倍率。">
+                    <DeveloperField title="PNG 导出倍率" description="当前底层导出仍使用固定倍率，后续接入。" comingSoon>
                       <input
+                        disabled
                         max="4"
                         min="1"
                         onChange={(event) => updateDeveloperModule("exportDefaults", { pngScale: Number(event.target.value) })}
@@ -771,9 +853,15 @@ function DeveloperCenter({
                       />
                     </DeveloperField>
                     {(["pdfLightMode", "includeFooter", "includePromptSection", "includeTimeInfo"] as const).map((key) => (
-                      <DeveloperField key={key} title={key} description="展示导出偏好，本地保存。">
+                      <DeveloperField
+                        key={key}
+                        title={exportSettingLabels[key]}
+                        description={key === "includeFooter" ? "Footer 当前不属于 Preview 导出区域，后续接入。" : "展示导出偏好，Preview 导出时应用。"}
+                        comingSoon={key === "includeFooter"}
+                      >
                         <DeveloperSwitch
                           checked={settings.exportDefaults[key]}
+                          disabled={key === "includeFooter"}
                           onChange={(value) => updateDeveloperModule("exportDefaults", { [key]: value })}
                         />
                       </DeveloperField>
@@ -789,8 +877,8 @@ function DeveloperCenter({
               {section.id === "experimental" && (
                 <>
                   <div className="developer-settings-grid">
-                    {Object.entries(settings.featureFlags).map(([key, value]) => (
-                      <DeveloperField key={key} title={key} description="实验功能开关，仅保存本地配置。">
+                    {(Object.entries(settings.featureFlags) as Array<[keyof DeveloperSettings["featureFlags"], boolean]>).map(([key, value]) => (
+                      <DeveloperField key={key} title={featureFlagLabels[key]} description="控制对应模块入口或状态。实验功能本身仍可能是 Coming Soon。">
                         <DeveloperSwitch
                           checked={Boolean(value)}
                           onChange={(nextValue) =>
@@ -1001,39 +1089,18 @@ function App() {
 
   useEffect(() => {
     saveDeveloperSettings(developerSettings);
-    document.title = developerSettings.application.pageTitle || "Character Studio";
-    document.documentElement.style.setProperty("--primary", developerSettings.appearance.accentColor);
-    document.documentElement.style.setProperty("--primary-hover", developerSettings.appearance.accentColor);
-    document.documentElement.style.setProperty("--control-radius", `${developerSettings.designTokens.inputRadius}px`);
-    document.documentElement.style.setProperty("--developer-card-radius", `${developerSettings.appearance.cardRadius}px`);
-    document.documentElement.style.setProperty("--developer-button-radius", `${developerSettings.appearance.buttonRadius}px`);
-    document.documentElement.style.setProperty("--developer-font-scale", String(developerSettings.appearance.fontScale));
-    document.documentElement.dataset.compactUi = developerSettings.appearance.compactUi ? "true" : "false";
-    document.documentElement.dataset.showAppLogo = developerSettings.brandAssets.showAppLogo ? "true" : "false";
-    document.documentElement.dataset.showHeaderLogo = developerSettings.brandAssets.showHeaderLogo ? "true" : "false";
-    document.documentElement.dataset.aboutLogoSize = developerSettings.brandAssets.aboutLogoSize;
-
-    const shadowMap = {
-      none: ["none", "none"],
-      soft: ["0 10px 28px rgba(15, 23, 42, 0.06)", "0 16px 34px rgba(15, 23, 42, 0.1)"],
-      medium: ["0 12px 32px rgba(15, 23, 42, 0.1)", "0 18px 42px rgba(15, 23, 42, 0.16)"],
-      strong: ["0 14px 38px rgba(15, 23, 42, 0.16)", "0 22px 54px rgba(15, 23, 42, 0.24)"],
-    }[developerSettings.appearance.shadowStrength];
-
-    document.documentElement.style.setProperty("--shadow", shadowMap[0]);
-    document.documentElement.style.setProperty("--shadow-strong", shadowMap[1]);
-
-    const motionMap = {
-      none: ["0ms", "0ms"],
-      reduced: ["90ms", "120ms"],
-      normal: ["150ms", "190ms"],
-    }[developerSettings.appearance.motionLevel];
-
-    document.documentElement.style.setProperty("--duration-fast", motionMap[0]);
-    document.documentElement.style.setProperty("--duration-medium", motionMap[1]);
+    applyDeveloperSettings(developerSettings);
     localStorage.setItem("character-studio.settings.jpg-quality", String(developerSettings.exportDefaults.jpgQuality));
+    localStorage.setItem("character-studio.settings.png-scale", String(developerSettings.exportDefaults.pngScale));
     localStorage.setItem("character-studio.settings.pdf-light", String(developerSettings.exportDefaults.pdfLightMode));
+    localStorage.setItem("character-studio.settings.export-footer", String(developerSettings.exportDefaults.includeFooter));
+    localStorage.setItem("character-studio.settings.export-prompt", String(developerSettings.exportDefaults.includePromptSection));
+    localStorage.setItem("character-studio.settings.export-time", String(developerSettings.exportDefaults.includeTimeInfo));
     localStorage.setItem("character-studio.settings.compact-mobile", String(developerSettings.editorDefaults.compactMobileEditor));
+    localStorage.setItem("character-studio.prompt.external-library", String(developerSettings.promptCenter.externalLibraryEnabled));
+    localStorage.setItem("character-studio.prompt.random-missing-fields", String(developerSettings.promptCenter.randomMissingFields));
+    localStorage.setItem("character-studio.prompt.complexity", developerSettings.promptCenter.complexity);
+    localStorage.setItem("character-studio.prompt.repeat-control", developerSettings.promptCenter.repeatControl);
 
     if (!developerSettings.application.showFirstAbout) {
       localStorage.setItem(ABOUT_SEEN_KEY, "true");
@@ -1571,6 +1638,9 @@ function App() {
       {page === "dashboard" && (
         <Dashboard
           characters={characters}
+          dashboardSettings={developerSettings.dashboardDefaults}
+          aiSettingsEnabled={developerSettings.featureFlags.aiSettings}
+          assetLibraryEnabled={developerSettings.featureFlags.assetLibrary}
           onCreate={handleCreate}
           onEdit={handleEdit}
           onPreview={handlePreview}
@@ -1593,6 +1663,8 @@ function App() {
       {page === "form" && (
         <CharacterForm
           character={selectedCharacter}
+          editorSettings={developerSettings.editorDefaults}
+          featureFlags={developerSettings.featureFlags}
           onSave={handleSave}
           onDraftSave={handleDraftSave}
           onAutoSave={handleAutoSave}
@@ -1606,6 +1678,7 @@ function App() {
       {page === "preview" && selectedCharacter && (
         <CharacterPreview
           character={selectedCharacter}
+          exportSettings={developerSettings.exportDefaults}
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
           onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}
@@ -1754,9 +1827,11 @@ function App() {
           }} type="button">
             About Character Studio
           </button>
-          <button onClick={() => setIsAppAssetLibraryOpen(true)} type="button">
-            头像素材库
-          </button>
+          {developerSettings.featureFlags.assetLibrary && (
+            <button onClick={() => setIsAppAssetLibraryOpen(true)} type="button">
+              头像素材库
+            </button>
+          )}
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
             Settings
           </button>
@@ -1794,9 +1869,9 @@ function App() {
                   <h2>Character Studio</h2>
                   <p>轻量、高效、专注于原创角色创作</p>
                   <div className="about-version-row">
-                    <span className="status-badge">Version {APP_VERSION}</span>
-                    <span className="status-badge">Sprint {APP_SPRINT}</span>
-                    <span className="status-badge">Build {APP_BUILD}</span>
+                    {developerSettings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
+                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
+                    {developerSettings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
                   </div>
                 </div>
                 <div className="first-about-cards">
@@ -1850,9 +1925,9 @@ function App() {
                 <article>
                   <h3>当前版本</h3>
                   <div className="about-version-row">
-                    <span className="status-badge">Version {APP_VERSION}</span>
-                    <span className="status-badge">Sprint {APP_SPRINT}</span>
-                    <span className="status-badge">Build {APP_BUILD}</span>
+                    {developerSettings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
+                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
+                    {developerSettings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
                   </div>
                 </article>
               )}
@@ -1957,8 +2032,8 @@ function App() {
                 </svg>
                 <div className="about-brand-meta">
                   <h3>Character Studio</h3>
-                  <p>Version {APP_VERSION}</p>
-                  <p>Sprint {APP_SPRINT}</p>
+                  {developerSettings.application.showVersion && <p>Version {APP_VERSION}</p>}
+                  {developerSettings.application.showSprint && <p>Sprint {APP_SPRINT}</p>}
                   <p>Released {RELEASE_YEAR}</p>
                 </div>
                 <p className="about-brand-tagline">轻量、高效、专注于原创角色创作。</p>
@@ -2019,6 +2094,7 @@ function App() {
                   ))}
                 </div>
               </article>
+              {developerSettings.featureFlags.aiSettings && (
               <article className="ai-settings-card">
                 <div className="settings-card-head">
                   <h3>AI 设置 / AI Settings</h3>
@@ -2064,6 +2140,7 @@ function App() {
                 </div>
                 <button className="ghost-button" disabled type="button">连接测试 / Connection Test</button>
               </article>
+              )}
               <article>
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步。</p>
@@ -2073,6 +2150,7 @@ function App() {
                   </button>
                 </div>
               </article>
+              {developerSettings.featureFlags.assetLibrary && (
               <article>
                 <h3>头像素材库</h3>
                 <p className="muted">
@@ -2092,6 +2170,7 @@ function App() {
                   </button>
                 </div>
               </article>
+              )}
             </div>
           </div>
         </div>

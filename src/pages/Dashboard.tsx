@@ -28,6 +28,16 @@ import {
 
 type DashboardProps = {
   characters: Character[];
+  dashboardSettings?: {
+    viewMode: ViewMode;
+    sortMode: SortMode;
+    cardTagCount: number;
+    showDraftCount: boolean;
+    showFavoriteCount: boolean;
+    showUpdatedTime: boolean;
+  };
+  aiSettingsEnabled?: boolean;
+  assetLibraryEnabled?: boolean;
   onCreate: () => void;
   onEdit: (character: Character) => void;
   onPreview: (character: Character) => void;
@@ -88,6 +98,9 @@ const defaultFlags: DashboardFlags = {
 
 export function Dashboard({
   characters,
+  dashboardSettings,
+  aiSettingsEnabled = true,
+  assetLibraryEnabled = true,
   onCreate,
   onEdit,
   onPreview,
@@ -149,6 +162,7 @@ export function Dashboard({
   const exportDialogRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSignalRef = useRef(searchSignal);
+  const cardTagLimit = Math.max(0, Math.min(dashboardSettings?.cardTagCount ?? 5, 8));
 
   const worldviewOptions = getUniqueOptions(characters, "worldview");
   const genderOptions = getUniqueOptions(characters, "gender");
@@ -175,6 +189,18 @@ export function Dashboard({
   const stats = getDashboardStats(characters, flags);
   const isFavoriteView = prefs.favoriteMode === "favorites";
   const isDraftView = prefs.favoriteMode === "drafts";
+
+  useEffect(() => {
+    if (!dashboardSettings) {
+      return;
+    }
+
+    setPrefs((current) => ({
+      ...current,
+      viewMode: dashboardSettings.viewMode,
+      sortMode: dashboardSettings.sortMode,
+    }));
+  }, [dashboardSettings?.sortMode, dashboardSettings?.viewMode]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -1482,6 +1508,7 @@ export function Dashboard({
                   </button>
                 </div>
               </article>
+              {aiSettingsEnabled && (
               <article className="ai-settings-card">
                 <div className="settings-card-head">
                   <h3>AI 设置 / AI Settings</h3>
@@ -1527,6 +1554,7 @@ export function Dashboard({
                 </div>
                 <button className="ghost-button" disabled type="button">连接测试 / Connection Test</button>
               </article>
+              )}
               <article>
                 <h3>Mobile</h3>
                 <label className="settings-check">
@@ -1614,6 +1642,7 @@ export function Dashboard({
                   </button>
                 </div>
               </article>
+              {assetLibraryEnabled && (
               <article>
                 <h3>头像素材库</h3>
                 <p className="muted">
@@ -1635,6 +1664,7 @@ export function Dashboard({
                   </button>
                 </div>
               </article>
+              )}
               <article>
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步，清除浏览器缓存可能导致数据丢失。</p>
@@ -1932,14 +1962,14 @@ export function Dashboard({
               onClick={() => updatePrefs({ favoriteMode: "favorites" })}
               type="button"
             >
-              收藏 {stats.favoriteCount}
+              收藏{dashboardSettings?.showFavoriteCount !== false ? ` ${stats.favoriteCount}` : ""}
             </button>
             <button
               className={prefs.favoriteMode === "drafts" ? "active" : ""}
               onClick={() => updatePrefs({ favoriteMode: "drafts" })}
               type="button"
             >
-              草稿 {stats.draftCount}
+              草稿{dashboardSettings?.showDraftCount !== false ? ` ${stats.draftCount}` : ""}
             </button>
           </div>
         </div>
@@ -2420,7 +2450,7 @@ export function Dashboard({
                     <span>{character.worldview || "未填写"}</span>
                     <span>{character.age || "未填写"}</span>
                     <div className="table-tags">
-                      {getPersonalityTags(character).slice(0, 4).map((tag) => (
+                      {getPersonalityTags(character).slice(0, Math.min(cardTagLimit, 4)).map((tag) => (
                         <button
                           className={`tag-tone-${getTagTone(tag)}`}
                           key={tag}
@@ -2432,7 +2462,7 @@ export function Dashboard({
                       ))}
                     </div>
                     <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
-                    <span>{formatDate(character.updatedAt)}</span>
+                    {dashboardSettings?.showUpdatedTime !== false && <span>{formatDate(character.updatedAt)}</span>}
                     <div className="table-actions">
                       {isBulkMode ? (
                         <button
@@ -2528,7 +2558,7 @@ export function Dashboard({
           <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
             {visibleCharacters.map((character) => {
               const tags = getPersonalityTags(character);
-              const visibleTags = tags.slice(0, 5);
+              const visibleTags = tags.slice(0, cardTagLimit);
               const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
               const isPinned = flags.pinnedIds.includes(character.id);
               const isDraft = character.isDraft === true;
@@ -2707,13 +2737,15 @@ export function Dashboard({
                       >
                         {isFavorite ? "♥" : "♡"}
                       </button>
-                      <button
-                        className="card-time-button preview-hit"
-                        onClick={() => onPreview(character)}
-                        type="button"
-                      >
-                        {formatDate(character.updatedAt)}
-                      </button>
+                      {dashboardSettings?.showUpdatedTime !== false && (
+                        <button
+                          className="card-time-button preview-hit"
+                          onClick={() => onPreview(character)}
+                          type="button"
+                        >
+                          {formatDate(character.updatedAt)}
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
@@ -2744,13 +2776,15 @@ export function Dashboard({
                 )}
                 {(isBulkMode || isDraft) && (
                   <div className="card-meta">
-                    <button
-                      className="card-time-button preview-hit"
-                      onClick={() => onPreview(character)}
-                      type="button"
-                    >
-                      {formatDate(character.updatedAt)}
-                    </button>
+                    {dashboardSettings?.showUpdatedTime !== false && (
+                      <button
+                        className="card-time-button preview-hit"
+                        onClick={() => onPreview(character)}
+                        type="button"
+                      >
+                        {formatDate(character.updatedAt)}
+                      </button>
+                    )}
                   </div>
                 )}
               </article>
@@ -2765,9 +2799,11 @@ export function Dashboard({
         <button onClick={() => setIsAboutOpen(true)} type="button">
           About Character Studio
         </button>
-        <button onClick={() => setIsAssetLibraryOpen(true)} type="button">
-          头像素材库
-        </button>
+        {assetLibraryEnabled && (
+          <button onClick={() => setIsAssetLibraryOpen(true)} type="button">
+            头像素材库
+          </button>
+        )}
         <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
           Settings
         </button>

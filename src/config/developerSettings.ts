@@ -224,3 +224,37 @@ export function resetDeveloperSettings() {
   return defaultDeveloperSettings;
 }
 
+export function applyDeveloperSettings(settings: DeveloperSettings) {
+  const root = document.documentElement;
+  const shadowMap = {
+    none: ["none", "none"],
+    soft: ["0 10px 28px rgba(15, 23, 42, 0.06)", "0 16px 34px rgba(15, 23, 42, 0.1)"],
+    medium: ["0 12px 32px rgba(15, 23, 42, 0.1)", "0 18px 42px rgba(15, 23, 42, 0.16)"],
+    strong: ["0 14px 38px rgba(15, 23, 42, 0.16)", "0 22px 54px rgba(15, 23, 42, 0.24)"],
+  }[settings.appearance.shadowStrength];
+  const motionMap = {
+    none: ["0ms", "0ms"],
+    reduced: ["90ms", "120ms"],
+    normal: ["150ms", "190ms"],
+  }[settings.appearance.motionLevel];
+
+  document.title = settings.application.pageTitle || "Character Studio";
+  root.style.setProperty("--primary", settings.appearance.accentColor);
+  root.style.setProperty("--primary-hover", settings.appearance.accentColor);
+  root.style.setProperty("--control-radius", `${settings.designTokens.inputRadius}px`);
+  root.style.setProperty("--developer-card-radius", `${settings.appearance.cardRadius}px`);
+  root.style.setProperty("--developer-button-radius", `${settings.appearance.buttonRadius}px`);
+  root.style.setProperty("--developer-font-scale", String(settings.appearance.fontScale));
+  root.style.setProperty("--shadow", shadowMap[0]);
+  root.style.setProperty("--shadow-strong", shadowMap[1]);
+  root.style.setProperty("--duration-fast", motionMap[0]);
+  root.style.setProperty("--duration-medium", motionMap[1]);
+  root.dataset.compactUi = settings.appearance.compactUi ? "true" : "false";
+  root.dataset.showAppLogo = settings.brandAssets.showAppLogo ? "true" : "false";
+  root.dataset.showHeaderLogo = settings.brandAssets.showHeaderLogo ? "true" : "false";
+  root.dataset.aboutLogoSize = settings.brandAssets.aboutLogoSize;
+  root.dataset.compactMobileEditor =
+    settings.editorDefaults.compactMobileEditor && settings.featureFlags.compactMobileEditor
+      ? "true"
+      : "false";
+}

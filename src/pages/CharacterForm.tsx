@@ -23,6 +23,18 @@ type CharacterDraft = Omit<Character, "id" | "updatedAt">;
 
 type CharacterFormProps = {
   character?: Character | null;
+  editorSettings?: {
+    expandAllSections: boolean;
+    collapseAllSections: boolean;
+    autoSave: boolean;
+    showPromptSection: boolean;
+    showPersonalPreferences: boolean;
+    compactMobileEditor: boolean;
+  };
+  featureFlags?: {
+    personalPreferences: boolean;
+    compactMobileEditor: boolean;
+  };
   onSave: (character: Character) => void;
   onDraftSave: (character: Character) => void;
   onAutoSave?: (character: Character) => void;
@@ -62,6 +74,20 @@ type HelperKind = "example" | "inspiration" | "tip";
 const DEFAULT_AVATAR_EMOJI = "🙂";
 const RECENT_AVATAR_KEY = "character-studio.recent-avatars";
 const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
+
+const defaultEditorSettings = {
+  expandAllSections: false,
+  collapseAllSections: false,
+  autoSave: true,
+  showPromptSection: true,
+  showPersonalPreferences: true,
+  compactMobileEditor: true,
+};
+
+const defaultEditorFeatureFlags = {
+  personalPreferences: true,
+  compactMobileEditor: true,
+};
 
 const avatarCategories: AvatarCategory[] = [
   {
@@ -757,8 +783,71 @@ function chance(probability: number) {
   return Math.random() < probability;
 }
 
+function getPromptDeveloperSetting(key: string, fallback: string) {
+  try {
+    return localStorage.getItem(key) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function getPromptProbability(baseProbability: number) {
+  const complexity = getPromptDeveloperSetting("character-studio.prompt.complexity", "medium");
+
+  if (complexity === "low") {
+    return Math.max(baseProbability - 0.2, 0.2);
+  }
+
+  if (complexity === "high") {
+    return Math.min(baseProbability + 0.16, 0.94);
+  }
+
+  return baseProbability;
+}
+
 function pickOptional(options: string[], probability = 0.72) {
-  return chance(probability) ? pickRandom(options) : "";
+  return chance(getPromptProbability(probability)) ? pickRandom(options) : "";
+}
+
+function allowRandomMissingFields() {
+  return getPromptDeveloperSetting("character-studio.prompt.random-missing-fields", "true") !== "false";
+}
+
+function randomFieldChance(probability: number) {
+  return allowRandomMissingFields() ? chance(probability) : true;
+}
+
+function getRepeatLimit() {
+  const repeatControl = getPromptDeveloperSetting("character-studio.prompt.repeat-control", "normal");
+
+  if (repeatControl === "strict") {
+    return 18;
+  }
+
+  if (repeatControl === "off") {
+    return 0;
+  }
+
+  return 12;
+}
+
+function shouldUseExternalInspirationLibrary() {
+  return getPromptDeveloperSetting("character-studio.prompt.external-library", "true") !== "false";
+}
+
+function rememberHelperOutput(value: string) {
+  const repeatLimit = getRepeatLimit();
+
+  if (repeatLimit <= 0) {
+    return;
+  }
+
+  recentHelperOutputs.unshift(value);
+  recentHelperOutputs.splice(repeatLimit);
+}
+
+function isRecentHelperOutput(value: string) {
+  return getRepeatLimit() > 0 && recentHelperOutputs.includes(value);
 }
 
 function joinClauses(parts: Array<string | undefined | false>) {
@@ -771,7 +860,9 @@ function finishSentence(value: string) {
 }
 
 function pickFragmentGroup<T extends HelperFragmentGroupName>(groupName: T) {
-  return inspirationFragments[groupName];
+  return shouldUseExternalInspirationLibrary()
+    ? inspirationFragments[groupName]
+    : helperFragments[groupName];
 }
 
 function loadRecentAvatars() {
@@ -816,16 +907,14 @@ function generateHelperContent(sectionId: HelperSectionId, kind: HelperKind) {
   const unique = (builder: () => string) => {
     for (let index = 0; index < 8; index += 1) {
       const value = builder();
-      if (!recentHelperOutputs.includes(value)) {
-        recentHelperOutputs.unshift(value);
-        recentHelperOutputs.splice(12);
+      if (!isRecentHelperOutput(value)) {
+        rememberHelperOutput(value);
         return value;
       }
     }
 
     const fallback = builder();
-    recentHelperOutputs.unshift(fallback);
-    recentHelperOutputs.splice(12);
+    rememberHelperOutput(fallback);
     return fallback;
   };
 
@@ -1162,6 +1251,8 @@ function completionStatus(sectionId: SectionId, data: CharacterDraft) {
 
 export function CharacterForm({
   character,
+  editorSettings = defaultEditorSettings,
+  featureFlags = defaultEditorFeatureFlags,
   onSave,
   onDraftSave,
   onAutoSave,
@@ -1170,6 +1261,17 @@ export function CharacterForm({
   saveSignal = 0,
   draftSaveSignal = 0,
 }: CharacterFormProps) {
+  const effectiveEditorSettings = {
+    ...defaultEditorSettings,
+    ...editorSettings,
+  };
+  const effectiveFeatureFlags = {
+    ...defaultEditorFeatureFlags,
+    ...featureFlags,
+  };
+  const showPromptSection = effectiveEditorSettings.showPromptSection;
+  const showPersonalPreferences =
+    effectiveEditorSettings.showPersonalPreferences && effectiveFeatureFlags.personalPreferences;
   const [formData, setFormData] = useState<CharacterDraft>(initialCharacter);
   const [customTag, setCustomTag] = useState("");
   const [customGender, setCustomGender] = useState("");
@@ -1259,6 +1361,10 @@ export function CharacterForm({
     [character, formData],
   );
 
+  const visibleSectionMeta = sectionMeta.filter((section) =>
+    section.id === "prompt" ? showPromptSection : true,
+  );
+
   const activeAvatarCategory =
     avatarCategories.find((category) => category.id === activeAvatarCategoryId) ||
     avatarCategories[0];
@@ -1310,11 +1416,30 @@ export function CharacterForm({
     }
     setFormError("");
     setEditorMode("edit");
+    if (effectiveEditorSettings.expandAllSections) {
+      setCollapsedSections({
+        basic: false,
+        appearance: false,
+        personality: false,
+        ability: false,
+        backstory: false,
+        prompt: false,
+      });
+    } else if (effectiveEditorSettings.collapseAllSections) {
+      setCollapsedSections({
+        basic: false,
+        appearance: true,
+        personality: true,
+        ability: true,
+        backstory: true,
+        prompt: true,
+      });
+    }
     clearPendingAvatar();
-  }, [character?.id]);
+  }, [character?.id, effectiveEditorSettings.collapseAllSections, effectiveEditorSettings.expandAllSections]);
 
   useEffect(() => {
-    if (!character?.isDraft || !onAutoSave) {
+    if (!effectiveEditorSettings.autoSave || !character?.isDraft || !onAutoSave) {
       return;
     }
 
@@ -1344,7 +1469,7 @@ export function CharacterForm({
     }, 900);
 
     return () => window.clearTimeout(timer);
-  }, [character, formData, onAutoSave]);
+  }, [character, effectiveEditorSettings.autoSave, formData, onAutoSave]);
 
   useEffect(() => {
     function handleBeforeUnload(event: BeforeUnloadEvent) {
@@ -1880,7 +2005,7 @@ export function CharacterForm({
     const personalityTags = pickRandomTags();
     const species = pickRandom(randomSpecies);
     const occupation = pickRandom(randomOccupations);
-    const abilityDescription = chance(0.82)
+    const abilityDescription = randomFieldChance(0.82)
       ? buildRandomAbilityDescription()
       : pickRandom(randomAbilities);
     const gender = pickRandom(randomGenders);
@@ -1895,11 +2020,11 @@ export function CharacterForm({
       occupation,
       worldview,
       personalityTags,
-      appearanceDescription: chance(0.82)
+      appearanceDescription: randomFieldChance(0.82)
         ? buildRandomAppearanceDescription(personalityTags, worldviewDetail)
         : `${pickRandom(randomAppearances)}整体气质偏${pickRandom(personalityTags)}，适合出现在${worldviewDetail}。`,
       abilityDescription,
-      backstory: chance(0.82)
+      backstory: randomFieldChance(0.82)
         ? buildRandomBackstoryDescription(worldviewDetail)
         : `${pickRandom(randomBackstories)}主要活动地点与${worldviewDetail}有关。`,
       visualStyle: pickRandom(visualStyleOptions),
@@ -2662,7 +2787,7 @@ export function CharacterForm({
 
       <form className="workspace-layout" onSubmit={handleSubmit}>
         <aside className="workspace-nav" aria-label="模块导航">
-          {sectionMeta.map((section) => (
+          {visibleSectionMeta.map((section) => (
             <button
               className={activeSection === section.id ? "active" : ""}
               key={section.id}
@@ -3123,6 +3248,7 @@ export function CharacterForm({
             )}
           </section>
 
+          {showPersonalPreferences && (
           <section className="workspace-card" id="workspace-preferences">
             <div className="workspace-card-head static-head">
               <span>
@@ -3195,6 +3321,7 @@ export function CharacterForm({
               </div>
             </div>
           </section>
+          )}
 
           <section className="workspace-card" id="workspace-ability">
             <button className="workspace-card-head" onClick={() => toggleSection("ability")} type="button">
@@ -3248,6 +3375,7 @@ export function CharacterForm({
             )}
           </section>
 
+          {showPromptSection && (
           <section className="workspace-card" id="workspace-prompt">
             <button className="workspace-card-head" onClick={() => toggleSection("prompt")} type="button">
               <span>
@@ -3332,6 +3460,7 @@ export function CharacterForm({
               </div>
             )}
           </section>
+          )}
 
           </div>
 

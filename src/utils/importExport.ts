@@ -877,7 +877,12 @@ async function readStoredZip(file: File): Promise<ZipEntry[]> {
   return entries;
 }
 
-async function capturePreviewCanvas(element: HTMLElement) {
+type PreviewCaptureOptions = {
+  forceLightMode?: boolean;
+  scale?: number;
+};
+
+async function capturePreviewCanvas(element: HTMLElement, options: PreviewCaptureOptions = {}) {
   if (!element.isConnected) {
     throw new Error("找不到可导出的角色展示区域");
   }
@@ -901,9 +906,11 @@ async function capturePreviewCanvas(element: HTMLElement) {
       backgroundColor: "#f3f4f6",
       height: Math.ceil(bounds.height),
       onclone: (documentClone) => {
-        documentClone.documentElement.dataset.theme = "light";
-        documentClone.body.style.background = "#f3f4f6";
-        documentClone.body.style.color = "#111827";
+        if (options.forceLightMode !== false) {
+          documentClone.documentElement.dataset.theme = "light";
+          documentClone.body.style.background = "#f3f4f6";
+          documentClone.body.style.color = "#111827";
+        }
 
         const exportRoot = documentClone.querySelector<HTMLElement>(
           "[data-pdf-export-root='true']",
@@ -911,8 +918,10 @@ async function capturePreviewCanvas(element: HTMLElement) {
 
         if (exportRoot) {
           exportRoot.classList.add("pdf-safe");
-          exportRoot.style.background = "#f3f4f6";
-          exportRoot.style.color = "#111827";
+          if (options.forceLightMode !== false) {
+            exportRoot.style.background = "#f3f4f6";
+            exportRoot.style.color = "#111827";
+          }
 
           exportRoot.querySelectorAll<HTMLElement>("*").forEach((item) => {
             item.style.backgroundImage = "none";
@@ -929,7 +938,7 @@ async function capturePreviewCanvas(element: HTMLElement) {
             item.setAttribute("style", "display: none !important;");
           });
       },
-      scale: 2,
+      scale: options.scale || 2,
       scrollX: 0,
       scrollY: 0,
       useCORS: true,
@@ -988,8 +997,9 @@ export async function exportPreviewImage(
   characterName: string,
   format: "png" | "jpg",
   quality = 0.9,
+  options: PreviewCaptureOptions = {},
 ) {
-  const canvas = await capturePreviewCanvas(element);
+  const canvas = await capturePreviewCanvas(element, options);
 
   if (canvas.width <= 0 || canvas.height <= 0) {
     throw new Error("图片截图生成失败");
@@ -1007,10 +1017,10 @@ export async function exportPreviewImage(
   downloadBlob(blob, exportNodeName(characterName, format), mimeType);
 }
 
-async function createPreviewPdfBlob(element: HTMLElement) {
+async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptureOptions = {}) {
   const [{ jsPDF }, canvas] = await Promise.all([
     import("jspdf"),
-    capturePreviewCanvas(element),
+    capturePreviewCanvas(element, options),
   ]);
 
     if (canvas.width <= 0 || canvas.height <= 0) {
@@ -1039,8 +1049,8 @@ async function createPreviewPdfBlob(element: HTMLElement) {
     return pdf.output("blob");
 }
 
-export async function exportPreviewPdf(element: HTMLElement, characterName: string) {
-  const blob = await createPreviewPdfBlob(element);
+export async function exportPreviewPdf(element: HTMLElement, characterName: string, options: PreviewCaptureOptions = {}) {
+  const blob = await createPreviewPdfBlob(element, options);
   downloadBlob(blob, exportNodeName(characterName, "pdf"), "application/pdf");
 }
 
