@@ -202,6 +202,26 @@ const featureFlagLabels: Record<keyof DeveloperSettings["featureFlags"], string>
   experimentalRelationshipGraph: "Experimental Relationship Graph",
 };
 
+const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
+  "aiSettings",
+  "promptCenter",
+  "assetLibrary",
+  "personalPreferences",
+  "compactMobileEditor",
+]);
+
+type DeveloperFieldStatus = "applied" | "comingSoon" | "readonly";
+
+function DeveloperStatusBadge({ status }: { status: DeveloperFieldStatus }) {
+  const labelMap: Record<DeveloperFieldStatus, string> = {
+    applied: "已应用",
+    comingSoon: "暂未应用",
+    readonly: "只读",
+  };
+
+  return <span className={`developer-status-badge ${status}`}>{labelMap[status]}</span>;
+}
+
 function ComingSoonNote() {
   return <span className="developer-coming-soon">Coming Soon · 当前仅展示，暂未应用</span>;
 }
@@ -251,19 +271,22 @@ function DeveloperField({
   title,
   description,
   children,
-  comingSoon = false,
+  status = "applied",
 }: {
   title: string;
   description: string;
   children: ReactNode;
-  comingSoon?: boolean;
+  status?: DeveloperFieldStatus;
 }) {
   return (
-    <label className={comingSoon ? "developer-setting-field coming-soon" : "developer-setting-field"}>
+    <label className={status === "comingSoon" ? "developer-setting-field coming-soon" : "developer-setting-field"}>
       <span className="developer-setting-copy">
-        <strong>{title}</strong>
+        <span className="developer-setting-title">
+          <strong>{title}</strong>
+          <DeveloperStatusBadge status={status} />
+        </span>
         <small>{description}</small>
-        {comingSoon && <ComingSoonNote />}
+        {status === "comingSoon" && <ComingSoonNote />}
       </span>
       <span className="developer-setting-control">{children}</span>
     </label>
@@ -730,8 +753,9 @@ function DeveloperCenter({
                         onChange={(event) => updateDeveloperModule("application", { footerText: event.target.value })}
                       />
                     </DeveloperField>
-                    <DeveloperField title="语言显示方式" description="用于未来文案展示策略。">
+                    <DeveloperField title="语言显示方式" description="未来用于全局文案展示策略，当前暂未接入。" status="comingSoon">
                       <select
+                        disabled
                         value={settings.application.languageMode}
                         onChange={(event) =>
                           updateDeveloperModule("application", {
@@ -841,9 +865,8 @@ function DeveloperCenter({
                         value={settings.exportDefaults.jpgQuality}
                       />
                     </DeveloperField>
-                    <DeveloperField title="PNG 导出倍率" description="当前底层导出仍使用固定倍率，后续接入。" comingSoon>
+                    <DeveloperField title="PNG 导出倍率" description="控制 Preview 图片与 PDF 截图倍率，实时应用。" status="applied">
                       <input
-                        disabled
                         max="4"
                         min="1"
                         onChange={(event) => updateDeveloperModule("exportDefaults", { pngScale: Number(event.target.value) })}
@@ -856,12 +879,10 @@ function DeveloperCenter({
                       <DeveloperField
                         key={key}
                         title={exportSettingLabels[key]}
-                        description={key === "includeFooter" ? "Footer 当前不属于 Preview 导出区域，后续接入。" : "展示导出偏好，Preview 导出时应用。"}
-                        comingSoon={key === "includeFooter"}
+                        description={key === "includeFooter" ? "控制 Preview 展示导出是否附加轻量 Footer。" : "展示导出偏好，Preview 导出时应用。"}
                       >
                         <DeveloperSwitch
                           checked={settings.exportDefaults[key]}
-                          disabled={key === "includeFooter"}
                           onChange={(value) => updateDeveloperModule("exportDefaults", { [key]: value })}
                         />
                       </DeveloperField>
@@ -877,10 +898,18 @@ function DeveloperCenter({
               {section.id === "experimental" && (
                 <>
                   <div className="developer-settings-grid">
-                    {(Object.entries(settings.featureFlags) as Array<[keyof DeveloperSettings["featureFlags"], boolean]>).map(([key, value]) => (
-                      <DeveloperField key={key} title={featureFlagLabels[key]} description="控制对应模块入口或状态。实验功能本身仍可能是 Coming Soon。">
+                    {(Object.entries(settings.featureFlags) as Array<[keyof DeveloperSettings["featureFlags"], boolean]>).map(([key, value]) => {
+                      const isApplied = appliedFeatureFlags.has(key);
+                      return (
+                      <DeveloperField
+                        key={key}
+                        title={featureFlagLabels[key]}
+                        description={isApplied ? "控制对应模块入口或状态。" : "预留实验能力，当前仅展示规划。"}
+                        status={isApplied ? "applied" : "comingSoon"}
+                      >
                         <DeveloperSwitch
                           checked={Boolean(value)}
+                          disabled={!isApplied}
                           onChange={(nextValue) =>
                             updateDeveloperModule("featureFlags", {
                               [key]: nextValue,
@@ -888,7 +917,8 @@ function DeveloperCenter({
                           }
                         />
                       </DeveloperField>
-                    ))}
+                      );
+                    })}
                   </div>
                   <div className="developer-chip-list status-list">
                     {experiments.map(([name, status]) => (

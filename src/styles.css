@@ -1242,6 +1242,46 @@ h2 {
   gap: 3px;
 }
 
+.developer-setting-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.developer-setting-title strong {
+  min-width: 0;
+}
+
+.developer-status-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1.5;
+}
+
+.developer-status-badge.applied {
+  border-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  color: var(--text-soft);
+}
+
+.developer-status-badge.comingSoon {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.developer-status-badge.readonly {
+  background: var(--surface-subtle);
+}
+
 .developer-setting-field small {
   color: var(--muted);
   font-size: 11px;
@@ -3627,6 +3667,20 @@ input[type="number"]::-webkit-inner-spin-button {
   color: var(--text-soft);
   font-size: 13px;
   font-weight: 750;
+}
+
+.preview-export-footer {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  padding: 10px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.preview-export-footer[data-pdf-hidden="true"] {
+  display: none;
 }
 
 .pdf-safe {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import { RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
@@ -10,6 +11,7 @@ type CharacterPreviewProps = {
     jpgQuality: number;
     pngScale: number;
     pdfLightMode: boolean;
+    includeFooter: boolean;
     includePromptSection: boolean;
     includeTimeInfo: boolean;
   };
@@ -498,6 +500,13 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
               <strong>{formatPreviewTime(character.updatedAt)}</strong>
             </div>
           </article>
+
+          <div
+            className="preview-export-footer"
+            data-pdf-hidden={exportSettings?.includeFooter === true ? undefined : "true"}
+          >
+            Character Studio · RINTO © {RELEASE_YEAR}
+          </div>
         </div>
       </div>
     </section>
