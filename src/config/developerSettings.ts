@@ -1,4 +1,27 @@
+import { defaultContent } from "../content/defaultContent";
+import { APP_BUILD, APP_RELEASE_LABEL, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./version";
+
 export type DeveloperSettings = {
+  project: {
+    version: string;
+    sprint: string;
+    build: string;
+    releaseLabel: string;
+    releaseYear: string;
+  };
+  content: {
+    aboutTitle: string;
+    aboutSummary: string;
+    firstAboutTagline: string;
+    footerText: string;
+    settingsSummary: string;
+    importGuide: string;
+    exportGuide: string;
+    dialogCopy: string;
+    toastCopy: string;
+    privacy: string;
+    license: string;
+  };
   appearance: {
     accentColor: string;
     borderRadius: number;
@@ -48,6 +71,7 @@ export type DeveloperSettings = {
     randomMissingFields: boolean;
     complexity: "low" | "medium" | "high";
     repeatControl: "off" | "normal" | "strict";
+    customLibraryText: string;
   };
   application: {
     pageTitle: string;
@@ -76,6 +100,14 @@ export type DeveloperSettings = {
 export const DEVELOPER_SETTINGS_KEY = "character-studio-developer-settings";
 
 export const defaultDeveloperSettings: DeveloperSettings = {
+  project: {
+    version: APP_VERSION,
+    sprint: APP_SPRINT,
+    build: APP_BUILD,
+    releaseLabel: APP_RELEASE_LABEL,
+    releaseYear: RELEASE_YEAR,
+  },
+  content: defaultContent,
   appearance: {
     accentColor: "#635ab2",
     borderRadius: 8,
@@ -125,10 +157,11 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     randomMissingFields: true,
     complexity: "medium",
     repeatControl: "normal",
+    customLibraryText: "",
   },
   application: {
     pageTitle: "Character Studio",
-    footerText: "RINTO © 2026",
+    footerText: defaultContent.footerText,
     languageMode: "zh",
     showVersion: true,
     showSprint: true,
@@ -162,6 +195,14 @@ export function mergeDeveloperSettings(value: unknown): DeveloperSettings {
   return {
     ...defaultDeveloperSettings,
     ...value,
+    project: {
+      ...defaultDeveloperSettings.project,
+      ...(isRecord(value.project) ? value.project : {}),
+    },
+    content: {
+      ...defaultDeveloperSettings.content,
+      ...(isRecord(value.content) ? value.content : {}),
+    },
     appearance: {
       ...defaultDeveloperSettings.appearance,
       ...(isRecord(value.appearance) ? value.appearance : {}),

@@ -1296,9 +1296,16 @@ h2 {
 }
 
 .developer-setting-field input,
-.developer-setting-field select {
+.developer-setting-field select,
+.developer-setting-field textarea {
   width: min(180px, 100%);
   max-width: 100%;
+}
+
+.developer-setting-field textarea {
+  width: min(320px, 100%);
+  min-height: 88px;
+  resize: vertical;
 }
 
 .developer-setting-field input[type="range"] {
@@ -1366,6 +1373,19 @@ h2 {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+}
+
+.developer-mini-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.developer-mini-actions .ghost-button {
+  min-height: 30px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .developer-subtitle {
@@ -4916,7 +4936,8 @@ kbd {
   }
 
   .developer-setting-field input,
-  .developer-setting-field select {
+  .developer-setting-field select,
+  .developer-setting-field textarea {
     width: 100%;
   }
 

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
-import { RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
@@ -14,6 +13,7 @@ type CharacterPreviewProps = {
     includeFooter: boolean;
     includePromptSection: boolean;
     includeTimeInfo: boolean;
+    footerText?: string;
   };
   onBack: () => void;
   onEdit?: () => void;
@@ -505,7 +505,7 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
             className="preview-export-footer"
             data-pdf-hidden={exportSettings?.includeFooter === true ? undefined : "true"}
           >
-            Character Studio · RINTO © {RELEASE_YEAR}
+            Character Studio · {exportSettings?.footerText || "RINTO © 2026"}
           </div>
         </div>
       </div>

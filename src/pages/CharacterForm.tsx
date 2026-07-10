@@ -860,9 +860,19 @@ function finishSentence(value: string) {
 }
 
 function pickFragmentGroup<T extends HelperFragmentGroupName>(groupName: T) {
-  return shouldUseExternalInspirationLibrary()
-    ? inspirationFragments[groupName]
-    : helperFragments[groupName];
+  if (!shouldUseExternalInspirationLibrary()) {
+    return helperFragments[groupName];
+  }
+
+  const customLibraryText = getPromptDeveloperSetting("character-studio.prompt.custom-library", "");
+  if (!customLibraryText.trim()) {
+    return inspirationFragments[groupName];
+  }
+
+  return mergeInspirationFragments(
+    inspirationFragments,
+    parseRawInspirationFragments(customLibraryText),
+  )[groupName];
 }
 
 function loadRecentAvatars() {

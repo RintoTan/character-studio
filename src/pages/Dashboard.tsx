@@ -28,6 +28,17 @@ import {
 
 type DashboardProps = {
   characters: Character[];
+  projectInfo?: {
+    version: string;
+    sprint: string;
+    build: string;
+    releaseYear: string;
+  };
+  contentText?: {
+    aboutTitle: string;
+    aboutSummary: string;
+    firstAboutTagline: string;
+  };
   dashboardSettings?: {
     viewMode: ViewMode;
     sortMode: SortMode;
@@ -98,6 +109,17 @@ const defaultFlags: DashboardFlags = {
 
 export function Dashboard({
   characters,
+  projectInfo = {
+    version: APP_VERSION,
+    sprint: APP_SPRINT,
+    build: RELEASE_YEAR,
+    releaseYear: RELEASE_YEAR,
+  },
+  contentText = {
+    aboutTitle: "Character Studio 是什么",
+    aboutSummary: "一个面向 OC 创作的轻量角色工作台，用于整理角色资料、草稿、预览和备份。",
+    firstAboutTagline: "轻量、高效、专注于原创角色创作",
+  },
   dashboardSettings,
   aiSettingsEnabled = true,
   assetLibraryEnabled = true,
@@ -1311,8 +1333,8 @@ export function Dashboard({
             </div>
             <div className="about-grid">
               <article>
-                <h3>Character Studio 是什么</h3>
-                <p>一个面向 OC 创作的轻量角色工作台，用于整理角色资料、草稿、预览和备份。</p>
+                <h3>{contentText.aboutTitle}</h3>
+                <p>{contentText.aboutSummary}</p>
               </article>
               <article>
                 <h3>当前支持</h3>
@@ -1416,7 +1438,7 @@ export function Dashboard({
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
+                <p className="muted">RINTO 联合 Codex 共同开发 {projectInfo.releaseYear}。</p>
               </article>
             </div>
             <div className="about-brand-footer">
@@ -1426,11 +1448,11 @@ export function Dashboard({
               </svg>
               <div className="about-brand-meta">
                 <h3>Character Studio</h3>
-                <p>Version {APP_VERSION}</p>
-                <p>Sprint {APP_SPRINT}</p>
-                <p>Released {RELEASE_YEAR}</p>
+                <p>Version {projectInfo.version}</p>
+                <p>Sprint {projectInfo.sprint}</p>
+                <p>Released {projectInfo.releaseYear}</p>
               </div>
-              <p className="about-brand-tagline">轻量、高效、专注于原创角色创作。</p>
+              <p className="about-brand-tagline">{contentText.firstAboutTagline}</p>
               <div className="about-brand-links">
                 <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
                   GitHub
@@ -1442,10 +1464,10 @@ export function Dashboard({
               <div className="about-brand-credit">
                 <span>Designed &amp; Developed by</span>
                 <strong>RINTO × Codex</strong>
-                <span>{RELEASE_YEAR}</span>
+                <span>{projectInfo.releaseYear}</span>
               </div>
               <p className="about-brand-copyright">
-                © {RELEASE_YEAR} RINTO<br />
+                © {projectInfo.releaseYear} RINTO<br />
                 All Rights Reserved.
               </p>
             </div>

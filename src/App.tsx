@@ -4,13 +4,6 @@ import { CharacterPreview } from "./pages/CharacterPreview";
 import { Dashboard } from "./pages/Dashboard";
 import { AvatarDisplay } from "./components/AvatarDisplay";
 import {
-  APP_BUILD,
-  APP_RELEASE_LABEL,
-  APP_SPRINT,
-  APP_VERSION,
-  RELEASE_YEAR,
-} from "./config/version";
-import {
   applyDeveloperSettings,
   defaultDeveloperSettings,
   loadDeveloperSettings,
@@ -50,12 +43,12 @@ const ABOUT_SEEN_KEY = "character-studio.about-seen";
 
 const developerSections = [
   {
-    id: "overview",
+    id: "project",
     icon: "📊",
-    title: "项目概览",
-    subtitle: "Overview",
-    description: "查看项目版本、主题、数据状态和核心维护链接。",
-    items: ["Version", "Sprint", "Build", "Theme", "Data Version", "Prompt Library"],
+    title: "Project",
+    subtitle: "项目",
+    description: "维护版本、发布信息、项目状态和核心链接。",
+    items: ["Version", "Sprint", "Build", "Release Label", "Storage Usage", "GitHub", "Developer Handbook"],
   },
   {
     id: "brand",
@@ -70,7 +63,7 @@ const developerSections = [
     icon: "🧩",
     title: "设计系统",
     subtitle: "Design System",
-    description: "沉淀 Character Studio 的 UI Token 与组件规范，暂不修改现有 UI。",
+    description: "维护 Theme、Radius、Typography、Motion 与真实组件预览。",
     items: ["颜色", "字体", "字号", "圆角", "边框", "阴影", "动画", "间距", "Button", "Card", "Dialog", "Input", "Tag", "Badge", "Switch", "Checkbox", "Radio"],
   },
   {
@@ -78,8 +71,8 @@ const developerSections = [
     icon: "📝",
     title: "内容中心",
     subtitle: "Content",
-    description: "集中管理项目文案目录，未来支持文案维护与多版本说明。",
-    items: ["About", "首次 About", "Settings", "Footer", "导入说明", "导出说明", "Toast", "Dialog", "Developer Handbook", "更新日志"],
+    description: "维护 About、首次 About、Footer、导入导出说明和基础项目文案。",
+    items: ["About", "First About", "Footer", "Settings", "Import Guide", "Export Guide", "Dialog", "Toast", "Privacy", "License"],
   },
   {
     id: "prompt",
@@ -90,52 +83,36 @@ const developerSections = [
     items: ["随机灵感", "示例", "写作提示", "Prompt 模板", "外挂词库", "Prompt Library", "未来 Prompt 编辑器", "external-inspiration-library.txt"],
   },
   {
-    id: "ai",
-    icon: "🤖",
-    title: "AI 开发",
-    subtitle: "AI Development",
-    description: "开发控制页面，不属于普通用户 AI 设置；当前不接入 AI。",
-    items: ["🚧 开发中", "Prompt Engine", "Provider", "Template", "Debug", "API Workflow", "Connection Flow"],
-  },
-  {
     id: "application",
     icon: "⚙",
     title: "应用配置",
     subtitle: "Application",
-    description: "展示默认主题、语言、导出格式、预览与 Emoji 等应用级配置入口。",
-    items: ["默认主题", "默认语言", "默认导出格式", "默认 JPG", "默认 PDF", "默认 Preview", "默认 Emoji"],
+    description: "维护页面标题、Footer、Theme、About、Editor 和 Dashboard 默认行为。",
+    items: ["页面标题", "Footer", "Theme", "Language", "Version", "About", "Editor", "Dashboard"],
+  },
+  {
+    id: "export",
+    icon: "📦",
+    title: "Export",
+    subtitle: "导出规则",
+    description: "维护 Preview Export、PDF、PNG、JPG、JSON、CSV、ZIP 的默认规则。",
+    items: ["PDF", "PNG", "JPG", "JSON", "CSV", "ZIP", "Prompt", "Footer", "Time", "Metadata"],
+  },
+  {
+    id: "tools",
+    icon: "🪲",
+    title: "Developer Tools",
+    subtitle: "开发工具",
+    description: "执行低风险维护工具、导出配置、查看存储和打开素材库。",
+    items: ["Reset Developer Settings", "Export Config", "Import Config", "View Storage", "Open Asset Library", "Copy Debug Info"],
   },
   {
     id: "experimental",
     icon: "🧪",
-    title: "实验功能",
-    subtitle: "Experimental",
-    description: "集中放置未来仍在验证中的功能方向。",
-    items: ["开发中", "关系图", "地图", "时间线", "AI Prompt V2", "Prompt Editor"],
-  },
-  {
-    id: "debug",
-    icon: "🪲",
-    title: "调试工具",
-    subtitle: "Debug",
-    description: "只展示当前调试入口目录，不执行危险操作。",
-    items: ["localStorage", "IndexedDB", "Theme", "Export", "Import", "Build", "Version", "Route", "Log"],
-  },
-  {
-    id: "data",
-    icon: "💾",
-    title: "数据管理",
-    subtitle: "Data",
-    description: "展示角色、头像、素材和浏览器存储概况。",
-    items: ["角色数量", "头像数量", "素材数量", "IndexedDB 大小", "localStorage 大小", "Prompt Library"],
-  },
-  {
-    id: "update",
-    icon: "📦",
-    title: "更新中心",
-    subtitle: "Update",
-    description: "整理版本、Sprint、Roadmap 与 Changelog 的维护入口。",
-    items: ["Version", "Sprint", "Build", "GitHub", "Developer Handbook", "Roadmap", "Changelog"],
+    title: "Experimental",
+    subtitle: "实验功能",
+    description: "收纳未来路线，明确标记 Planned / Coming Soon / In Progress。",
+    items: ["Timeline", "Relationship", "Map", "Faction", "World Manager", "Prompt Editor", "AI Prompt V2", "AI Character", "AI Translate", "Workflow"],
   },
 ];
 
@@ -265,6 +242,17 @@ function getPromptLibraryStats() {
   const size = new Blob([externalInspirationLibraryRaw]).size;
 
   return { lines, size };
+}
+
+const brandLogoSvgMarkup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 566.43 637.56"><polygon fill="#222937" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51"/><polygon fill="#635ab2" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49"/></svg>`;
+
+function downloadTextFile(content: string, fileName: string, mimeType = "text/plain") {
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function DeveloperField({
@@ -407,9 +395,9 @@ function DeveloperCenter({
           <p className="muted">Character Studio 项目开发控制中心</p>
         </div>
         <div className="developer-hero-badges">
-          {settings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
-          {settings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
-          {settings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
+          {settings.application.showVersion && <span className="status-badge">Version {settings.project.version}</span>}
+          {settings.application.showSprint && <span className="status-badge">Sprint {settings.project.sprint}</span>}
+          {settings.application.showBuild && <span className="status-badge">Build {settings.project.build}</span>}
           <span className="status-badge">Theme：{themeMode}</span>
           <span className="status-badge">数据版本：Local v1</span>
           <span className="status-badge">Prompt Library：external-inspiration-library.txt</span>
@@ -430,12 +418,12 @@ function DeveloperCenter({
         </aside>
 
         <div className="developer-content">
-          <article className="developer-card overview-card" id="developer-overview">
+          <article className="developer-card overview-card" id="developer-project">
             <div className="developer-card-title">
               <span aria-hidden="true">📊</span>
               <div>
-                <h2>项目概览</h2>
-                <p>Overview</p>
+                <h2>Project</h2>
+                <p>项目</p>
               </div>
             </div>
             <svg className="developer-logo" aria-hidden="true" viewBox="0 0 566.43 637.56">
@@ -443,13 +431,13 @@ function DeveloperCenter({
               <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
             </svg>
             <div className="developer-stat-grid">
-              <span><strong>Version</strong>{APP_VERSION}</span>
-              <span><strong>Sprint</strong>{APP_SPRINT}</span>
-              <span><strong>Build</strong>{APP_BUILD}</span>
+              <span><strong>Version</strong>{settings.project.version}</span>
+              <span><strong>Sprint</strong>{settings.project.sprint}</span>
+              <span><strong>Build</strong>{settings.project.build}</span>
               <span><strong>当前主题</strong>{themeMode}</span>
               <span><strong>数据版本</strong>Local v1</span>
               <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
-              <span><strong>最后更新时间</strong>{RELEASE_YEAR}</span>
+              <span><strong>Release Label</strong>{settings.project.releaseLabel}</span>
               <span><strong>角色数量</strong>{characters.length}</span>
               <span><strong>草稿数量</strong>{draftCharacters}</span>
               <span><strong>头像素材</strong>{avatarAssetStats.count}</span>
@@ -460,9 +448,41 @@ function DeveloperCenter({
               <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">GitHub 项目仓库</a>
               <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">Developer Handbook</a>
             </div>
+            <div className="developer-settings-grid">
+              <DeveloperField title="Version" description="统一控制 About、首次 About 与 Developer Center 的版本显示。">
+                <input
+                  value={settings.project.version}
+                  onChange={(event) => updateDeveloperModule("project", { version: event.target.value })}
+                />
+              </DeveloperField>
+              <DeveloperField title="Sprint" description="统一控制当前 Sprint 标识。">
+                <input
+                  value={settings.project.sprint}
+                  onChange={(event) => updateDeveloperModule("project", { sprint: event.target.value })}
+                />
+              </DeveloperField>
+              <DeveloperField title="Build" description="统一控制构建年份或构建号显示。">
+                <input
+                  value={settings.project.build}
+                  onChange={(event) => updateDeveloperModule("project", { build: event.target.value })}
+                />
+              </DeveloperField>
+              <DeveloperField title="Release Label" description="统一控制发布标签。">
+                <input
+                  value={settings.project.releaseLabel}
+                  onChange={(event) => updateDeveloperModule("project", { releaseLabel: event.target.value })}
+                />
+              </DeveloperField>
+              <DeveloperField title="Release Year" description="统一控制版权与发布年份显示。">
+                <input
+                  value={settings.project.releaseYear}
+                  onChange={(event) => updateDeveloperModule("project", { releaseYear: event.target.value })}
+                />
+              </DeveloperField>
+            </div>
             <div className="developer-actions-row">
-              <button className="ghost-button" onClick={() => onResetModule("appearance")} type="button">
-                恢复默认外观
+              <button className="ghost-button" onClick={() => onResetModule("project")} type="button">
+                恢复默认项目信息
               </button>
               <button className="danger-button" onClick={onResetAll} type="button">
                 重置全部 Developer 设置
@@ -470,7 +490,7 @@ function DeveloperCenter({
             </div>
           </article>
 
-          {developerSections.filter((section) => section.id !== "overview").map((section) => (
+          {developerSections.filter((section) => section.id !== "project").map((section) => (
             <article className="developer-card" id={`developer-${section.id}`} key={section.id}>
               <div className="developer-card-title">
                 <span aria-hidden="true">{section.icon}</span>
@@ -511,14 +531,38 @@ function DeveloperCenter({
                     </DeveloperField>
                   </div>
                   <div className="developer-brand-grid">
-                    {["Logo Light", "Logo Dark", "Favicon", "App Icon", "SVG Logo"].map((label) => (
+                    {[
+                      ["Logo", "src/assets/logo.svg"],
+                      ["Dark Logo", "CSS theme token"],
+                      ["Light Logo", "CSS theme token"],
+                      ["SVG Logo", "public/favicon.svg"],
+                      ["Favicon", "public/favicon.svg"],
+                      ["App Icon", "public/favicon.svg"],
+                      ["PWA Icon", "Coming Soon"],
+                    ].map(([label, assetPath]) => (
                       <div className="developer-brand-item" key={label}>
                         <svg aria-hidden="true" viewBox="0 0 566.43 637.56">
                           <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
                           <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
                         </svg>
                         <strong>{label}</strong>
-                        <small>当前项目内置资源</small>
+                        <small>{assetPath}</small>
+                        <div className="developer-mini-actions">
+                          <button className="ghost-button" onClick={() => void navigator.clipboard?.writeText(assetPath)} type="button">
+                            复制路径
+                          </button>
+                          <button
+                            className="ghost-button"
+                            onClick={() =>
+                              label === "SVG Logo"
+                                ? downloadTextFile(brandLogoSvgMarkup, "character-studio-logo.svg", "image/svg+xml")
+                                : void navigator.clipboard?.writeText(`${label} 暂使用内置资源`)
+                            }
+                            type="button"
+                          >
+                            {label === "SVG Logo" ? "导出" : "复制信息"}
+                          </button>
+                        </div>
                       </div>
                     ))}
                     <div className="developer-brand-item">
@@ -530,10 +574,16 @@ function DeveloperCenter({
                   <div className="developer-actions-row">
                     <button
                       className="ghost-button"
-                      onClick={() => navigator.clipboard?.writeText(document.querySelector("svg")?.outerHTML || "")}
+                      onClick={() => navigator.clipboard?.writeText(brandLogoSvgMarkup)}
                       type="button"
                     >
                       复制 SVG
+                    </button>
+                    <button className="ghost-button" onClick={() => downloadTextFile(brandLogoSvgMarkup, "character-studio-logo.svg", "image/svg+xml")} type="button">
+                      导出 SVG
+                    </button>
+                    <button className="ghost-button" disabled type="button">
+                      上传替换 Coming Soon
                     </button>
                     <button className="ghost-button" onClick={() => onResetModule("brandAssets")} type="button">
                       恢复默认品牌设置
@@ -652,11 +702,64 @@ function DeveloperCenter({
                 </>
               )}
               {section.id === "content" && (
-                <div className="developer-readonly-grid">
-                  {contentCards.map(([title, description]) => (
-                    <span key={title}><strong>{title}</strong>{description}</span>
-                  ))}
-                </div>
+                <>
+                  <div className="developer-settings-grid content-settings-grid">
+                    {([
+                      ["aboutTitle", "About 标题", "完整 About 中的项目介绍标题。"],
+                      ["aboutSummary", "About 摘要", "完整 About 中的项目介绍正文。"],
+                      ["firstAboutTagline", "首次 About 标语", "首次欢迎页的产品一句话。"],
+                      ["footerText", "Footer 文案", "全局 Footer 默认文案。"],
+                      ["settingsSummary", "Settings 说明", "Settings 模块说明文案。"],
+                      ["importGuide", "导入说明", "导入 JSON / ZIP 的用户说明。"],
+                      ["exportGuide", "导出说明", "导出 JSON / ZIP / 展示格式的用户说明。"],
+                      ["dialogCopy", "Dialog 说明", "统一弹窗交互说明。"],
+                      ["toastCopy", "Toast 说明", "统一 Toast 反馈说明。"],
+                      ["privacy", "Privacy", "本地数据与隐私说明。"],
+                      ["license", "License", "版权与授权说明。"],
+                    ] as Array<[keyof DeveloperSettings["content"], string, string]>).map(([key, title, description]) => (
+                      <DeveloperField key={key} title={title} description={description}>
+                        <textarea
+                          value={settings.content[key]}
+                          onChange={(event) => {
+                            if (key === "footerText") {
+                              onSettingsChange({
+                                ...settings,
+                                content: {
+                                  ...settings.content,
+                                  footerText: event.target.value,
+                                },
+                                application: {
+                                  ...settings.application,
+                                  footerText: event.target.value,
+                                },
+                              });
+                              return;
+                            }
+
+                            updateDeveloperModule("content", { [key]: event.target.value });
+                          }}
+                        />
+                      </DeveloperField>
+                    ))}
+                  </div>
+                  <div className="developer-actions-row">
+                    <button
+                      className="ghost-button"
+                      onClick={() => void navigator.clipboard?.writeText(JSON.stringify(settings.content, null, 2))}
+                      type="button"
+                    >
+                      复制 Content JSON
+                    </button>
+                    <button className="ghost-button" onClick={() => onResetModule("content")} type="button">
+                      恢复默认内容
+                    </button>
+                  </div>
+                  <div className="developer-readonly-grid">
+                    {contentCards.map(([title, description]) => (
+                      <span key={title}><strong>{title}</strong>{description}</span>
+                    ))}
+                  </div>
+                </>
               )}
               {section.id === "prompt" && !settings.featureFlags.promptCenter && (
                 <div className="developer-readonly-grid">
@@ -707,6 +810,13 @@ function DeveloperCenter({
                         <option value="strict">严格</option>
                       </select>
                     </DeveloperField>
+                    <DeveloperField title="自定义 Prompt Library" description="追加本地词库，使用与 external-inspiration-library.txt 相同格式。">
+                      <textarea
+                        placeholder="// ===== shared.symbols&#10;&quot;一枚旧戒指&quot;,"
+                        value={settings.promptCenter.customLibraryText}
+                        onChange={(event) => updateDeveloperModule("promptCenter", { customLibraryText: event.target.value })}
+                      />
+                    </DeveloperField>
                   </div>
                   <div className="developer-stat-grid compact">
                     <span><strong>当前词库</strong>external-inspiration-library.txt</span>
@@ -718,6 +828,16 @@ function DeveloperCenter({
                   </div>
                   <button className="ghost-button" onClick={() => onResetModule("promptCenter")} type="button">
                     恢复默认 Prompt 设置
+                  </button>
+                  <button
+                    className="ghost-button"
+                    onClick={() => downloadTextFile(settings.promptCenter.customLibraryText, "character-studio-custom-prompt-library.txt")}
+                    type="button"
+                  >
+                    导出自定义词库
+                  </button>
+                  <button className="ghost-button" disabled type="button">
+                    文件导入 Coming Soon
                   </button>
                 </>
               )}
@@ -853,9 +973,17 @@ function DeveloperCenter({
                       </DeveloperField>
                     ))}
                   </div>
-                  <h3 className="developer-subtitle">Export / 导出默认值</h3>
+                  <div className="developer-stat-grid compact">
+                    {appConfig.map(([label, value]) => (
+                      <span key={label}><strong>{label}</strong>{value}</span>
+                    ))}
+                  </div>
+                </>
+              )}
+              {section.id === "export" && (
+                <>
                   <div className="developer-settings-grid">
-                    <DeveloperField title="JPG 默认质量" description="同步到现有 JPG 导出设置。">
+                    <DeveloperField title="JPG 默认质量" description="控制 Preview JPG 导出的压缩质量。">
                       <input
                         max="1"
                         min="0.1"
@@ -865,7 +993,7 @@ function DeveloperCenter({
                         value={settings.exportDefaults.jpgQuality}
                       />
                     </DeveloperField>
-                    <DeveloperField title="PNG 导出倍率" description="控制 Preview 图片与 PDF 截图倍率，实时应用。" status="applied">
+                    <DeveloperField title="PNG / PDF 截图倍率" description="控制 Preview 图片与 PDF 截图倍率，实时应用。">
                       <input
                         max="4"
                         min="1"
@@ -887,12 +1015,80 @@ function DeveloperCenter({
                         />
                       </DeveloperField>
                     ))}
-                  </div>
-                  <div className="developer-stat-grid compact">
-                    {appConfig.map(([label, value]) => (
-                      <span key={label}><strong>{label}</strong>{value}</span>
+                    {(["JSON Metadata", "CSV 字段配置", "ZIP Manifest 策略", "Logo 导出开关", "Version 导出开关"] as const).map((label) => (
+                      <DeveloperField key={label} title={label} description="该导出规则当前保持固定，后续提供可视化配置。" status="comingSoon">
+                        <button className="ghost-button" disabled type="button">Coming Soon</button>
+                      </DeveloperField>
                     ))}
                   </div>
+                  <div className="developer-actions-row">
+                    <button className="ghost-button" onClick={() => onResetModule("exportDefaults")} type="button">
+                      恢复默认导出规则
+                    </button>
+                  </div>
+                </>
+              )}
+              {section.id === "tools" && (
+                <>
+                  <div className="developer-stat-grid compact">
+                    <span><strong>localStorage</strong>{getSafeStorageStatus()} · {formatAssetSize(localStorageSize)}</span>
+                    <span><strong>IndexedDB</strong>{indexedDbStatus} · {formatAssetSize(avatarAssetStats.size)}</span>
+                    <span><strong>当前 Theme</strong>{themeMode}</span>
+                    <span><strong>当前路由</strong>{currentPage === "developer" ? "/developer" : currentPage}</span>
+                    <span><strong>角色数量</strong>{characters.length}</span>
+                    <span><strong>正式角色</strong>{formalCharacters}</span>
+                    <span><strong>草稿数量</strong>{draftCharacters}</span>
+                    <span><strong>收藏数量</strong>{favoriteCharacters}</span>
+                    <span><strong>头像素材</strong>{avatarAssetStats.count}</span>
+                    <span><strong>已绑定头像</strong>{avatarBindings}</span>
+                    <span><strong>未绑定头像</strong>{unboundAvatarAssets}</span>
+                    <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
+                  </div>
+                  <div className="developer-actions-row">
+                    <button className="ghost-button" onClick={onOpenAssetLibrary} type="button">
+                      打开头像素材库
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() => void navigator.clipboard?.writeText(JSON.stringify(settings, null, 2))}
+                      type="button"
+                    >
+                      导出 / 复制 Developer Config
+                    </button>
+                    <button className="ghost-button" onClick={onExportCharactersJson} type="button">
+                      导出角色 JSON
+                    </button>
+                    <button className="ghost-button" onClick={onExportFullBackup} type="button">
+                      导出完整备份 ZIP
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() =>
+                        void navigator.clipboard?.writeText(
+                          JSON.stringify(
+                            {
+                              page: currentPage,
+                              themeMode,
+                              localStorage: getSafeStorageStatus(),
+                              indexedDB: indexedDbStatus,
+                              characterCount: characters.length,
+                              avatarAssetStats,
+                              settings,
+                            },
+                            null,
+                            2,
+                          ),
+                        )
+                      }
+                      type="button"
+                    >
+                      复制 Debug Info
+                    </button>
+                    <button className="danger-button" onClick={onResetAll} type="button">
+                      Reset Developer Settings
+                    </button>
+                  </div>
+                  <textarea className="developer-json-preview" readOnly value={JSON.stringify(settings, null, 2)} />
                 </>
               )}
               {section.id === "experimental" && (
@@ -980,12 +1176,12 @@ function DeveloperCenter({
               )}
               {section.id === "update" && (
                 <div className="developer-readonly-grid">
-                  <span><strong>Version</strong>{APP_VERSION}</span>
-                  <span><strong>Sprint</strong>{APP_SPRINT}</span>
-                  <span><strong>Build</strong>{APP_BUILD}</span>
+                  <span><strong>Version</strong>{settings.project.version}</span>
+                  <span><strong>Sprint</strong>{settings.project.sprint}</span>
+                  <span><strong>Build</strong>{settings.project.build}</span>
                   <span><strong>Roadmap</strong>关系网、时间线、世界观管理、AI 创作辅助。</span>
-                  <span><strong>最近记录</strong>Sprint {APP_SPRINT}：Developer Center 功能落地。</span>
-                  <span><strong>发布标签</strong>{APP_RELEASE_LABEL}</span>
+                  <span><strong>最近记录</strong>Sprint {settings.project.sprint}：Project Control Center 重建。</span>
+                  <span><strong>发布标签</strong>{settings.project.releaseLabel}</span>
                 </div>
               )}
               <div className="developer-chip-list">
@@ -1131,6 +1327,7 @@ function App() {
     localStorage.setItem("character-studio.prompt.random-missing-fields", String(developerSettings.promptCenter.randomMissingFields));
     localStorage.setItem("character-studio.prompt.complexity", developerSettings.promptCenter.complexity);
     localStorage.setItem("character-studio.prompt.repeat-control", developerSettings.promptCenter.repeatControl);
+    localStorage.setItem("character-studio.prompt.custom-library", developerSettings.promptCenter.customLibraryText);
 
     if (!developerSettings.application.showFirstAbout) {
       localStorage.setItem(ABOUT_SEEN_KEY, "true");
@@ -1668,6 +1865,8 @@ function App() {
       {page === "dashboard" && (
         <Dashboard
           characters={characters}
+          projectInfo={developerSettings.project}
+          contentText={developerSettings.content}
           dashboardSettings={developerSettings.dashboardDefaults}
           aiSettingsEnabled={developerSettings.featureFlags.aiSettings}
           assetLibraryEnabled={developerSettings.featureFlags.assetLibrary}
@@ -1686,7 +1885,7 @@ function App() {
           themeMode={themeMode}
           onSetThemeMode={setThemeMode}
           searchSignal={dashboardSearchSignal}
-          footerText={developerSettings.application.footerText}
+          footerText={developerSettings.content.footerText || developerSettings.application.footerText}
         />
       )}
 
@@ -1708,7 +1907,10 @@ function App() {
       {page === "preview" && selectedCharacter && (
         <CharacterPreview
           character={selectedCharacter}
-          exportSettings={developerSettings.exportDefaults}
+          exportSettings={{
+            ...developerSettings.exportDefaults,
+            footerText: developerSettings.content.footerText,
+          }}
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
           onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}
@@ -1865,7 +2067,7 @@ function App() {
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
             Settings
           </button>
-          <span>{developerSettings.application.footerText}</span>
+          <span>{developerSettings.content.footerText || developerSettings.application.footerText}</span>
         </footer>
       )}
 
@@ -1897,11 +2099,11 @@ function App() {
                     <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
                   </svg>
                   <h2>Character Studio</h2>
-                  <p>轻量、高效、专注于原创角色创作</p>
+                  <p>{developerSettings.content.firstAboutTagline}</p>
                   <div className="about-version-row">
-                    {developerSettings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
-                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
-                    {developerSettings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
+                    {developerSettings.application.showVersion && <span className="status-badge">Version {developerSettings.project.version}</span>}
+                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {developerSettings.project.sprint}</span>}
+                    {developerSettings.application.showBuild && <span className="status-badge">Build {developerSettings.project.build}</span>}
                   </div>
                 </div>
                 <div className="first-about-cards">
@@ -1926,7 +2128,7 @@ function App() {
                     Developer Handbook 开发手册
                   </a>
                 </div>
-                <p className="first-about-credit">RINTO × Codex 共同开发 {RELEASE_YEAR}</p>
+                <p className="first-about-credit">RINTO × Codex 共同开发 {developerSettings.project.releaseYear}</p>
                 <label className="settings-check first-about-switch">
                   <input
                     type="checkbox"
@@ -1941,8 +2143,8 @@ function App() {
               <>
             <div className="about-grid">
               <article>
-                <h3>Character Studio 是什么</h3>
-                <p>一个面向 OC 创作的轻量角色工作台，用于整理角色资料、草稿、预览和备份。</p>
+                <h3>{developerSettings.content.aboutTitle}</h3>
+                <p>{developerSettings.content.aboutSummary}</p>
               </article>
               <article>
                 <h3>核心功能</h3>
@@ -1955,9 +2157,9 @@ function App() {
                 <article>
                   <h3>当前版本</h3>
                   <div className="about-version-row">
-                    {developerSettings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
-                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
-                    {developerSettings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
+                    {developerSettings.application.showVersion && <span className="status-badge">Version {developerSettings.project.version}</span>}
+                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {developerSettings.project.sprint}</span>}
+                    {developerSettings.application.showBuild && <span className="status-badge">Build {developerSettings.project.build}</span>}
                   </div>
                 </article>
               )}
@@ -2025,7 +2227,7 @@ function App() {
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
+                <p className="muted">RINTO 联合 Codex 共同开发 {developerSettings.project.releaseYear}。</p>
               </article>
               {!isFirstAboutOpen && (
                 <article>
@@ -2062,11 +2264,11 @@ function App() {
                 </svg>
                 <div className="about-brand-meta">
                   <h3>Character Studio</h3>
-                  {developerSettings.application.showVersion && <p>Version {APP_VERSION}</p>}
-                  {developerSettings.application.showSprint && <p>Sprint {APP_SPRINT}</p>}
-                  <p>Released {RELEASE_YEAR}</p>
+                  {developerSettings.application.showVersion && <p>Version {developerSettings.project.version}</p>}
+                  {developerSettings.application.showSprint && <p>Sprint {developerSettings.project.sprint}</p>}
+                  <p>Released {developerSettings.project.releaseYear}</p>
                 </div>
-                <p className="about-brand-tagline">轻量、高效、专注于原创角色创作。</p>
+                <p className="about-brand-tagline">{developerSettings.content.firstAboutTagline}</p>
                 <div className="about-brand-links">
                   <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
                     GitHub
@@ -2078,15 +2280,15 @@ function App() {
                 <div className="about-brand-credit">
                   <span>Designed &amp; Developed by</span>
                   <strong>RINTO × Codex</strong>
-                  <span>{RELEASE_YEAR}</span>
+                  <span>{developerSettings.project.releaseYear}</span>
                 </div>
                 <p className="about-brand-copyright">
-                  © {RELEASE_YEAR} RINTO<br />
+                  © {developerSettings.project.releaseYear} RINTO<br />
                   All Rights Reserved.
                 </p>
               </div>
             ) : (
-              <p className="about-footer">RINTO © {RELEASE_YEAR}</p>
+              <p className="about-footer">{developerSettings.content.footerText}</p>
             )}
               </>
             )}
