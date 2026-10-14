@@ -34,6 +34,10 @@
   --z-modal-content: 910;
   --z-toast: 1000;
   --developer-card-radius: 8px;
+  /* Standard dialogs share these two. The crop editor is excluded: it is a
+     full-bleed surface with its own constraints. */
+  --dialog-radius: 10px;
+  --dialog-padding: 20px;
   --developer-button-radius: 8px;
   --developer-font-scale: 1;
   color: var(--text-soft);
@@ -408,28 +412,6 @@ button:disabled {
 .hero-icon-button,
 .bare-icon-button,
 .mini-icon,
-.floating-action {
-  position: relative;
-  display: grid;
-  flex: 0 0 auto;
-  width: 32px;
-  min-height: 32px;
-  height: 32px;
-  place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text-soft);
-  padding: 0;
-  font-size: 15px;
-  font-weight: 850;
-  line-height: 1;
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    color 150ms ease,
-    transform 150ms ease;
-}
 
 .hero-icon-button:hover,
 .hero-icon-button.active,
@@ -692,10 +674,10 @@ h2 {
   max-height: min(520px, calc(100vh - 32px));
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--dialog-radius);
   background: var(--surface);
   box-shadow: var(--shadow-strong);
-  padding: 18px;
+  padding: var(--dialog-padding);
   animation: menu-in 120ms ease-out;
 }
 
@@ -2549,10 +2531,10 @@ input[type="number"]::-webkit-inner-spin-button {
   z-index: var(--z-modal-content);
   width: min(420px, 100%);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--dialog-radius);
   background: var(--surface);
   box-shadow: var(--shadow-strong);
-  padding: 24px;
+  padding: var(--dialog-padding);
   animation: dialog-in var(--duration-medium) var(--ease-standard);
 }
 
@@ -3856,7 +3838,7 @@ input[type="number"]::-webkit-inner-spin-button {
   max-height: min(720px, calc(100vh - 48px));
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--dialog-radius);
   background: var(--surface);
   box-shadow: var(--shadow-strong);
   padding: 22px;
