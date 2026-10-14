@@ -23,6 +23,13 @@
   --shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
   --shadow-strong: 0 16px 34px rgba(15, 23, 42, 0.1);
   --focus-ring: 0 0 0 3px rgba(107, 114, 128, 0.16);
+  /* One inset scale. Surfaces of the same rank have to share a number, otherwise
+     nesting a card inside a panel puts the left edge somewhere new on every page
+     — the same `.panel` measured 24px on the dashboard and 28px in the developer
+     centre, and cards sat at 16, 18 and 20 depending on which page built them. */
+  --pad-surface: 24px;
+  --pad-card: 16px;
+  --pad-rail: 12px;
   --control-height: 42px;
   --control-radius: 8px;
   --btn-gap: 8px;
@@ -45,7 +52,7 @@
   /* Standard dialogs share these two. The crop editor is excluded: it is a
      full-bleed surface with its own constraints. */
   --dialog-radius: 10px;
-  --dialog-padding: 20px;
+  --dialog-padding: var(--pad-surface);
   --developer-button-radius: 8px;
   --developer-font-scale: 1;
   color: var(--text-soft);
@@ -248,11 +255,20 @@ button:disabled {
   padding: 24px 0 48px;
 }
 
+/* The app's own navigation now follows the scroll. Everything that makes the app
+   navigable — the brand link, the dashboard button, the theme switcher — used to
+   leave the viewport once the character list grew long. Blurred rather than solid
+   so the edges of panels scrolling underneath stay faintly visible. */
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-dropdown);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(12px);
   margin-bottom: 24px;
 }
 
@@ -398,7 +414,7 @@ button:disabled {
 }
 
 .panel {
-  padding: 24px;
+  padding: var(--pad-surface);
 }
 
 .page-grid {
@@ -951,7 +967,7 @@ h2 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
-  padding: 28px;
+  padding: var(--pad-surface);
 }
 
 .developer-hero h1 {
@@ -998,7 +1014,7 @@ h2 {
   border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
-  padding: 10px;
+  padding: var(--pad-rail);
 }
 
 .developer-nav a {
@@ -1048,7 +1064,7 @@ h2 {
   border-radius: var(--developer-card-radius);
   background: var(--surface);
   box-shadow: var(--shadow);
-  padding: 16px;
+  padding: var(--pad-card);
 }
 
 .developer-card-title {
@@ -2890,6 +2906,41 @@ input[type="number"]::-webkit-inner-spin-button {
 
 /* Sits below the sticky action bar (10px offset + ~56px tall + a gap) so the
    two sticky layers stack instead of covering each other. */
+/* Progress summary at the head of the module rail. */
+.nav-progress {
+  display: grid;
+  gap: 7px;
+  border-bottom: 1px solid var(--border);
+  padding: 2px 0 9px;
+}
+
+.nav-progress-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.nav-progress-label strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.nav-progress-track {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.nav-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width var(--duration-medium) var(--ease-standard);
+}
+
 .workspace-nav {
   position: sticky;
   top: 80px;
@@ -2962,7 +3013,7 @@ input[type="number"]::-webkit-inner-spin-button {
   border: 0;
   background: transparent;
   color: var(--text);
-  padding: 18px;
+  padding: var(--pad-card);
   text-align: left;
 }
 
@@ -2991,7 +3042,7 @@ input[type="number"]::-webkit-inner-spin-button {
   display: grid;
   gap: 16px;
   border-top: 1px solid var(--border);
-  padding: 18px;
+  padding: var(--pad-card);
 }
 
 .avatar-editor {

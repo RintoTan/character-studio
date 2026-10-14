@@ -48,6 +48,19 @@ export type IconName =
   | "trash"
   | "upload";
 
+// Optical nudges, in viewBox units. Centring the viewBox is not the same as
+// centring what the eye reads: measuring every icon's real ink bounding box (with
+// the stroke inflated by half its width) showed three glyphs sitting visibly off
+// centre — the heart rode 0.93 low, and both the sparkle pair and the wrench are
+// lopsided because their second mass sits on one side. The other thirty-seven
+// measured within 0.5 units, which is under half a pixel at the sizes the UI uses,
+// so they are left exactly as drawn rather than nudged for the sake of symmetry.
+const OPTICAL_OFFSET: Partial<Record<IconName, [number, number]>> = {
+  heart: [0, -0.93],
+  sparkles: [-1.35, -0.5],
+  tool: [-0.75, 0.65],
+};
+
 const ICONS: Record<IconName, ReactNode> = {
   arrowDown: <path d="M12 5v14m0 0-5.5-5.5M12 19l5.5-5.5" />,
   arrowLeft: <path d="M19 12H5m0 0 6-6m-6 6 6 6" />,
@@ -254,6 +267,11 @@ export function Icon({ name, size = 18, filled = false, className }: IconProps) 
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={1.7}
+        transform={
+          OPTICAL_OFFSET[name]
+            ? `translate(${OPTICAL_OFFSET[name]![0]} ${OPTICAL_OFFSET[name]![1]})`
+            : undefined
+        }
       >
         {ICONS[name]}
       </g>

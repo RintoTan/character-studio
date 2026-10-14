@@ -1555,6 +1555,24 @@ export function CharacterForm({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [cropDraft]);
 
+  // The primary action had no keyboard route at all: on a form this long the save
+  // button can be scrolled out of view, and Cmd/Ctrl+S is what a desktop user
+  // reaches for anyway. Delete/backspace and every other browser default stay
+  // untouched because only this one combination is intercepted.
+  useEffect(() => {
+    function handleSaveShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") {
+        return;
+      }
+
+      event.preventDefault();
+      void saveCurrentCharacter();
+    }
+
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  });
+
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
       if (!isAvatarImageMenuOpen) {
@@ -3529,6 +3547,27 @@ export function CharacterForm({
 
       <form className="workspace-layout" onSubmit={handleSubmit}>
         <aside className="workspace-nav" aria-label="模块导航">
+          {/* The rail only ever showed one section's state at a time, so the
+              answer to "how much is left" was a manual count down six rows. */}
+          {(() => {
+            const total = visibleSectionMeta.length;
+            const done = visibleSectionMeta.filter(
+              (section) => completionStatus(section.id, formData) === "已完成",
+            ).length;
+            return (
+              <div className="nav-progress">
+                <span className="nav-progress-label">
+                  已完成 <strong>{done}</strong> / {total}
+                </span>
+                <span className="nav-progress-track" aria-hidden="true">
+                  <span
+                    className="nav-progress-fill"
+                    style={{ width: `${total === 0 ? 0 : Math.round((done / total) * 100)}%` }}
+                  />
+                </span>
+              </div>
+            );
+          })()}
           {visibleSectionMeta.map((section) => (
             <button
               className={activeSection === section.id ? "active" : ""}

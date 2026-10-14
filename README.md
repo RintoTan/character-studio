@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v2.2.0**（Sprint 12.1）—— 视觉对齐、统一按钮语言、编辑页操作条吸顶。
+> **发布状态：v2.3.0**（Sprint 13.1）—— 统一间距标尺、顶栏跟随、图标光学重心与编辑页进度总览。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 
