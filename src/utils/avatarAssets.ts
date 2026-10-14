@@ -230,7 +230,12 @@ export async function clearAvatarAssets() {
 }
 
 export async function listAvatarAssets() {
-  return withStore<AvatarAssetRecord[]>("readonly", (store) => store.getAll());
+  const records = await withStore<AvatarAssetRecord[]>("readonly", (store) => store.getAll());
+
+  // getAll() returns records in key order, and the key is a random UUID, so the
+  // library was rendering in an effectively arbitrary order. Newest first is
+  // what every caller wants, so it is decided here rather than in each view.
+  return records.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
 }
 
 function blobToDataUrl(blob: Blob) {
