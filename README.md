@@ -125,7 +125,7 @@ Character Studio 当前是 Local First 应用。
 
 ```text
 src/
-├── App.tsx
+├── App.tsx                    # 应用外壳、路由状态、页面调度
 ├── main.tsx
 ├── styles.css
 ├── components/
@@ -133,15 +133,37 @@ src/
 ├── pages/
 │   ├── Dashboard.tsx
 │   ├── CharacterForm.tsx
-│   └── CharacterPreview.tsx
+│   ├── CharacterPreview.tsx
+│   └── DeveloperCenter.tsx     # 开发者中心（按需加载）
+├── config/
+│   ├── developerSettings.ts
+│   ├── themeTokens.ts
+│   └── version.ts              # 版本号 + 构建时注入的 commit
 ├── storage/
 │   └── characterStorage.ts
 ├── types/
+│   ├── app.ts                  # 页面 / 主题类型
 │   └── character.ts
 └── utils/
     ├── avatarAssets.ts
     └── importExport.ts
+
+scripts/
+├── build-info.mjs              # 产出 build-info.json / 404.html / .nojekyll
+└── verify-deploy.mjs           # 校验线上产物与本地构建一致
 ```
+
+### 首屏与按需加载
+
+`Dashboard` 静态打入首屏包（它是落地页，走二次请求反而更慢）；`CharacterForm`、
+`CharacterPreview` 和 `DeveloperCenter` 通过 `React.lazy` 拆分，只在真正打开时下载。
+词库文件 `external-inspiration-library.txt`（37 KB）因此也移出了首屏。
+
+| 产物 | 优化前 | 优化后 |
+| --- | --- | --- |
+| 首屏 JS | 417.3 KB（gzip 131.8 KB） | 265.5 KB（gzip 78.5 KB） |
+| 首屏 CSS | 81.9 KB（gzip 14.7 KB） | 82.5 KB（gzip 14.9 KB） |
+| 按需加载 | html2canvas、jsPDF | 另加编辑器 67.1 KB、开发者中心 37.4 KB、展示页 10.8 KB、词库 37.3 KB |
 
 更完整的架构、历史和维护说明请阅读：
 
@@ -174,6 +196,36 @@ npm run build
 ```bash
 npm run preview
 ```
+
+其他脚本：
+
+```bash
+npm run typecheck        # 仅类型检查
+npm run build:pages      # 构建 GitHub Pages 版本（带子路径与构建信息）
+npm run verify:deploy    # 比对线上产物与本地构建
+```
+
+---
+
+## 部署
+
+线上地址：<https://rintotan.github.io/character-studio/>
+
+发布流程由 [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml) 驱动：
+推送到 `main` 触发 `pnpm install --frozen-lockfile` → `typecheck` → `build:pages`
+→ `upload-pages-artifact` → `deploy-pages`。本地不再需要手工发布。
+
+几个容易踩的点：
+
+- **子路径**：站点发布在 `/character-studio/` 而不是域名根目录，所有资源 URL 都依赖
+  `vite build --base=/character-studio/`。开发与 `vite preview` 仍跑在根路径。
+- **深链接**：`/character-studio/developer` 在静态托管上会 404，因此构建时把 `index.html`
+  复制为 `404.html`；应用启动时读取 URL 决定进入哪个页面。页面路由 URL 由
+  `import.meta.env.BASE_URL` 推导，不写死 `/developer`。
+- **版本漂移**：只靠手写的 `version.ts` 标签无法证明线上跑的是哪个提交。构建会把
+  commit 与时间戳注入前端（About 面板可见），同时产出 `build-info.json`；
+  `npm run verify:deploy` 会校验线上入口包、样式表、文件字节数和 commit 是否与本地构建一致，
+  不一致就以非零码退出。
 
 ---
 
@@ -220,6 +272,20 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
 - Preview 展示页
 - Light / Dark Theme
 - 基础 Design System 控件
+- Developer Center（版本/品牌/设计系统/文案/Prompt/应用配置/导出/工具）
+
+### 可访问性
+
+已在真实渲染层（而非只看样式表）核对过 Dashboard、Editor、Developer Center 的
+浅色与深色两套主题，以及 375px 窄视口：
+
+- 正文与辅助文字对比度均达到 WCAG AA
+- 可缩放：viewport 不再声明 `user-scalable=no` / `maximum-scale=1`，允许双指放大
+- 开关控件带 `role="switch"` 与 `aria-checked`，状态可被读屏识别
+- 无无名可聚焦控件、无缺 `alt` 图片、375px 无横向滚动
+
+主按钮文字颜色不再硬编码：强调色可在 Developer Center 修改，`--on-primary`
+会按对比度自动在白色与近黑之间取值。
 
 ---
 
