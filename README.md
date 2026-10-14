@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v2.4.1**（Sprint 14.2）—— 二级页面复核：页脚落底、行内删除统一为危险语言。
+> **发布状态：v2.5.0**（Sprint 15.1）—— 编辑页折叠记忆与「跳到下一个未完成」、z-index 令牌化、关系网画布自适应。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 
@@ -301,17 +301,29 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
 
 ## Roadmap
 
+已交付（原先列在这里的三项，随 1.1.0 / 1.2.0 / 2.0.0 上线）：
+
+- ~~Character Relationship：角色关系网~~（v1.1.0）
+- ~~Timeline：角色和世界事件时间线~~（v1.2.0）
+- ~~World Manager：世界观管理~~（v2.0.0）
+
 未来可能扩展：
 
-- Character Relationship：角色关系网
-- Timeline：角色和世界事件时间线
-- World Manager：世界观管理
 - Faction / Organization：阵营与组织
 - Map / Location：地图与地点
 - Multi-version Character：多版本角色
 - AI Assistant：AI 创作辅助
 - Cloud Sync：云同步
 - Plugin System：插件与模板系统
+
+### 已知未完成（内部质量项，按当前优先级）
+
+- **把 Dashboard 与 CharacterForm 的 JSX 拆成容器 / 展示组件。** 两个页面各约 3300 / 3600 行，
+  纯逻辑（筛选排序、完成度规则、区块元数据）已经抽出并可单测，剩下的巨型渲染函数尚未拆。
+  这不是「顺手改改」的一批：卡片与编辑器区块承载拖拽、批量选择、弹窗与自动保存，
+  需要先补齐针对这些交互的探针再做，否则是用回归风险换行数。
+- **卡片菜单的交互复审**（本批只加了危险项分隔线，键 Esc 与外部点击关闭在更早批次已完成）。
+- **74 组共用声明体的 CSS 合并**（见 CHANGELOG 2.5.0 的实测口径，需逐条判断层叠位置）。
 
 当前阶段仍以本地优先、数据安全、导入导出稳定和 UI 一致性为主。
 

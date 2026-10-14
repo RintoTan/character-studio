@@ -37,6 +37,24 @@
   --duration-fast: 150ms;
   --duration-medium: 190ms;
   --emoji-font: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+  /* The inline/overlay ladder, low to high. Named by depth rather than by role,
+     because the roles kept changing while the depths did not: a card menu and a
+     table menu are the same tier even though one is "inside a card". Every value
+     here is the literal it replaced, so nothing moved in the stacking order. */
+  --z-inline-1: 2;
+  --z-inline-2: 3;
+  --z-inline-3: 5;
+  --z-inline-4: 7;
+  --z-inline-5: 8;
+  --z-inline-6: 12;
+  --z-overlay-1: 20;
+  --z-overlay-2: 24;
+  --z-overlay-3: 30;
+  --z-overlay-4: 35;
+  --z-overlay-5: 40;
+  --z-overlay-6: 120;
+  --z-overlay-7: 130;
+  --z-overlay-8: 160;
   --z-dropdown: 80;
   --z-modal-overlay: 900;
   --z-modal-content: 910;
@@ -57,9 +75,12 @@
   --developer-font-scale: 1;
   color: var(--text-soft);
   background: var(--bg);
+  /* The emoji stack rides on the root family, so an emoji that ends up in any
+     field, tag, badge or piece of body copy renders in colour instead of falling
+     back to whatever the platform picks for an uncovered codepoint. */
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+    "Segoe UI", var(--emoji-font);
   line-height: 1.5;
 }
 
@@ -370,7 +391,7 @@ button:disabled {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 8;
+  z-index: var(--z-inline-5);
   display: grid;
   min-width: 132px;
   border: 1px solid var(--border);
@@ -536,7 +557,7 @@ button:disabled {
   position: absolute;
   top: calc(100% + 9px);
   left: 50%;
-  z-index: 8;
+  z-index: var(--z-inline-5);
   width: max-content;
   max-width: 140px;
   border: 1px solid var(--border);
@@ -736,7 +757,7 @@ h2 {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
-  z-index: 5;
+  z-index: var(--z-inline-3);
   display: grid;
   min-width: 190px;
   border: 1px solid var(--border);
@@ -770,7 +791,7 @@ h2 {
 }
 
 .export-backdrop {
-  z-index: 24;
+  z-index: var(--z-overlay-2);
 }
 
 .export-dialog {
@@ -1578,7 +1599,7 @@ h2 {
   position: absolute;
   top: 10px;
   right: 10px;
-  z-index: 2;
+  z-index: var(--z-inline-1);
   display: grid;
   width: 30px;
   height: 30px;
@@ -1845,7 +1866,7 @@ h2 {
 }
 
 .table-card-menu {
-  z-index: 20;
+  z-index: var(--z-overlay-1);
 }
 
 .select-circle.inline {
@@ -1877,7 +1898,7 @@ h2 {
 
 .character-card.menu-open,
 .character-table-row.menu-open {
-  z-index: 30;
+  z-index: var(--z-overlay-3);
 }
 
 .character-card.selected {
@@ -1889,7 +1910,7 @@ h2 {
   position: absolute;
   top: 14px;
   right: 14px;
-  z-index: 3;
+  z-index: var(--z-inline-2);
   width: 24px;
   min-height: 24px;
   height: 24px;
@@ -2201,7 +2222,7 @@ h2 {
   position: absolute;
   right: 0;
   top: calc(100% + 8px);
-  z-index: 40;
+  z-index: var(--z-overlay-5);
   display: grid;
   min-width: 152px;
   border: 1px solid var(--border);
@@ -2274,6 +2295,16 @@ h2 {
 
 .card-menu .menu-danger {
   color: var(--danger);
+}
+
+/* A hairline between the ordinary items and the destructive one, so a mis-aimed
+   click at the bottom of the menu does not land on 删除. */
+.menu-separator {
+  display: block;
+  align-self: stretch;
+  height: 1px;
+  margin: 5px 2px;
+  background: var(--border);
 }
 
 .mobile-icon {
@@ -2971,6 +3002,40 @@ input[type="number"]::-webkit-inner-spin-button {
   transition: width var(--duration-medium) var(--ease-standard);
 }
 
+/* Reads as the rail's next step rather than as another section row: it is inside
+   the progress block, so it shares that block's spacing and can never be mistaken
+   for a destination in the section list below. */
+.nav-jump-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 30px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text-soft);
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.nav-jump-button:hover:not(:disabled) {
+  border-color: var(--muted);
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.nav-jump-button:disabled {
+  border-color: var(--border);
+  color: var(--muted);
+  opacity: 1;
+}
+
 .workspace-nav {
   position: sticky;
   top: calc(var(--topbar-height, 46px) + 8px + var(--editor-bar-height, 62px) + 12px);
@@ -3539,7 +3604,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .avatar-preview-backdrop {
-  z-index: 160;
+  z-index: var(--z-overlay-8);
 }
 
 .avatar-preview-dialog {
@@ -4559,7 +4624,7 @@ kbd {
   position: fixed;
   right: 24px;
   bottom: 24px;
-  z-index: 7;
+  z-index: var(--z-inline-4);
   display: grid;
   width: 44px;
   min-height: 44px;
@@ -4586,11 +4651,14 @@ kbd {
   position: fixed;
   right: 22px;
   bottom: 22px;
-  z-index: 12;
+  z-index: var(--z-inline-6);
   display: grid;
   gap: 9px;
 }
 
+/* Speaks the same language as the buttons inside the page: border, fill and
+   colour move, the control itself does not travel. The glyph-era font-size and
+   font-weight are gone with the text glyphs they were sizing. */
 .floating-action {
   position: relative;
   display: grid;
@@ -4598,26 +4666,32 @@ kbd {
   min-height: 44px;
   height: 44px;
   place-items: center;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
-  color: var(--text);
+  color: var(--text-soft);
   box-shadow: var(--shadow-strong);
   padding: 0;
-  font-size: 18px;
-  font-weight: 900;
   backdrop-filter: blur(10px);
   transition:
-    transform 150ms ease,
-    box-shadow 150ms ease,
-    background 150ms ease,
-    border-color 150ms ease;
+    background var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 
 .floating-action:hover {
-  border-color: var(--border-strong);
+  border-color: var(--muted);
   background: var(--surface-subtle);
-  transform: translateY(-2px);
+  color: var(--text);
+}
+
+.floating-action:active {
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.floating-action:focus-visible {
+  box-shadow: var(--focus-ring), var(--shadow-strong);
 }
 
 .floating-action::before {
@@ -5350,7 +5424,7 @@ kbd {
   .table-card-menu {
     position: fixed;
     inset: auto 12px calc(12px + env(safe-area-inset-bottom)) 12px;
-    z-index: 80;
+    z-index: var(--z-dropdown);
     max-height: min(72vh, 420px);
     overflow-y: auto;
     min-width: 0;
@@ -5408,7 +5482,7 @@ kbd {
     position: absolute;
     top: 12px;
     right: 12px;
-    z-index: 35;
+    z-index: var(--z-overlay-4);
   }
 
   .card-tags button:nth-of-type(n + 5) {
@@ -5549,14 +5623,14 @@ kbd {
   }
 
   .export-backdrop {
-    z-index: 120;
+    z-index: var(--z-overlay-6);
   }
 
   .export-dialog,
   .mobile-bulk-dialog {
     position: fixed;
     inset: auto 10px calc(10px + env(safe-area-inset-bottom)) 10px;
-    z-index: 130;
+    z-index: var(--z-overlay-7);
     width: auto;
     max-width: none;
     max-height: min(76vh, 460px);
@@ -5604,10 +5678,14 @@ kbd {
     bottom: calc(14px + env(safe-area-inset-bottom));
   }
 
+  /* These shrink to 40px on phones, which is under the 44px comfortable touch
+     target and smaller than the same control on the desktop it is meant to
+     mirror. They keep their full size now; the cluster is 44px wide against a
+     14px inset, so it still clears the edge. */
   .floating-action {
-    width: 40px;
-    min-height: 40px;
-    height: 40px;
+    width: 44px;
+    min-height: 44px;
+    height: 44px;
   }
 
   .floating-action::before {

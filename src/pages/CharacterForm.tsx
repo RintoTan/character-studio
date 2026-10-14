@@ -10,7 +10,14 @@ import {
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
+import {
+  defaultCollapseState,
+  loadCollapseState,
+  saveCollapseState,
+  type EditorSectionId,
+} from "../storage/editorUiState";
 import type { Character } from "../types/character";
+import { fragmentRoot } from "../utils/textFragments";
 import {
   compressImageToAvatarBlob,
   listAvatarAssets,
@@ -19,6 +26,12 @@ import {
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
 import { CharacterPreview } from "./CharacterPreview";
+import {
+  EDITOR_SECTIONS,
+  completionStatus,
+  nextUnfinishedSection,
+  sectionShortTitle,
+} from "./editor/sections";
 import { loadDeveloperSettings, type DeveloperSettings } from "../config/developerSettings";
 
 type CharacterDraft = Omit<Character, "id" | "updatedAt">;
@@ -44,13 +57,9 @@ type CharacterFormProps = {
   onCancel: () => void;
 };
 
-type SectionId =
-  | "basic"
-  | "appearance"
-  | "personality"
-  | "ability"
-  | "backstory"
-  | "prompt";
+// The section list lives in storage/editorUiState so the fold memory and the
+// editor cannot drift apart about which sections exist.
+type SectionId = EditorSectionId;
 
 type AvatarCategory = {
   id: string;
@@ -721,19 +730,6 @@ const promptValueMap: Record<string, string> = {
   "3A 游戏 CG": "AAA game cinematic CG style",
 };
 
-const sectionMeta: Array<{
-  id: SectionId;
-  title: string;
-  description: string;
-}> = [
-  { id: "basic", title: "基础信息", description: "角色身份、头像与基础档案。" },
-  { id: "appearance", title: "外貌设定", description: "角色可视化的轮廓、服装与标志物。" },
-  { id: "personality", title: "性格设定", description: "用标签和短描述确定角色气质。" },
-  { id: "ability", title: "能力设定", description: "技能、限制、战斗或特殊天赋。" },
-  { id: "backstory", title: "背景故事", description: "经历、关系、目标与隐藏秘密。" },
-  { id: "prompt", title: "AI Prompt", description: "本地生成关键词和英文绘图 Prompt。" },
-];
-
 function cleanText(value?: string) {
   return value
     ?.trim()
@@ -777,11 +773,15 @@ function normalizePromptPart(value?: string) {
 
 // Fragments already used by the current generation. Without this the same
 // fragment could be picked for several fields at once, which is what made the
-// generated inspiration feel repetitive.
+// generated inspiration feel repetitive. Exact matches were not enough: two
+// fragments that open with the same words read as one idea, so the opening is
+// tracked too.
 let usedFragments = new Set<string>();
+let usedFragmentRoots = new Set<string>();
 
 function resetUsedFragments() {
   usedFragments = new Set<string>();
+  usedFragmentRoots = new Set<string>();
 }
 
 function pickRandom(options: string[]) {
@@ -789,11 +789,14 @@ function pickRandom(options: string[]) {
     return "";
   }
 
-  const fresh = options.filter((option) => !usedFragments.has(option));
+  const fresh = options.filter(
+    (option) => !usedFragments.has(option) && !usedFragmentRoots.has(fragmentRoot(option)),
+  );
   // Once a pool is exhausted, reuse rather than returning nothing.
   const pool = fresh.length ? fresh : options;
   const value = pool[Math.floor(Math.random() * pool.length)];
   usedFragments.add(value);
+  usedFragmentRoots.add(fragmentRoot(value));
   return value;
 }
 
@@ -1273,25 +1276,6 @@ function autoGrowTextArea(event: ChangeEvent<HTMLTextAreaElement>) {
   event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
 }
 
-function completionStatus(sectionId: SectionId, data: CharacterDraft) {
-  const checks: Record<SectionId, boolean[]> = {
-    basic: [data.name, data.gender, data.species, data.occupation, data.worldview].map(Boolean),
-    appearance: [Boolean(data.appearanceDescription), Boolean(data.visualStyle)],
-    personality: [Boolean(data.personalityTags?.length)],
-    ability: [Boolean(data.abilityDescription)],
-    backstory: [Boolean(data.backstory)],
-    prompt: [Boolean(data.characterKeywords), Boolean(data.imagePrompt)],
-  };
-  const values = checks[sectionId];
-  const filled = values.filter(Boolean).length;
-
-  if (filled === 0) {
-    return "未完成";
-  }
-
-  return filled === values.length ? "已完成" : "部分完成";
-}
-
 export function CharacterForm({
   character,
   editorSettings = defaultEditorSettings,
@@ -1323,6 +1307,7 @@ export function CharacterForm({
   const [formError, setFormError] = useState("");
   const [isRandomizing, setIsRandomizing] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const toastTimerRef = useRef<number | null>(null);
   const [activeAvatarCategoryId, setActiveAvatarCategoryId] = useState(
     avatarCategories[0].id,
   );
@@ -1372,14 +1357,9 @@ export function CharacterForm({
   const actionBarRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("basic");
   const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
-  const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>({
-    basic: false,
-    appearance: false,
-    personality: false,
-    ability: false,
-    backstory: false,
-    prompt: false,
-  });
+  const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>(
+    () => loadCollapseState() ?? defaultCollapseState,
+  );
   const [saveStatus, setSaveStatus] = useState<
     "idle" | "saving" | "saved" | "error"
   >("idle");
@@ -1401,7 +1381,7 @@ export function CharacterForm({
     [character, formData],
   );
 
-  const visibleSectionMeta = sectionMeta.filter((section) =>
+  const visibleSectionMeta = EDITOR_SECTIONS.filter((section) =>
     section.id === "prompt" ? showPromptSection : true,
   );
 
@@ -1457,17 +1437,10 @@ export function CharacterForm({
     setFormError("");
     setEditorMode("edit");
     if (effectiveEditorSettings.expandAllSections) {
-      setCollapsedSections({
-        basic: false,
-        appearance: false,
-        personality: false,
-        ability: false,
-        backstory: false,
-        prompt: false,
-      });
+      setCollapsedSections(defaultCollapseState);
     } else if (effectiveEditorSettings.collapseAllSections) {
       setCollapsedSections({
-        basic: false,
+        ...defaultCollapseState,
         appearance: true,
         personality: true,
         ability: true,
@@ -1477,6 +1450,15 @@ export function CharacterForm({
     }
     clearPendingAvatar();
   }, [character?.id, effectiveEditorSettings.collapseAllSections, effectiveEditorSettings.expandAllSections]);
+
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current !== null) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!effectiveEditorSettings.autoSave || !character?.isDraft || !onAutoSave) {
@@ -1941,20 +1923,37 @@ export function CharacterForm({
   }
 
   function showToast(message: string) {
+    // Each toast used to arm its own timer, so a second action inside 1.8s had
+    // its message cut off by the first one's timer. One timer, restarted.
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+
     setToastMessage(message);
-    window.setTimeout(() => setToastMessage(""), 1800);
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage("");
+      toastTimerRef.current = null;
+    }, 1800);
+  }
+
+  // Folding a module is a work habit, so both the toggle and a jump write the
+  // new layout through. The state is applied directly rather than from the
+  // updater so the stored value is exactly what this action produced.
+  function applyCollapseState(next: Record<SectionId, boolean>) {
+    setCollapsedSections(next);
+    saveCollapseState(next);
   }
 
   function toggleSection(sectionId: SectionId) {
-    setCollapsedSections((current) => ({
-      ...current,
-      [sectionId]: !current[sectionId],
-    }));
+    applyCollapseState({
+      ...collapsedSections,
+      [sectionId]: !collapsedSections[sectionId],
+    });
   }
 
   function jumpToSection(sectionId: SectionId) {
     setActiveSection(sectionId);
-    setCollapsedSections((current) => ({ ...current, [sectionId]: false }));
+    applyCollapseState({ ...collapsedSections, [sectionId]: false });
     window.setTimeout(() => {
       document
         .getElementById(`workspace-${sectionId}`)
@@ -1962,17 +1961,22 @@ export function CharacterForm({
     }, 0);
   }
 
-  function getSectionShortTitle(sectionId: SectionId) {
-    const shortTitles: Record<SectionId, string> = {
-      basic: "基础",
-      appearance: "外貌",
-      personality: "性格",
-      ability: "能力",
-      backstory: "背景",
-      prompt: "Prompt",
-    };
+  function jumpToNextUnfinished() {
+    // Continue from wherever the author is, and wrap around so the control
+    // always lands somewhere instead of going dead at the last section.
+    const targetId = nextUnfinishedSection(
+      formData,
+      activeSection,
+      visibleSectionMeta.map((section) => section.id),
+    );
 
-    return shortTitles[sectionId];
+    if (!targetId) {
+      showToast("所有模块都已完成");
+      return;
+    }
+
+    jumpToSection(targetId);
+    showToast(`已跳到「${EDITOR_SECTIONS.find((section) => section.id === targetId)?.title ?? targetId}」`);
   }
 
   function runEditorMoreAction(action: () => void) {
@@ -2523,6 +2527,7 @@ export function CharacterForm({
                     <Icon name="arrowLeft" size={16} />
                     返回
                   </button>
+                  <span className="menu-separator" aria-hidden="true" />
                   <button
                     className="menu-danger"
                     onClick={() => runEditorMoreAction(() => setPendingFormAction("clear"))}
@@ -3587,6 +3592,17 @@ export function CharacterForm({
                     style={{ width: `${total === 0 ? 0 : Math.round((done / total) * 100)}%` }}
                   />
                 </span>
+                {/* Counting the remainder was only half the answer; this takes the
+                    author to the next module that still needs work. */}
+                <button
+                  className="nav-jump-button"
+                  disabled={total === 0 || done === total}
+                  onClick={jumpToNextUnfinished}
+                  type="button"
+                >
+                  <Icon name="chevronRight" size={15} />
+                  {done === total ? "全部模块已完成" : `跳到下一个未完成 · ${total - done}`}
+                </button>
               </div>
             );
           })()}
@@ -3599,7 +3615,7 @@ export function CharacterForm({
             >
               <span>
                 <span className="nav-full">{section.title}</span>
-                <span className="nav-short">{getSectionShortTitle(section.id)}</span>
+                <span className="nav-short">{sectionShortTitle(section.id)}</span>
               </span>
               <small>
                 <span className="nav-status-dot" aria-hidden="true" />

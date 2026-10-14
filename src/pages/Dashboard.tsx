@@ -1406,6 +1406,7 @@ export function Dashboard({
                                   <Icon name="download" size={16} />
                                   导出
                                 </button>
+                                <span className="menu-separator" aria-hidden="true" />
                                 <button
                                   className="menu-danger"
                                   onClick={() => {
@@ -1592,6 +1593,7 @@ export function Dashboard({
                               <Icon name="download" size={16} />
                               导出
                             </button>
+                            <span className="menu-separator" aria-hidden="true" />
                             <button
                               className="menu-danger"
                               onClick={() => {

@@ -22,14 +22,76 @@ type RelationshipGraphProps = {
 
 const VIEW = 640;
 const RADIUS = 236;
+const NODE_RADIUS = 30;
+// The name is drawn 44 units under the node centre, and needs a little room for
+// its descenders. Both numbers are also what the canvas has to leave clear, so
+// the drawing never ends up with a clipped label.
+const NAME_DROP = 44;
+const NAME_SPACE = 22;
+const CANVAS_PADDING = 16;
+// A pair reads better side by side than stacked: on the wheel two nodes landed
+// on the vertical axis 472 units apart, which is what made a two-character graph
+// look like an empty canvas.
+const PAIR_OFFSET = 150;
+const MIN_CANVAS_WIDTH = 320;
+const MIN_CANVAS_HEIGHT = 180;
+
+export type GraphPoint = { x: number; y: number };
 
 // A radial layout rather than a force simulation: with a handful of OCs it reads
 // as a relationship wheel, it is deterministic, and it needs no layout library.
-function nodePositions(count: number) {
+export function nodePositions(count: number): GraphPoint[] {
+  if (count <= 0) {
+    return [];
+  }
+
+  if (count === 1) {
+    return [{ x: VIEW / 2, y: VIEW / 2 }];
+  }
+
+  if (count === 2) {
+    return [
+      { x: VIEW / 2 - PAIR_OFFSET, y: VIEW / 2 },
+      { x: VIEW / 2 + PAIR_OFFSET, y: VIEW / 2 },
+    ];
+  }
+
   return Array.from({ length: count }, (_, index) => {
-    const angle = (index / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2;
+    const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
     return { x: VIEW / 2 + Math.cos(angle) * RADIUS, y: VIEW / 2 + Math.sin(angle) * RADIUS };
   });
+}
+
+function round(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Fits the canvas to what is actually drawn, so a small graph stops reserving a
+ * mostly empty 640-square. The floor keeps a lone node from rendering as a stamp,
+ * and the caller pins rendered width to the returned width, which holds the
+ * drawing at scale 1 — nodes and labels keep the size the wheel always had.
+ */
+export function canvasBox(positions: GraphPoint[]) {
+  if (positions.length === 0) {
+    return { viewBox: `0 0 ${VIEW} ${VIEW}`, width: VIEW };
+  }
+
+  const xs = positions.map((point) => point.x);
+  const ys = positions.map((point) => point.y);
+  const drawnWidth = Math.max(...xs) - Math.min(...xs) + (NODE_RADIUS + CANVAS_PADDING) * 2;
+  const drawnHeight =
+    Math.max(...ys) - Math.min(...ys) + NODE_RADIUS + CANVAS_PADDING + NAME_DROP + NAME_SPACE;
+  const width = Math.max(drawnWidth, MIN_CANVAS_WIDTH);
+  const height = Math.max(drawnHeight, MIN_CANVAS_HEIGHT);
+  // Grow the box around the drawing's centre so the content stays where it was.
+  const left = Math.min(...xs) - NODE_RADIUS - CANVAS_PADDING - (width - drawnWidth) / 2;
+  const top = Math.min(...ys) - NODE_RADIUS - CANVAS_PADDING - (height - drawnHeight) / 2;
+
+  return {
+    viewBox: `${round(left)} ${round(top)} ${round(width)} ${round(height)}`,
+    width: round(width),
+  };
 }
 
 export function RelationshipGraph({ characters, onBack, onOpenCharacter }: RelationshipGraphProps) {
@@ -44,6 +106,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
   }, [characters]);
 
   const positions = useMemo(() => nodePositions(characters.length), [characters.length]);
+  const canvas = useMemo(() => canvasBox(positions), [positions]);
   const byId = useMemo(() => new Map(characters.map((character, index) => [character.id, { character, ...positions[index] }])), [characters, positions]);
 
   function openDraft() {
@@ -107,7 +170,8 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
           <svg
             aria-hidden="true"
             className="relationship-canvas"
-            viewBox={`0 0 ${VIEW} ${VIEW}`}
+            style={{ maxWidth: canvas.width }}
+            viewBox={canvas.viewBox}
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
@@ -139,7 +203,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                 onClick={() => onOpenCharacter(character.id)}
                 role="presentation"
               >
-                <circle cx={positions[index].x} cy={positions[index].y} r="30" />
+                <circle cx={positions[index].x} cy={positions[index].y} r={NODE_RADIUS} />
                 <text className="relationship-node-emoji" x={positions[index].x} y={positions[index].y}>
                   {character.avatarEmoji || "🙂"}
                 </text>
