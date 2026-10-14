@@ -173,12 +173,22 @@ export function Dashboard({
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(
-    // A long roster has to arrive with its controls showing. Scrolling 112 cards
-    // looking for one character, with the search folded behind a toolbar icon, is
-    // the state the workspace was in. The developer setting still decides for a
-    // small roster; past this size the panel opens itself.
-    () => (dashboardSettings?.openSearch ?? false) || characters.length > LARGE_ROSTER,
+    () => dashboardSettings?.openSearch ?? false,
   );
+  // A long roster has to arrive with its controls showing: scrolling 112 cards
+  // looking for one character, with the search folded behind a toolbar icon, is the
+  // state the workspace was in. This cannot be the initial state alone — the
+  // dashboard mounts before the characters are loaded, so it reads an empty roster
+  // and never recomputes. It opens when the roster crosses the threshold instead,
+  // and re-arms if it drops back below.
+  const longRosterRef = useRef(false);
+  useEffect(() => {
+    const isLongRoster = characters.length > LARGE_ROSTER;
+    if (isLongRoster && !longRosterRef.current) {
+      setIsSearchPanelOpen(true);
+    }
+    longRosterRef.current = isLongRoster;
+  }, [characters.length]);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<Character | null>(null);
