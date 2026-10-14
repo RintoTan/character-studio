@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v2.4.0**（Sprint 14.1）—— 吸顶分层按实测高度自适应，仪表盘操作区跟随滚动。
+> **发布状态：v2.4.1**（Sprint 14.2）—— 二级页面复核：页脚落底、行内删除统一为危险语言。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 

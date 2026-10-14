@@ -157,7 +157,7 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
                           </button>
                           <button
                             aria-label={`删除事件 ${event.title}`}
-                            className="ghost-button"
+                            className="danger-button"
                             onClick={() => setPendingDelete(event)}
                             type="button"
                           >

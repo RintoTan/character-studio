@@ -173,7 +173,7 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
               </button>
               <button
                 aria-label={`删除条目 ${entry.name}`}
-                className="ghost-button"
+                className="danger-button"
                 onClick={() => setPendingDelete(entry)}
                 type="button"
               >

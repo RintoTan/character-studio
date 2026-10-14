@@ -249,8 +249,13 @@ button:disabled {
   overflow: visible;
 }
 
+/* The shell claims the viewport so a short page can push its footer to the
+   bottom instead of leaving it floating with ~280px of blank under it. */
 .app-shell {
+  display: flex;
+  flex-direction: column;
   width: min(1120px, calc(100% - 32px));
+  min-height: 100dvh;
   margin: 0 auto;
   padding: 24px 0 48px;
 }
@@ -419,6 +424,7 @@ button:disabled {
 
 .page-grid {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 20px;
 }
@@ -2242,7 +2248,9 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
-  margin-top: 28px;
+  /* auto, not a fixed gap: on a short page this is what carries the footer to
+     the bottom edge rather than leaving it mid-screen. */
+  margin-top: auto;
   padding: 18px 4px 18px;
   text-align: center;
 }
@@ -2698,6 +2706,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .workspace-shell {
   display: flex;
+  flex: 1;
   flex-direction: column;
   gap: 18px;
   animation: fade-in 220ms ease-out;
