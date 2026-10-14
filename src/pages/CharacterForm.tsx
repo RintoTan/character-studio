@@ -2412,314 +2412,8 @@ export function CharacterForm({
     );
   }
 
-  return (
-    <section className="workspace-shell">
-      {toastMessage && <div className="toast">{toastMessage}</div>}
-      {pendingClear && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true">
-            <h2>清空内容</h2>
-            <p>确定要清空「{pendingClear.label}」吗？此操作不可撤销。</p>
-            <div className="form-actions">
-              <button
-                className="ghost-button"
-                onClick={() => setPendingClear(null)}
-                type="button"
-              >
-                取消
-              </button>
-              <button className="danger-button" onClick={clearField} type="button">
-                确认清空
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingFormAction && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true">
-            <h2>{pendingFormAction === "clear" ? "清空编辑内容" : "删除角色"}</h2>
-            <p>
-              {pendingFormAction === "clear"
-                ? "确定要清空当前编辑页的全部内容吗？此操作不会删除角色。"
-                : character
-                  ? `确定要删除「${character.name || "未命名角色"}」吗？此操作不可撤销。`
-                  : "当前角色尚未保存，删除会清空当前内容。"}
-            </p>
-            <div className="form-actions">
-              <button
-                className="ghost-button"
-                onClick={() => setPendingFormAction(null)}
-                type="button"
-              >
-                取消
-              </button>
-              <button className="danger-button" onClick={confirmFormAction} type="button">
-                {pendingFormAction === "clear" ? "确认清空" : "确认删除"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {helperSuggestion && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setHelperSuggestion(null);
-            }
-          }}
-          role="presentation"
-        >
-          <div className="confirm-dialog helper-dialog" role="dialog" aria-modal="true">
-            <p className="eyebrow">{helperSuggestion.label}</p>
-            <div className="helper-dialog-head">
-              <h2>创作辅助</h2>
-              <button className="ghost-button" onClick={refreshAllHelperSuggestions} type="button">
-                全部换一组
-              </button>
-            </div>
-            <div className="helper-suggestion-list">
-              {[
-                ["example", "示例", helperSuggestion.example],
-                ["inspiration", "随机灵感", helperSuggestion.inspiration],
-                ["tip", "写作提示", helperSuggestion.tip],
-              ].map(([kind, title, value]) => (
-                <article key={kind}>
-                  <div className="helper-suggestion-title">
-                    <h3>{title}</h3>
-                  </div>
-                  <p>{value}</p>
-                  <div className="helper-suggestion-actions">
-                    <div className="helper-action-main">
-                      <button
-                        className="ghost-button"
-                        onClick={() => copyText(value, "辅助内容已复制")}
-                        type="button"
-                      >
-                        复制
-                      </button>
-                      <button
-                        className="ghost-button"
-                        onClick={() => applyHelperValue(value, "append")}
-                        type="button"
-                      >
-                        追加
-                      </button>
-                      <button
-                        className="ghost-button"
-                        onClick={() => {
-                          setHelperSuggestion((current) =>
-                            current ? { ...current, value } : current,
-                          );
-                          setIsHelperReplaceConfirmOpen(true);
-                        }}
-                        type="button"
-                      >
-                        替换
-                      </button>
-                    </div>
-                    <button
-                      className="ghost-button helper-refresh-button"
-                      onClick={() => refreshHelperItem(kind as HelperKind)}
-                      type="button"
-                    >
-                      <span aria-hidden="true">↻</span>
-                      换一个
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
-            <div className="form-actions">
-              <button className="ghost-button" onClick={() => setHelperSuggestion(null)} type="button">
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {isHelperReplaceConfirmOpen && helperSuggestion && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true">
-            <h2>替换当前字段</h2>
-            <p>确定要用这条辅助内容替换当前字段吗？原内容会被覆盖。</p>
-            <div className="form-actions">
-              <button
-                className="ghost-button"
-                onClick={() => setIsHelperReplaceConfirmOpen(false)}
-                type="button"
-              >
-                取消
-              </button>
-              <button
-                className="danger-button"
-                onClick={() => {
-                  setIsHelperReplaceConfirmOpen(false);
-                  applyHelperSuggestion("replace");
-                }}
-                type="button"
-              >
-                确认替换
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {cropDraft && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="crop-dialog" role="dialog" aria-modal="true">
-            <div className="preview-card-title">
-              <div>
-                <p className="eyebrow">Avatar Crop</p>
-                <h2>裁剪头像</h2>
-              </div>
-              <button className="ghost-button" onClick={closeCropDialog} type="button">
-                取消
-              </button>
-            </div>
-            <div
-              className="crop-stage"
-              ref={cropStageRef}
-              onWheel={(event) => {
-                event.preventDefault();
-                adjustCropZoom(event.deltaY > 0 ? -0.08 : 0.08);
-              }}
-              onPointerDown={(event) => {
-                event.currentTarget.setPointerCapture(event.pointerId);
-                setCropDrag({ x: event.clientX, y: event.clientY });
-              }}
-              onPointerMove={(event) => {
-                if (!cropDrag) {
-                  return;
-                }
-                const deltaX = event.clientX - cropDrag.x;
-                const deltaY = event.clientY - cropDrag.y;
-                setCropDraft((current) =>
-                  clampCropDraft(
-                    current
-                      ? {
-                          ...current,
-                          offsetX: current.offsetX + deltaX,
-                          offsetY: current.offsetY + deltaY,
-                        }
-                      : current,
-                  ),
-                );
-                setCropDrag({ x: event.clientX, y: event.clientY });
-              }}
-              onPointerUp={() => setCropDrag(null)}
-            >
-              <img
-                alt=""
-                ref={cropImageRef}
-                onLoad={() => setCropDraft((current) => clampCropDraft(current))}
-                src={cropDraft.imageUrl}
-                style={{
-                  transform: `translate(calc(-50% + ${cropDraft.offsetX}px), calc(-50% + ${cropDraft.offsetY}px)) scale(${cropDraft.zoom})`,
-                }}
-              />
-              <div className="crop-frame" ref={cropFrameRef} />
-            </div>
-            <label className="crop-slider">
-              缩放
-              <input
-                max="8"
-                min="0.25"
-                onChange={(event) =>
-                  setCropDraft((current) =>
-                    clampCropDraft(
-                      current ? { ...current, zoom: Number(event.target.value) } : current,
-                    ),
-                  )
-                }
-                step="0.05"
-                type="range"
-                value={cropDraft.zoom}
-              />
-            </label>
-            <div className="crop-zoom-actions">
-              <button className="ghost-button" onClick={() => adjustCropZoom(-0.15)} type="button">
-                缩小
-              </button>
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  setCropDraft((current) =>
-                    clampCropDraft(current ? { ...current, zoom: 0.25 } : current),
-                  )
-                }
-                type="button"
-              >
-                最小
-              </button>
-              <span>{Math.round(cropDraft.zoom * 100)}%</span>
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  setCropDraft((current) =>
-                    clampCropDraft(current ? { ...current, zoom: 8 } : current),
-                  )
-                }
-                type="button"
-              >
-                最大
-              </button>
-              <button className="ghost-button" onClick={() => adjustCropZoom(0.15)} type="button">
-                放大
-              </button>
-            </div>
-            <div className="form-actions">
-              <button className="ghost-button" onClick={closeCropDialog} type="button">
-                取消裁剪
-              </button>
-              <button className="primary-button" onClick={() => void confirmCropAvatar()} type="button">
-                确认裁剪
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {isAssetLibraryOpen && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsAssetLibraryOpen(false);
-            }
-          }}
-          role="presentation"
-        >
-          <div className="asset-library-dialog" role="dialog" aria-modal="true">
-            <div className="preview-card-title">
-              <div>
-                <p className="eyebrow">Local Assets</p>
-                <h2>选择本地头像素材</h2>
-              </div>
-              <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
-                关闭
-              </button>
-            </div>
-            {avatarAssets.length > 0 ? (
-              <div className="asset-library-grid">
-                {avatarAssets.map((asset) => (
-                  <button
-                    className={formData.avatarAssetId === asset.id ? "asset-item active" : "asset-item"}
-                    key={asset.id}
-                    onClick={() => selectAvatarAsset(asset.id)}
-                    type="button"
-                  >
-                    <AvatarDisplay assetId={asset.id} className="asset-thumb" emoji="🙂" />
-                    <span>{asset.name || "avatar"}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="muted">暂无本地头像素材。</p>
-            )}
-          </div>
-        </div>
-      )}
+  function renderHero() {
+    return (
       <div className="panel workspace-hero">
         <div className="workspace-title-block">
           <AvatarDisplay
@@ -2828,32 +2522,11 @@ export function CharacterForm({
           </div>
         </div>
       </div>
+    );
+  }
 
-      <form className="workspace-layout" onSubmit={handleSubmit}>
-        <aside className="workspace-nav" aria-label="模块导航">
-          {visibleSectionMeta.map((section) => (
-            <button
-              className={activeSection === section.id ? "active" : ""}
-              key={section.id}
-              onClick={() => jumpToSection(section.id)}
-              type="button"
-            >
-              <span>
-                <span className="nav-full">{section.title}</span>
-                <span className="nav-short">{getSectionShortTitle(section.id)}</span>
-              </span>
-              <small>
-                <span className="nav-status-dot" aria-hidden="true" />
-                {completionStatus(section.id, formData)}
-              </small>
-            </button>
-          ))}
-        </aside>
-
-        <div className="workspace-main">
-          <div className="workspace-content">
-            {formError && <div className="form-error">{formError}</div>}
-
+  function renderBasicSection() {
+    return (
           <section className="workspace-card" id="workspace-basic">
             <button
               className="workspace-card-head"
@@ -3172,7 +2845,11 @@ export function CharacterForm({
               </div>
             )}
           </section>
+    );
+  }
 
+  function renderAppearanceSection() {
+    return (
           <section className="workspace-card" id="workspace-appearance">
             <button className="workspace-card-head" onClick={() => toggleSection("appearance")} type="button">
               <span>
@@ -3198,7 +2875,11 @@ export function CharacterForm({
               </div>
             )}
           </section>
+    );
+  }
 
+  function renderPersonalitySection() {
+    return (
           <section className="workspace-card" id="workspace-personality">
             <button className="workspace-card-head" onClick={() => toggleSection("personality")} type="button">
               <span>
@@ -3292,8 +2973,11 @@ export function CharacterForm({
               </div>
             )}
           </section>
+    );
+  }
 
-          {showPersonalPreferences && (
+  function renderPreferencesSection() {
+    return (
           <section className="workspace-card" id="workspace-preferences">
             <div className="workspace-card-head static-head">
               <span>
@@ -3366,8 +3050,11 @@ export function CharacterForm({
               </div>
             </div>
           </section>
-          )}
+    );
+  }
 
+  function renderAbilitySection() {
+    return (
           <section className="workspace-card" id="workspace-ability">
             <button className="workspace-card-head" onClick={() => toggleSection("ability")} type="button">
               <span>
@@ -3393,7 +3080,11 @@ export function CharacterForm({
               </div>
             )}
           </section>
+    );
+  }
 
+  function renderBackstorySection() {
+    return (
           <section className="workspace-card" id="workspace-backstory">
             <button className="workspace-card-head" onClick={() => toggleSection("backstory")} type="button">
               <span>
@@ -3419,8 +3110,11 @@ export function CharacterForm({
               </div>
             )}
           </section>
+    );
+  }
 
-          {showPromptSection && (
+  function renderPromptSection() {
+    return (
           <section className="workspace-card" id="workspace-prompt">
             <button className="workspace-card-head" onClick={() => toggleSection("prompt")} type="button">
               <span>
@@ -3505,10 +3199,11 @@ export function CharacterForm({
               </div>
             )}
           </section>
-          )}
+    );
+  }
 
-          </div>
-
+  function renderFooterActions() {
+    return (
           <div className="form-actions workspace-footer">
             <div className="footer-danger-actions">
               <button className="ghost-button" type="button" onClick={() => setPendingFormAction("clear")}>
@@ -3530,6 +3225,362 @@ export function CharacterForm({
               </button>
             </div>
           </div>
+    );
+  }
+
+
+  return (
+    <section className="workspace-shell">
+      {toastMessage && <div className="toast">{toastMessage}</div>}
+      {pendingClear && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>清空内容</h2>
+            <p>确定要清空「{pendingClear.label}」吗？此操作不可撤销。</p>
+            <div className="form-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setPendingClear(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button className="danger-button" onClick={clearField} type="button">
+                确认清空
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {pendingFormAction && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>{pendingFormAction === "clear" ? "清空编辑内容" : "删除角色"}</h2>
+            <p>
+              {pendingFormAction === "clear"
+                ? "确定要清空当前编辑页的全部内容吗？此操作不会删除角色。"
+                : character
+                  ? `确定要删除「${character.name || "未命名角色"}」吗？此操作不可撤销。`
+                  : "当前角色尚未保存，删除会清空当前内容。"}
+            </p>
+            <div className="form-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setPendingFormAction(null)}
+                type="button"
+              >
+                取消
+              </button>
+              <button className="danger-button" onClick={confirmFormAction} type="button">
+                {pendingFormAction === "clear" ? "确认清空" : "确认删除"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {helperSuggestion && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setHelperSuggestion(null);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="confirm-dialog helper-dialog" role="dialog" aria-modal="true">
+            <p className="eyebrow">{helperSuggestion.label}</p>
+            <div className="helper-dialog-head">
+              <h2>创作辅助</h2>
+              <button className="ghost-button" onClick={refreshAllHelperSuggestions} type="button">
+                全部换一组
+              </button>
+            </div>
+            <div className="helper-suggestion-list">
+              {[
+                ["example", "示例", helperSuggestion.example],
+                ["inspiration", "随机灵感", helperSuggestion.inspiration],
+                ["tip", "写作提示", helperSuggestion.tip],
+              ].map(([kind, title, value]) => (
+                <article key={kind}>
+                  <div className="helper-suggestion-title">
+                    <h3>{title}</h3>
+                  </div>
+                  <p>{value}</p>
+                  <div className="helper-suggestion-actions">
+                    <div className="helper-action-main">
+                      <button
+                        className="ghost-button"
+                        onClick={() => copyText(value, "辅助内容已复制")}
+                        type="button"
+                      >
+                        复制
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => applyHelperValue(value, "append")}
+                        type="button"
+                      >
+                        追加
+                      </button>
+                      <button
+                        className="ghost-button"
+                        onClick={() => {
+                          setHelperSuggestion((current) =>
+                            current ? { ...current, value } : current,
+                          );
+                          setIsHelperReplaceConfirmOpen(true);
+                        }}
+                        type="button"
+                      >
+                        替换
+                      </button>
+                    </div>
+                    <button
+                      className="ghost-button helper-refresh-button"
+                      onClick={() => refreshHelperItem(kind as HelperKind)}
+                      type="button"
+                    >
+                      <span aria-hidden="true">↻</span>
+                      换一个
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setHelperSuggestion(null)} type="button">
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isHelperReplaceConfirmOpen && helperSuggestion && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>替换当前字段</h2>
+            <p>确定要用这条辅助内容替换当前字段吗？原内容会被覆盖。</p>
+            <div className="form-actions">
+              <button
+                className="ghost-button"
+                onClick={() => setIsHelperReplaceConfirmOpen(false)}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                className="danger-button"
+                onClick={() => {
+                  setIsHelperReplaceConfirmOpen(false);
+                  applyHelperSuggestion("replace");
+                }}
+                type="button"
+              >
+                确认替换
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {cropDraft && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="crop-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Avatar Crop</p>
+                <h2>裁剪头像</h2>
+              </div>
+              <button className="ghost-button" onClick={closeCropDialog} type="button">
+                取消
+              </button>
+            </div>
+            <div
+              className="crop-stage"
+              ref={cropStageRef}
+              onWheel={(event) => {
+                event.preventDefault();
+                adjustCropZoom(event.deltaY > 0 ? -0.08 : 0.08);
+              }}
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                setCropDrag({ x: event.clientX, y: event.clientY });
+              }}
+              onPointerMove={(event) => {
+                if (!cropDrag) {
+                  return;
+                }
+                const deltaX = event.clientX - cropDrag.x;
+                const deltaY = event.clientY - cropDrag.y;
+                setCropDraft((current) =>
+                  clampCropDraft(
+                    current
+                      ? {
+                          ...current,
+                          offsetX: current.offsetX + deltaX,
+                          offsetY: current.offsetY + deltaY,
+                        }
+                      : current,
+                  ),
+                );
+                setCropDrag({ x: event.clientX, y: event.clientY });
+              }}
+              onPointerUp={() => setCropDrag(null)}
+            >
+              <img
+                alt=""
+                ref={cropImageRef}
+                onLoad={() => setCropDraft((current) => clampCropDraft(current))}
+                src={cropDraft.imageUrl}
+                style={{
+                  transform: `translate(calc(-50% + ${cropDraft.offsetX}px), calc(-50% + ${cropDraft.offsetY}px)) scale(${cropDraft.zoom})`,
+                }}
+              />
+              <div className="crop-frame" ref={cropFrameRef} />
+            </div>
+            <label className="crop-slider">
+              缩放
+              <input
+                max="8"
+                min="0.25"
+                onChange={(event) =>
+                  setCropDraft((current) =>
+                    clampCropDraft(
+                      current ? { ...current, zoom: Number(event.target.value) } : current,
+                    ),
+                  )
+                }
+                step="0.05"
+                type="range"
+                value={cropDraft.zoom}
+              />
+            </label>
+            <div className="crop-zoom-actions">
+              <button className="ghost-button" onClick={() => adjustCropZoom(-0.15)} type="button">
+                缩小
+              </button>
+              <button
+                className="ghost-button"
+                onClick={() =>
+                  setCropDraft((current) =>
+                    clampCropDraft(current ? { ...current, zoom: 0.25 } : current),
+                  )
+                }
+                type="button"
+              >
+                最小
+              </button>
+              <span>{Math.round(cropDraft.zoom * 100)}%</span>
+              <button
+                className="ghost-button"
+                onClick={() =>
+                  setCropDraft((current) =>
+                    clampCropDraft(current ? { ...current, zoom: 8 } : current),
+                  )
+                }
+                type="button"
+              >
+                最大
+              </button>
+              <button className="ghost-button" onClick={() => adjustCropZoom(0.15)} type="button">
+                放大
+              </button>
+            </div>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={closeCropDialog} type="button">
+                取消裁剪
+              </button>
+              <button className="primary-button" onClick={() => void confirmCropAvatar()} type="button">
+                确认裁剪
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isAssetLibraryOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAssetLibraryOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="asset-library-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">Local Assets</p>
+                <h2>选择本地头像素材</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            {avatarAssets.length > 0 ? (
+              <div className="asset-library-grid">
+                {avatarAssets.map((asset) => (
+                  <button
+                    className={formData.avatarAssetId === asset.id ? "asset-item active" : "asset-item"}
+                    key={asset.id}
+                    onClick={() => selectAvatarAsset(asset.id)}
+                    type="button"
+                  >
+                    <AvatarDisplay assetId={asset.id} className="asset-thumb" emoji="🙂" />
+                    <span>{asset.name || "avatar"}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">暂无本地头像素材。</p>
+            )}
+          </div>
+        </div>
+      )}
+        {renderHero()}
+
+      <form className="workspace-layout" onSubmit={handleSubmit}>
+        <aside className="workspace-nav" aria-label="模块导航">
+          {visibleSectionMeta.map((section) => (
+            <button
+              className={activeSection === section.id ? "active" : ""}
+              key={section.id}
+              onClick={() => jumpToSection(section.id)}
+              type="button"
+            >
+              <span>
+                <span className="nav-full">{section.title}</span>
+                <span className="nav-short">{getSectionShortTitle(section.id)}</span>
+              </span>
+              <small>
+                <span className="nav-status-dot" aria-hidden="true" />
+                {completionStatus(section.id, formData)}
+              </small>
+            </button>
+          ))}
+        </aside>
+
+        <div className="workspace-main">
+          <div className="workspace-content">
+            {formError && <div className="form-error">{formError}</div>}
+
+        {renderBasicSection()}
+
+        {renderAppearanceSection()}
+
+        {renderPersonalitySection()}
+
+          {showPersonalPreferences && renderPreferencesSection()}
+
+        {renderAbilitySection()}
+
+        {renderBackstorySection()}
+
+          {showPromptSection && renderPromptSection()}
+
+          </div>
+
+        {renderFooterActions()}
         </div>
       </form>
     </section>

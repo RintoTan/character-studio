@@ -1080,6 +1080,1002 @@ export function Dashboard({
     }
   }
 
+  function renderCharacterListPanel() {
+    return (
+      <div className="panel">
+
+        <div className="section-title">
+          <div>
+            <h2>{listTitle}</h2>
+            <span>
+              {visibleCharacters.length} 个角色
+              {selectedIds.length > 0 && (
+                <span className="selected-count-inline">
+                  {" / "}
+                  已选 {selectedIds.length} 个
+                </span>
+              )}
+            </span>
+          </div>
+          {visibleCharacters.length > 0 && (
+            <div className="bulk-actions">
+              {isBulkMode ? (
+                <>
+                  <div className="bulk-actions-desktop">
+                    <button
+                      className="ghost-button"
+                      onClick={toggleSelectAll}
+                      type="button"
+                    >
+                      {selectedIds.length === visibleCharacters.length
+                        ? "取消全选"
+                        : "全选"}
+                    </button>
+                    {!isDraftView && (
+                      <>
+                        {isFavoriteView ? (
+                          <button
+                            className="ghost-button"
+                            disabled={selectedIds.length === 0}
+                            onClick={() => bulkSetFavorite(false)}
+                            type="button"
+                          >
+                            移出收藏
+                          </button>
+                        ) : (
+                          <button
+                            className="ghost-button"
+                            disabled={selectedIds.length === 0}
+                            onClick={() => bulkSetFavorite(true)}
+                            type="button"
+                          >
+                            加入收藏
+                          </button>
+                        )}
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length === 0 || loadingAction !== null}
+                          onClick={() => openCharacterExportDialog("selected")}
+                          type="button"
+                        >
+                          导出
+                        </button>
+                      </>
+                    )}
+                    <button
+                      className="ghost-button"
+                      disabled={selectedIds.length === 0}
+                      onClick={handleBulkDuplicate}
+                      type="button"
+                    >
+                      {isDraftView ? "复制" : "批量复制"}
+                    </button>
+                    <button
+                      className="danger-button"
+                      disabled={selectedIds.length === 0}
+                      onClick={() =>
+                        selectedIds.length > 0
+                          ? setIsBulkDeleteOpen(true)
+                          : showToast("请先选择角色")
+                      }
+                      type="button"
+                    >
+                      {isDraftView ? "删除" : "批量删除"}
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={exitBulkMode}
+                      type="button"
+                    >
+                      取消选择
+                    </button>
+                  </div>
+                  <div className="mobile-bulk-toolbar">
+                    <div className="mobile-bulk-summary">
+                      <span>已选择 {selectedIds.length} 个角色</span>
+                      <button className="ghost-button" onClick={exitBulkMode} type="button">
+                        取消
+                      </button>
+                    </div>
+                    <div className="mobile-bulk-actions">
+                      <button className="ghost-button" onClick={toggleSelectAll} type="button">
+                        <span>□</span>
+                        {selectedIds.length === visibleCharacters.length ? "取消全选" : "全选"}
+                      </button>
+                      {!isDraftView && (
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length === 0}
+                          onClick={() => bulkSetFavorite(isFavoriteView ? false : true)}
+                          type="button"
+                        >
+                          <span>{isFavoriteView ? "♡" : "♡"}</span>
+                          {isFavoriteView ? "移出" : "收藏"}
+                        </button>
+                      )}
+                      {!isDraftView && (
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length === 0 || loadingAction !== null}
+                          onClick={() => openCharacterExportDialog("selected")}
+                          type="button"
+                        >
+                          <span>↓</span>
+                          导出
+                        </button>
+                      )}
+                      <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
+                        <span>···</span>
+                        更多
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <button
+                  className="ghost-button bulk-select-button"
+                  aria-label="批量选择"
+                  data-tooltip="批量选择"
+                  onClick={enterBulkMode}
+                  type="button"
+                >
+                  <span className="desktop-label">批量选择</span>
+                  <span className="mobile-icon">□</span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {isLoading ? (
+          <div className="skeleton-grid">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div className="skeleton-card" key={index} />
+            ))}
+          </div>
+        ) : characters.length === 0 ? (
+          <div className="empty-state">
+            <h3>还没有角色</h3>
+            <p>开始创建你的第一个角色。</p>
+            <button className="primary-button" onClick={onCreate} type="button">
+              新建角色
+            </button>
+          </div>
+        ) : visibleCharacters.length === 0 ? (
+          <div className="empty-state">
+            <h3>没有找到符合条件的角色。</h3>
+            <p>试试调整搜索词或筛选条件。</p>
+            <button
+              className="ghost-button"
+              disabled={!hasActiveSearchOrFilter}
+              onClick={clearSearchAndFilters}
+              type="button"
+            >
+              清除筛选
+            </button>
+          </div>
+        ) : (
+          <>
+          {visibleCharacters.length === 1 && (
+            <div className="single-list-note">
+              <span>目前只有 1 个角色，可以继续新建来丰富你的角色库。</span>
+              <button className="ghost-button" onClick={onCreate} type="button">
+                新建角色
+              </button>
+            </div>
+          )}
+          {prefs.viewMode === "list" ? (
+          <div className="character-table-wrap">
+            <div className="character-table">
+              <div className="character-table-head">
+                <span>角色</span>
+                <span>职业</span>
+                <span>世界观</span>
+                <span>年龄</span>
+                <span>标签</span>
+                <span>状态</span>
+                <span>最后编辑</span>
+                <span>操作</span>
+              </div>
+              {visibleCharacters.map((character) => {
+                const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
+                const isDraft = character.isDraft === true;
+
+                return (
+                  <div
+                    className={
+                      openCardMenuId === character.id
+                        ? "character-table-row menu-open"
+                        : "character-table-row"
+                    }
+                    key={character.id}
+                  >
+                    <button className="table-main" onClick={() => onPreview(character)} type="button">
+                      <AvatarDisplay
+                        assetId={character.avatarAssetId}
+                        className="table-avatar"
+                        emoji={character.avatarEmoji || "🙂"}
+                      />
+                      <strong>{character.name || "未命名角色"}</strong>
+                    </button>
+                    <span>{character.occupation || "未填写"}</span>
+                    <span>{character.worldview || "未填写"}</span>
+                    <span>{character.age || "未填写"}</span>
+                    <div className="table-tags">
+                      {getPersonalityTags(character).slice(0, Math.min(cardTagLimit, 4)).map((tag) => (
+                        <button
+                          className={`tag-tone-${getTagTone(tag)}`}
+                          key={tag}
+                          onClick={() => onPreview(character)}
+                          type="button"
+                        >
+                          {tag}
+                        </button>
+                      ))}
+                    </div>
+                    <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
+                    {dashboardSettings?.showUpdatedTime !== false &&
+                    dashboardSettings?.hideLowPriority !== true && <span>{formatDate(character.updatedAt)}</span>}
+                    <div className="table-actions">
+                      {isBulkMode ? (
+                        <button
+                          className={
+                            selectedIds.includes(character.id)
+                              ? "select-circle selected inline"
+                              : "select-circle inline"
+                          }
+                          onClick={() => toggleSelected(character.id)}
+                          type="button"
+                        />
+                      ) : (
+                        <>
+                          <button className="bare-icon-button table-edit-button" onClick={() => onEdit(character)} type="button">
+                            ⌁
+                          </button>
+                          <div className="card-menu-wrap table-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
+                            <button
+                              aria-label="更多"
+                              className="bare-icon-button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setOpenCardMenuId((current) =>
+                                  current === character.id ? null : character.id,
+                                );
+                              }}
+                              type="button"
+                            >
+                              ···
+                            </button>
+                            {openCardMenuId === character.id && (
+                              <div className="card-menu table-card-menu" onClick={(event) => event.stopPropagation()}>
+                                <button onClick={() => onPreview(character)} type="button">
+                                  预览
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    onEdit(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  编辑
+                                </button>
+                                {!isDraft && (
+                                  <button
+                                    onClick={() => toggleFavorite(character.id)}
+                                    type="button"
+                                  >
+                                    {isFavorite ? "移出收藏" : "加入收藏"}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    onDuplicate(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  复制
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setExportTarget(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  导出
+                                </button>
+                                <button
+                                  className="menu-danger"
+                                  onClick={() => {
+                                    setPendingDelete(character);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          ) : (
+          <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
+            {visibleCharacters.map((character) => {
+              const tags = getPersonalityTags(character);
+              const visibleTags = tags.slice(0, cardTagLimit);
+              const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
+              const isPinned = flags.pinnedIds.includes(character.id);
+              const isDraft = character.isDraft === true;
+
+              return (
+              <article
+                className={
+                  [
+                    "character-card",
+                    selectedIds.includes(character.id) ? "selected" : "",
+                    isBulkMode ? "bulk-mode" : "",
+                    openCardMenuId === character.id ? "menu-open" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
+                }
+                key={character.id}
+              >
+                {isBulkMode && (
+                  <button
+                    aria-label={`选择 ${character.name || "未命名角色"}`}
+                    className={
+                      selectedIds.includes(character.id)
+                        ? "select-circle selected"
+                        : "select-circle"
+                    }
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleSelected(character.id);
+                    }}
+                    type="button"
+                  />
+                )}
+                <div className="card-main">
+                  <button
+                    aria-label={`预览 ${character.name || "未命名角色"}`}
+                    className="avatar-click-target preview-hit"
+                    onClick={() => onPreview(character)}
+                    type="button"
+                  >
+                    <AvatarDisplay
+                      assetId={character.avatarAssetId}
+                      className="avatar-placeholder"
+                      emoji={character.avatarEmoji || "🙂"}
+                    />
+                  </button>
+                  <div className="card-copy">
+                    <button
+                      className="card-title-button preview-hit"
+                      onClick={() => onPreview(character)}
+                      type="button"
+                    >
+                      {character.name || "未命名角色"}
+                    </button>
+                    <button
+                      className="card-subtitle-button preview-hit"
+                      onClick={() => onPreview(character)}
+                      type="button"
+                    >
+                      {character.occupation || "暂无职业"} ｜{" "}
+                      {character.worldview || "暂无世界观"}
+                      <span className="card-age-fragment">
+                        {" ｜ "}
+                        {character.age || "年龄未知"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+                {(isDraft || isPinned || tags.length > 0) && (
+                  <div className="card-tags" onClick={(event) => event.stopPropagation()}>
+                    {isDraft && <span className="status-badge draft">草稿</span>}
+                    {!isDraft && isPinned && <span className="status-badge pinned">置顶</span>}
+                    {!isDraft && visibleTags.map((tag) => (
+                      <button
+                        className={`tag-tone-${getTagTone(tag)} preview-hit`}
+                        key={tag}
+                        onClick={() => onPreview(character)}
+                        type="button"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!isBulkMode && !isDraft && (
+                  <>
+                    <div className="card-actions">
+                      <button
+                        aria-label="编辑"
+                        className="bare-icon-button card-edit-button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(character);
+                        }}
+                        title="编辑"
+                        type="button"
+                      >
+                        ⌁
+                      </button>
+                      <div className="card-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
+                        <button
+                          aria-label="更多"
+                          className="bare-icon-button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenCardMenuId((current) =>
+                              current === character.id ? null : character.id,
+                            );
+                          }}
+                          type="button"
+                        >
+                          ···
+                        </button>
+                        {openCardMenuId === character.id && (
+                          <div className="card-menu" onClick={(event) => event.stopPropagation()}>
+                            <button onClick={() => onPreview(character)} type="button">
+                              预览
+                            </button>
+                            <button
+                              onClick={() => {
+                                onEdit(character);
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              编辑
+                            </button>
+                            <button
+                              onClick={() => {
+                                togglePinned(character.id);
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              {isPinned ? "取消置顶" : "置顶"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                onDuplicate(character);
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              复制
+                            </button>
+                            <button
+                              onClick={() => {
+                                setExportTarget(character);
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              导出
+                            </button>
+                            <button
+                              className="menu-danger"
+                              onClick={() => {
+                                setPendingDelete(character);
+                                setOpenCardMenuId(null);
+                              }}
+                              type="button"
+                            >
+                              删除
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="card-footer-actions">
+                      <button
+                        aria-label={isFavorite ? "取消收藏" : "收藏"}
+                        className={isFavorite ? "mini-icon active" : "mini-icon"}
+                        onClick={() => toggleFavorite(character.id)}
+                        title={isFavorite ? "取消收藏" : "收藏"}
+                        type="button"
+                      >
+                        {isFavorite ? "♥" : "♡"}
+                      </button>
+                      {dashboardSettings?.showUpdatedTime !== false &&
+                    dashboardSettings?.hideLowPriority !== true && (
+                        <button
+                          className="card-time-button preview-hit"
+                          onClick={() => onPreview(character)}
+                          type="button"
+                        >
+                          {formatDate(character.updatedAt)}
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+                {!isBulkMode && isDraft && (
+                  <div className="draft-card-actions">
+                    <button
+                      className="ghost-button"
+                      onClick={() => onEdit(character)}
+                      type="button"
+                    >
+                      继续编辑
+                    </button>
+                    <button
+                      className="ghost-button"
+                      onClick={() => onPromoteDraft(character)}
+                      type="button"
+                    >
+                      保存为正式
+                    </button>
+                    <button
+                      className="danger-button"
+                      onClick={() => setPendingDelete(character)}
+                      type="button"
+                    >
+                      删除
+                    </button>
+                  </div>
+                )}
+                {(isBulkMode || isDraft) && (
+                  <div className="card-meta">
+                    {dashboardSettings?.showUpdatedTime !== false &&
+                    dashboardSettings?.hideLowPriority !== true && (
+                      <button
+                        className="card-time-button preview-hit"
+                        onClick={() => onPreview(character)}
+                        type="button"
+                      >
+                        {formatDate(character.updatedAt)}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </article>
+              );
+            })}
+          </div>
+          )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+
+  function renderSearchControls() {
+    return (
+      <div className={isSearchPanelOpen ? "dashboard-controls-panel open" : "dashboard-controls-panel"}>
+        <button
+          aria-label="清空筛选"
+          className="filter-clear-button"
+          data-tooltip={hasSearchOrFilter || prefs.favoriteMode !== "all" ? "清空筛选" : "收起筛选"}
+          onClick={() => {
+            if (hasSearchOrFilter || prefs.favoriteMode !== "all") {
+              clearSearchAndFilters();
+              return;
+            }
+
+            setIsSearchPanelOpen(false);
+          }}
+          type="button"
+        >
+          ×
+        </button>
+        <div className="dashboard-controls">
+          <label>
+            搜索
+            <input
+              ref={searchInputRef}
+              value={prefs.searchTerm}
+              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  openFirstSearchResult();
+                }
+              }}
+              placeholder="搜索角色名、职业、世界观、性格标签"
+            />
+          </label>
+          <label>
+            范围
+            <select
+              value={prefs.favoriteMode}
+              onChange={(event) =>
+                updatePrefs({ favoriteMode: event.target.value as ScopeMode })
+              }
+            >
+              <option value="all">全部角色</option>
+              <option value="favorites">仅收藏</option>
+              <option value="drafts">草稿箱</option>
+            </select>
+          </label>
+          <label>
+            排序
+            <select
+              value={prefs.sortMode}
+              onChange={(event) =>
+                updatePrefs({ sortMode: event.target.value as SortMode })
+              }
+            >
+              <option value="updated-desc">最近编辑</option>
+              <option value="created-desc">最近创建</option>
+              <option value="name-asc">名称 A-Z</option>
+              <option value="name-desc">名称 Z-A</option>
+            </select>
+          </label>
+          <label>
+            世界观
+            <select
+              value={prefs.worldviewFilter}
+              onChange={(event) =>
+                updatePrefs({ worldviewFilter: event.target.value })
+              }
+            >
+              <option value="全部">全部</option>
+              {worldviewOptions.map((worldview) => (
+                <option key={worldview} value={worldview}>
+                  {worldview}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            性别
+            <select
+              value={prefs.genderFilter}
+              onChange={(event) => updatePrefs({ genderFilter: event.target.value })}
+            >
+              <option value="全部">全部</option>
+              {genderOptions.map((gender) => (
+                <option key={gender} value={gender}>
+                  {gender}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            视觉风格
+            <select
+              value={prefs.visualStyleFilter}
+              onChange={(event) =>
+                updatePrefs({ visualStyleFilter: event.target.value })
+              }
+            >
+              <option value="全部">全部</option>
+              {visualStyleOptions.map((style) => (
+                <option key={style} value={style}>
+                  {style}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+
+  function renderIntroPanel() {
+    return (
+      <div className="panel intro-panel">
+        <div>
+          <p className="eyebrow">OC Workspace</p>
+          <h1>{heroCopy.title}</h1>
+          <p className="muted">
+            {heroCopy.description}
+          </p>
+          <div className="dashboard-stats">
+            <button
+              className={prefs.favoriteMode === "all" ? "active" : ""}
+              onClick={() => updatePrefs({ favoriteMode: "all" })}
+              type="button"
+            >
+              全部 {stats.officialCount}
+            </button>
+            <button
+              className={prefs.favoriteMode === "favorites" ? "active" : ""}
+              onClick={() => updatePrefs({ favoriteMode: "favorites" })}
+              type="button"
+            >
+              收藏{dashboardSettings?.showFavoriteCount !== false ? ` ${stats.favoriteCount}` : ""}
+            </button>
+            <button
+              className={prefs.favoriteMode === "drafts" ? "active" : ""}
+              onClick={() => updatePrefs({ favoriteMode: "drafts" })}
+              type="button"
+            >
+              草稿{dashboardSettings?.showDraftCount !== false ? ` ${stats.draftCount}` : ""}
+            </button>
+          </div>
+        </div>
+        <div className="hero-actions dashboard-hero-actions">
+          <button
+            aria-label="搜索"
+            className={isSearchPanelOpen ? "hero-icon-button hero-collapsible active" : "hero-icon-button hero-collapsible"}
+            data-tooltip="搜索"
+            onClick={() => setIsSearchPanelOpen((current) => !current)}
+            type="button"
+          >
+            ⌕
+            <span className="mobile-search-label">搜索</span>
+          </button>
+          <button
+            aria-label="新建角色"
+            className="hero-icon-button hero-collapsible primary-icon"
+            data-tooltip="新建角色"
+            onClick={onCreate}
+            type="button"
+          >
+            +
+          </button>
+          <button
+            aria-label="草稿箱"
+            className={
+              prefs.favoriteMode === "drafts"
+                ? "hero-icon-button hero-collapsible active"
+                : "hero-icon-button hero-collapsible"
+            }
+            data-tooltip="草稿箱"
+            onClick={() =>
+              updatePrefs({
+                favoriteMode:
+                  prefs.favoriteMode === "drafts" ? "all" : "drafts",
+              })
+            }
+            type="button"
+          >
+            □
+            {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
+          </button>
+          <button
+            aria-label="收藏夹"
+            className={
+              prefs.favoriteMode === "favorites"
+                ? "hero-icon-button hero-collapsible active"
+                : "hero-icon-button hero-collapsible"
+            }
+            data-tooltip="收藏夹"
+            onClick={() =>
+              updatePrefs({
+                favoriteMode:
+                  prefs.favoriteMode === "favorites" ? "all" : "favorites",
+              })
+            }
+            type="button"
+          >
+            ♡
+          </button>
+          <button
+            aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
+            className="hero-icon-button"
+            data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
+            onClick={() =>
+              updatePrefs({
+                viewMode: prefs.viewMode === "cards" ? "list" : "cards",
+              })
+            }
+            type="button"
+          >
+            {prefs.viewMode === "cards" ? "☰" : "▦"}
+          </button>
+          <div className="dashboard-actions" ref={moreMenuRef}>
+            <input
+              accept="application/json,.json,application/zip,.zip"
+              className="hidden-input"
+              multiple
+              onChange={(event) => handleImportJson(event.target.files)}
+              ref={fileInputRef}
+              type="file"
+            />
+            <button
+              aria-label="更多操作"
+              className="hero-icon-button"
+              data-tooltip="更多操作"
+              disabled={loadingAction !== null}
+              onClick={() => setIsMoreMenuOpen((current) => !current)}
+              type="button"
+            >
+              {loadingAction ? "…" : "···"}
+            </button>
+            {isMoreMenuOpen && (
+              <div className="export-menu">
+                <button
+                  className="menu-responsive-only"
+                  onClick={() => setIsSearchPanelOpen((current) => !current)}
+                  type="button"
+                >
+                  搜索
+                </button>
+                <button
+                  className="menu-responsive-only"
+                  onClick={onCreate}
+                  type="button"
+                >
+                  新建角色
+                </button>
+                <button
+                  className="menu-responsive-only"
+                  onClick={() =>
+                    updatePrefs({
+                      favoriteMode:
+                        prefs.favoriteMode === "drafts" ? "all" : "drafts",
+                    })
+                  }
+                  type="button"
+                >
+                  {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
+                </button>
+                <button
+                  className="menu-responsive-only"
+                  onClick={() =>
+                    updatePrefs({
+                      favoriteMode:
+                        prefs.favoriteMode === "favorites"
+                          ? "all"
+                          : "favorites",
+                    })
+                  }
+                  type="button"
+                >
+                  {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
+                </button>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  type="button"
+                >
+                  导入角色 JSON/ZIP
+                </button>
+                <button onClick={() => openCharacterExportDialog("all")} type="button">
+                  导出角色 JSON/ZIP
+                </button>
+                <button onClick={handleExportCsv} type="button">
+                  导出 CSV
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
+  function renderAssetLibraryDialog() {
+    return (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsAssetLibraryOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div className="settings-dialog asset-library-dialog" role="dialog" aria-modal="true">
+            <div className="preview-card-title">
+              <div>
+                <p className="eyebrow">头像素材库</p>
+                <h2>头像素材库</h2>
+              </div>
+              <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
+                关闭
+              </button>
+            </div>
+            <div className="settings-grid">
+              <article>
+                <h3>头像素材</h3>
+                <p className="muted">
+                  共 {avatarAssetStats.count} 个素材，占用约 {formatAssetSize(avatarAssetStats.size)}。素材仅保存在当前浏览器 IndexedDB。
+                </p>
+                <div className="settings-actions">
+                  <input
+                    accept="application/json,.json"
+                    className="hidden-input"
+                    onChange={(event) => void handleImportAvatarAssets(event.target.files?.[0])}
+                    ref={assetImportInputRef}
+                    type="file"
+                  />
+                  <button className="ghost-button" onClick={() => assetImportInputRef.current?.click()} type="button">
+                  导入头像素材
+                  </button>
+                  <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
+                    导出头像素材
+                  </button>
+                  <button className="ghost-button" onClick={() => setIsAssetCleanupOpen(true)} type="button">
+                    清理未使用素材
+                  </button>
+                </div>
+              </article>
+              <article>
+                <h3>素材统计</h3>
+                <div className="import-preview-stats">
+                  <span>素材总数量：{avatarAssetStats.count}</span>
+                  <span>已绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) > 0).length}</span>
+                  <span>未绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) === 0).length}</span>
+                  <span>引用角色数量：{characters.filter((character) => character.avatarAssetId).length}</span>
+                  <span>总占用空间：{formatAssetSize(avatarAssetStats.size)}</span>
+                </div>
+              </article>
+            </div>
+            {avatarAssets.length > 0 ? (
+              <>
+                <div className="settings-asset-toolbar">
+                  <button className="ghost-button" onClick={toggleAllAssetsSelected} type="button">
+                    {selectedAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
+                  </button>
+                  <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAssetIds)} type="button">
+                    导出所选
+                  </button>
+                  <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void deleteSelectedUnusedAssets()} type="button">
+                    删除未使用
+                  </button>
+                  <button className="danger-button" disabled={selectedAssetIds.length === 0} onClick={requestSelectedAssetDelete} type="button">
+                    删除所选
+                  </button>
+                </div>
+                <div className="settings-asset-list">
+                  {avatarAssets.map((asset) => {
+                    const usageCount = getAssetUsageCount(asset.id);
+                    const createdAt = asset.createdAt
+                      ? new Date(asset.createdAt).toLocaleDateString()
+                      : "未知";
+
+                    return (
+                      <div className="settings-asset-item" key={asset.id}>
+                        <label className="asset-select-check">
+                          <input
+                            checked={selectedAssetIds.includes(asset.id)}
+                            onChange={() => toggleAssetSelected(asset.id)}
+                            type="checkbox"
+                          />
+                          <span className="sr-only">选择素材</span>
+                        </label>
+                        <AvatarDisplay
+                          assetId={asset.id}
+                          className="settings-asset-thumb"
+                          emoji="🙂"
+                        />
+                        <div>
+                          <strong>{asset.name || "avatar"}</strong>
+                          <span>
+                            {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
+                            {formatAssetSize(asset.size || asset.blob?.size || 0)} · {createdAt}
+                          </span>
+                          <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
+                        </div>
+                        <button
+                          className={usageCount > 0 ? "danger-button" : "ghost-button"}
+                          onClick={() => void requestAssetDelete(asset)}
+                          type="button"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="muted">暂无本地头像素材。</p>
+            )}
+          </div>
+        </div>
+    );
+  }
+
+
   return (
     <section className="page-grid">
       {toastMessage && (
@@ -1823,124 +2819,7 @@ export function Dashboard({
       )}
 
       {isAssetLibraryOpen && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsAssetLibraryOpen(false);
-            }
-          }}
-          role="presentation"
-        >
-          <div className="settings-dialog asset-library-dialog" role="dialog" aria-modal="true">
-            <div className="preview-card-title">
-              <div>
-                <p className="eyebrow">头像素材库</p>
-                <h2>头像素材库</h2>
-              </div>
-              <button className="ghost-button" onClick={() => setIsAssetLibraryOpen(false)} type="button">
-                关闭
-              </button>
-            </div>
-            <div className="settings-grid">
-              <article>
-                <h3>头像素材</h3>
-                <p className="muted">
-                  共 {avatarAssetStats.count} 个素材，占用约 {formatAssetSize(avatarAssetStats.size)}。素材仅保存在当前浏览器 IndexedDB。
-                </p>
-                <div className="settings-actions">
-                  <input
-                    accept="application/json,.json"
-                    className="hidden-input"
-                    onChange={(event) => void handleImportAvatarAssets(event.target.files?.[0])}
-                    ref={assetImportInputRef}
-                    type="file"
-                  />
-                  <button className="ghost-button" onClick={() => assetImportInputRef.current?.click()} type="button">
-                  导入头像素材
-                  </button>
-                  <button className="ghost-button" onClick={() => void exportAvatarAssetsJson()} type="button">
-                    导出头像素材
-                  </button>
-                  <button className="ghost-button" onClick={() => setIsAssetCleanupOpen(true)} type="button">
-                    清理未使用素材
-                  </button>
-                </div>
-              </article>
-              <article>
-                <h3>素材统计</h3>
-                <div className="import-preview-stats">
-                  <span>素材总数量：{avatarAssetStats.count}</span>
-                  <span>已绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) > 0).length}</span>
-                  <span>未绑定数量：{avatarAssets.filter((asset) => getAssetUsageCount(asset.id) === 0).length}</span>
-                  <span>引用角色数量：{characters.filter((character) => character.avatarAssetId).length}</span>
-                  <span>总占用空间：{formatAssetSize(avatarAssetStats.size)}</span>
-                </div>
-              </article>
-            </div>
-            {avatarAssets.length > 0 ? (
-              <>
-                <div className="settings-asset-toolbar">
-                  <button className="ghost-button" onClick={toggleAllAssetsSelected} type="button">
-                    {selectedAssetIds.length === avatarAssets.length ? "取消全选" : "全选"}
-                  </button>
-                  <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void exportAvatarAssetsJson(selectedAssetIds)} type="button">
-                    导出所选
-                  </button>
-                  <button className="ghost-button" disabled={selectedAssetIds.length === 0} onClick={() => void deleteSelectedUnusedAssets()} type="button">
-                    删除未使用
-                  </button>
-                  <button className="danger-button" disabled={selectedAssetIds.length === 0} onClick={requestSelectedAssetDelete} type="button">
-                    删除所选
-                  </button>
-                </div>
-                <div className="settings-asset-list">
-                  {avatarAssets.map((asset) => {
-                    const usageCount = getAssetUsageCount(asset.id);
-                    const createdAt = asset.createdAt
-                      ? new Date(asset.createdAt).toLocaleDateString()
-                      : "未知";
-
-                    return (
-                      <div className="settings-asset-item" key={asset.id}>
-                        <label className="asset-select-check">
-                          <input
-                            checked={selectedAssetIds.includes(asset.id)}
-                            onChange={() => toggleAssetSelected(asset.id)}
-                            type="checkbox"
-                          />
-                          <span className="sr-only">选择素材</span>
-                        </label>
-                        <AvatarDisplay
-                          assetId={asset.id}
-                          className="settings-asset-thumb"
-                          emoji="🙂"
-                        />
-                        <div>
-                          <strong>{asset.name || "avatar"}</strong>
-                          <span>
-                            {(asset.mimeType || asset.blob?.type || "image").replace("image/", "").toUpperCase()} ·{" "}
-                            {formatAssetSize(asset.size || asset.blob?.size || 0)} · {createdAt}
-                          </span>
-                          <small>{usageCount > 0 ? `正在被 ${usageCount} 个角色使用` : "未使用 / 无主素材"}</small>
-                        </div>
-                        <button
-                          className={usageCount > 0 ? "danger-button" : "ghost-button"}
-                          onClick={() => void requestAssetDelete(asset)}
-                          type="button"
-                        >
-                          删除
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <p className="muted">暂无本地头像素材。</p>
-            )}
-          </div>
-        </div>
+        renderAssetLibraryDialog()
       )}
 
       {pendingRestore && (
@@ -2036,862 +2915,11 @@ export function Dashboard({
         </div>
       )}
 
-      <div className="panel intro-panel">
-        <div>
-          <p className="eyebrow">OC Workspace</p>
-          <h1>{heroCopy.title}</h1>
-          <p className="muted">
-            {heroCopy.description}
-          </p>
-          <div className="dashboard-stats">
-            <button
-              className={prefs.favoriteMode === "all" ? "active" : ""}
-              onClick={() => updatePrefs({ favoriteMode: "all" })}
-              type="button"
-            >
-              全部 {stats.officialCount}
-            </button>
-            <button
-              className={prefs.favoriteMode === "favorites" ? "active" : ""}
-              onClick={() => updatePrefs({ favoriteMode: "favorites" })}
-              type="button"
-            >
-              收藏{dashboardSettings?.showFavoriteCount !== false ? ` ${stats.favoriteCount}` : ""}
-            </button>
-            <button
-              className={prefs.favoriteMode === "drafts" ? "active" : ""}
-              onClick={() => updatePrefs({ favoriteMode: "drafts" })}
-              type="button"
-            >
-              草稿{dashboardSettings?.showDraftCount !== false ? ` ${stats.draftCount}` : ""}
-            </button>
-          </div>
-        </div>
-        <div className="hero-actions dashboard-hero-actions">
-          <button
-            aria-label="搜索"
-            className={isSearchPanelOpen ? "hero-icon-button hero-collapsible active" : "hero-icon-button hero-collapsible"}
-            data-tooltip="搜索"
-            onClick={() => setIsSearchPanelOpen((current) => !current)}
-            type="button"
-          >
-            ⌕
-            <span className="mobile-search-label">搜索</span>
-          </button>
-          <button
-            aria-label="新建角色"
-            className="hero-icon-button hero-collapsible primary-icon"
-            data-tooltip="新建角色"
-            onClick={onCreate}
-            type="button"
-          >
-            +
-          </button>
-          <button
-            aria-label="草稿箱"
-            className={
-              prefs.favoriteMode === "drafts"
-                ? "hero-icon-button hero-collapsible active"
-                : "hero-icon-button hero-collapsible"
-            }
-            data-tooltip="草稿箱"
-            onClick={() =>
-              updatePrefs({
-                favoriteMode:
-                  prefs.favoriteMode === "drafts" ? "all" : "drafts",
-              })
-            }
-            type="button"
-          >
-            □
-            {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
-          </button>
-          <button
-            aria-label="收藏夹"
-            className={
-              prefs.favoriteMode === "favorites"
-                ? "hero-icon-button hero-collapsible active"
-                : "hero-icon-button hero-collapsible"
-            }
-            data-tooltip="收藏夹"
-            onClick={() =>
-              updatePrefs({
-                favoriteMode:
-                  prefs.favoriteMode === "favorites" ? "all" : "favorites",
-              })
-            }
-            type="button"
-          >
-            ♡
-          </button>
-          <button
-            aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
-            className="hero-icon-button"
-            data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
-            onClick={() =>
-              updatePrefs({
-                viewMode: prefs.viewMode === "cards" ? "list" : "cards",
-              })
-            }
-            type="button"
-          >
-            {prefs.viewMode === "cards" ? "☰" : "▦"}
-          </button>
-          <div className="dashboard-actions" ref={moreMenuRef}>
-            <input
-              accept="application/json,.json,application/zip,.zip"
-              className="hidden-input"
-              multiple
-              onChange={(event) => handleImportJson(event.target.files)}
-              ref={fileInputRef}
-              type="file"
-            />
-            <button
-              aria-label="更多操作"
-              className="hero-icon-button"
-              data-tooltip="更多操作"
-              disabled={loadingAction !== null}
-              onClick={() => setIsMoreMenuOpen((current) => !current)}
-              type="button"
-            >
-              {loadingAction ? "…" : "···"}
-            </button>
-            {isMoreMenuOpen && (
-              <div className="export-menu">
-                <button
-                  className="menu-responsive-only"
-                  onClick={() => setIsSearchPanelOpen((current) => !current)}
-                  type="button"
-                >
-                  搜索
-                </button>
-                <button
-                  className="menu-responsive-only"
-                  onClick={onCreate}
-                  type="button"
-                >
-                  新建角色
-                </button>
-                <button
-                  className="menu-responsive-only"
-                  onClick={() =>
-                    updatePrefs({
-                      favoriteMode:
-                        prefs.favoriteMode === "drafts" ? "all" : "drafts",
-                    })
-                  }
-                  type="button"
-                >
-                  {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
-                </button>
-                <button
-                  className="menu-responsive-only"
-                  onClick={() =>
-                    updatePrefs({
-                      favoriteMode:
-                        prefs.favoriteMode === "favorites"
-                          ? "all"
-                          : "favorites",
-                    })
-                  }
-                  type="button"
-                >
-                  {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  type="button"
-                >
-                  导入角色 JSON/ZIP
-                </button>
-                <button onClick={() => openCharacterExportDialog("all")} type="button">
-                  导出角色 JSON/ZIP
-                </button>
-                <button onClick={handleExportCsv} type="button">
-                  导出 CSV
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        {renderIntroPanel()}
 
-      <div className={isSearchPanelOpen ? "dashboard-controls-panel open" : "dashboard-controls-panel"}>
-        <button
-          aria-label="清空筛选"
-          className="filter-clear-button"
-          data-tooltip={hasSearchOrFilter || prefs.favoriteMode !== "all" ? "清空筛选" : "收起筛选"}
-          onClick={() => {
-            if (hasSearchOrFilter || prefs.favoriteMode !== "all") {
-              clearSearchAndFilters();
-              return;
-            }
+        {renderSearchControls()}
 
-            setIsSearchPanelOpen(false);
-          }}
-          type="button"
-        >
-          ×
-        </button>
-        <div className="dashboard-controls">
-          <label>
-            搜索
-            <input
-              ref={searchInputRef}
-              value={prefs.searchTerm}
-              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  openFirstSearchResult();
-                }
-              }}
-              placeholder="搜索角色名、职业、世界观、性格标签"
-            />
-          </label>
-          <label>
-            范围
-            <select
-              value={prefs.favoriteMode}
-              onChange={(event) =>
-                updatePrefs({ favoriteMode: event.target.value as ScopeMode })
-              }
-            >
-              <option value="all">全部角色</option>
-              <option value="favorites">仅收藏</option>
-              <option value="drafts">草稿箱</option>
-            </select>
-          </label>
-          <label>
-            排序
-            <select
-              value={prefs.sortMode}
-              onChange={(event) =>
-                updatePrefs({ sortMode: event.target.value as SortMode })
-              }
-            >
-              <option value="updated-desc">最近编辑</option>
-              <option value="created-desc">最近创建</option>
-              <option value="name-asc">名称 A-Z</option>
-              <option value="name-desc">名称 Z-A</option>
-            </select>
-          </label>
-          <label>
-            世界观
-            <select
-              value={prefs.worldviewFilter}
-              onChange={(event) =>
-                updatePrefs({ worldviewFilter: event.target.value })
-              }
-            >
-              <option value="全部">全部</option>
-              {worldviewOptions.map((worldview) => (
-                <option key={worldview} value={worldview}>
-                  {worldview}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            性别
-            <select
-              value={prefs.genderFilter}
-              onChange={(event) => updatePrefs({ genderFilter: event.target.value })}
-            >
-              <option value="全部">全部</option>
-              {genderOptions.map((gender) => (
-                <option key={gender} value={gender}>
-                  {gender}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            视觉风格
-            <select
-              value={prefs.visualStyleFilter}
-              onChange={(event) =>
-                updatePrefs({ visualStyleFilter: event.target.value })
-              }
-            >
-              <option value="全部">全部</option>
-              {visualStyleOptions.map((style) => (
-                <option key={style} value={style}>
-                  {style}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </div>
-
-      <div className="panel">
-
-        <div className="section-title">
-          <div>
-            <h2>{listTitle}</h2>
-            <span>
-              {visibleCharacters.length} 个角色
-              {selectedIds.length > 0 && (
-                <span className="selected-count-inline">
-                  {" / "}
-                  已选 {selectedIds.length} 个
-                </span>
-              )}
-            </span>
-          </div>
-          {visibleCharacters.length > 0 && (
-            <div className="bulk-actions">
-              {isBulkMode ? (
-                <>
-                  <div className="bulk-actions-desktop">
-                    <button
-                      className="ghost-button"
-                      onClick={toggleSelectAll}
-                      type="button"
-                    >
-                      {selectedIds.length === visibleCharacters.length
-                        ? "取消全选"
-                        : "全选"}
-                    </button>
-                    {!isDraftView && (
-                      <>
-                        {isFavoriteView ? (
-                          <button
-                            className="ghost-button"
-                            disabled={selectedIds.length === 0}
-                            onClick={() => bulkSetFavorite(false)}
-                            type="button"
-                          >
-                            移出收藏
-                          </button>
-                        ) : (
-                          <button
-                            className="ghost-button"
-                            disabled={selectedIds.length === 0}
-                            onClick={() => bulkSetFavorite(true)}
-                            type="button"
-                          >
-                            加入收藏
-                          </button>
-                        )}
-                        <button
-                          className="ghost-button"
-                          disabled={selectedIds.length === 0 || loadingAction !== null}
-                          onClick={() => openCharacterExportDialog("selected")}
-                          type="button"
-                        >
-                          导出
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="ghost-button"
-                      disabled={selectedIds.length === 0}
-                      onClick={handleBulkDuplicate}
-                      type="button"
-                    >
-                      {isDraftView ? "复制" : "批量复制"}
-                    </button>
-                    <button
-                      className="danger-button"
-                      disabled={selectedIds.length === 0}
-                      onClick={() =>
-                        selectedIds.length > 0
-                          ? setIsBulkDeleteOpen(true)
-                          : showToast("请先选择角色")
-                      }
-                      type="button"
-                    >
-                      {isDraftView ? "删除" : "批量删除"}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={exitBulkMode}
-                      type="button"
-                    >
-                      取消选择
-                    </button>
-                  </div>
-                  <div className="mobile-bulk-toolbar">
-                    <div className="mobile-bulk-summary">
-                      <span>已选择 {selectedIds.length} 个角色</span>
-                      <button className="ghost-button" onClick={exitBulkMode} type="button">
-                        取消
-                      </button>
-                    </div>
-                    <div className="mobile-bulk-actions">
-                      <button className="ghost-button" onClick={toggleSelectAll} type="button">
-                        <span>□</span>
-                        {selectedIds.length === visibleCharacters.length ? "取消全选" : "全选"}
-                      </button>
-                      {!isDraftView && (
-                        <button
-                          className="ghost-button"
-                          disabled={selectedIds.length === 0}
-                          onClick={() => bulkSetFavorite(isFavoriteView ? false : true)}
-                          type="button"
-                        >
-                          <span>{isFavoriteView ? "♡" : "♡"}</span>
-                          {isFavoriteView ? "移出" : "收藏"}
-                        </button>
-                      )}
-                      {!isDraftView && (
-                        <button
-                          className="ghost-button"
-                          disabled={selectedIds.length === 0 || loadingAction !== null}
-                          onClick={() => openCharacterExportDialog("selected")}
-                          type="button"
-                        >
-                          <span>↓</span>
-                          导出
-                        </button>
-                      )}
-                      <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
-                        <span>···</span>
-                        更多
-                      </button>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <button
-                  className="ghost-button bulk-select-button"
-                  aria-label="批量选择"
-                  data-tooltip="批量选择"
-                  onClick={enterBulkMode}
-                  type="button"
-                >
-                  <span className="desktop-label">批量选择</span>
-                  <span className="mobile-icon">□</span>
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {isLoading ? (
-          <div className="skeleton-grid">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <div className="skeleton-card" key={index} />
-            ))}
-          </div>
-        ) : characters.length === 0 ? (
-          <div className="empty-state">
-            <h3>还没有角色</h3>
-            <p>开始创建你的第一个角色。</p>
-            <button className="primary-button" onClick={onCreate} type="button">
-              新建角色
-            </button>
-          </div>
-        ) : visibleCharacters.length === 0 ? (
-          <div className="empty-state">
-            <h3>没有找到符合条件的角色。</h3>
-            <p>试试调整搜索词或筛选条件。</p>
-            <button
-              className="ghost-button"
-              disabled={!hasActiveSearchOrFilter}
-              onClick={clearSearchAndFilters}
-              type="button"
-            >
-              清除筛选
-            </button>
-          </div>
-        ) : (
-          <>
-          {visibleCharacters.length === 1 && (
-            <div className="single-list-note">
-              <span>目前只有 1 个角色，可以继续新建来丰富你的角色库。</span>
-              <button className="ghost-button" onClick={onCreate} type="button">
-                新建角色
-              </button>
-            </div>
-          )}
-          {prefs.viewMode === "list" ? (
-          <div className="character-table-wrap">
-            <div className="character-table">
-              <div className="character-table-head">
-                <span>角色</span>
-                <span>职业</span>
-                <span>世界观</span>
-                <span>年龄</span>
-                <span>标签</span>
-                <span>状态</span>
-                <span>最后编辑</span>
-                <span>操作</span>
-              </div>
-              {visibleCharacters.map((character) => {
-                const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
-                const isDraft = character.isDraft === true;
-
-                return (
-                  <div
-                    className={
-                      openCardMenuId === character.id
-                        ? "character-table-row menu-open"
-                        : "character-table-row"
-                    }
-                    key={character.id}
-                  >
-                    <button className="table-main" onClick={() => onPreview(character)} type="button">
-                      <AvatarDisplay
-                        assetId={character.avatarAssetId}
-                        className="table-avatar"
-                        emoji={character.avatarEmoji || "🙂"}
-                      />
-                      <strong>{character.name || "未命名角色"}</strong>
-                    </button>
-                    <span>{character.occupation || "未填写"}</span>
-                    <span>{character.worldview || "未填写"}</span>
-                    <span>{character.age || "未填写"}</span>
-                    <div className="table-tags">
-                      {getPersonalityTags(character).slice(0, Math.min(cardTagLimit, 4)).map((tag) => (
-                        <button
-                          className={`tag-tone-${getTagTone(tag)}`}
-                          key={tag}
-                          onClick={() => onPreview(character)}
-                          type="button"
-                        >
-                          {tag}
-                        </button>
-                      ))}
-                    </div>
-                    <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
-                    {dashboardSettings?.showUpdatedTime !== false &&
-                    dashboardSettings?.hideLowPriority !== true && <span>{formatDate(character.updatedAt)}</span>}
-                    <div className="table-actions">
-                      {isBulkMode ? (
-                        <button
-                          className={
-                            selectedIds.includes(character.id)
-                              ? "select-circle selected inline"
-                              : "select-circle inline"
-                          }
-                          onClick={() => toggleSelected(character.id)}
-                          type="button"
-                        />
-                      ) : (
-                        <>
-                          <button className="bare-icon-button table-edit-button" onClick={() => onEdit(character)} type="button">
-                            ⌁
-                          </button>
-                          <div className="card-menu-wrap table-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
-                            <button
-                              aria-label="更多"
-                              className="bare-icon-button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setOpenCardMenuId((current) =>
-                                  current === character.id ? null : character.id,
-                                );
-                              }}
-                              type="button"
-                            >
-                              ···
-                            </button>
-                            {openCardMenuId === character.id && (
-                              <div className="card-menu table-card-menu" onClick={(event) => event.stopPropagation()}>
-                                <button onClick={() => onPreview(character)} type="button">
-                                  预览
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    onEdit(character);
-                                    setOpenCardMenuId(null);
-                                  }}
-                                  type="button"
-                                >
-                                  编辑
-                                </button>
-                                {!isDraft && (
-                                  <button
-                                    onClick={() => toggleFavorite(character.id)}
-                                    type="button"
-                                  >
-                                    {isFavorite ? "移出收藏" : "加入收藏"}
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => {
-                                    onDuplicate(character);
-                                    setOpenCardMenuId(null);
-                                  }}
-                                  type="button"
-                                >
-                                  复制
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setExportTarget(character);
-                                    setOpenCardMenuId(null);
-                                  }}
-                                  type="button"
-                                >
-                                  导出
-                                </button>
-                                <button
-                                  className="menu-danger"
-                                  onClick={() => {
-                                    setPendingDelete(character);
-                                    setOpenCardMenuId(null);
-                                  }}
-                                  type="button"
-                                >
-                                  删除
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          ) : (
-          <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
-            {visibleCharacters.map((character) => {
-              const tags = getPersonalityTags(character);
-              const visibleTags = tags.slice(0, cardTagLimit);
-              const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
-              const isPinned = flags.pinnedIds.includes(character.id);
-              const isDraft = character.isDraft === true;
-
-              return (
-              <article
-                className={
-                  [
-                    "character-card",
-                    selectedIds.includes(character.id) ? "selected" : "",
-                    isBulkMode ? "bulk-mode" : "",
-                    openCardMenuId === character.id ? "menu-open" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")
-                }
-                key={character.id}
-              >
-                {isBulkMode && (
-                  <button
-                    aria-label={`选择 ${character.name || "未命名角色"}`}
-                    className={
-                      selectedIds.includes(character.id)
-                        ? "select-circle selected"
-                        : "select-circle"
-                    }
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleSelected(character.id);
-                    }}
-                    type="button"
-                  />
-                )}
-                <div className="card-main">
-                  <button
-                    aria-label={`预览 ${character.name || "未命名角色"}`}
-                    className="avatar-click-target preview-hit"
-                    onClick={() => onPreview(character)}
-                    type="button"
-                  >
-                    <AvatarDisplay
-                      assetId={character.avatarAssetId}
-                      className="avatar-placeholder"
-                      emoji={character.avatarEmoji || "🙂"}
-                    />
-                  </button>
-                  <div className="card-copy">
-                    <button
-                      className="card-title-button preview-hit"
-                      onClick={() => onPreview(character)}
-                      type="button"
-                    >
-                      {character.name || "未命名角色"}
-                    </button>
-                    <button
-                      className="card-subtitle-button preview-hit"
-                      onClick={() => onPreview(character)}
-                      type="button"
-                    >
-                      {character.occupation || "暂无职业"} ｜{" "}
-                      {character.worldview || "暂无世界观"}
-                      <span className="card-age-fragment">
-                        {" ｜ "}
-                        {character.age || "年龄未知"}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-                {(isDraft || isPinned || tags.length > 0) && (
-                  <div className="card-tags" onClick={(event) => event.stopPropagation()}>
-                    {isDraft && <span className="status-badge draft">草稿</span>}
-                    {!isDraft && isPinned && <span className="status-badge pinned">置顶</span>}
-                    {!isDraft && visibleTags.map((tag) => (
-                      <button
-                        className={`tag-tone-${getTagTone(tag)} preview-hit`}
-                        key={tag}
-                        onClick={() => onPreview(character)}
-                        type="button"
-                      >
-                        {tag}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {!isBulkMode && !isDraft && (
-                  <>
-                    <div className="card-actions">
-                      <button
-                        aria-label="编辑"
-                        className="bare-icon-button card-edit-button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onEdit(character);
-                        }}
-                        title="编辑"
-                        type="button"
-                      >
-                        ⌁
-                      </button>
-                      <div className="card-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
-                        <button
-                          aria-label="更多"
-                          className="bare-icon-button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setOpenCardMenuId((current) =>
-                              current === character.id ? null : character.id,
-                            );
-                          }}
-                          type="button"
-                        >
-                          ···
-                        </button>
-                        {openCardMenuId === character.id && (
-                          <div className="card-menu" onClick={(event) => event.stopPropagation()}>
-                            <button onClick={() => onPreview(character)} type="button">
-                              预览
-                            </button>
-                            <button
-                              onClick={() => {
-                                onEdit(character);
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              编辑
-                            </button>
-                            <button
-                              onClick={() => {
-                                togglePinned(character.id);
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              {isPinned ? "取消置顶" : "置顶"}
-                            </button>
-                            <button
-                              onClick={() => {
-                                onDuplicate(character);
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              复制
-                            </button>
-                            <button
-                              onClick={() => {
-                                setExportTarget(character);
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              导出
-                            </button>
-                            <button
-                              className="menu-danger"
-                              onClick={() => {
-                                setPendingDelete(character);
-                                setOpenCardMenuId(null);
-                              }}
-                              type="button"
-                            >
-                              删除
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div className="card-footer-actions">
-                      <button
-                        aria-label={isFavorite ? "取消收藏" : "收藏"}
-                        className={isFavorite ? "mini-icon active" : "mini-icon"}
-                        onClick={() => toggleFavorite(character.id)}
-                        title={isFavorite ? "取消收藏" : "收藏"}
-                        type="button"
-                      >
-                        {isFavorite ? "♥" : "♡"}
-                      </button>
-                      {dashboardSettings?.showUpdatedTime !== false &&
-                    dashboardSettings?.hideLowPriority !== true && (
-                        <button
-                          className="card-time-button preview-hit"
-                          onClick={() => onPreview(character)}
-                          type="button"
-                        >
-                          {formatDate(character.updatedAt)}
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-                {!isBulkMode && isDraft && (
-                  <div className="draft-card-actions">
-                    <button
-                      className="ghost-button"
-                      onClick={() => onEdit(character)}
-                      type="button"
-                    >
-                      继续编辑
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={() => onPromoteDraft(character)}
-                      type="button"
-                    >
-                      保存为正式
-                    </button>
-                    <button
-                      className="danger-button"
-                      onClick={() => setPendingDelete(character)}
-                      type="button"
-                    >
-                      删除
-                    </button>
-                  </div>
-                )}
-                {(isBulkMode || isDraft) && (
-                  <div className="card-meta">
-                    {dashboardSettings?.showUpdatedTime !== false &&
-                    dashboardSettings?.hideLowPriority !== true && (
-                      <button
-                        className="card-time-button preview-hit"
-                        onClick={() => onPreview(character)}
-                        type="button"
-                      >
-                        {formatDate(character.updatedAt)}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </article>
-              );
-            })}
-          </div>
-          )}
-          </>
-        )}
-      </div>
+        {renderCharacterListPanel()}
       <footer className="dashboard-footer">
         <button onClick={() => setIsAboutOpen(true)} type="button">
           About Character Studio
