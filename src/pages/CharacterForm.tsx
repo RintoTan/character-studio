@@ -1369,6 +1369,7 @@ export function CharacterForm({
   const [isHelperReplaceConfirmOpen, setIsHelperReplaceConfirmOpen] = useState(false);
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false);
+  const actionBarRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("basic");
   const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>({
@@ -1554,6 +1555,27 @@ export function CharacterForm({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [cropDraft]);
+
+  // The module rail stacks under the action bar, so it needs the bar's measured
+  // height rather than a guess — the bar is one row on a desktop and can wrap.
+  useEffect(() => {
+    const el = actionBarRef.current;
+    if (!el) {
+      return;
+    }
+
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--editor-bar-height",
+        `${Math.round(el.getBoundingClientRect().height)}px`,
+      );
+    };
+
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
 
   // The primary action had no keyboard route at all: on a form this long the save
   // button can be scrolled out of view, and Cmd/Ctrl+S is what a desktop user
@@ -2426,7 +2448,7 @@ export function CharacterForm({
           </div>
         </div>
       </div>
-      <div className="workspace-toolbar editor-action-bar">
+      <div className="workspace-toolbar editor-action-bar" ref={actionBarRef}>
           <div className="editor-action-group">
             <span className={`save-status ${saveStatus}`}>
               {saveStatus === "saving"

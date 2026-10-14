@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v2.3.0**（Sprint 13.1）—— 统一间距标尺、顶栏跟随、图标光学重心与编辑页进度总览。
+> **发布状态：v2.4.0**（Sprint 14.1）—— 吸顶分层按实测高度自适应，仪表盘操作区跟随滚动。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 

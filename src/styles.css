@@ -418,7 +418,8 @@ button:disabled {
 }
 
 .page-grid {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 20px;
 }
 
@@ -437,6 +438,26 @@ button:disabled {
   justify-content: flex-end;
   flex-wrap: nowrap;
   gap: 10px;
+}
+
+/* Follows the scroll, like the editor's action bar. The action cluster used to
+   live inside the hero, so on a long character list search / new / favourites
+   were only reachable by scrolling back to the top. Pinned below the sticky
+   topbar (46px tall) with a small gap. */
+.dashboard-action-bar {
+  position: sticky;
+  top: calc(var(--topbar-height, 46px) + 8px);
+  z-index: var(--z-dropdown);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--developer-card-radius);
+  background: color-mix(in srgb, var(--surface) 93%, transparent);
+  box-shadow: var(--shadow);
+  padding: 10px 14px;
+  backdrop-filter: blur(10px);
 }
 
 .dashboard-hero-actions {
@@ -2741,7 +2762,7 @@ input[type="number"]::-webkit-inner-spin-button {
    the actions people actually came for. */
 .editor-action-bar {
   position: sticky;
-  top: 10px;
+  top: calc(var(--topbar-height, 46px) + 8px);
   z-index: var(--z-dropdown);
   justify-content: space-between;
   border: 1px solid var(--border);
@@ -2943,7 +2964,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .workspace-nav {
   position: sticky;
-  top: 80px;
+  top: calc(var(--topbar-height, 46px) + 8px + var(--editor-bar-height, 62px) + 12px);
   display: grid;
   gap: 8px;
   border: 1px solid var(--border);

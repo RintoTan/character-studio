@@ -1796,6 +1796,7 @@ export function Dashboard({
 
   function renderIntroPanel() {
     return (
+      <>
       <div className="panel intro-panel">
         <div>
           <p className="eyebrow">OC Workspace</p>
@@ -1827,179 +1828,182 @@ export function Dashboard({
             </button>
           </div>
         </div>
-        <div className="hero-actions dashboard-hero-actions">
-          <button
-            aria-label="搜索"
-            className={isSearchPanelOpen ? "hero-icon-button hero-collapsible active" : "hero-icon-button hero-collapsible"}
-            data-tooltip="搜索"
-            onClick={() => setIsSearchPanelOpen((current) => !current)}
-            type="button"
-          >
-            <Icon name="search" />
-            <span className="mobile-search-label">搜索</span>
-          </button>
-          <button
-            aria-label="新建角色"
-            className="hero-icon-button hero-collapsible primary-icon"
-            data-tooltip="新建角色"
-            onClick={onCreate}
-            type="button"
-          >
-            <Icon name="plus" />
-          </button>
-          <button
-            aria-label="草稿箱"
-            className={
-              prefs.favoriteMode === "drafts"
-                ? "hero-icon-button hero-collapsible active"
-                : "hero-icon-button hero-collapsible"
-            }
-            data-tooltip="草稿箱"
-            onClick={() =>
-              updatePrefs({
-                favoriteMode:
-                  prefs.favoriteMode === "drafts" ? "all" : "drafts",
-              })
-            }
-            type="button"
-          >
-            <Icon name="file" />
-            {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
-          </button>
-          <button
-            aria-label="收藏夹"
-            className={
-              prefs.favoriteMode === "favorites"
-                ? "hero-icon-button hero-collapsible active"
-                : "hero-icon-button hero-collapsible"
-            }
-            data-tooltip="收藏夹"
-            onClick={() =>
-              updatePrefs({
-                favoriteMode:
-                  prefs.favoriteMode === "favorites" ? "all" : "favorites",
-              })
-            }
-            type="button"
-          >
-            <Icon name="heart" />
-          </button>
-          <button
-            aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
-            className="hero-icon-button"
-            data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
-            onClick={() =>
-              updatePrefs({
-                viewMode: prefs.viewMode === "cards" ? "list" : "cards",
-              })
-            }
-            type="button"
-          >
-            <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
-          </button>
-          <div className="dashboard-actions" ref={moreMenuRef}>
-            <input
-              accept="application/json,.json,application/zip,.zip,.csv,text/csv"
-              className="hidden-input"
-              multiple
-              onChange={(event) => handleImportJson(event.target.files)}
-              ref={fileInputRef}
-              type="file"
-            />
+      </div>
+      <div className="dashboard-action-bar">
+          <div className="hero-actions dashboard-hero-actions">
             <button
-              aria-label="更多操作"
-              className="hero-icon-button"
-              data-tooltip="更多操作"
-              disabled={loadingAction !== null}
-              onClick={() => setIsMoreMenuOpen((current) => !current)}
+              aria-label="搜索"
+              className={isSearchPanelOpen ? "hero-icon-button hero-collapsible active" : "hero-icon-button hero-collapsible"}
+              data-tooltip="搜索"
+              onClick={() => setIsSearchPanelOpen((current) => !current)}
               type="button"
             >
-              {loadingAction ? "…" : <Icon name="more" />}
+              <Icon name="search" />
+              <span className="mobile-search-label">搜索</span>
             </button>
-            {isMoreMenuOpen && (
-              <div className="export-menu">
-                <button
-                  className="menu-responsive-only"
-                  onClick={() => setIsSearchPanelOpen((current) => !current)}
-                  type="button"
-                >
-                  <Icon name="search" size={16} />
-                  搜索
-                </button>
-                <button
-                  className="menu-responsive-only"
-                  onClick={onCreate}
-                  type="button"
-                >
-                  <Icon name="plus" size={16} />
-                  新建角色
-                </button>
-                <button
-                  className="menu-responsive-only"
-                  onClick={() =>
-                    updatePrefs({
-                      favoriteMode:
-                        prefs.favoriteMode === "drafts" ? "all" : "drafts",
-                    })
-                  }
-                  type="button"
-                >
-                  <Icon name="file" size={16} />
-                  {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
-                </button>
-                <button
-                  className="menu-responsive-only"
-                  onClick={() =>
-                    updatePrefs({
-                      favoriteMode:
-                        prefs.favoriteMode === "favorites"
-                          ? "all"
-                          : "favorites",
-                    })
-                  }
-                  type="button"
-                >
-                  <Icon name="heart" size={16} />
-                  {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
-                </button>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  type="button"
-                >
-                  <Icon name="upload" size={16} />
-                  导入角色 JSON/ZIP/CSV
-                </button>
-                <button onClick={() => openCharacterExportDialog("all")} type="button">
-                  <Icon name="package" size={16} />
-                  导出角色 JSON/ZIP
-                </button>
-                {onOpenRelationships && (
-                  <button onClick={onOpenRelationships} type="button">
-                    <Icon name="link" size={16} />
-                    角色关系网
+            <button
+              aria-label="新建角色"
+              className="hero-icon-button hero-collapsible primary-icon"
+              data-tooltip="新建角色"
+              onClick={onCreate}
+              type="button"
+            >
+              <Icon name="plus" />
+            </button>
+            <button
+              aria-label="草稿箱"
+              className={
+                prefs.favoriteMode === "drafts"
+                  ? "hero-icon-button hero-collapsible active"
+                  : "hero-icon-button hero-collapsible"
+              }
+              data-tooltip="草稿箱"
+              onClick={() =>
+                updatePrefs({
+                  favoriteMode:
+                    prefs.favoriteMode === "drafts" ? "all" : "drafts",
+                })
+              }
+              type="button"
+            >
+              <Icon name="file" />
+              {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
+            </button>
+            <button
+              aria-label="收藏夹"
+              className={
+                prefs.favoriteMode === "favorites"
+                  ? "hero-icon-button hero-collapsible active"
+                  : "hero-icon-button hero-collapsible"
+              }
+              data-tooltip="收藏夹"
+              onClick={() =>
+                updatePrefs({
+                  favoriteMode:
+                    prefs.favoriteMode === "favorites" ? "all" : "favorites",
+                })
+              }
+              type="button"
+            >
+              <Icon name="heart" />
+            </button>
+            <button
+              aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
+              className="hero-icon-button"
+              data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
+              onClick={() =>
+                updatePrefs({
+                  viewMode: prefs.viewMode === "cards" ? "list" : "cards",
+                })
+              }
+              type="button"
+            >
+              <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
+            </button>
+            <div className="dashboard-actions" ref={moreMenuRef}>
+              <input
+                accept="application/json,.json,application/zip,.zip,.csv,text/csv"
+                className="hidden-input"
+                multiple
+                onChange={(event) => handleImportJson(event.target.files)}
+                ref={fileInputRef}
+                type="file"
+              />
+              <button
+                aria-label="更多操作"
+                className="hero-icon-button"
+                data-tooltip="更多操作"
+                disabled={loadingAction !== null}
+                onClick={() => setIsMoreMenuOpen((current) => !current)}
+                type="button"
+              >
+                {loadingAction ? "…" : <Icon name="more" />}
+              </button>
+              {isMoreMenuOpen && (
+                <div className="export-menu">
+                  <button
+                    className="menu-responsive-only"
+                    onClick={() => setIsSearchPanelOpen((current) => !current)}
+                    type="button"
+                  >
+                    <Icon name="search" size={16} />
+                    搜索
                   </button>
-                )}
-                {onOpenTimeline && (
-                  <button onClick={onOpenTimeline} type="button">
-                    <Icon name="clock" size={16} />
-                    世界观时间线
+                  <button
+                    className="menu-responsive-only"
+                    onClick={onCreate}
+                    type="button"
+                  >
+                    <Icon name="plus" size={16} />
+                    新建角色
                   </button>
-                )}
-                {onOpenWorld && (
-                  <button onClick={onOpenWorld} type="button">
-                    <Icon name="globe" size={16} />
-                    世界观管理
+                  <button
+                    className="menu-responsive-only"
+                    onClick={() =>
+                      updatePrefs({
+                        favoriteMode:
+                          prefs.favoriteMode === "drafts" ? "all" : "drafts",
+                      })
+                    }
+                    type="button"
+                  >
+                    <Icon name="file" size={16} />
+                    {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
                   </button>
-                )}
-                <button onClick={handleExportCsv} type="button">
-                  <Icon name="download" size={16} />
-                  导出 CSV
-                </button>
-              </div>
-            )}
+                  <button
+                    className="menu-responsive-only"
+                    onClick={() =>
+                      updatePrefs({
+                        favoriteMode:
+                          prefs.favoriteMode === "favorites"
+                            ? "all"
+                            : "favorites",
+                      })
+                    }
+                    type="button"
+                  >
+                    <Icon name="heart" size={16} />
+                    {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    type="button"
+                  >
+                    <Icon name="upload" size={16} />
+                    导入角色 JSON/ZIP/CSV
+                  </button>
+                  <button onClick={() => openCharacterExportDialog("all")} type="button">
+                    <Icon name="package" size={16} />
+                    导出角色 JSON/ZIP
+                  </button>
+                  {onOpenRelationships && (
+                    <button onClick={onOpenRelationships} type="button">
+                      <Icon name="link" size={16} />
+                      角色关系网
+                    </button>
+                  )}
+                  {onOpenTimeline && (
+                    <button onClick={onOpenTimeline} type="button">
+                      <Icon name="clock" size={16} />
+                      世界观时间线
+                    </button>
+                  )}
+                  {onOpenWorld && (
+                    <button onClick={onOpenWorld} type="button">
+                      <Icon name="globe" size={16} />
+                      世界观管理
+                    </button>
+                  )}
+                  <button onClick={handleExportCsv} type="button">
+                    <Icon name="download" size={16} />
+                    导出 CSV
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
       </div>
+      </>
     );
   }
 

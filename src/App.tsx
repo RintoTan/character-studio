@@ -112,6 +112,7 @@ function App() {
     null,
   );
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const topbarRef = useRef<HTMLElement>(null);
   const appAssetImportInputRef = useRef<HTMLInputElement>(null);
   const isHistoryNavigationRef = useRef(false);
 
@@ -171,6 +172,30 @@ function App() {
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
+  }, []);
+
+  // Everything sticky below the topbar offsets itself by this value, so a
+  // hard-coded number is wrong at half the breakpoints: the topbar is 46px on a
+  // desktop but wraps to 95px on a narrow screen, and at 95 the editor's action
+  // bar slid underneath it. Measuring and republishing keeps the layers stacked
+  // at every width and font scale.
+  useEffect(() => {
+    const el = topbarRef.current;
+    if (!el) {
+      return;
+    }
+
+    const publish = () => {
+      document.documentElement.style.setProperty(
+        "--topbar-height",
+        `${Math.round(el.getBoundingClientRect().height)}px`,
+      );
+    };
+
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -667,7 +692,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <nav className="topbar">
+      <nav className="topbar" ref={topbarRef}>
         <button className="brand-button" onClick={goDashboard}>
           <svg className="brand-mark" aria-hidden="true" viewBox="0 0 566.43 637.56">
             <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
