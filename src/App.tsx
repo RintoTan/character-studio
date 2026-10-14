@@ -35,6 +35,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { pruneRelationships } from "./storage/relationshipStorage";
 import { pruneTimelineCharacters } from "./storage/timelineStorage";
 import { pruneWorldCharacters } from "./storage/worldStorage";
+import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
 
 // The editor, the preview and the developer panel are not needed for the first
 // paint, so they are code-split out of the entry chunk. Dashboard stays static:
@@ -1046,9 +1047,9 @@ function App() {
                   <h2>Character Studio</h2>
                   <p>{developerSettings.content.firstAboutTagline}</p>
                   <div className="about-version-row">
-                    {developerSettings.application.showVersion && <span className="status-badge">Version {developerSettings.project.version}</span>}
-                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {developerSettings.project.sprint}</span>}
-                    {developerSettings.application.showBuild && <span className="status-badge">Build {developerSettings.project.build}</span>}
+                    {developerSettings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
+                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
+                    {developerSettings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
                   </div>
                 </div>
                 <div className="first-about-cards">
@@ -1073,7 +1074,7 @@ function App() {
                     Developer Handbook 开发手册
                   </a>
                 </div>
-                <p className="first-about-credit">RINTO × Codex 共同开发 {developerSettings.project.releaseYear}</p>
+                <p className="first-about-credit">RINTO × Codex 共同开发 {RELEASE_YEAR}</p>
                 <label className="settings-check first-about-switch">
                   <input
                     type="checkbox"
@@ -1102,9 +1103,9 @@ function App() {
                 <article>
                   <h3>当前版本</h3>
                   <div className="about-version-row">
-                    {developerSettings.application.showVersion && <span className="status-badge">Version {developerSettings.project.version}</span>}
-                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {developerSettings.project.sprint}</span>}
-                    {developerSettings.application.showBuild && <span className="status-badge">Build {developerSettings.project.build}</span>}
+                    {developerSettings.application.showVersion && <span className="status-badge">Version {APP_VERSION}</span>}
+                    {developerSettings.application.showSprint && <span className="status-badge">Sprint {APP_SPRINT}</span>}
+                    {developerSettings.application.showBuild && <span className="status-badge">Build {APP_BUILD}</span>}
                   </div>
                 </article>
               )}
@@ -1172,7 +1173,7 @@ function App() {
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 {developerSettings.project.releaseYear}。</p>
+                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
               </article>
               {!isFirstAboutOpen && (
                 <article>
@@ -1209,9 +1210,9 @@ function App() {
                 </svg>
                 <div className="about-brand-meta">
                   <h3>Character Studio</h3>
-                  {developerSettings.application.showVersion && <p>Version {developerSettings.project.version}</p>}
-                  {developerSettings.application.showSprint && <p>Sprint {developerSettings.project.sprint}</p>}
-                  <p>Released {developerSettings.project.releaseYear}</p>
+                  {developerSettings.application.showVersion && <p>Version {APP_VERSION}</p>}
+                  {developerSettings.application.showSprint && <p>Sprint {APP_SPRINT}</p>}
+                  <p>Released {RELEASE_YEAR}</p>
                 </div>
                 <p className="about-brand-tagline">{developerSettings.content.firstAboutTagline}</p>
                 <div className="about-brand-links">
@@ -1225,10 +1226,10 @@ function App() {
                 <div className="about-brand-credit">
                   <span>Designed &amp; Developed by</span>
                   <strong>RINTO × Codex</strong>
-                  <span>{developerSettings.project.releaseYear}</span>
+                  <span>{RELEASE_YEAR}</span>
                 </div>
                 <p className="about-brand-copyright">
-                  © {developerSettings.project.releaseYear} RINTO<br />
+                  © {RELEASE_YEAR} RINTO<br />
                   All Rights Reserved.
                 </p>
               </div>

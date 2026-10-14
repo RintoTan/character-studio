@@ -422,32 +422,37 @@ export function DeveloperCenter({
               <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">Developer Handbook</a>
             </div>
             <div className="developer-settings-grid">
-              <DeveloperField title="Version" description="统一控制 About、首次 About 与 Developer Center 的版本显示。">
+              <DeveloperField status="readonly" title="Version" description="统一控制 About、首次 About 与 Developer Center 的版本显示。">
                 <input
+                  readOnly
                   value={settings.project.version}
                   onChange={(event) => updateDeveloperModule("project", { version: event.target.value })}
                 />
               </DeveloperField>
-              <DeveloperField title="Sprint" description="统一控制当前 Sprint 标识。">
+              <DeveloperField status="readonly" title="Sprint" description="统一控制当前 Sprint 标识。">
                 <input
+                  readOnly
                   value={settings.project.sprint}
                   onChange={(event) => updateDeveloperModule("project", { sprint: event.target.value })}
                 />
               </DeveloperField>
-              <DeveloperField title="Build" description="统一控制构建年份或构建号显示。">
+              <DeveloperField status="readonly" title="Build" description="统一控制构建年份或构建号显示。">
                 <input
+                  readOnly
                   value={settings.project.build}
                   onChange={(event) => updateDeveloperModule("project", { build: event.target.value })}
                 />
               </DeveloperField>
-              <DeveloperField title="Release Label" description="统一控制发布标签。">
+              <DeveloperField status="readonly" title="Release Label" description="统一控制发布标签。">
                 <input
+                  readOnly
                   value={settings.project.releaseLabel}
                   onChange={(event) => updateDeveloperModule("project", { releaseLabel: event.target.value })}
                 />
               </DeveloperField>
-              <DeveloperField title="Release Year" description="统一控制版权与发布年份显示。">
+              <DeveloperField status="readonly" title="Release Year" description="统一控制版权与发布年份显示。">
                 <input
+                  readOnly
                   value={settings.project.releaseYear}
                   onChange={(event) => updateDeveloperModule("project", { releaseYear: event.target.value })}
                 />

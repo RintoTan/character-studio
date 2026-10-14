@@ -2501,7 +2501,7 @@ export function Dashboard({
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 {projectInfo.releaseYear}。</p>
+                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
               </article>
             </div>
             <div className="about-brand-footer">
@@ -2511,9 +2511,9 @@ export function Dashboard({
               </svg>
               <div className="about-brand-meta">
                 <h3>Character Studio</h3>
-                <p>Version {projectInfo.version}</p>
-                <p>Sprint {projectInfo.sprint}</p>
-                <p>Released {projectInfo.releaseYear}</p>
+                <p>Version {APP_VERSION}</p>
+                <p>Sprint {APP_SPRINT}</p>
+                <p>Released {RELEASE_YEAR}</p>
                 <p>
                   Build {APP_COMMIT_SHORT}
                   {APP_BUILD_DATE ? ` · ${APP_BUILD_DATE}` : ""}
@@ -2531,10 +2531,10 @@ export function Dashboard({
               <div className="about-brand-credit">
                 <span>Designed &amp; Developed by</span>
                 <strong>RINTO × Codex</strong>
-                <span>{projectInfo.releaseYear}</span>
+                <span>{RELEASE_YEAR}</span>
               </div>
               <p className="about-brand-copyright">
-                © {projectInfo.releaseYear} RINTO<br />
+                © {RELEASE_YEAR} RINTO<br />
                 All Rights Reserved.
               </p>
             </div>
