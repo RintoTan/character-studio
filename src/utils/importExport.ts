@@ -44,7 +44,7 @@ export type CharacterImportPreview = {
   duplicateCharacterCount: number;
   hasBackupInfo: boolean;
   dataVersion: string;
-  importType: "json" | "zip" | "mixed";
+  importType: "json" | "zip" | "csv" | "mixed";
 };
 
 export type PreparedCharacterImport = {
@@ -493,6 +493,7 @@ export async function prepareCharacterImport(
   const preparedAssets: PreparedAvatarAsset[] = [];
   let hasZip = false;
   let hasJson = false;
+  let hasCsv = false;
   let hasBackupInfo = false;
   let dataVersion = "旧版 JSON";
 
@@ -504,6 +505,14 @@ export async function prepareCharacterImport(
       preparedAssets.push(...prepared.avatarAssets);
       hasBackupInfo = hasBackupInfo || prepared.hasBackupInfo;
       dataVersion = prepared.dataVersion || dataVersion;
+      continue;
+    }
+
+    if (isCsvFile(file)) {
+      hasCsv = true;
+      const prepared = await prepareCharactersFromCsv(file, existingIds);
+      preparedCharacters.push(...prepared.characters);
+      dataVersion = prepared.dataVersion;
       continue;
     }
 
@@ -552,7 +561,7 @@ export async function prepareCharacterImport(
       ).length,
       hasBackupInfo,
       dataVersion,
-      importType: hasZip && hasJson ? "mixed" : hasZip ? "zip" : "json",
+      importType: hasCsv ? "csv" : hasZip && hasJson ? "mixed" : hasZip ? "zip" : "json",
     },
   };
 }
@@ -612,6 +621,138 @@ export async function commitCharacterImport(
 
 function isZipFile(file: File) {
   return file.name.toLowerCase().endsWith(".zip") || file.type === "application/zip";
+}
+
+/**
+ * Minimal RFC 4180 parser: quoted cells may contain commas, quotes (doubled) and
+ * newlines. A leading BOM is dropped, and CRLF/CR/LF all end a row, because these
+ * files come back from spreadsheets as often as from us.
+ */
+export function parseCsv(input: string): string[][] {
+  const text = input.replace(/^\uFEFF/, "");
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (quoted) {
+      if (char === '"') {
+        if (text[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else {
+          quoted = false;
+        }
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = true;
+    } else if (char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\r" || char === "\n") {
+      if (char === "\r" && text[index + 1] === "\n") {
+        index += 1;
+      }
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  if (cell !== "" || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/** Column label -> the field normalizeCharacter reads. */
+const CSV_FIELDS = {
+  名字: "name",
+  性别: "gender",
+  年龄: "age",
+  种族: "species",
+  职业: "occupation",
+  世界观: "worldview",
+  视觉风格: "visualStyle",
+  外貌描述: "appearanceDescription",
+  能力描述: "abilityDescription",
+  背景故事: "backstory",
+  中文关键词: "characterKeywords",
+  "英文 AI Prompt": "imagePrompt",
+} as const;
+
+const CSV_NAME_HEADER = "名字";
+
+function isCsvFile(file: File) {
+  return file.name.toLowerCase().endsWith(".csv") || file.type === "text/csv";
+}
+
+async function prepareCharactersFromCsv(file: File, existingIds: Set<string>) {
+  const rows = parseCsv(await file.text());
+  if (rows.length === 0) {
+    throw new Error("CSV 文件是空的");
+  }
+
+  // Columns are matched by label, so a reordered export still imports.
+  const columnIndex = new Map<string, number>();
+  rows[0].forEach((label, index) => {
+    const trimmed = label.trim();
+    if (trimmed && !columnIndex.has(trimmed)) {
+      columnIndex.set(trimmed, index);
+    }
+  });
+
+  if (!columnIndex.has(CSV_NAME_HEADER)) {
+    throw new Error("CSV 缺少「名字」列，请使用本应用导出的 CSV");
+  }
+
+  const cell = (row: string[], label: string) => {
+    const index = columnIndex.get(label);
+    return index === undefined ? "" : (row[index] ?? "").trim();
+  };
+
+  const characters: PreparedCharacter[] = [];
+  for (const row of rows.slice(1)) {
+    // Spreadsheets leave trailing blank lines; they are not characters.
+    if (row.every((value) => !value.trim())) {
+      continue;
+    }
+
+    const candidate: Record<string, unknown> = {
+      personalityTags: cell(row, "性格标签")
+        .split(/[、,，]/)
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    };
+    for (const [label, field] of Object.entries(CSV_FIELDS)) {
+      candidate[field] = cell(row, label);
+    }
+
+    const character = normalizeCharacter(candidate, existingIds);
+    if (character) {
+      // A CSV carries text only, so there is no avatar to bind.
+      characters.push({ character, avatarSourceKey: "" });
+    }
+  }
+
+  if (characters.length === 0) {
+    throw new Error("CSV 中没有可导入的角色行");
+  }
+
+  return { characters, avatarAssets: [], hasBackupInfo: false, dataVersion: "CSV" };
 }
 
 async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {

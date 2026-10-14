@@ -1,5 +1,6 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "./components/AvatarDisplay";
+import { Icon } from "./components/Icon";
 import {
   applyDeveloperSettings,
   defaultDeveloperSettings,
@@ -688,7 +689,9 @@ function App() {
                 onClick={toggleTheme}
                 type="button"
               >
-                ◐
+                <Icon
+                  name={themeMode === "system" ? "monitor" : themeMode === "dark" ? "moon" : "sun"}
+                />
               </button>
               <button
                 aria-label="打开主题菜单"
@@ -696,7 +699,7 @@ function App() {
                 onClick={() => setIsThemeMenuOpen((current) => !current)}
                 type="button"
               >
-                ▾
+                <Icon name="chevronDown" size={16} />
               </button>
             </div>
             {isThemeMenuOpen && (
@@ -704,33 +707,36 @@ function App() {
                 <button
                   className={themeMode === "system" ? "selected" : ""}
                   onClick={() => {
-                    setThemeMode("system");
-                    setIsThemeMenuOpen(false);
-                  }}
-                  type="button"
-                >
-                  跟随系统
-                </button>
+                     setThemeMode("system");
+                     setIsThemeMenuOpen(false);
+                   }}
+                   type="button"
+                 >
+                   <Icon name="monitor" size={15} />
+                   <span>跟随系统</span>
+                 </button>
                 <button
                   className={themeMode === "light" ? "selected" : ""}
                   onClick={() => {
-                    setThemeMode("light");
-                    setIsThemeMenuOpen(false);
-                  }}
-                  type="button"
-                >
-                  浅色
-                </button>
+                     setThemeMode("light");
+                     setIsThemeMenuOpen(false);
+                   }}
+                   type="button"
+                 >
+                   <Icon name="sun" size={15} />
+                   <span>浅色</span>
+                 </button>
                 <button
                   className={themeMode === "dark" ? "selected" : ""}
                   onClick={() => {
-                    setThemeMode("dark");
-                    setIsThemeMenuOpen(false);
-                  }}
-                  type="button"
-                >
-                  深色
-                </button>
+                     setThemeMode("dark");
+                     setIsThemeMenuOpen(false);
+                   }}
+                   type="button"
+                 >
+                   <Icon name="moon" size={15} />
+                   <span>深色</span>
+                 </button>
               </div>
             )}
           </div>
@@ -893,7 +899,7 @@ function App() {
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             type="button"
           >
-            ↑
+            <Icon name="arrowUp" />
           </button>
         )}
         {isAppOverlayOpen && (
@@ -904,7 +910,7 @@ function App() {
             onClick={closeAppOverlays}
             type="button"
           >
-            ←
+            <Icon name="arrowLeft" />
           </button>
         )}
         {isAppOverlayOpen && (
@@ -915,7 +921,7 @@ function App() {
             onClick={goDashboard}
             type="button"
           >
-            ⌂
+            <Icon name="home" />
           </button>
         )}
         {!isAppOverlayOpen && page === "dashboard" && showQuickBackToTop && (
@@ -926,7 +932,7 @@ function App() {
             onClick={handleCreate}
             type="button"
           >
-            +
+            <Icon name="plus" />
           </button>
         )}
         {!isAppOverlayOpen && page === "dashboard" && showQuickBackToTop && (
@@ -937,7 +943,7 @@ function App() {
             onClick={() => setDashboardSearchSignal((current) => current + 1)}
             type="button"
           >
-            ⌕
+            <Icon name="search" />
           </button>
         )}
         {!isAppOverlayOpen && page !== "dashboard" && (
@@ -948,7 +954,7 @@ function App() {
             onClick={goDashboard}
             type="button"
           >
-            ⌂
+            <Icon name="home" />
           </button>
         )}
         {!isAppOverlayOpen && page === "preview" && selectedCharacter && (
@@ -959,7 +965,7 @@ function App() {
             onClick={() => handleEdit(selectedCharacter)}
             type="button"
           >
-            ⌁
+            <Icon name="pencil" />
           </button>
         )}
         {!isAppOverlayOpen && page === "preview" && selectedCharacter && (
@@ -970,7 +976,7 @@ function App() {
             onClick={() => setPreviewExportSignal((current) => current + 1)}
             type="button"
           >
-            ↓
+            <Icon name="download" />
           </button>
         )}
         {!isAppOverlayOpen && page === "form" && (
@@ -981,7 +987,7 @@ function App() {
             onClick={() => setEditorSaveSignal((current) => current + 1)}
             type="button"
           >
-            ✓
+            <Icon name="check" />
           </button>
         )}
         {!isAppOverlayOpen && page === "form" && (
@@ -992,7 +998,7 @@ function App() {
             onClick={() => setEditorDraftSaveSignal((current) => current + 1)}
             type="button"
           >
-            ◇
+            <Icon name="file" />
           </button>
         )}
       </div>
@@ -1074,7 +1080,7 @@ function App() {
                     Developer Handbook 开发手册
                   </a>
                 </div>
-                <p className="first-about-credit">RINTO × Codex 共同开发 {RELEASE_YEAR}</p>
+                <p className="first-about-credit">RINTO 使用智能体协同开发 {RELEASE_YEAR}</p>
                 <label className="settings-check first-about-switch">
                   <input
                     type="checkbox"
@@ -1173,12 +1179,12 @@ function App() {
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
+                <p className="muted">RINTO 使用智能体协同开发 {RELEASE_YEAR}。</p>
               </article>
               {!isFirstAboutOpen && (
                 <article>
                   <h3>鸣谢</h3>
-                  <p>感谢 OpenAI Codex、React、TypeScript、Vite、jsPDF 与 html2canvas 提供支持。</p>
+                  <p>感谢 React、TypeScript、Vite、jsPDF、html2canvas，以及开发过程中协同的智能体工具。</p>
                 </article>
               )}
               {!isFirstAboutOpen && (
@@ -1224,8 +1230,7 @@ function App() {
                   </a>
                 </div>
                 <div className="about-brand-credit">
-                  <span>Designed &amp; Developed by</span>
-                  <strong>RINTO × Codex</strong>
+                  <strong>RINTO 使用智能体协同开发</strong>
                   <span>{RELEASE_YEAR}</span>
                 </div>
                 <p className="about-brand-copyright">

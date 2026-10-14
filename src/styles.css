@@ -224,6 +224,17 @@ button:disabled {
   opacity: 0.7;
 }
 
+/* Icons are inline SVGs on a 24x24 grid with `currentColor`, so they inherit the
+   colour of whatever button or state they sit in. Keeping them inline-level
+   means the existing centring (text-align on plain buttons, place-items on grid
+   buttons) still centres them the way it centred the text glyphs they replaced. */
+.ui-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+  overflow: visible;
+}
+
 .app-shell {
   width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
@@ -343,6 +354,9 @@ button:disabled {
 }
 
 .theme-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: 36px;
   border: 0;
   border-radius: 8px;
@@ -576,6 +590,18 @@ h2 {
   border-color: var(--border-strong);
 }
 
+/* Buttons that pair an icon with a label need the icon and the text laid out as
+   flex items; text-only buttons keep their original centred-text behaviour, so
+   the rule is scoped to the ones that actually contain an icon. */
+.primary-button:has(.ui-icon),
+.ghost-button:has(.ui-icon),
+.danger-button:has(.ui-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
 .ghost-button:hover {
   border-color: var(--muted);
   background: var(--surface-subtle);
@@ -654,6 +680,9 @@ h2 {
 }
 
 .export-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   min-height: 36px;
   border: 0;
   border-radius: 8px;
@@ -963,8 +992,14 @@ h2 {
   background: var(--surface-subtle);
 }
 
-.developer-nav span {
+.developer-nav .ui-icon {
+  align-self: start;
   grid-row: span 2;
+  color: var(--muted);
+}
+
+.developer-nav a:hover .ui-icon {
+  color: var(--text);
 }
 
 .developer-nav strong {
@@ -998,7 +1033,7 @@ h2 {
   margin-bottom: 10px;
 }
 
-.developer-card-title > span {
+.developer-card-title > .ui-icon {
   display: grid;
   width: 32px;
   height: 32px;
@@ -1006,6 +1041,9 @@ h2 {
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-subtle);
+  color: var(--text-soft);
+  padding: 6px;
+  box-sizing: border-box;
 }
 
 .developer-card h2 {
@@ -1236,16 +1274,30 @@ h2 {
   min-width: 140px;
 }
 
+/* The copy column has to keep a readable floor. As a `1fr / auto` grid the
+   control column was free to grow to the input's max-content width, so inside
+   the auto-fit developer grid (~250px per column) the description was squeezed
+   down to one character per line and the status badge overlapped the title.
+   Flex with a wrap point lets the copy hold 200px and drop the control onto its
+   own row when there is genuinely no room. */
 .developer-setting-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, auto);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 10px 12px;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-subtle);
   padding: 12px;
+}
+
+.developer-setting-copy {
+  flex: 1 1 200px;
+}
+
+.developer-setting-control {
+  flex: 0 1 auto;
 }
 
 .developer-setting-field.coming-soon {
@@ -2093,6 +2145,9 @@ h2 {
 }
 
 .card-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   min-height: 36px;
   border: 0;
   border-radius: 8px;
@@ -2512,6 +2567,9 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .tag-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-height: 30px;
   border: 1px solid var(--border-strong);
   border-radius: 5px;

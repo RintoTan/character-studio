@@ -8,6 +8,7 @@ import {
   worldChildren,
 } from "../storage/worldStorage";
 import type { Character } from "../types/character";
+import { Icon } from "../components/Icon";
 import {
   WORLD_CATEGORIES,
   worldCategoryLabel,
@@ -157,7 +158,7 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
                 onClick={() => toggleCollapsed(entry.id)}
                 type="button"
               >
-                {isCollapsed ? "▸" : "▾"}
+                <Icon name={isCollapsed ? "chevronRight" : "chevronDown"} size={16} />
                 <span className="visually-hidden">
                   {isCollapsed ? "展开" : "折叠"} {entry.name}
                 </span>

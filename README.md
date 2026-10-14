@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v2.0.1**（Sprint 10.1）—— 世界观编辑：角色关系网、世界观时间线、世界观管理。
+> **发布状态：v2.1.0**（Sprint 11.1）—— CSV 导入闭环、统一图标系统与开发者中心字段修复。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 
@@ -80,7 +80,7 @@ Character Studio 支持多种导入导出方式：
 | 角色 JSON | 轻量备份所有角色文字资料 | 否 | 是 |
 | 完整备份 ZIP | 跨设备迁移角色和头像 | 是 | 是 |
 | 头像素材 JSON | 独立备份头像素材库 | 是 | 是 |
-| CSV | 导出文字资料用于表格查看 | 否 | 否 |
+| CSV | 纯文字表格，可在 Excel / Numbers 里编辑后导回 | 否 | 是 |
 | PDF | 展示和归档 | 显示当前头像 | 否 |
 | JPG / PNG | 图片分享 | 显示当前头像 | 否 |
 
@@ -106,7 +106,7 @@ Character Studio 当前是 Local First 应用。
 - 不需要账号
 - 不依赖服务器
 - 不上传角色资料
-- 可通过 JSON / ZIP 完成备份和迁移
+- 可通过 JSON / ZIP 完成备份和迁移；CSV 仅承载表格中的文字列，不含头像
 
 请注意：清除浏览器缓存或站点数据可能导致本地数据丢失。建议定期导出角色 JSON 或完整备份 ZIP。
 
@@ -278,7 +278,7 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
 - 搜索、筛选、排序
 - Emoji / Image Avatar
 - 本地头像素材库
-- JSON / ZIP / CSV / PDF / JPG / PNG 导入导出
+- JSON / CSV 导入；JSON / ZIP / CSV / PDF / JPG / PNG 导出
 - Preview 展示页
 - Light / Dark Theme
 - 基础 Design System 控件

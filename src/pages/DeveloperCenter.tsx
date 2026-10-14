@@ -1,14 +1,24 @@
 import type { ReactNode } from "react";
+import { Icon, type IconName } from "../components/Icon";
 import { defaultDeveloperSettings, type DeveloperSettings } from "../config/developerSettings";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import type { Page, ThemeMode } from "../types/app";
 import type { Character } from "../types/character";
 import { formatAssetSize } from "../utils/avatarAssets";
 
-const developerSections = [
+type DeveloperSection = {
+  id: string;
+  icon: IconName;
+  title: string;
+  subtitle: string;
+  description: string;
+  items: string[];
+};
+
+const developerSections: DeveloperSection[] = [
   {
     id: "project",
-    icon: "📊",
+    icon: "chart",
     title: "Project",
     subtitle: "项目",
     description: "维护版本、发布信息、项目状态和核心链接。",
@@ -16,7 +26,7 @@ const developerSections = [
   },
   {
     id: "brand",
-    icon: "🎨",
+    icon: "image",
     title: "品牌资源",
     subtitle: "Brand Assets",
     description: "统一管理 Logo、图标、Favicon、默认头像等品牌资产入口。",
@@ -24,7 +34,7 @@ const developerSections = [
   },
   {
     id: "design",
-    icon: "🧩",
+    icon: "component",
     title: "设计系统",
     subtitle: "Design System",
     description: "维护 Theme、Radius、Typography、Motion 与真实组件预览。",
@@ -32,7 +42,7 @@ const developerSections = [
   },
   {
     id: "content",
-    icon: "📝",
+    icon: "file",
     title: "内容中心",
     subtitle: "Content",
     description: "维护 About、首次 About、Footer、导入导出说明和基础项目文案。",
@@ -40,7 +50,7 @@ const developerSections = [
   },
   {
     id: "prompt",
-    icon: "✨",
+    icon: "sparkles",
     title: "Prompt 中心",
     subtitle: "Prompt Center",
     description: "管理随机灵感、示例、写作提示和外挂词库的未来入口。",
@@ -48,7 +58,7 @@ const developerSections = [
   },
   {
     id: "application",
-    icon: "⚙",
+    icon: "gear",
     title: "应用配置",
     subtitle: "Application",
     description: "维护页面标题、Footer、Theme、About、Editor 和 Dashboard 默认行为。",
@@ -56,7 +66,7 @@ const developerSections = [
   },
   {
     id: "export",
-    icon: "📦",
+    icon: "package",
     title: "Export",
     subtitle: "导出规则",
     description: "维护 Preview Export、PDF、PNG、JPG、JSON、CSV、ZIP 的默认规则。",
@@ -64,7 +74,7 @@ const developerSections = [
   },
   {
     id: "tools",
-    icon: "🪲",
+    icon: "tool",
     title: "Developer Tools",
     subtitle: "开发工具",
     description: "执行低风险维护工具、导出配置、查看存储和打开素材库。",
@@ -72,7 +82,7 @@ const developerSections = [
   },
   {
     id: "experimental",
-    icon: "🧪",
+    icon: "beaker",
     title: "Experimental",
     subtitle: "实验功能",
     description: "收纳未来路线，明确标记 Planned / Coming Soon / In Progress。",
@@ -334,7 +344,7 @@ export function DeveloperCenter({
     ["Tag", "标签", <span className="tag-button selected">冷静</span>, "用于性格标签。"],
     ["Badge", "徽章", <span className="status-badge">Active</span>, "用于状态信息。"],
     ["Switch", "开关", <span className="switch-control active" aria-hidden="true"><span /></span>, "用于开关型设置。"],
-    ["Checkbox", "复选", <span className="checkbox-control checked" aria-hidden="true">✓</span>, "用于多选与确认。"],
+    ["Checkbox", "复选", <span className="checkbox-control checked" aria-hidden="true"><Icon name="check" size={13} /></span>, "用于多选与确认。"],
     ["Radio", "单选", <span className="radio-control checked" aria-hidden="true"><span /></span>, "用于导入导出方式选择。"],
   ];
   const contentCards = [
@@ -383,7 +393,7 @@ export function DeveloperCenter({
         <aside className="developer-nav" aria-label="Developer Center 导航">
           {developerSections.map((section) => (
             <a href={`#developer-${section.id}`} key={section.id}>
-              <span aria-hidden="true">{section.icon}</span>
+              <Icon name={section.icon} size={18} />
               <strong>{section.title}</strong>
               <small>{section.subtitle}</small>
             </a>
@@ -393,7 +403,7 @@ export function DeveloperCenter({
         <div className="developer-content">
           <article className="developer-card overview-card" id="developer-project">
             <div className="developer-card-title">
-              <span aria-hidden="true">📊</span>
+              <Icon name="chart" size={20} />
               <div>
                 <h2>Project</h2>
                 <p>项目</p>
@@ -471,7 +481,7 @@ export function DeveloperCenter({
           {developerSections.filter((section) => section.id !== "project").map((section) => (
             <article className="developer-card" id={`developer-${section.id}`} key={section.id}>
               <div className="developer-card-title">
-                <span aria-hidden="true">{section.icon}</span>
+                <Icon name={section.icon} size={20} />
                 <div>
                   <h2>{section.title}</h2>
                   <p>{section.subtitle}</p>

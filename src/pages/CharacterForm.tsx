@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import { Icon } from "../components/Icon";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import type { Character } from "../types/character";
 import {
@@ -2938,7 +2939,8 @@ export function CharacterForm({
                             onClick={() => removeTag(tag)}
                             type="button"
                           >
-                            {tag} ×
+                            {tag}
+                            <Icon name="close" size={13} />
                           </button>
                         ))}
                     </div>
@@ -3341,7 +3343,7 @@ export function CharacterForm({
                       onClick={() => refreshHelperItem(kind as HelperKind)}
                       type="button"
                     >
-                      <span aria-hidden="true">↻</span>
+                      <Icon name="refresh" size={16} />
                       换一个
                     </button>
                   </div>

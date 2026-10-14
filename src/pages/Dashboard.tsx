@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import { Icon } from "../components/Icon";
 import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
 import {
@@ -1191,10 +1192,10 @@ export function Dashboard({
                       </button>
                     </div>
                     <div className="mobile-bulk-actions">
-                      <button className="ghost-button" onClick={toggleSelectAll} type="button">
-                        <span>□</span>
-                        {selectedIds.length === visibleCharacters.length ? "取消全选" : "全选"}
-                      </button>
+                       <button className="ghost-button" onClick={toggleSelectAll} type="button">
+                         <Icon name="checkSquare" size={15} />
+                         {selectedIds.length === visibleCharacters.length ? "取消全选" : "全选"}
+                       </button>
                       {!isDraftView && (
                         <button
                           className="ghost-button"
@@ -1202,8 +1203,8 @@ export function Dashboard({
                           onClick={() => bulkSetFavorite(isFavoriteView ? false : true)}
                           type="button"
                         >
-                          <span>{isFavoriteView ? "♡" : "♡"}</span>
-                          {isFavoriteView ? "移出" : "收藏"}
+                           <Icon name="heart" size={15} />
+                           {isFavoriteView ? "移出" : "收藏"}
                         </button>
                       )}
                       {!isDraftView && (
@@ -1213,14 +1214,14 @@ export function Dashboard({
                           onClick={() => openCharacterExportDialog("selected")}
                           type="button"
                         >
-                          <span>↓</span>
-                          导出
-                        </button>
+                           <Icon name="download" size={15} />
+                           导出
+                         </button>
                       )}
-                      <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
-                        <span>···</span>
-                        更多
-                      </button>
+                       <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
+                         <Icon name="more" size={15} />
+                         更多
+                       </button>
                     </div>
                   </div>
                 </>
@@ -1232,9 +1233,11 @@ export function Dashboard({
                   onClick={enterBulkMode}
                   type="button"
                 >
-                  <span className="desktop-label">批量选择</span>
-                  <span className="mobile-icon">□</span>
-                </button>
+                   <span className="desktop-label">批量选择</span>
+                   <span className="mobile-icon">
+                     <Icon name="checkSquare" size={16} />
+                   </span>
+                 </button>
               )}
             </div>
           )}
@@ -1343,7 +1346,7 @@ export function Dashboard({
                       ) : (
                         <>
                           <button className="bare-icon-button table-edit-button" onClick={() => onEdit(character)} type="button">
-                            ⌁
+                            <Icon name="pencil" size={16} />
                           </button>
                           <div className="card-menu-wrap table-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
                             <button
@@ -1357,11 +1360,12 @@ export function Dashboard({
                               }}
                               type="button"
                             >
-                              ···
+                              <Icon name="more" size={16} />
                             </button>
                             {openCardMenuId === character.id && (
                               <div className="card-menu table-card-menu" onClick={(event) => event.stopPropagation()}>
                                 <button onClick={() => onPreview(character)} type="button">
+                                  <Icon name="eye" size={16} />
                                   预览
                                 </button>
                                 <button
@@ -1371,6 +1375,7 @@ export function Dashboard({
                                   }}
                                   type="button"
                                 >
+                                  <Icon name="pencil" size={16} />
                                   编辑
                                 </button>
                                 {!isDraft && (
@@ -1388,6 +1393,7 @@ export function Dashboard({
                                   }}
                                   type="button"
                                 >
+                                  <Icon name="copy" size={16} />
                                   复制
                                 </button>
                                 <button
@@ -1397,6 +1403,7 @@ export function Dashboard({
                                   }}
                                   type="button"
                                 >
+                                  <Icon name="download" size={16} />
                                   导出
                                 </button>
                                 <button
@@ -1407,6 +1414,7 @@ export function Dashboard({
                                   }}
                                   type="button"
                                 >
+                                  <Icon name="trash" size={16} />
                                   删除
                                 </button>
                               </div>
@@ -1522,7 +1530,7 @@ export function Dashboard({
                         title="编辑"
                         type="button"
                       >
-                        ⌁
+                        <Icon name="pencil" size={16} />
                       </button>
                       <div className="card-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>
                         <button
@@ -1536,11 +1544,12 @@ export function Dashboard({
                           }}
                           type="button"
                         >
-                          ···
+                          <Icon name="more" size={16} />
                         </button>
                         {openCardMenuId === character.id && (
                           <div className="card-menu" onClick={(event) => event.stopPropagation()}>
                             <button onClick={() => onPreview(character)} type="button">
+                              <Icon name="eye" size={16} />
                               预览
                             </button>
                             <button
@@ -1550,6 +1559,7 @@ export function Dashboard({
                               }}
                               type="button"
                             >
+                              <Icon name="pencil" size={16} />
                               编辑
                             </button>
                             <button
@@ -1559,6 +1569,7 @@ export function Dashboard({
                               }}
                               type="button"
                             >
+                              <Icon name="pin" size={16} />
                               {isPinned ? "取消置顶" : "置顶"}
                             </button>
                             <button
@@ -1568,6 +1579,7 @@ export function Dashboard({
                               }}
                               type="button"
                             >
+                              <Icon name="copy" size={16} />
                               复制
                             </button>
                             <button
@@ -1577,6 +1589,7 @@ export function Dashboard({
                               }}
                               type="button"
                             >
+                              <Icon name="download" size={16} />
                               导出
                             </button>
                             <button
@@ -1587,6 +1600,7 @@ export function Dashboard({
                               }}
                               type="button"
                             >
+                              <Icon name="trash" size={16} />
                               删除
                             </button>
                           </div>
@@ -1601,8 +1615,8 @@ export function Dashboard({
                         title={isFavorite ? "取消收藏" : "收藏"}
                         type="button"
                       >
-                        {isFavorite ? "♥" : "♡"}
-                      </button>
+                         <Icon filled={isFavorite} name="heart" size={16} />
+                       </button>
                       {dashboardSettings?.showUpdatedTime !== false &&
                     dashboardSettings?.hideLowPriority !== true && (
                         <button
@@ -1682,10 +1696,10 @@ export function Dashboard({
 
             setIsSearchPanelOpen(false);
           }}
-          type="button"
-        >
-          ×
-        </button>
+           type="button"
+         >
+           <Icon name={hasSearchOrFilter || prefs.favoriteMode !== "all" ? "close" : "chevronDown"} />
+         </button>
         <div className="dashboard-controls">
           <label>
             搜索
@@ -1821,7 +1835,7 @@ export function Dashboard({
             onClick={() => setIsSearchPanelOpen((current) => !current)}
             type="button"
           >
-            ⌕
+            <Icon name="search" />
             <span className="mobile-search-label">搜索</span>
           </button>
           <button
@@ -1831,7 +1845,7 @@ export function Dashboard({
             onClick={onCreate}
             type="button"
           >
-            +
+            <Icon name="plus" />
           </button>
           <button
             aria-label="草稿箱"
@@ -1849,7 +1863,7 @@ export function Dashboard({
             }
             type="button"
           >
-            □
+            <Icon name="file" />
             {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
           </button>
           <button
@@ -1868,7 +1882,7 @@ export function Dashboard({
             }
             type="button"
           >
-            ♡
+            <Icon name="heart" />
           </button>
           <button
             aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
@@ -1881,11 +1895,11 @@ export function Dashboard({
             }
             type="button"
           >
-            {prefs.viewMode === "cards" ? "☰" : "▦"}
+            <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
           </button>
           <div className="dashboard-actions" ref={moreMenuRef}>
             <input
-              accept="application/json,.json,application/zip,.zip"
+              accept="application/json,.json,application/zip,.zip,.csv,text/csv"
               className="hidden-input"
               multiple
               onChange={(event) => handleImportJson(event.target.files)}
@@ -1900,7 +1914,7 @@ export function Dashboard({
               onClick={() => setIsMoreMenuOpen((current) => !current)}
               type="button"
             >
-              {loadingAction ? "…" : "···"}
+              {loadingAction ? "…" : <Icon name="more" />}
             </button>
             {isMoreMenuOpen && (
               <div className="export-menu">
@@ -1909,6 +1923,7 @@ export function Dashboard({
                   onClick={() => setIsSearchPanelOpen((current) => !current)}
                   type="button"
                 >
+                  <Icon name="search" size={16} />
                   搜索
                 </button>
                 <button
@@ -1916,6 +1931,7 @@ export function Dashboard({
                   onClick={onCreate}
                   type="button"
                 >
+                  <Icon name="plus" size={16} />
                   新建角色
                 </button>
                 <button
@@ -1928,6 +1944,7 @@ export function Dashboard({
                   }
                   type="button"
                 >
+                  <Icon name="file" size={16} />
                   {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
                 </button>
                 <button
@@ -1942,33 +1959,40 @@ export function Dashboard({
                   }
                   type="button"
                 >
+                  <Icon name="heart" size={16} />
                   {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   type="button"
                 >
-                  导入角色 JSON/ZIP
+                  <Icon name="upload" size={16} />
+                  导入角色 JSON/ZIP/CSV
                 </button>
                 <button onClick={() => openCharacterExportDialog("all")} type="button">
+                  <Icon name="package" size={16} />
                   导出角色 JSON/ZIP
                 </button>
                 {onOpenRelationships && (
                   <button onClick={onOpenRelationships} type="button">
+                    <Icon name="link" size={16} />
                     角色关系网
                   </button>
                 )}
                 {onOpenTimeline && (
                   <button onClick={onOpenTimeline} type="button">
+                    <Icon name="clock" size={16} />
                     世界观时间线
                   </button>
                 )}
                 {onOpenWorld && (
                   <button onClick={onOpenWorld} type="button">
+                    <Icon name="globe" size={16} />
                     世界观管理
                   </button>
                 )}
                 <button onClick={handleExportCsv} type="button">
+                  <Icon name="download" size={16} />
                   导出 CSV
                 </button>
               </div>
@@ -2360,7 +2384,7 @@ export function Dashboard({
                 ["search", "搜索角色", "/"],
                 ["drafts", "打开草稿箱", ""],
                 ["favorites", "打开收藏夹", ""],
-                ["import", "导入角色 JSON/ZIP", ""],
+                ["import", "导入角色 JSON/ZIP/CSV", ""],
                 ["export", "导出角色 JSON/ZIP", ""],
                 ["theme", "切换主题", ""],
               ].map(([id, label, shortcut]) => (
@@ -2467,7 +2491,7 @@ export function Dashboard({
                 <h3>鸣谢</h3>
                 <p>感谢以下项目与工具提供支持：</p>
                 <ul className="about-list compact">
-                  <li>OpenAI Codex（开发协作）</li>
+                  <li>智能体工具（开发协作）</li>
                   <li>React</li>
                   <li>TypeScript</li>
                   <li>Vite</li>
@@ -2501,7 +2525,7 @@ export function Dashboard({
                     <strong>开发手册</strong>
                   </a>
                 </div>
-                <p className="muted">RINTO 联合 Codex 共同开发 {RELEASE_YEAR}。</p>
+                <p className="muted">RINTO 使用智能体协同开发 {RELEASE_YEAR}。</p>
               </article>
             </div>
             <div className="about-brand-footer">
@@ -2529,8 +2553,7 @@ export function Dashboard({
                 </a>
               </div>
               <div className="about-brand-credit">
-                <span>Designed &amp; Developed by</span>
-                <strong>RINTO × Codex</strong>
+                <strong>RINTO 使用智能体协同开发</strong>
                 <span>{RELEASE_YEAR}</span>
               </div>
               <p className="about-brand-copyright">
@@ -2722,7 +2745,7 @@ export function Dashboard({
                     导出角色 JSON/ZIP
                   </button>
                   <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
-                    导入角色 JSON/ZIP
+                    导入角色 JSON/ZIP/CSV
                   </button>
                   {(() => {
                     const snapshot = readSnapshot();
@@ -3046,7 +3069,11 @@ function getCharacterExportOptions(scope: CharacterExportScope): Array<{
   ];
 }
 
-function getImportTypeLabel(importType: "json" | "zip" | "mixed") {
+function getImportTypeLabel(importType: "json" | "zip" | "csv" | "mixed") {
+  if (importType === "csv") {
+    return "表格 CSV";
+  }
+
   if (importType === "zip") {
     return "完整备份 ZIP";
   }
@@ -3061,6 +3088,10 @@ function getImportTypeLabel(importType: "json" | "zip" | "mixed") {
 function getDataVersionLabel(dataVersion: string) {
   if (!dataVersion || dataVersion === "JSON") {
     return "角色数据";
+  }
+
+  if (dataVersion === "CSV") {
+    return "表格数据（CSV）";
   }
 
   if (dataVersion === "ZIP") {
