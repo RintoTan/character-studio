@@ -7,6 +7,11 @@
 // "Sprint 7.93" unnoticed.
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+// Resolve the build output relative to the repository, not the caller's cwd, so
+// the script behaves the same from `npm run verify:deploy` and from anywhere else.
+process.chdir(fileURLToPath(new URL("..", import.meta.url)));
 
 const url = (process.argv[2] || "https://rintotan.github.io/character-studio/").replace(/\/?$/, "/");
 const local = JSON.parse(readFileSync("dist/build-info.json", "utf8"));
