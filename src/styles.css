@@ -5474,3 +5474,27 @@ kbd {
     animation: none;
   }
 }
+
+/* Editable copy from the Developer Center, rendered under the data actions. */
+.settings-notes {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.settings-notes p {
+  margin: 0;
+}
+
+.settings-license {
+  font-size: 0.8rem;
+}
+
+.export-dialog-note {
+  margin: 12px 0 0;
+  font-size: 0.86rem;
+  line-height: 1.6;
+}

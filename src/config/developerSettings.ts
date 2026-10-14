@@ -303,6 +303,17 @@ function migrateLegacySettings(settings: DeveloperSettings): DeveloperSettings {
   };
 }
 
+// Reads one editable copy string. The Developer Center exposes these as content
+// fields, so screens read them through one accessor instead of each inventing a
+// localStorage lookup of its own.
+export function getContentCopy<K extends keyof DeveloperSettings["content"]>(key: K): string {
+  try {
+    return loadDeveloperSettings().content[key] ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function loadDeveloperSettings() {
   try {
     // Only migrate when this app has never stored the unified object, so a

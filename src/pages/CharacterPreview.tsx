@@ -3,7 +3,7 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
-import { defaultDeveloperSettings } from "../config/developerSettings";
+import { defaultDeveloperSettings, getContentCopy } from "../config/developerSettings";
 
 type CharacterPreviewProps = {
   character: Character;
@@ -247,6 +247,7 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
                 {loadingAction === "png" ? "导出中..." : "导出 PNG"}
               </button>
             </div>
+            <p className="muted export-dialog-note">{getContentCopy("exportGuide")}</p>
           </div>
         </div>
       )}

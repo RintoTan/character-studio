@@ -729,6 +729,7 @@ function App() {
           contentText={developerSettings.content}
           dashboardSettings={developerSettings.dashboardDefaults}
           editorSettings={developerSettings.editorDefaults}
+          exportSettings={developerSettings.exportDefaults}
           onDashboardSettingsChange={(patch) =>
             updateDeveloperSettings({
               ...developerSettings,
@@ -739,6 +740,10 @@ function App() {
               editorDefaults: {
                 ...developerSettings.editorDefaults,
                 ...(patch.editorDefaults ?? {}),
+              },
+              exportDefaults: {
+                ...developerSettings.exportDefaults,
+                ...(patch.exportDefaults ?? {}),
               },
             })
           }

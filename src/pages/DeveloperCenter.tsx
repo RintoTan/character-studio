@@ -157,13 +157,11 @@ const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
 // Content fields that are editable and persisted but not rendered anywhere yet.
 // footerText is the only wired one, so it keeps the "已应用" badge.
 const unwiredContentKeys = new Set<keyof DeveloperSettings["content"]>([
+  // settingsSummary describes the settings screen itself and has no rendered
+  // slot yet; toastCopy documents what Toast is for and is developer-facing
+  // description rather than product copy. Both stay unwired deliberately.
   "settingsSummary",
-  "importGuide",
-  "exportGuide",
-  "dialogCopy",
   "toastCopy",
-  "privacy",
-  "license",
 ]);
 
 type DeveloperFieldStatus = "applied" | "comingSoon" | "readonly";

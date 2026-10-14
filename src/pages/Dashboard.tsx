@@ -26,6 +26,7 @@ import {
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
 import { createSnapshot, readSnapshot, writeSnapshot, type LocalSnapshot } from "../storage/backup";
+import { defaultContent } from "../content/defaultContent";
 
 type DashboardProps = {
   characters: Character[];
@@ -39,6 +40,11 @@ type DashboardProps = {
     aboutTitle: string;
     aboutSummary: string;
     firstAboutTagline: string;
+    importGuide: string;
+    exportGuide: string;
+    dialogCopy: string;
+    privacy: string;
+    license: string;
   };
   dashboardSettings?: {
     viewMode: ViewMode;
@@ -74,7 +80,9 @@ type DashboardProps = {
   onDashboardSettingsChange?: (patch: {
     dashboardDefaults?: Partial<{ openSearch: boolean; hideLowPriority: boolean }>;
     editorDefaults?: Partial<{ compactMobileEditor: boolean }>;
+    exportDefaults?: Partial<{ jpgQuality: number; pdfLightMode: boolean }>;
   }) => void;
+  exportSettings?: { jpgQuality: number; pngScale: number; pdfLightMode: boolean };
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
@@ -125,11 +133,9 @@ export function Dashboard({
     build: RELEASE_YEAR,
     releaseYear: RELEASE_YEAR,
   },
-  contentText = {
-    aboutTitle: "Character Studio 是什么",
-    aboutSummary: "一个面向 OC 创作的轻量角色工作台，用于整理角色资料、草稿、预览和备份。",
-    firstAboutTagline: "轻量、高效、专注于原创角色创作",
-  },
+  // defaultContent is the single source for this copy; a hand-kept copy here
+  // drifted from it as soon as a field was added.
+  contentText = defaultContent,
   dashboardSettings,
   aiSettingsEnabled = true,
   assetLibraryEnabled = true,
@@ -151,6 +157,7 @@ export function Dashboard({
   footerText = `RINTO © ${RELEASE_YEAR}`,
 
   onDashboardSettingsChange,
+  exportSettings,
   editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
@@ -2661,27 +2668,28 @@ export function Dashboard({
                 <label>
                   JPG 导出质量
                   <input
-                    defaultValue={localStorage.getItem("character-studio.settings.jpg-quality") || "0.9"}
                     min="0.1"
                     max="1"
                     onChange={(event) =>
-                      localStorage.setItem("character-studio.settings.jpg-quality", event.target.value)
+                      onDashboardSettingsChange?.({
+                        exportDefaults: { jpgQuality: Number(event.target.value) },
+                      })
                     }
                     step="0.1"
                     type="number"
+                    value={exportSettings?.jpgQuality ?? 0.9}
                   />
                   <span className="field-hint">数值越高，图片越清晰，文件越大。</span>
                 </label>
                 <label className="settings-check">
                   <input
-                    type="checkbox"
-                    defaultChecked={localStorage.getItem("character-studio.settings.pdf-light") !== "false"}
+                    checked={exportSettings?.pdfLightMode ?? true}
                     onChange={(event) =>
-                      localStorage.setItem(
-                        "character-studio.settings.pdf-light",
-                        String(event.target.checked),
-                      )
+                      onDashboardSettingsChange?.({
+                        exportDefaults: { pdfLightMode: event.target.checked },
+                      })
                     }
+                    type="checkbox"
                   />
                   <span>PDF Light Mode</span>
                 </label>
@@ -2710,6 +2718,13 @@ export function Dashboard({
                   <button className="danger-button" onClick={() => setIsClearDataOpen(true)} type="button">
                     清空本地数据
                   </button>
+                </div>
+                <div className="settings-notes">
+                  <p>{contentText.importGuide}</p>
+                  <p>{contentText.exportGuide}</p>
+                  <p>{contentText.dialogCopy}</p>
+                  <p>{contentText.privacy}</p>
+                  <p className="settings-license">{contentText.license}</p>
                 </div>
               </article>
               {assetLibraryEnabled && (
