@@ -99,8 +99,6 @@ function App() {
   const [selectedAppAssetIds, setSelectedAppAssetIds] = useState<string[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
-  const [editorSaveSignal, setEditorSaveSignal] = useState(0);
-  const [editorDraftSaveSignal, setEditorDraftSaveSignal] = useState(0);
   const [previewExportSignal, setPreviewExportSignal] = useState(0);
   const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
   const [developerSettings, setDeveloperSettings] = useState(loadDeveloperSettings);
@@ -811,8 +809,6 @@ function App() {
           onAutoSave={handleAutoSave}
           onDelete={handleDelete}
           onCancel={() => setPage("dashboard")}
-          saveSignal={editorSaveSignal}
-          draftSaveSignal={editorDraftSaveSignal}
         />
       )}
 
@@ -977,28 +973,6 @@ function App() {
             type="button"
           >
             <Icon name="download" />
-          </button>
-        )}
-        {!isAppOverlayOpen && page === "form" && (
-          <button
-            aria-label="保存角色"
-            className="floating-action"
-            data-tooltip="保存角色"
-            onClick={() => setEditorSaveSignal((current) => current + 1)}
-            type="button"
-          >
-            <Icon name="check" />
-          </button>
-        )}
-        {!isAppOverlayOpen && page === "form" && (
-          <button
-            aria-label="临时保存"
-            className="floating-action"
-            data-tooltip="临时保存"
-            onClick={() => setEditorDraftSaveSignal((current) => current + 1)}
-            type="button"
-          >
-            <Icon name="file" />
           </button>
         )}
       </div>

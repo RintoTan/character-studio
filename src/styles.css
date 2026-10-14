@@ -25,6 +25,7 @@
   --focus-ring: 0 0 0 3px rgba(107, 114, 128, 0.16);
   --control-height: 42px;
   --control-radius: 8px;
+  --btn-gap: 8px;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --duration-fast: 150ms;
   --duration-medium: 190ms;
@@ -132,10 +133,16 @@ body {
   min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
-  overflow-x: hidden;
+  /* `overflow-y: auto` here made the body its own scroll container, which is the
+     one thing `position: sticky` cannot survive: descendants stuck to the body's
+     scrollport, and the body never scrolls — the document does. Every sticky
+     element in the app (the editor's section rail, the action bar) silently did
+     nothing. `clip` on the x axis still prevents sideways overflow without
+     creating a scroll container, so sticky resolves against the viewport again. */
+  overflow-x: clip;
+  overflow-y: visible;
   background: var(--bg);
   font-size: calc(16px * var(--developer-font-scale));
-  overflow-y: auto;
   transition:
     background 180ms ease,
     color 180ms ease;
@@ -558,30 +565,59 @@ h2 {
   font-size: 14px;
 }
 
+/* One button language. Every variant shares the same box, rhythm and motion, so
+   the only thing that changes between them is emphasis and colour — that is what
+   makes a set of buttons read as a system instead of a pile of one-offs.
+   Two earlier habits were doing most of the damage: variants differed by text
+   colour alone (a red label on a ghost button reads as an accident, not a
+   warning), and every hover translated the button by -1px, which made a toolbar
+   of buttons twitch as the pointer crossed it. */
 .primary-button,
+.secondary-button,
 .ghost-button,
 .danger-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--btn-gap);
   min-height: var(--control-height);
+  border: 1px solid transparent;
   border-radius: var(--developer-button-radius);
   padding: 0 16px;
-  border: 1px solid transparent;
-  font-weight: 700;
+  font-size: 13.5px;
+  font-weight: 650;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
   transition:
     background var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard),
-    transform var(--duration-fast) var(--ease-standard);
+    box-shadow var(--duration-fast) var(--ease-standard);
 }
 
 .primary-button {
   background: var(--primary);
+  border-color: var(--primary);
   color: var(--on-primary);
 }
 
-.primary-button:hover {
+.primary-button:hover:not(:disabled) {
   background: var(--primary-hover);
-  transform: translateY(-1px);
+  border-color: var(--primary-hover);
+}
+
+/* Tonal rather than filled: the most important action that must not compete with
+   the primary one. */
+.secondary-button {
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  color: var(--text);
+}
+
+.secondary-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
 }
 
 .ghost-button {
@@ -590,34 +626,23 @@ h2 {
   border-color: var(--border-strong);
 }
 
-/* Buttons that pair an icon with a label need the icon and the text laid out as
-   flex items; text-only buttons keep their original centred-text behaviour, so
-   the rule is scoped to the ones that actually contain an icon. */
-.primary-button:has(.ui-icon),
-.ghost-button:has(.ui-icon),
-.danger-button:has(.ui-icon) {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.ghost-button:hover {
+.ghost-button:hover:not(:disabled) {
   border-color: var(--muted);
   background: var(--surface-subtle);
-  transform: translateY(-1px);
+  color: var(--text);
 }
 
+/* Destructive actions carry their own colour in the resting state, not only on
+   hover, so a delete control is identifiable before it is pointed at. */
 .danger-button {
+  border-color: var(--danger-border);
   background: var(--surface);
   color: var(--danger);
-  border-color: var(--border-strong);
 }
 
-.danger-button:hover {
+.danger-button:hover:not(:disabled) {
   border-color: var(--danger);
   background: var(--danger-bg);
-  transform: translateY(-1px);
 }
 
 .hidden-input {
@@ -2231,7 +2256,7 @@ h2 {
 
 .basic-info-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
   align-items: start;
 }
@@ -2240,12 +2265,19 @@ h2 {
   min-width: 0;
 }
 
+/* Every field is exactly one track. Run on a 6-track grid with a mix of 2- and
+   3-track cells, auto-placement put the second column at three different
+   positions (measured 337 / 623 / 766) and left 143-286px of dead space at the
+   end of each row. On a 2-track base the fields share one left edge per column
+   and every row fills the card; `-wide` stays as the escape hatch for a field
+   that genuinely needs the full width. */
 .field-cell {
-  grid-column: span 2;
+  grid-column: span 1;
+  min-width: 0;
 }
 
 .field-cell-wide {
-  grid-column: span 3;
+  grid-column: span 2;
 }
 
 .form-error {
@@ -2628,7 +2660,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-shell {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   animation: fade-in 220ms ease-out;
 }
@@ -2682,6 +2715,100 @@ input[type="number"]::-webkit-inner-spin-button {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* The editor's action bar follows the scroll. Desktop previously had no labelled
+   save at all: the only affordance was an unlabelled circular ✓ pinned to the
+   corner, and on a form this long every action was off-screen for most of the
+   session. Sticking the bar keeps save / preview / back within reach, and the
+   destructive pair moves into a menu so it no longer sits in the same row as
+   the actions people actually came for. */
+.editor-action-bar {
+  position: sticky;
+  top: 10px;
+  z-index: var(--z-dropdown);
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: var(--developer-card-radius);
+  background: color-mix(in srgb, var(--surface) 93%, transparent);
+  box-shadow: var(--shadow);
+  padding: 10px 14px;
+  backdrop-filter: blur(10px);
+}
+
+.editor-action-group {
+  display: flex;
+  align-items: center;
+  gap: var(--btn-gap);
+  min-width: 0;
+}
+
+.editor-more-wrap {
+  position: relative;
+}
+
+.editor-more-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  width: 196px;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 6px;
+}
+
+.editor-more-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  min-height: 36px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.editor-more-menu button:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.editor-more-menu .menu-danger {
+  color: var(--danger);
+}
+
+@media (max-width: 720px) {
+  .editor-action-bar {
+    padding: 8px 10px;
+  }
+
+  .editor-action-bar .save-status {
+    display: none;
+  }
+}
+
+/* Items that live in the editor's bar on wide screens move into the "more" menu
+   on narrow ones, so nothing becomes unreachable. */
+.mobile-editor-action {
+  display: none;
+}
+
+/* Declared after the base rule: a media rule placed before it would lose to the
+   later `display: none` on equal specificity. */
+@media (max-width: 720px) {
+  .mobile-editor-action {
+    display: flex;
+  }
 }
 
 .mobile-editor-primary,
@@ -2761,9 +2888,11 @@ input[type="number"]::-webkit-inner-spin-button {
   align-items: start;
 }
 
+/* Sits below the sticky action bar (10px offset + ~56px tall + a gap) so the
+   two sticky layers stack instead of covering each other. */
 .workspace-nav {
   position: sticky;
-  top: 18px;
+  top: 80px;
   display: grid;
   gap: 8px;
   border: 1px solid var(--border);
@@ -3461,9 +3590,17 @@ input[type="number"]::-webkit-inner-spin-button {
   gap: 8px;
 }
 
+/* Destructive, so it carries the danger language rather than a red label on a
+   neutral ghost button. */
 .helper-clear-button {
   margin-left: auto;
+  border-color: var(--danger-border);
   color: var(--danger);
+}
+
+.helper-clear-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-bg);
 }
 
 .helper-row .ghost-button,

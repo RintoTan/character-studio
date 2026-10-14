@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v2.1.0**（Sprint 11.1）—— CSV 导入闭环、统一图标系统与开发者中心字段修复。
+> **发布状态：v2.2.0**（Sprint 12.1）—— 视觉对齐、统一按钮语言、编辑页操作条吸顶。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 

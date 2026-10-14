@@ -42,8 +42,6 @@ type CharacterFormProps = {
   onAutoSave?: (character: Character) => void;
   onDelete?: (character: Character) => void;
   onCancel: () => void;
-  saveSignal?: number;
-  draftSaveSignal?: number;
 };
 
 type SectionId =
@@ -1303,8 +1301,6 @@ export function CharacterForm({
   onAutoSave,
   onDelete,
   onCancel,
-  saveSignal = 0,
-  draftSaveSignal = 0,
 }: CharacterFormProps) {
   const effectiveEditorSettings = {
     ...defaultEditorSettings,
@@ -1387,8 +1383,6 @@ export function CharacterForm({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const lastAutoSavedSnapshotRef = useRef("");
-  const saveSignalRef = useRef(saveSignal);
-  const draftSaveSignalRef = useRef(draftSaveSignal);
   const avatarFileInputRef = useRef<HTMLInputElement>(null);
   const avatarImageMenuRef = useRef<HTMLDivElement>(null);
   const cropImageRef = useRef<HTMLImageElement>(null);
@@ -1529,23 +1523,6 @@ export function CharacterForm({
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [formData]);
 
-  useEffect(() => {
-    if (saveSignal === saveSignalRef.current) {
-      return;
-    }
-
-    saveSignalRef.current = saveSignal;
-    void saveCurrentCharacter();
-  }, [saveSignal]);
-
-  useEffect(() => {
-    if (draftSaveSignal === draftSaveSignalRef.current) {
-      return;
-    }
-
-    draftSaveSignalRef.current = draftSaveSignal;
-    void saveDraftCharacter();
-  }, [draftSaveSignal]);
 
   useEffect(() => {
     return () => {
@@ -2415,6 +2392,7 @@ export function CharacterForm({
 
   function renderHero() {
     return (
+      <>
       <div className="panel workspace-hero">
         <div className="workspace-title-block">
           <AvatarDisplay
@@ -2429,100 +2407,108 @@ export function CharacterForm({
             <p className="muted">分模块完善角色设定，系统会在编辑旧角色时自动保存。</p>
           </div>
         </div>
-        <div className="workspace-toolbar">
-          <button
-            className="ghost-button desktop-editor-action"
-            type="button"
-            onClick={handleRandomCharacter}
-            disabled={isRandomizing}
-          >
-            {isRandomizing ? "生成中..." : "随机生成角色"}
-          </button>
-          <button
-            className="ghost-button helper-clear-button desktop-editor-action"
-            type="button"
-            onClick={() => setPendingFormAction("clear")}
-          >
-            清空
-          </button>
-          <button
-            className="ghost-button helper-clear-button desktop-editor-action"
-            type="button"
-            onClick={() => setPendingFormAction("delete")}
-          >
-            删除
-          </button>
-          <span className={`save-status ${saveStatus}`}>
-            {saveStatus === "saving"
-              ? "正在保存"
-              : saveStatus === "error"
-                ? "保存失败"
-                : saveStatus === "saved"
-                  ? "已保存"
-                  : "未保存"}
-          </span>
-          <button
-            className="ghost-button desktop-editor-action"
-            onClick={openEditorPreview}
-            type="button"
-          >
-            预览
-          </button>
-          <button className="ghost-button desktop-editor-action" onClick={onCancel} type="button">
-            返回
-          </button>
-          <button
-            className="primary-button mobile-editor-primary"
-            onClick={() => void saveCurrentCharacter()}
-            type="button"
-          >
-            保存角色
-          </button>
-          <div className="mobile-editor-more">
+      </div>
+      <div className="workspace-toolbar editor-action-bar">
+          <div className="editor-action-group">
+            <span className={`save-status ${saveStatus}`}>
+              {saveStatus === "saving"
+                ? "正在保存"
+                : saveStatus === "error"
+                  ? "保存失败"
+                  : saveStatus === "saved"
+                    ? "已保存"
+                    : "未保存"}
+            </span>
             <button
-              className="ghost-button"
-              onClick={() => setIsEditorMoreOpen((current) => !current)}
+              className="ghost-button desktop-editor-action"
+              disabled={isRandomizing}
+              onClick={handleRandomCharacter}
               type="button"
             >
-              更多
+              <Icon name="sparkles" size={16} />
+              {isRandomizing ? "生成中..." : "随机生成角色"}
             </button>
-            {isEditorMoreOpen && (
-              <div className="mobile-editor-more-menu">
-                <button
-                  type="button"
-                  onClick={() => runEditorMoreAction(handleRandomCharacter)}
-                  disabled={isRandomizing}
-                >
-                  {isRandomizing ? "生成中..." : "随机生成角色"}
-                </button>
-                <button type="button" onClick={() => runEditorMoreAction(() => void saveDraftCharacter())}>
-                  临时保存
-                </button>
-                <button type="button" onClick={() => runEditorMoreAction(openEditorPreview)}>
-                  预览
-                </button>
-                <button type="button" onClick={() => runEditorMoreAction(onCancel)}>
-                  返回
-                </button>
-                <button
-                  className="menu-danger"
-                  type="button"
-                  onClick={() => runEditorMoreAction(() => setPendingFormAction("clear"))}
-                >
-                  清空
-                </button>
-                <button
-                  className="menu-danger"
-                  type="button"
-                  onClick={() => runEditorMoreAction(() => setPendingFormAction("delete"))}
-                >
-                  删除
-                </button>
-              </div>
-            )}
+          </div>
+          <div className="editor-action-group">
+            <button className="ghost-button desktop-editor-action" onClick={onCancel} type="button">
+              <Icon name="arrowLeft" size={16} />
+              返回
+            </button>
+            <button
+              className="secondary-button desktop-editor-action"
+              onClick={openEditorPreview}
+              type="button"
+            >
+              <Icon name="eye" size={16} />
+              预览
+            </button>
+            <div className="editor-more-wrap">
+              <button
+                aria-expanded={isEditorMoreOpen}
+                className="ghost-button"
+                onClick={() => setIsEditorMoreOpen((current) => !current)}
+                type="button"
+              >
+                <Icon name="more" size={16} />
+                更多
+              </button>
+              {isEditorMoreOpen && (
+                <div className="editor-more-menu">
+                  <button
+                    className="mobile-editor-action"
+                    disabled={isRandomizing}
+                    onClick={() => runEditorMoreAction(handleRandomCharacter)}
+                    type="button"
+                  >
+                    <Icon name="sparkles" size={16} />
+                    {isRandomizing ? "生成中..." : "随机生成角色"}
+                  </button>
+                  <button type="button" onClick={() => runEditorMoreAction(() => void saveDraftCharacter())}>
+                    <Icon name="file" size={16} />
+                    临时保存
+                  </button>
+                  <button
+                    className="mobile-editor-action"
+                    onClick={() => runEditorMoreAction(openEditorPreview)}
+                    type="button"
+                  >
+                    <Icon name="eye" size={16} />
+                    预览
+                  </button>
+                  <button
+                    className="mobile-editor-action"
+                    onClick={() => runEditorMoreAction(onCancel)}
+                    type="button"
+                  >
+                    <Icon name="arrowLeft" size={16} />
+                    返回
+                  </button>
+                  <button
+                    className="menu-danger"
+                    onClick={() => runEditorMoreAction(() => setPendingFormAction("clear"))}
+                    type="button"
+                  >
+                    <Icon name="refresh" size={16} />
+                    清空内容
+                  </button>
+                  <button
+                    className="menu-danger"
+                    onClick={() => runEditorMoreAction(() => setPendingFormAction("delete"))}
+                    type="button"
+                  >
+                    <Icon name="trash" size={16} />
+                    删除角色
+                  </button>
+                </div>
+              )}
+            </div>
+            <button className="primary-button" onClick={() => void saveCurrentCharacter()} type="button">
+              <Icon name="check" size={16} />
+              保存角色
+            </button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -2754,7 +2740,7 @@ export function CharacterForm({
                       />
                     </label>
                   )}
-                  <label className="field-cell field-cell-wide">
+                  <label className="field-cell">
                     年龄 / 出生日期
                     <div className="age-combo">
                       <input
@@ -2788,7 +2774,7 @@ export function CharacterForm({
                       placeholder="例如：调查员 / 魔法师"
                     />
                   </label>
-                  <label className="field-cell field-cell-wide">
+                  <label className="field-cell">
                     世界观
                     <div className="combo-field">
                       <input
@@ -2815,7 +2801,7 @@ export function CharacterForm({
                       </select>
                     </div>
                   </label>
-                  <label className="field-cell field-cell-wide">
+                  <label className="field-cell">
                     视觉风格
                     <div className="combo-field">
                       <input
