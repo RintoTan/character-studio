@@ -93,6 +93,7 @@ export type DeveloperSettings = {
     compactMobileEditor: boolean;
     experimentalTimeline: boolean;
     experimentalRelationshipGraph: boolean;
+    worldManager: boolean;
   };
   developerMode: {
     enabled: boolean;
@@ -183,6 +184,7 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     experimentalTimeline: true,
     // Now gates a shipped screen rather than a plan.
     experimentalRelationshipGraph: true,
+    worldManager: true,
   },
   developerMode: {
     enabled: true,

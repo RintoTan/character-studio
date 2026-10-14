@@ -85,6 +85,7 @@ type DashboardProps = {
   exportSettings?: { jpgQuality: number; pngScale: number; pdfLightMode: boolean };
   onOpenRelationships?: () => void;
   onOpenTimeline?: () => void;
+  onOpenWorld?: () => void;
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
@@ -162,6 +163,7 @@ export function Dashboard({
   exportSettings,
   onOpenRelationships,
   onOpenTimeline,
+  onOpenWorld,
   editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
@@ -1959,6 +1961,11 @@ export function Dashboard({
                 {onOpenTimeline && (
                   <button onClick={onOpenTimeline} type="button">
                     世界观时间线
+                  </button>
+                )}
+                {onOpenWorld && (
+                  <button onClick={onOpenWorld} type="button">
+                    世界观管理
                   </button>
                 )}
                 <button onClick={handleExportCsv} type="button">

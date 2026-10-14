@@ -141,6 +141,7 @@ const featureFlagLabels: Record<keyof DeveloperSettings["featureFlags"], string>
   compactMobileEditor: "Compact Mobile Editor",
   experimentalTimeline: "Experimental Timeline",
   experimentalRelationshipGraph: "Experimental Relationship Graph",
+  worldManager: "World Manager",
 };
 
 // Flags whose module actually exists and reads the value. Anything absent here
@@ -154,6 +155,7 @@ const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
   "personalPreferences",
   "experimentalRelationshipGraph",
   "experimentalTimeline",
+  "worldManager",
 ]);
 
 // Content fields that are editable and persisted but not rendered anywhere yet.

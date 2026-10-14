@@ -34,6 +34,7 @@ import {
 import { Dashboard } from "./pages/Dashboard";
 import { pruneRelationships } from "./storage/relationshipStorage";
 import { pruneTimelineCharacters } from "./storage/timelineStorage";
+import { pruneWorldCharacters } from "./storage/worldStorage";
 
 // The editor, the preview and the developer panel are not needed for the first
 // paint, so they are code-split out of the entry chunk. Dashboard stays static:
@@ -53,6 +54,9 @@ const RelationshipGraph = lazy(() =>
 );
 const Timeline = lazy(() =>
   import("./pages/Timeline").then((module) => ({ default: module.Timeline })),
+);
+const WorldManager = lazy(() =>
+  import("./pages/WorldManager").then((module) => ({ default: module.WorldManager })),
 );
 
 const THEME_KEY = "character-studio.theme";
@@ -585,6 +589,7 @@ function App() {
     setCharacters(deleteCharacter(character.id));
     pruneRelationships(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
     pruneTimelineCharacters(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
+    pruneWorldCharacters(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
 
     if (selectedCharacter?.id === character.id) {
       setSelectedCharacter(null);
@@ -748,6 +753,9 @@ function App() {
           onOpenTimeline={
             developerSettings.featureFlags.experimentalTimeline ? () => setPage("timeline") : undefined
           }
+          onOpenWorld={
+            developerSettings.featureFlags.worldManager ? () => setPage("world") : undefined
+          }
           onDashboardSettingsChange={(patch) =>
             updateDeveloperSettings({
               ...developerSettings,
@@ -815,6 +823,19 @@ function App() {
         />
       )}
 
+      {page === "world" && (
+        <WorldManager
+          characters={characters}
+          onBack={() => setPage("dashboard")}
+          onOpenCharacter={(characterId) => {
+            const target = characters.find((entry) => entry.id === characterId);
+            if (target) {
+              setSelectedCharacter(target);
+              setPage("preview");
+            }
+          }}
+        />
+      )}
       {page === "timeline" && (
         <Timeline
           characters={characters}

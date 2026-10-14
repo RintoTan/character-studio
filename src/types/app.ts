@@ -4,6 +4,7 @@ export type Page =
   | "preview"
   | "developer"
   | "relationships"
-  | "timeline";
+  | "timeline"
+  | "world";
 
 export type ThemeMode = "system" | "light" | "dark";

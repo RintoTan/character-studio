@@ -1,6 +1,6 @@
 # Character Studio
 
-> **发布状态：v1.0.0**（Sprint 9.0）—— 本地优先工作台的可发布基线。
+> **发布状态：v2.0.0**（Sprint 10.0）—— 世界观编辑：角色关系网、世界观时间线、世界观管理。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 
