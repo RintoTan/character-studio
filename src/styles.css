@@ -1710,7 +1710,12 @@ h2 {
 .avatar-current,
 .emoji-picker,
 .emoji-option,
-.avatar-tab {
+.avatar-tab,
+.card-tags,
+.card-tags button,
+.table-tags,
+.table-tags button,
+.status-badge {
   font-family: var(--emoji-font);
 }
 
@@ -4715,13 +4720,14 @@ kbd {
   }
 
   .workspace-toolbar {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     align-items: center;
     align-self: center;
     flex-direction: row;
     justify-content: flex-end;
     gap: 7px;
-    min-width: max-content;
+    min-width: 0;
+    flex-wrap: wrap;
   }
 
   .desktop-editor-action {

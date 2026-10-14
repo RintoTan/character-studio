@@ -1172,7 +1172,7 @@ function generateKeywords(character: CharacterDraft) {
 function generateImagePrompt(character: CharacterDraft) {
   const personality = character.personalityTags?.map(promptText).map(normalizePromptPart).filter(Boolean).join(", ");
 
-  return compactParts([
+  const prompt = compactParts([
     "original character design",
     character.name && `named ${promptText(character.name)}`,
     character.gender && `gender: ${promptText(character.gender)}`,
@@ -1197,6 +1197,14 @@ function generateImagePrompt(character: CharacterDraft) {
     .map(normalizePromptPart)
     .filter(Boolean)
     .join(", ");
+
+  // Preset values carry English mappings, but free text (name, occupation,
+  // appearance, ability, backstory, preferences) is authored in the user's own
+  // language. Flagging that once keeps the mix explicit instead of silently
+  // emitting a half-translated prompt.
+  return /[\u4e00-\u9fff]/.test(prompt)
+    ? `note: Chinese text is the author's original wording. ${prompt}`
+    : prompt;
 }
 
 function calculateAgeFromDate(value: string) {

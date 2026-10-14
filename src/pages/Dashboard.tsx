@@ -1287,7 +1287,15 @@ export function Dashboard({
       )}
 
       {isCommandOpen && (
-        <div className="modal-backdrop" role="presentation">
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsCommandOpen(false);
+            }
+          }}
+          role="presentation"
+        >
           <div className="command-palette" role="dialog" aria-modal="true">
             <p className="eyebrow">Command Palette</p>
             <h2>快速操作</h2>
