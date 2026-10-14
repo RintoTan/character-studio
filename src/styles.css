@@ -3841,7 +3841,7 @@ input[type="number"]::-webkit-inner-spin-button {
   border-radius: var(--dialog-radius);
   background: var(--surface);
   box-shadow: var(--shadow-strong);
-  padding: 22px;
+  padding: var(--dialog-padding);
   animation: dialog-in var(--duration-medium) var(--ease-standard);
 }
 
