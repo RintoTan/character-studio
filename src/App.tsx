@@ -36,6 +36,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { pruneRelationships } from "./storage/relationshipStorage";
 import { pruneTimelineCharacters } from "./storage/timelineStorage";
 import { pruneWorldCharacters } from "./storage/worldStorage";
+import { readWorkspaceDatasets } from "./storage/workspaceBackup";
 import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
 
 // The editor, the preview and the developer panel are not needed for the first
@@ -461,7 +462,7 @@ function App() {
   }
 
   function exportDeveloperFullBackup() {
-    void exportFullBackupZip(characters);
+    void exportFullBackupZip(characters, readWorkspaceDatasets());
   }
 
   useEffect(() => {

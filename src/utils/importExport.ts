@@ -1,10 +1,30 @@
 import type { Character, CharacterTag } from "../types/character";
+import { RELATIONSHIP_KINDS } from "../types/relationship";
+import { TIMELINE_EVENT_KINDS } from "../types/timeline";
+import { WORLD_CATEGORIES } from "../types/world";
 import {
   dataUrlToBlob,
   getAvatarAsset,
   listAvatarAssets,
   saveAvatarBlob,
 } from "./avatarAssets";
+import {
+  WORKSPACE_BACKUP_VERSION,
+  applyWorkspaceDatasets,
+  countWorkspaceDatasets,
+  extractWorkspaceDatasets,
+  type WorkspaceApplyResult,
+  type WorkspaceCounts,
+  type WorkspaceDatasets,
+} from "../storage/workspaceBackup";
+import {
+  CSV_ROW_TYPES,
+  CSV_TYPE_HEADER,
+  WORKSPACE_CSV_HEADERS,
+  readWorkspaceRowsFromCsv,
+  resolveWorkspaceRows,
+  type CsvWorkspaceRows,
+} from "./workspaceCsv";
 
 type AvatarAssetExportData = {
   sourceId?: string;
@@ -45,12 +65,16 @@ export type CharacterImportPreview = {
   hasBackupInfo: boolean;
   dataVersion: string;
   importType: "json" | "zip" | "csv" | "mixed";
+  /** Counts for the relationship graph, the timeline and the world book, when the
+   *  file carries them. Null for the character-only formats that predate them. */
+  workspaceCounts: WorkspaceCounts | null;
 };
 
 export type PreparedCharacterImport = {
   characters: PreparedCharacter[];
   avatarAssets: PreparedAvatarAsset[];
   preview: CharacterImportPreview;
+  workspace: WorkspaceDatasets | null;
 };
 
 export type CharacterImportCommitResult = {
@@ -59,9 +83,12 @@ export type CharacterImportCommitResult = {
   importedAvatarCount: number;
   autoBoundAvatarCount: number;
   unboundAvatarCount: number;
+  /** Null when the file carried characters only. */
+  workspace: WorkspaceApplyResult | null;
 };
 
 const csvHeaders = [
+  CSV_TYPE_HEADER,
   "名字",
   "性别",
   "年龄",
@@ -314,7 +341,10 @@ export function exportAllCharactersJson(characters: Character[]) {
   downloadBlob(JSON.stringify(payload, null, 2), filename, "application/json");
 }
 
-export async function exportFullBackupJson(characters: Character[]) {
+export async function exportFullBackupJson(
+  characters: Character[],
+  workspace: WorkspaceDatasets | null = null,
+) {
   const usedAssetIds = Array.from(
     new Set(
       characters
@@ -348,9 +378,14 @@ export async function exportFullBackupJson(characters: Character[]) {
   const payload = {
     exportType: "character-studio-full-backup",
     exportedAt: new Date().toISOString(),
-    note: "完整备份包含当前浏览器 IndexedDB 中可读取的头像图片。轻量 JSON 不包含头像图片，跨设备不会自动恢复图片。",
+    note: "完整备份包含当前浏览器 IndexedDB 中可读取的头像图片，以及关系网、世界观与时间线。轻量 JSON 不包含头像图片，跨设备不会自动恢复图片。",
+    workspaceVersion: WORKSPACE_BACKUP_VERSION,
     characters,
     avatarAssets,
+    // The three domains that used to be unbackupable travel in the same file.
+    relationships: workspace?.relationships ?? [],
+    timeline: workspace?.timeline ?? [],
+    world: workspace?.world ?? [],
   };
 
   downloadBlob(
@@ -360,7 +395,10 @@ export async function exportFullBackupJson(characters: Character[]) {
   );
 }
 
-export async function exportFullBackupZip(characters: Character[]) {
+export async function exportFullBackupZip(
+  characters: Character[],
+  workspace: WorkspaceDatasets | null = null,
+) {
   const usedAssetIds = Array.from(
     new Set(
       characters
@@ -414,7 +452,9 @@ export async function exportFullBackupZip(characters: Character[]) {
     avatarAssetCount: assets.length,
     assetTotalSize: assets.reduce((sum, item) => sum + (item.asset.size || item.asset.blob.size), 0),
     exportType: "character-studio-full-backup-zip",
-    notes: "完整备份 ZIP 包含角色数据和头像素材。头像绑定仅依据 manifest，不根据文件名或旧 ID 猜测。",
+    notes:
+      "完整备份 ZIP 包含角色数据、头像素材，以及关系网、世界观与时间线（workspace.json）。头像绑定仅依据 manifest，不根据文件名或旧 ID 猜测。",
+    workspaceVersion: WORKSPACE_BACKUP_VERSION,
   };
 
   files.unshift(
@@ -429,6 +469,24 @@ export async function exportFullBackupZip(characters: Character[]) {
     {
       name: "backup-info.json",
       blob: new Blob([JSON.stringify(backupInfo, null, 2)], { type: "application/json" }),
+    },
+    {
+      name: "workspace.json",
+      blob: new Blob(
+        [
+          JSON.stringify(
+            {
+              workspaceVersion: WORKSPACE_BACKUP_VERSION,
+              relationships: workspace?.relationships ?? [],
+              timeline: workspace?.timeline ?? [],
+              world: workspace?.world ?? [],
+            },
+            null,
+            2,
+          ),
+        ],
+        { type: "application/json" },
+      ),
     },
   );
 
@@ -451,25 +509,94 @@ function escapeCsvCell(value: string) {
   return `"${normalizedValue.replace(/"/g, '""')}"`;
 }
 
-export function exportCharactersCsv(characters: Character[]) {
-  const rows = characters.map((character) => [
-    character.name || "",
-    character.gender || "",
-    character.age || "",
-    character.species || "",
-    character.occupation || "",
-    character.worldview || "",
-    character.personalityTags?.join("、") || "",
-    character.visualStyle || "",
-    character.appearanceDescription || "",
-    character.abilityDescription || "",
-    character.backstory || "",
-    character.characterKeywords || "",
-    character.imagePrompt || "",
-  ]);
-  const csv = [csvHeaders, ...rows]
-    .map((row) => row.map(escapeCsvCell).join(","))
-    .join("\n");
+export function exportCharactersCsv(
+  characters: Character[],
+  workspace: WorkspaceDatasets | null = null,
+) {
+  // One table for four kinds of row. Rows are filled in by column *label* and then
+  // emitted in header order, so a column can be added or moved without every row
+  // having to know its position — and the importer reads them the same way.
+  const headerRow = [...csvHeaders, ...WORKSPACE_CSV_HEADERS];
+  const position = new Map(headerRow.map((label, index) => [label, index]));
+  const blankRow = () => headerRow.map(() => "");
+  const put = (row: string[], label: string, value: string) => {
+    const index = position.get(label);
+    if (index !== undefined && value) {
+      row[index] = value;
+    }
+  };
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  const nameById = new Map(characters.map((character) => [character.id, character.name || ""]));
+  const nameOf = (value: unknown) => (typeof value === "string" ? nameById.get(value) ?? "" : "");
+  const labelOf = (options: ReadonlyArray<{ value: string; label: string }>, value: unknown) =>
+    options.find((option) => option.value === value)?.label ?? "";
+
+  const rows: string[][] = [];
+
+  for (const character of characters) {
+    const row = blankRow();
+    put(row, CSV_TYPE_HEADER, CSV_ROW_TYPES.character);
+    put(row, "名字", character.name || "");
+    put(row, "性别", character.gender || "");
+    put(row, "年龄", character.age || "");
+    put(row, "种族", character.species || "");
+    put(row, "职业", character.occupation || "");
+    put(row, "世界观", character.worldview || "");
+    put(row, "性格标签", character.personalityTags?.join("、") || "");
+    put(row, "视觉风格", character.visualStyle || "");
+    put(row, "外貌描述", character.appearanceDescription || "");
+    put(row, "能力描述", character.abilityDescription || "");
+    put(row, "背景故事", character.backstory || "");
+    put(row, "中文关键词", character.characterKeywords || "");
+    put(row, "英文 AI Prompt", character.imagePrompt || "");
+    rows.push(row);
+  }
+
+  for (const raw of workspace?.relationships ?? []) {
+    const record = raw as Record<string, unknown>;
+    const row = blankRow();
+    put(row, CSV_TYPE_HEADER, CSV_ROW_TYPES.relationship);
+    put(row, "源角色", nameOf(record.fromId));
+    put(row, "目标角色", nameOf(record.toId));
+    put(row, "关系类型", labelOf(RELATIONSHIP_KINDS, record.kind));
+    put(row, "备注", text(record.note));
+    rows.push(row);
+  }
+
+  for (const raw of workspace?.world ?? []) {
+    const record = raw as Record<string, unknown>;
+    const row = blankRow();
+    const parentId = text(record.parentId);
+    put(row, CSV_TYPE_HEADER, CSV_ROW_TYPES.world);
+    put(row, "名字", text(record.name));
+    put(row, "分类", labelOf(WORLD_CATEGORIES, record.category));
+    put(row, "父级", parentId ? nameById.get(parentId) ?? "" : "");
+    put(row, "标签", Array.isArray(record.tags) ? record.tags.filter((tag) => typeof tag === "string").join("、") : "");
+    put(row, "简介", text(record.summary));
+    rows.push(row);
+  }
+
+  for (const raw of workspace?.timeline ?? []) {
+    const record = raw as Record<string, unknown>;
+    const row = blankRow();
+    const involved = Array.isArray(record.characterIds)
+      ? record.characterIds
+          .map((id) => nameById.get(text(id)) ?? "")
+          .filter(Boolean)
+          .join("、")
+      : "";
+    put(row, CSV_TYPE_HEADER, CSV_ROW_TYPES.timeline);
+    put(row, "事件标题", text(record.title));
+    put(row, "事件日期", text(record.date));
+    put(row, "纪年", text(record.era));
+    put(row, "事件类型", labelOf(TIMELINE_EVENT_KINDS, record.kind));
+    put(row, "描述", text(record.description));
+    put(row, "地点", text(record.location));
+    put(row, "涉及角色", involved);
+    rows.push(row);
+  }
+
+  const csv = [headerRow, ...rows].map((row) => row.map(escapeCsvCell).join(",")).join("\n");
 
   downloadBlob(`\uFEFF${csv}`, `character-studio-all-${dateStamp()}.csv`, "text/csv;charset=utf-8");
 }
@@ -496,6 +623,8 @@ export async function prepareCharacterImport(
   let hasCsv = false;
   let hasBackupInfo = false;
   let dataVersion = "旧版 JSON";
+  let workspace: WorkspaceDatasets | null = null;
+  let csvWorkspaceRows: CsvWorkspaceRows | null = null;
 
   for (const file of Array.from(files)) {
     if (isZipFile(file)) {
@@ -505,6 +634,7 @@ export async function prepareCharacterImport(
       preparedAssets.push(...prepared.avatarAssets);
       hasBackupInfo = hasBackupInfo || prepared.hasBackupInfo;
       dataVersion = prepared.dataVersion || dataVersion;
+      workspace = prepared.workspace ?? workspace;
       continue;
     }
 
@@ -512,6 +642,7 @@ export async function prepareCharacterImport(
       hasCsv = true;
       const prepared = await prepareCharactersFromCsv(file, existingIds);
       preparedCharacters.push(...prepared.characters);
+      csvWorkspaceRows = prepared.workspaceRows ?? csvWorkspaceRows;
       dataVersion = prepared.dataVersion;
       continue;
     }
@@ -522,10 +653,39 @@ export async function prepareCharacterImport(
     preparedAssets.push(...prepared.avatarAssets);
     hasBackupInfo = hasBackupInfo || prepared.hasBackupInfo;
     dataVersion = prepared.dataVersion || dataVersion;
+    workspace = prepared.workspace ?? workspace;
   }
 
-  if (preparedCharacters.length === 0) {
+  if (preparedCharacters.length === 0 && !csvWorkspaceRows) {
     throw new Error("没有找到可导入的角色数据");
+  }
+
+  // A CSV names characters instead of identifying them, so the rows are turned into
+  // edges and links only once every name has an id to point at.
+  if (csvWorkspaceRows) {
+    const nameToId = new Map<string, string>();
+    for (const character of existingCharacters) {
+      if (character.name.trim()) {
+        nameToId.set(character.name.trim(), character.id);
+      }
+    }
+    for (const prepared of preparedCharacters) {
+      if (prepared.character.name.trim()) {
+        nameToId.set(prepared.character.name.trim(), prepared.character.id);
+      }
+    }
+
+    const stamp = Date.now();
+    const resolved = resolveWorkspaceRows(
+      csvWorkspaceRows,
+      nameToId,
+      (prefix, index) => `csv-${prefix}-${stamp}-${index + 1}`,
+    );
+    workspace = {
+      relationships: resolved.relationships,
+      timeline: resolved.timeline,
+      world: resolved.world,
+    };
   }
 
   const existingNames = new Set(
@@ -548,6 +708,7 @@ export async function prepareCharacterImport(
   return {
     characters: preparedCharacters,
     avatarAssets: dedupePreparedAssets(preparedAssets),
+    workspace,
     preview: {
       roleCount: preparedCharacters.length,
       avatarCount: dedupePreparedAssets(preparedAssets).length,
@@ -562,6 +723,7 @@ export async function prepareCharacterImport(
       hasBackupInfo,
       dataVersion,
       importType: hasCsv ? "csv" : hasZip && hasJson ? "mixed" : hasZip ? "zip" : "json",
+      workspaceCounts: workspace ? countWorkspaceDatasets(workspace) : null,
     },
   };
 }
@@ -610,12 +772,24 @@ export async function commitCharacterImport(
     return nextCharacter;
   });
 
+  const mergedCharacters = [...importedCharacters, ...existingCharacters];
+
+  // The domains are applied only now, so a relationship can point at a character
+  // that arrived in the same file.
+  const workspace = plan.workspace
+    ? applyWorkspaceDatasets(
+        plan.workspace,
+        new Set(mergedCharacters.map((character) => character.id)),
+      )
+    : null;
+
   return {
-    characters: [...importedCharacters, ...existingCharacters],
+    characters: mergedCharacters,
     importedCharacterCount: importedCharacters.length,
     importedAvatarCount,
     autoBoundAvatarCount,
     unboundAvatarCount: Math.max(0, plan.avatarAssets.length - autoBoundAvatarCount),
+    workspace,
   };
 }
 
@@ -724,8 +898,16 @@ async function prepareCharactersFromCsv(file: File, existingIds: Set<string>) {
     return index === undefined ? "" : (row[index] ?? "").trim();
   };
 
+  const workspaceRows = readWorkspaceRowsFromCsv(rows);
+  // Only a file that has the type column is routed by it. A hand-written CSV has no
+  // such column, and there every row is a character — the behaviour it always had.
+  const typeIndex = columnIndex.get(CSV_TYPE_HEADER);
   const characters: PreparedCharacter[] = [];
   for (const row of rows.slice(1)) {
+    if (typeIndex !== undefined && (row[typeIndex] ?? "").trim() !== CSV_ROW_TYPES.character) {
+      continue;
+    }
+
     // Spreadsheets leave trailing blank lines; they are not characters.
     if (row.every((value) => !value.trim())) {
       continue;
@@ -748,11 +930,21 @@ async function prepareCharactersFromCsv(file: File, existingIds: Set<string>) {
     }
   }
 
-  if (characters.length === 0) {
+  const hasWorkspaceRows =
+    workspaceRows !== null &&
+    workspaceRows.relationships.length + workspaceRows.world.length + workspaceRows.timeline.length > 0;
+
+  if (characters.length === 0 && !hasWorkspaceRows) {
     throw new Error("CSV 中没有可导入的角色行");
   }
 
-  return { characters, avatarAssets: [], hasBackupInfo: false, dataVersion: "CSV" };
+  return {
+    characters,
+    avatarAssets: [],
+    hasBackupInfo: false,
+    dataVersion: "CSV",
+    workspaceRows,
+  };
 }
 
 async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
@@ -797,6 +989,7 @@ async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
     avatarAssets: preparedAssets,
     hasBackupInfo: isRecord(parsedValue) && isRecord(parsedValue["backup-info"]),
     dataVersion: getJsonDataVersion(parsedValue),
+    workspace: extractWorkspaceDatasets(parsedValue),
   };
 }
 
@@ -818,6 +1011,7 @@ async function prepareCharactersFromBackupZip(file: File, existingIds: Set<strin
   const backupInfoValue = backupInfoEntry
     ? (JSON.parse(await backupInfoEntry.blob.text()) as unknown)
     : undefined;
+  const workspaceEntry = entryByName.get("workspace.json");
   const preparedAssets = await collectZipAvatarAssets(entries, manifestValue);
   const candidates = getCharacterCandidates(charactersValue);
   const preparedCharacters: PreparedCharacter[] = [];
@@ -844,6 +1038,9 @@ async function prepareCharactersFromBackupZip(file: File, existingIds: Set<strin
     avatarAssets: preparedAssets,
     hasBackupInfo: Boolean(backupInfoEntry),
     dataVersion: getBackupDataVersion(backupInfoValue),
+    workspace: workspaceEntry
+      ? extractWorkspaceDatasets(JSON.parse(await workspaceEntry.blob.text()) as unknown)
+      : null,
   };
 }
 

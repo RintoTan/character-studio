@@ -27,6 +27,7 @@ import {
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
 import { createSnapshot, readSnapshot, writeSnapshot, type LocalSnapshot } from "../storage/backup";
+import { readWorkspaceDatasets } from "../storage/workspaceBackup";
 import { defaultContent } from "../content/defaultContent";
 
 type DashboardProps = {
@@ -592,7 +593,7 @@ export function Dashboard({
     setLoadingAction("selected-full-backup");
 
     try {
-      await exportFullBackupZip(selected);
+      await exportFullBackupZip(selected, readWorkspaceDatasets());
       showToast("选中角色完整备份 ZIP 已导出", "success");
     } catch {
       showToast("完整备份导出失败", "error");
@@ -836,7 +837,7 @@ export function Dashboard({
 
     setLoadingAction("csv");
     setIsMoreMenuOpen(false);
-    exportCharactersCsv(characters);
+    exportCharactersCsv(characters, readWorkspaceDatasets());
     showToast("CSV 已导出", "success");
     window.setTimeout(() => setLoadingAction(null), 300);
   }
@@ -851,7 +852,7 @@ export function Dashboard({
     setIsMoreMenuOpen(false);
 
     try {
-      await exportFullBackupZip(characters);
+      await exportFullBackupZip(characters, readWorkspaceDatasets());
       showToast("完整备份 ZIP 已导出", "success");
     } catch {
       showToast("完整备份导出失败", "error");
@@ -2882,6 +2883,15 @@ export function Dashboard({
                   <span>角色：{importPlan.preview.roleCount} 个</span>
                   <span>头像素材：{importPlan.preview.avatarCount} 个</span>
                   <span>导入类型：{getImportTypeLabel(importPlan.preview.importType)}</span>
+                  {/* Files written before the graph, the timeline and the world book
+                      existed carry characters only, and then this line is absent. */}
+                  {importPlan.preview.workspaceCounts && (
+                    <span>
+                      关系网 {importPlan.preview.workspaceCounts.relationships} · 世界观{" "}
+                      {importPlan.preview.workspaceCounts.world} · 时间线{" "}
+                      {importPlan.preview.workspaceCounts.timeline}
+                    </span>
+                  )}
                 </div>
                 <button
                   className="ghost-button import-detail-toggle"
