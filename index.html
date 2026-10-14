@@ -2,14 +2,31 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#f3f4f6" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/favicon.svg" />
-    <title>Character Studio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f4f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Character Studio —— 面向原创角色（OC）创作的本地优先工作台：整理角色的身份、外观、性格与背景，支持 JSON / ZIP / CSV / PDF / 图片导入导出，资料只保存在本机浏览器。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Character Studio" />
+    <meta property="og:title" content="Character Studio · OC 角色创作工作台" />
+    <meta
+      property="og:description"
+      content="本地优先的原创角色管理工作台：创建、编辑、预览、备份与导出角色设定。不需要账号，不接入服务器，不上传角色资料。"
+    />
+    <meta property="og:image" content="%BASE_URL%og-image.png" />
+    <meta property="og:url" content="https://rintotan.github.io/character-studio/" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="apple-touch-icon" href="%BASE_URL%favicon.svg" />
+    <title>Character Studio · OC 角色创作工作台</title>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Character Studio 是一个本地优先的角色管理应用，需要启用 JavaScript 才能使用。</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
