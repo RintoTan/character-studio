@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
-import { APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
+import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
 import {
   exportAllCharactersJson,
@@ -1451,6 +1451,10 @@ export function Dashboard({
                 <p>Version {projectInfo.version}</p>
                 <p>Sprint {projectInfo.sprint}</p>
                 <p>Released {projectInfo.releaseYear}</p>
+                <p>
+                  Build {APP_COMMIT_SHORT}
+                  {APP_BUILD_DATE ? ` · ${APP_BUILD_DATE}` : ""}
+                </p>
               </div>
               <p className="about-brand-tagline">{contentText.firstAboutTagline}</p>
               <div className="about-brand-links">

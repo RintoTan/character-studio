@@ -3203,6 +3203,7 @@ export function CharacterForm({
                           addCustomTag();
                         }
                       }}
+                      aria-label="添加自定义性格标签"
                       placeholder="添加自定义性格标签"
                     />
                     <button className="ghost-button" onClick={addCustomTag} type="button">

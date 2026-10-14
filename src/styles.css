@@ -4,11 +4,18 @@
   --surface-subtle: #f9fafb;
   --text: #111827;
   --text-soft: #374151;
-  --muted: #6b7280;
+  /* #6b7280 measured 4.39:1 for muted text on the light page background, just
+     under WCAG AA; this value clears 4.5:1 on --bg and reads better on
+     --surface-subtle. */
+  --muted: #5b6472;
   --border: #e5e7eb;
   --border-strong: #d1d5db;
   --primary: #111827;
   --primary-hover: #374151;
+  /* Text drawn on top of --primary. The accent is user-configurable, so
+     applyDeveloperSettings recomputes this from the chosen value; the literal
+     here is only the pre-hydration default. */
+  --on-primary: #ffffff;
   --danger: #b91c1c;
   --danger-bg: #fef2f2;
   --danger-border: #fecaca;
@@ -448,7 +455,7 @@ button:disabled {
 .hero-icon-button.primary-icon {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--surface);
+  color: var(--on-primary);
 }
 
 .hero-icon-button.primary-icon:hover {
@@ -554,7 +561,7 @@ h2 {
 
 .primary-button {
   background: var(--primary);
-  color: var(--surface);
+  color: var(--on-primary);
 }
 
 .primary-button:hover {
@@ -1189,6 +1196,14 @@ h2 {
 
 .checkbox-control {
   border-radius: 6px;
+}
+
+/* The design-system sample applies "checked", but no rule existed for it, so a
+   checked box rendered as an empty box with a low-contrast purple glyph. */
+.checkbox-control.checked {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
 }
 
 .radio-control {
@@ -2475,7 +2490,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .tag-button.selected {
   border-color: var(--primary);
   background: var(--primary);
-  color: var(--surface);
+  color: var(--on-primary);
 }
 
 .custom-tag-row {
@@ -4002,7 +4017,7 @@ kbd {
 }
 
 .settings-check input[type="checkbox"]:checked::after {
-  background: var(--surface);
+  background: var(--on-primary);
   transform: translateX(16px);
 }
 
@@ -5402,5 +5417,53 @@ kbd {
   .about-list.compact,
   .roadmap-columns {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Route-level code splitting: the editor, preview and developer panel are
+   separate chunks. This fallback is delayed so a cache-warm navigation never
+   flashes a loading state. */
+.page-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40vh;
+  padding: 48px 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  opacity: 0;
+  animation: page-fallback-appear 200ms var(--ease-standard) 120ms forwards;
+}
+
+.page-fallback-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--muted);
+  border-radius: 999px;
+  animation: page-fallback-spin 720ms linear infinite;
+}
+
+@keyframes page-fallback-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes page-fallback-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-fallback {
+    animation-delay: 0ms;
+    animation-duration: 1ms;
+  }
+
+  .page-fallback-spinner {
+    animation: none;
   }
 }

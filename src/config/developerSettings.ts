@@ -265,6 +265,42 @@ export function resetDeveloperSettings() {
   return defaultDeveloperSettings;
 }
 
+// The accent colour is user-configurable, so the colour of any text sitting on
+// top of it has to be derived instead of hard-coded: picking whichever of white
+// or near-black actually has the better contrast keeps the primary button, the
+// primary icon button and the selected tag readable for any accent.
+function relativeLuminance(hex: string): number | null {
+  const value = hex.trim().replace(/^#/, "");
+  const full =
+    value.length === 3
+      ? value
+          .split("")
+          .map((character) => character + character)
+          .join("")
+      : value;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) {
+    return null;
+  }
+
+  const [r, g, b] = [0, 2, 4].map((offset) => parseInt(full.slice(offset, offset + 2), 16) / 255);
+  const linear = (channel: number) =>
+    channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+
+  return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+}
+
+function readableTextOn(hex: string): string {
+  const luminance = relativeLuminance(hex);
+  if (luminance === null) {
+    return "#ffffff";
+  }
+
+  const against = (other: number) =>
+    (Math.max(luminance, other) + 0.05) / (Math.min(luminance, other) + 0.05);
+
+  return against(1) >= against(relativeLuminance("#111827") as number) ? "#ffffff" : "#111827";
+}
+
 export function applyDeveloperSettings(settings: DeveloperSettings) {
   const root = document.documentElement;
   const shadowMap = {
@@ -282,6 +318,7 @@ export function applyDeveloperSettings(settings: DeveloperSettings) {
   document.title = settings.application.pageTitle || "Character Studio";
   root.style.setProperty("--primary", settings.appearance.accentColor);
   root.style.setProperty("--primary-hover", settings.appearance.accentColor);
+  root.style.setProperty("--on-primary", readableTextOn(settings.appearance.accentColor));
   root.style.setProperty("--control-radius", `${settings.designTokens.inputRadius}px`);
   root.style.setProperty("--developer-card-radius", `${settings.appearance.cardRadius}px`);
   root.style.setProperty("--developer-button-radius", `${settings.appearance.buttonRadius}px`);
