@@ -2797,20 +2797,20 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设世界观"
-                        value={worldviewOptions.includes((formData.worldview || "").trim()) ? "" : "__custom"}
                         onChange={(event) => {
-                          if (event.target.value !== "__custom") {
+                          if (event.target.value) {
                             updateField("worldview", event.target.value);
+                            event.target.value = "";
                           }
                         }}
+                        value=""
                       >
-                        <option value="">预设</option>
-                        {worldviewOptions.map((worldview) => (
-                          <option key={worldview} value={worldview}>
-                            {worldview}
+                        <option value="">选择预设</option>
+                        {worldviewOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
                           </option>
                         ))}
-                        <option value="__custom">自定义</option>
                       </select>
                     </div>
                   </label>
@@ -2824,20 +2824,20 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设视觉风格"
-                        value={visualStyleOptions.includes((formData.visualStyle || "").trim()) ? "" : "__custom"}
                         onChange={(event) => {
-                          if (event.target.value !== "__custom") {
+                          if (event.target.value) {
                             updateField("visualStyle", event.target.value);
+                            event.target.value = "";
                           }
                         }}
+                        value=""
                       >
-                        <option value="">预设</option>
-                        {visualStyleOptions.map((style) => (
-                          <option key={style} value={style}>
-                            {style}
+                        <option value="">选择预设</option>
+                        {visualStyleOptions.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
                           </option>
                         ))}
-                        <option value="__custom">自定义</option>
                       </select>
                     </div>
                   </label>

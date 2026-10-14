@@ -548,7 +548,7 @@ h2 {
 .ghost-button,
 .danger-button {
   min-height: var(--control-height);
-  border-radius: var(--control-radius);
+  border-radius: var(--developer-button-radius);
   padding: 0 16px;
   border: 1px solid transparent;
   font-weight: 700;
