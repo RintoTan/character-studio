@@ -35,6 +35,9 @@ jobs:
       - name: Type-check
         run: pnpm typecheck
 
+      - name: Unit tests
+        run: pnpm test
+
       - name: Build for Pages
         env:
           VITE_BUILD_COMMIT: ${{ github.sha }}

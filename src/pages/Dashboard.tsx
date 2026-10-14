@@ -25,6 +25,7 @@ import {
   listAvatarAssets,
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
+import { createSnapshot, readSnapshot, writeSnapshot, type LocalSnapshot } from "../storage/backup";
 
 type DashboardProps = {
   characters: Character[];
@@ -161,6 +162,7 @@ export function Dashboard({
   const [isImportDetailOpen, setIsImportDetailOpen] = useState(false);
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [isAssetCleanupOpen, setIsAssetCleanupOpen] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<LocalSnapshot | null>(null);
   const [pendingAssetDelete, setPendingAssetDelete] = useState<AvatarAssetRecord | null>(null);
   const [pendingAssetBatchDeleteIds, setPendingAssetBatchDeleteIds] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -800,8 +802,25 @@ export function Dashboard({
     }
   }
 
+  function restoreSnapshot() {
+    if (!pendingRestore) {
+      return;
+    }
+
+    onImport(pendingRestore.characters);
+    setPendingRestore(null);
+    setIsSettingsOpen(false);
+    showToast(`已恢复 ${pendingRestore.characterCount} 个角色`, "success");
+  }
+
   async function clearLocalData() {
+    // Clearing wipes the entire list, so keep a recovery copy first.
+    const snapshot = createSnapshot("清空本地数据前自动备份", characters);
     localStorage.clear();
+    if (snapshot) {
+      // localStorage.clear() removed the snapshot as well; write it back.
+      writeSnapshot(snapshot);
+    }
     await clearAvatarAssets();
     onImport([]);
     setSelectedIds([]);
@@ -1034,6 +1053,7 @@ export function Dashboard({
     setLoadingAction("import");
 
     try {
+      createSnapshot("导入前自动备份", characters);
       const result = await commitCharacterImport(importPlan, characters);
       onImport(result.characters);
       setImportPlan(null);
@@ -1671,6 +1691,18 @@ export function Dashboard({
                   <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
                     导入角色 JSON/ZIP
                   </button>
+                  {(() => {
+                    const snapshot = readSnapshot();
+                    if (!snapshot) {
+                      return null;
+                    }
+
+                    return (
+                      <button className="ghost-button" onClick={() => setPendingRestore(snapshot)} type="button">
+                        恢复上次自动备份（{snapshot.characterCount} 个角色 · {snapshot.createdAt.slice(0, 10)}）
+                      </button>
+                    );
+                  })()}
                   <button className="danger-button" onClick={() => setIsClearDataOpen(true)} type="button">
                     清空本地数据
                   </button>
@@ -1903,11 +1935,31 @@ export function Dashboard({
         </div>
       )}
 
+      {pendingRestore && (
+        <div className="modal-backdrop" role="presentation">
+          <div className="confirm-dialog" role="dialog" aria-modal="true">
+            <h2>恢复上次自动备份</h2>
+            <p>
+              将用 {pendingRestore.createdAt.slice(0, 10)} 的备份覆盖当前角色数据（{pendingRestore.characterCount} 个角色）。
+              当前列表会被替换，头像图片不在备份中。
+            </p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setPendingRestore(null)} type="button">
+                取消
+              </button>
+              <button className="primary-button" onClick={restoreSnapshot} type="button">
+                确认恢复
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isClearDataOpen && (
         <div className="modal-backdrop" role="presentation">
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>清空本地数据</h2>
-            <p>确定要清空所有本地角色数据吗？此操作不可撤销。</p>
+            <p>确定要清空所有本地角色数据吗？当前共 {characters.length} 个角色。清空前会自动保留一份可恢复的备份（仅角色数据，不含头像图片）。</p>
             <div className="form-actions">
               <button className="ghost-button" onClick={() => setIsClearDataOpen(false)} type="button">
                 取消

@@ -9,7 +9,8 @@
     "build:pages": "tsc -b && vite build --base=/character-studio/ && node scripts/build-info.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "verify:deploy": "node scripts/verify-deploy.mjs"
+    "verify:deploy": "node scripts/verify-deploy.mjs",
+    "test": "vitest run"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
@@ -22,6 +23,8 @@
   },
   "devDependencies": {
     "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5"
+    "@types/react-dom": "^18.3.5",
+    "happy-dom": "^21.0.1",
+    "vitest": "^3.2.7"
   }
 }
