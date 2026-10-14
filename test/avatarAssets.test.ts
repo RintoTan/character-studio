@@ -78,10 +78,14 @@ describe("avatar asset store", () => {
 
   it("returns the newest asset first", async () => {
     await saveAvatarBlob(blobOf("older"), "older");
+    // createdAt is millisecond-precision: without a gap the two records tie and
+    // the order falls to the tiebreaker instead of reflecting recency, which made
+    // this assertion flaky.
+    await new Promise((resolve) => setTimeout(resolve, 5));
     await saveAvatarBlob(blobOf("newer"), "newer");
 
     const names = (await listAvatarAssets()).map((asset) => asset.name);
-    expect(names.indexOf("newer")).toBeLessThan(names.indexOf("older"));
+    expect(names).toEqual(["newer", "older"]);
   });
 
   it("clears every asset", async () => {

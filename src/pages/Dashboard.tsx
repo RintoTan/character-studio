@@ -47,6 +47,8 @@ type DashboardProps = {
     showDraftCount: boolean;
     showFavoriteCount: boolean;
     showUpdatedTime: boolean;
+    openSearch: boolean;
+    hideLowPriority: boolean;
   };
   aiSettingsEnabled?: boolean;
   assetLibraryEnabled?: boolean;
@@ -66,6 +68,13 @@ type DashboardProps = {
   onSetThemeMode: (themeMode: ThemeMode) => void;
   searchSignal?: number;
   footerText?: string;
+  // Flattened view of the settings this screen needs, plus a patch callback, so
+  // the dashboard edits the single settings object instead of its own keys.
+  editorSettings?: { compactMobileEditor: boolean };
+  onDashboardSettingsChange?: (patch: {
+    dashboardDefaults?: Partial<{ openSearch: boolean; hideLowPriority: boolean }>;
+    editorDefaults?: Partial<{ compactMobileEditor: boolean }>;
+  }) => void;
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
@@ -140,12 +149,14 @@ export function Dashboard({
   onSetThemeMode,
   searchSignal = 0,
   footerText = `RINTO © ${RELEASE_YEAR}`,
-}: DashboardProps) {
+
+  onDashboardSettingsChange,
+  editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(
-    () => localStorage.getItem("character-studio.settings.open-search") === "true",
+    () => dashboardSettings?.openSearch ?? false,
   );
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
@@ -1614,12 +1625,11 @@ export function Dashboard({
                 <label className="settings-check">
                   <input
                     type="checkbox"
-                    defaultChecked={localStorage.getItem("character-studio.settings.compact-mobile") !== "false"}
+                    checked={editorSettings?.compactMobileEditor ?? true}
                     onChange={(event) =>
-                      localStorage.setItem(
-                        "character-studio.settings.compact-mobile",
-                        String(event.target.checked),
-                      )
+                      onDashboardSettingsChange?.({
+                        editorDefaults: { compactMobileEditor: event.target.checked },
+                      })
                     }
                   />
                   <span>简洁模式</span>
@@ -1627,12 +1637,11 @@ export function Dashboard({
                 <label className="settings-check">
                   <input
                     type="checkbox"
-                    defaultChecked={localStorage.getItem("character-studio.settings.open-search") === "true"}
+                    checked={dashboardSettings?.openSearch ?? false}
                     onChange={(event) => {
-                      localStorage.setItem(
-                        "character-studio.settings.open-search",
-                        String(event.target.checked),
-                      );
+                      onDashboardSettingsChange?.({
+                        dashboardDefaults: { openSearch: event.target.checked },
+                      });
                       setIsSearchPanelOpen(event.target.checked);
                     }}
                   />
@@ -1641,12 +1650,11 @@ export function Dashboard({
                 <label className="settings-check">
                   <input
                     type="checkbox"
-                    defaultChecked={localStorage.getItem("character-studio.settings.hide-low-priority") !== "false"}
+                    checked={dashboardSettings?.hideLowPriority ?? true}
                     onChange={(event) =>
-                      localStorage.setItem(
-                        "character-studio.settings.hide-low-priority",
-                        String(event.target.checked),
-                      )
+                      onDashboardSettingsChange?.({
+                        dashboardDefaults: { hideLowPriority: event.target.checked },
+                      })
                     }
                   />
                   <span>自动隐藏低优先级信息</span>

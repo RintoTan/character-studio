@@ -18,6 +18,7 @@ import {
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
 import { CharacterPreview } from "./CharacterPreview";
+import { loadDeveloperSettings, type DeveloperSettings } from "../config/developerSettings";
 
 type CharacterDraft = Omit<Character, "id" | "updatedAt">;
 
@@ -783,16 +784,22 @@ function chance(probability: number) {
   return Math.random() < probability;
 }
 
-function getPromptDeveloperSetting(key: string, fallback: string) {
+// Reads the prompt settings from the unified settings object. These used to be
+// read from individual localStorage keys written by a mirror that no longer
+// exists, which let two copies of the same setting disagree.
+function getPromptDeveloperSetting<K extends keyof DeveloperSettings["promptCenter"]>(
+  key: K,
+  fallback: DeveloperSettings["promptCenter"][K],
+): DeveloperSettings["promptCenter"][K] {
   try {
-    return localStorage.getItem(key) || fallback;
+    return loadDeveloperSettings().promptCenter[key] ?? fallback;
   } catch {
     return fallback;
   }
 }
 
 function getPromptProbability(baseProbability: number) {
-  const complexity = getPromptDeveloperSetting("character-studio.prompt.complexity", "medium");
+  const complexity = getPromptDeveloperSetting("complexity", "medium");
 
   if (complexity === "low") {
     return Math.max(baseProbability - 0.2, 0.2);
@@ -810,7 +817,7 @@ function pickOptional(options: string[], probability = 0.72) {
 }
 
 function allowRandomMissingFields() {
-  return getPromptDeveloperSetting("character-studio.prompt.random-missing-fields", "true") !== "false";
+  return getPromptDeveloperSetting("randomMissingFields", true);
 }
 
 function randomFieldChance(probability: number) {
@@ -818,7 +825,7 @@ function randomFieldChance(probability: number) {
 }
 
 function getRepeatLimit() {
-  const repeatControl = getPromptDeveloperSetting("character-studio.prompt.repeat-control", "normal");
+  const repeatControl = getPromptDeveloperSetting("repeatControl", "normal");
 
   if (repeatControl === "strict") {
     return 18;
@@ -832,7 +839,7 @@ function getRepeatLimit() {
 }
 
 function shouldUseExternalInspirationLibrary() {
-  return getPromptDeveloperSetting("character-studio.prompt.external-library", "true") !== "false";
+  return getPromptDeveloperSetting("externalLibraryEnabled", true);
 }
 
 function rememberHelperOutput(value: string) {
@@ -864,7 +871,7 @@ function pickFragmentGroup<T extends HelperFragmentGroupName>(groupName: T) {
     return helperFragments[groupName];
   }
 
-  const customLibraryText = getPromptDeveloperSetting("character-studio.prompt.custom-library", "");
+  const customLibraryText = getPromptDeveloperSetting("customLibraryText", "");
   if (!customLibraryText.trim()) {
     return inspirationFragments[groupName];
   }

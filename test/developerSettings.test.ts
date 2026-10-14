@@ -62,6 +62,50 @@ describe("developerSettings", () => {
     expect(() => mergeDeveloperSettings(null)).not.toThrow();
   });
 
+  describe("legacy flat-key migration", () => {
+    it("seeds the unified object from the legacy keys on first load", () => {
+      // The removed mirror wrote these keys; they are now migration input only.
+      localStorage.setItem("character-studio.settings.open-search", "true");
+      localStorage.setItem("character-studio.settings.compact-mobile", "false");
+      localStorage.setItem("character-studio.prompt.complexity", "high");
+      localStorage.setItem("character-studio.settings.jpg-quality", "0.5");
+
+      const settings = loadDeveloperSettings();
+
+      expect(settings.dashboardDefaults.openSearch).toBe(true);
+      expect(settings.editorDefaults.compactMobileEditor).toBe(false);
+      expect(settings.promptCenter.complexity).toBe("high");
+      expect(settings.exportDefaults.jpgQuality).toBe(0.5);
+    });
+
+    it("keeps untouched settings at their defaults", () => {
+      localStorage.setItem("character-studio.prompt.complexity", "high");
+
+      const settings = loadDeveloperSettings();
+
+      expect(settings.dashboardDefaults.hideLowPriority).toBe(true);
+      expect(settings.promptCenter.customLibraryText).toBe(
+        defaultDeveloperSettings.promptCenter.customLibraryText,
+      );
+    });
+
+    it("ignores the legacy keys once the unified object has been stored", () => {
+      // Otherwise a stale flat key would silently overwrite a deliberate change.
+      saveDeveloperSettings(mergeDeveloperSettings({ dashboardDefaults: { openSearch: false } }));
+      localStorage.setItem("character-studio.settings.open-search", "true");
+
+      expect(loadDeveloperSettings().dashboardDefaults.openSearch).toBe(false);
+    });
+
+    it("ignores an unparsable legacy number rather than storing NaN", () => {
+      localStorage.setItem("character-studio.settings.jpg-quality", "not-a-number");
+
+      expect(loadDeveloperSettings().exportDefaults.jpgQuality).toBe(
+        defaultDeveloperSettings.exportDefaults.jpgQuality,
+      );
+    });
+  });
+
   describe("accent tokens", () => {
     it("derives a hover shade that differs from the base accent", () => {
       // Regression guard: these two were assigned the same value, so hovering a

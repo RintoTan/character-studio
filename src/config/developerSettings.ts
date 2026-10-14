@@ -57,6 +57,8 @@ export type DeveloperSettings = {
     showDraftCount: boolean;
     showFavoriteCount: boolean;
     showUpdatedTime: boolean;
+    openSearch: boolean;
+    hideLowPriority: boolean;
   };
   exportDefaults: {
     jpgQuality: number;
@@ -143,6 +145,8 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     showDraftCount: true,
     showFavoriteCount: true,
     showUpdatedTime: true,
+    openSearch: false,
+    hideLowPriority: true,
   },
   exportDefaults: {
     jpgQuality: 0.9,
@@ -246,11 +250,66 @@ export function mergeDeveloperSettings(value: unknown): DeveloperSettings {
   };
 }
 
+// Several settings used to be duplicated as individual localStorage keys and
+// written from this object by a mirror in App.tsx, while consumers read the flat
+// keys directly. The two copies could disagree, and a settings change would
+// silently revert a dashboard toggle. The flat keys are now migration input
+// only: they seed this object once, on the first load after the change, and are
+// never written again.
+function migrateLegacySettings(settings: DeveloperSettings): DeveloperSettings {
+  const read = (key: string) => localStorage.getItem(key);
+  const bool = (key: string, fallback: boolean) => {
+    const raw = read(key);
+    return raw === null ? fallback : raw === "true";
+  };
+  const text = <T extends string>(key: string, fallback: T): T => {
+    const raw = read(key);
+    return raw === null ? fallback : (raw as T);
+  };
+  const num = (key: string, fallback: number) => {
+    const raw = read(key);
+    const parsed = Number(raw);
+    return raw === null || Number.isNaN(parsed) ? fallback : parsed;
+  };
+
+  return {
+    ...settings,
+    dashboardDefaults: {
+      ...settings.dashboardDefaults,
+      openSearch: bool("character-studio.settings.open-search", settings.dashboardDefaults.openSearch),
+      hideLowPriority: bool("character-studio.settings.hide-low-priority", settings.dashboardDefaults.hideLowPriority),
+    },
+    editorDefaults: {
+      ...settings.editorDefaults,
+      compactMobileEditor: bool("character-studio.settings.compact-mobile", settings.editorDefaults.compactMobileEditor),
+    },
+    exportDefaults: {
+      ...settings.exportDefaults,
+      jpgQuality: num("character-studio.settings.jpg-quality", settings.exportDefaults.jpgQuality),
+      pngScale: num("character-studio.settings.png-scale", settings.exportDefaults.pngScale),
+      pdfLightMode: bool("character-studio.settings.pdf-light", settings.exportDefaults.pdfLightMode),
+      includeFooter: bool("character-studio.settings.export-footer", settings.exportDefaults.includeFooter),
+      includePromptSection: bool("character-studio.settings.export-prompt", settings.exportDefaults.includePromptSection),
+      includeTimeInfo: bool("character-studio.settings.export-time", settings.exportDefaults.includeTimeInfo),
+    },
+    promptCenter: {
+      ...settings.promptCenter,
+      externalLibraryEnabled: bool("character-studio.prompt.external-library", settings.promptCenter.externalLibraryEnabled),
+      randomMissingFields: bool("character-studio.prompt.random-missing-fields", settings.promptCenter.randomMissingFields),
+      complexity: text("character-studio.prompt.complexity", settings.promptCenter.complexity),
+      repeatControl: text("character-studio.prompt.repeat-control", settings.promptCenter.repeatControl),
+      customLibraryText: text("character-studio.prompt.custom-library", settings.promptCenter.customLibraryText),
+    },
+  };
+}
+
 export function loadDeveloperSettings() {
   try {
-    return mergeDeveloperSettings(
-      JSON.parse(localStorage.getItem(DEVELOPER_SETTINGS_KEY) || "null"),
-    );
+    // Only migrate when this app has never stored the unified object, so a
+    // deliberate change is never overwritten by a stale flat key.
+    const stored = localStorage.getItem(DEVELOPER_SETTINGS_KEY);
+    const merged = mergeDeveloperSettings(JSON.parse(stored || "null"));
+    return stored ? merged : migrateLegacySettings(merged);
   } catch {
     return defaultDeveloperSettings;
   }

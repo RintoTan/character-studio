@@ -235,7 +235,12 @@ export async function listAvatarAssets() {
   // getAll() returns records in key order, and the key is a random UUID, so the
   // library was rendering in an effectively arbitrary order. Newest first is
   // what every caller wants, so it is decided here rather than in each view.
-  return records.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  // createdAt has millisecond precision, so two records saved in the same
+  // millisecond tie; the id keeps the order deterministic in that case.
+  return records.sort(
+    (a, b) =>
+      (b.createdAt || "").localeCompare(a.createdAt || "") || (a.id || "").localeCompare(b.id || ""),
+  );
 }
 
 function blobToDataUrl(blob: Blob) {

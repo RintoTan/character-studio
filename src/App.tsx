@@ -184,19 +184,6 @@ function App() {
   useEffect(() => {
     saveDeveloperSettings(developerSettings);
     applyDeveloperSettings(developerSettings);
-    localStorage.setItem("character-studio.settings.jpg-quality", String(developerSettings.exportDefaults.jpgQuality));
-    localStorage.setItem("character-studio.settings.png-scale", String(developerSettings.exportDefaults.pngScale));
-    localStorage.setItem("character-studio.settings.pdf-light", String(developerSettings.exportDefaults.pdfLightMode));
-    localStorage.setItem("character-studio.settings.export-footer", String(developerSettings.exportDefaults.includeFooter));
-    localStorage.setItem("character-studio.settings.export-prompt", String(developerSettings.exportDefaults.includePromptSection));
-    localStorage.setItem("character-studio.settings.export-time", String(developerSettings.exportDefaults.includeTimeInfo));
-    localStorage.setItem("character-studio.settings.compact-mobile", String(developerSettings.editorDefaults.compactMobileEditor));
-    localStorage.setItem("character-studio.prompt.external-library", String(developerSettings.promptCenter.externalLibraryEnabled));
-    localStorage.setItem("character-studio.prompt.random-missing-fields", String(developerSettings.promptCenter.randomMissingFields));
-    localStorage.setItem("character-studio.prompt.complexity", developerSettings.promptCenter.complexity);
-    localStorage.setItem("character-studio.prompt.repeat-control", developerSettings.promptCenter.repeatControl);
-    localStorage.setItem("character-studio.prompt.custom-library", developerSettings.promptCenter.customLibraryText);
-
     if (!developerSettings.application.showFirstAbout) {
       localStorage.setItem(ABOUT_SEEN_KEY, "true");
     }
@@ -741,6 +728,20 @@ function App() {
           projectInfo={developerSettings.project}
           contentText={developerSettings.content}
           dashboardSettings={developerSettings.dashboardDefaults}
+          editorSettings={developerSettings.editorDefaults}
+          onDashboardSettingsChange={(patch) =>
+            updateDeveloperSettings({
+              ...developerSettings,
+              dashboardDefaults: {
+                ...developerSettings.dashboardDefaults,
+                ...(patch.dashboardDefaults ?? {}),
+              },
+              editorDefaults: {
+                ...developerSettings.editorDefaults,
+                ...(patch.editorDefaults ?? {}),
+              },
+            })
+          }
           aiSettingsEnabled={developerSettings.featureFlags.aiSettings}
           assetLibraryEnabled={developerSettings.featureFlags.assetLibrary}
           onCreate={handleCreate}
