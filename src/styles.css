@@ -519,12 +519,13 @@ button:disabled {
 /* The toolbar buttons have no width or height of their own anywhere else, so the
    box they had came from the line box of a text button. As a grid container that
    line box is gone — measured 34x24 where it used to be 34x30 — so the size is
-   stated here instead of inherited from a font metric. 32 matches the other icon
-   buttons in the app. */
+   stated here instead of inherited from a font metric.
+   36 rather than 32: measured across the four control bars, the dashboard's icon
+   buttons were the only 32s in the app, against 42 for every labelled button. */
 .hero-icon-button {
-  width: 34px;
-  min-height: 32px;
-  height: 32px;
+  width: 36px;
+  min-height: 36px;
+  height: 36px;
 }
 
 .hero-icon-button,
@@ -535,6 +536,9 @@ button:disabled {
   /* Transparent rather than `border: 0`: it keeps the box the 2px border gave
      these controls, so removing the outline does not resize the toolbar. */
   border: 2px solid transparent;
+  /* The button token, not the 8px control radius these were picking up from a
+     generic rule: every other button in the app is already on the token. */
+  border-radius: var(--developer-button-radius);
   background: var(--control-fill);
   color: var(--text-soft);
   box-shadow: none;
