@@ -1,5 +1,10 @@
 # Character Studio
 
+> **发布状态：v1.0.0**（Sprint 9.0）—— 本地优先工作台的可发布基线。
+> 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
+> 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
+
+
 **Character Studio** 是一个面向 OC（Original Character，原创角色）创作的本地优先角色工作台。
 
 它用于创建、编辑、管理、预览、备份和导出角色设定，适合小说、插画、跑团、乙游企划、世界观创作和 AI 绘图 Prompt 整理。
