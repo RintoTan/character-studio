@@ -5498,3 +5498,126 @@ kbd {
   font-size: 0.86rem;
   line-height: 1.6;
 }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Relationship graph (2.0). Colours come from the theme tokens so the developer
+   centre's accent reaches it like the rest of the app. */
+.relationship-canvas {
+  width: 100%;
+  max-width: 640px;
+  margin: 8px auto;
+  display: block;
+}
+
+.relationship-edge line {
+  stroke: var(--border-strong);
+  stroke-width: 2;
+  color: var(--muted);
+}
+
+.relationship-edge text {
+  fill: var(--muted);
+  font-size: 13px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.relationship-edge.kind-family line,
+.relationship-edge.kind-romance line {
+  stroke: var(--primary);
+  color: var(--primary);
+}
+
+.relationship-edge.kind-enemy line,
+.relationship-edge.kind-rival line {
+  stroke: var(--danger);
+  color: var(--danger);
+  stroke-dasharray: 6 4;
+}
+
+.relationship-node {
+  cursor: pointer;
+}
+
+.relationship-node circle {
+  fill: var(--surface-subtle);
+  stroke: var(--border-strong);
+  stroke-width: 2;
+}
+
+.relationship-node:hover circle,
+.relationship-node:focus-visible circle {
+  stroke: var(--primary);
+}
+
+.relationship-node-emoji {
+  font-family: var(--emoji-font);
+  font-size: 26px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+
+.relationship-node-name {
+  fill: var(--text);
+  font-size: 13px;
+  text-anchor: middle;
+}
+
+.relationship-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.relationship-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  background: var(--surface-subtle);
+}
+
+.relationship-list-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.relationship-note {
+  flex-basis: 100%;
+  font-size: 0.86rem;
+}
+
+.relationship-kind-chip {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.relationship-kind-chip.kind-family,
+.relationship-kind-chip.kind-romance {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.relationship-kind-chip.kind-enemy,
+.relationship-kind-chip.kind-rival {
+  border-color: var(--danger);
+  color: var(--danger);
+}

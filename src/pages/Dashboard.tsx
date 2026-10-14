@@ -83,6 +83,7 @@ type DashboardProps = {
     exportDefaults?: Partial<{ jpgQuality: number; pdfLightMode: boolean }>;
   }) => void;
   exportSettings?: { jpgQuality: number; pngScale: number; pdfLightMode: boolean };
+  onOpenRelationships?: () => void;
 };
 
 type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
@@ -158,6 +159,7 @@ export function Dashboard({
 
   onDashboardSettingsChange,
   exportSettings,
+  onOpenRelationships,
   editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
@@ -1947,6 +1949,11 @@ export function Dashboard({
                 <button onClick={() => openCharacterExportDialog("all")} type="button">
                   导出角色 JSON/ZIP
                 </button>
+                {onOpenRelationships && (
+                  <button onClick={onOpenRelationships} type="button">
+                    角色关系网
+                  </button>
+                )}
                 <button onClick={handleExportCsv} type="button">
                   导出 CSV
                 </button>

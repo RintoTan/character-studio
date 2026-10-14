@@ -180,7 +180,8 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     personalPreferences: true,
     compactMobileEditor: true,
     experimentalTimeline: false,
-    experimentalRelationshipGraph: false,
+    // Now gates a shipped screen rather than a plan.
+    experimentalRelationshipGraph: true,
   },
   developerMode: {
     enabled: true,

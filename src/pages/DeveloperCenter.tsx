@@ -152,6 +152,7 @@ const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
   "promptCenter",
   "assetLibrary",
   "personalPreferences",
+  "experimentalRelationshipGraph",
 ]);
 
 // Content fields that are editable and persisted but not rendered anywhere yet.

@@ -32,6 +32,7 @@ import {
   exportFullBackupZip,
 } from "./utils/importExport";
 import { Dashboard } from "./pages/Dashboard";
+import { pruneRelationships } from "./storage/relationshipStorage";
 
 // The editor, the preview and the developer panel are not needed for the first
 // paint, so they are code-split out of the entry chunk. Dashboard stays static:
@@ -45,6 +46,9 @@ const CharacterPreview = lazy(() =>
 );
 const DeveloperCenter = lazy(() =>
   import("./pages/DeveloperCenter").then((module) => ({ default: module.DeveloperCenter })),
+);
+const RelationshipGraph = lazy(() =>
+  import("./pages/RelationshipGraph").then((module) => ({ default: module.RelationshipGraph })),
 );
 
 const THEME_KEY = "character-studio.theme";
@@ -575,6 +579,7 @@ function App() {
 
   function handleDelete(character: Character) {
     setCharacters(deleteCharacter(character.id));
+    pruneRelationships(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
 
     if (selectedCharacter?.id === character.id) {
       setSelectedCharacter(null);
@@ -730,6 +735,11 @@ function App() {
           dashboardSettings={developerSettings.dashboardDefaults}
           editorSettings={developerSettings.editorDefaults}
           exportSettings={developerSettings.exportDefaults}
+          onOpenRelationships={
+            developerSettings.featureFlags.experimentalRelationshipGraph
+              ? () => setPage("relationships")
+              : undefined
+          }
           onDashboardSettingsChange={(patch) =>
             updateDeveloperSettings({
               ...developerSettings,
@@ -797,6 +807,19 @@ function App() {
         />
       )}
 
+      {page === "relationships" && (
+        <RelationshipGraph
+          characters={characters}
+          onBack={() => setPage("dashboard")}
+          onOpenCharacter={(characterId) => {
+            const target = characters.find((entry) => entry.id === characterId);
+            if (target) {
+              setSelectedCharacter(target);
+              setPage("preview");
+            }
+          }}
+        />
+      )}
       {page === "developer" && (
         <DeveloperCenter
           avatarAssetStats={avatarAssetStats}
