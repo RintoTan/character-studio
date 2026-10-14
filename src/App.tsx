@@ -1217,7 +1217,7 @@ function App() {
                   </label>
                   <label>
                     API Key
-                    <input type="password" placeholder="暂不需要填写" defaultValue={localStorage.getItem("character-studio.ai.api-key") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.api-key", event.target.value)} />
+                    <input disabled placeholder="功能未启用，暂不可填写" type="password" />
                   </label>
                   <label>
                     Base URL

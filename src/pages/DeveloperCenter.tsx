@@ -143,12 +143,27 @@ const featureFlagLabels: Record<keyof DeveloperSettings["featureFlags"], string>
   experimentalRelationshipGraph: "Experimental Relationship Graph",
 };
 
+// Flags whose module actually exists and reads the value. Anything absent here
+// renders as "暂未应用" and is disabled, so the panel never advertises a switch
+// that does nothing. compactMobileEditor was removed from this list: it only
+// writes a data-compact-mobile-editor attribute and styles.css never reads it.
 const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
   "aiSettings",
   "promptCenter",
   "assetLibrary",
   "personalPreferences",
-  "compactMobileEditor",
+]);
+
+// Content fields that are editable and persisted but not rendered anywhere yet.
+// footerText is the only wired one, so it keeps the "已应用" badge.
+const unwiredContentKeys = new Set<keyof DeveloperSettings["content"]>([
+  "settingsSummary",
+  "importGuide",
+  "exportGuide",
+  "dialogCopy",
+  "toastCopy",
+  "privacy",
+  "license",
 ]);
 
 type DeveloperFieldStatus = "applied" | "comingSoon" | "readonly";
@@ -679,7 +694,12 @@ export function DeveloperCenter({
                       ["privacy", "Privacy", "本地数据与隐私说明。"],
                       ["license", "License", "版权与授权说明。"],
                     ] as Array<[keyof DeveloperSettings["content"], string, string]>).map(([key, title, description]) => (
-                      <DeveloperField key={key} title={title} description={description}>
+                      <DeveloperField
+                        key={key}
+                        title={title}
+                        description={description}
+                        status={unwiredContentKeys.has(key) ? "comingSoon" : "applied"}
+                      >
                         <textarea
                           value={settings.content[key]}
                           onChange={(event) => {

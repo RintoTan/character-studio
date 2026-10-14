@@ -301,6 +301,28 @@ function readableTextOn(hex: string): string {
   return against(1) >= against(relativeLuminance("#111827") as number) ? "#ffffff" : "#111827";
 }
 
+// The accent doubles as the hover colour of the same controls, so assigning the
+// identical value made hover a silent no-op. Derive a visibly different shade
+// while keeping white text legible on it: darken by default, lighten only when
+// the accent is so dark that darkening would be imperceptible.
+function hoverVariantOf(hex: string): string {
+  const value = hex.trim().replace(/^#/, "");
+  const full = value.length === 3 ? value.split("").map((c) => c + c).join("") : value;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) {
+    return hex;
+  }
+
+  const channels = [0, 2, 4].map((offset) => parseInt(full.slice(offset, offset + 2), 16));
+  const luminance = relativeLuminance(hex) ?? 0;
+  const target = luminance < 0.08 ? 255 : 0;
+  const weight = luminance < 0.08 ? 0.25 : 0.14;
+
+  return `#${channels
+    .map((channel) => Math.round(channel + (target - channel) * weight))
+    .map((channel) => channel.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
 export function applyDeveloperSettings(settings: DeveloperSettings) {
   const root = document.documentElement;
   const shadowMap = {
@@ -317,7 +339,7 @@ export function applyDeveloperSettings(settings: DeveloperSettings) {
 
   document.title = settings.application.pageTitle || "Character Studio";
   root.style.setProperty("--primary", settings.appearance.accentColor);
-  root.style.setProperty("--primary-hover", settings.appearance.accentColor);
+  root.style.setProperty("--primary-hover", hoverVariantOf(settings.appearance.accentColor));
   root.style.setProperty("--on-primary", readableTextOn(settings.appearance.accentColor));
   root.style.setProperty("--control-radius", `${settings.designTokens.inputRadius}px`);
   root.style.setProperty("--developer-card-radius", `${settings.appearance.cardRadius}px`);

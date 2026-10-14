@@ -104,6 +104,18 @@ html {
   overflow-y: auto;
 }
 
+/* Native select popups, date pickers and scrollbars are painted by the platform
+   and follow `color-scheme`, not our data-theme attribute. Without this, a dark
+   app on a light OS renders white dropdown panels — which is exactly what the
+   dark-mode report described. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 body {
   margin: 0;
   min-width: 320px;

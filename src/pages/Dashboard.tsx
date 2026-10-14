@@ -1414,7 +1414,7 @@ export function Dashboard({
               </article>
               <article>
                 <h3>Changelog</h3>
-                <p>Sprint 6 优化了 Dashboard、草稿箱、Avatar Picker、导入导出、主题切换和 Preview 展示体验。</p>
+                <p>已优化 Dashboard、草稿箱、Avatar Picker、导入导出、主题切换和 Preview 展示体验。</p>
               </article>
               <article>
                 <h3>Import / Export Guide</h3>
@@ -1551,7 +1551,7 @@ export function Dashboard({
                   </label>
                   <label>
                     API Key
-                    <input type="password" placeholder="暂不需要填写" defaultValue={localStorage.getItem("character-studio.ai.api-key") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.api-key", event.target.value)} />
+                    <input disabled placeholder="功能未启用，暂不可填写" type="password" />
                   </label>
                   <label>
                     Base URL
