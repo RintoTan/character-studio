@@ -1763,6 +1763,71 @@ h2 {
   gap: 18px;
 }
 
+/* Group headers inside the card grid: the grid is four columns, so a header spans
+   all of them, and it sticks under the topbar while its group scrolls past. */
+.character-group-head {
+  grid-column: 1 / -1;
+  position: sticky;
+  top: calc(var(--topbar-height, 46px) + 4px);
+  z-index: var(--z-inline-2);
+  margin-top: 4px;
+}
+
+.character-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--developer-button-radius);
+  background: var(--control-fill);
+  color: var(--text-soft);
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.character-group-toggle:hover {
+  background: var(--control-fill-hover);
+  color: var(--text);
+}
+
+.character-group-toggle em {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.character-group-toggle .ui-icon {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.character-group-toggle.collapsed .ui-icon {
+  transform: rotate(-90deg);
+}
+
+/* The phone's one filter disclosure: full width, and the chevron turns over when
+   the dropdowns are showing. */
+.dashboard-advanced-toggle {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.dashboard-advanced-toggle .ui-icon {
+  transition: transform var(--duration-fast) var(--ease-standard);
+}
+
+.dashboard-advanced-toggle[aria-expanded="true"] .ui-icon {
+  transform: rotate(180deg);
+}
+
 .single-list-note {
   display: flex;
   align-items: center;

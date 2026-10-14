@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
@@ -28,6 +28,7 @@ import {
 } from "../utils/avatarAssets";
 import { createSnapshot, readSnapshot, writeSnapshot, type LocalSnapshot } from "../storage/backup";
 import { readWorkspaceDatasets } from "../storage/workspaceBackup";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { defaultContent } from "../content/defaultContent";
 
 type DashboardProps = {
@@ -239,6 +240,61 @@ export function Dashboard({
     prefs,
     flags,
   );
+
+
+  // A hundred cards in one column is a scroll, not a list. Past this size the card
+  // view groups itself by worldview, with a header per group that can be folded.
+  // On a phone the five dropdowns are hidden behind one disclosure: the search field
+  // stays, because that is what a long roster is actually navigated with, and the
+  // panel used to put 420px of selects in front of the list.
+  const isNarrowScreen = useMediaQuery("(max-width: 720px)");
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const activeFilterCount =
+    (prefs.favoriteMode !== "all" ? 1 : 0) +
+    (prefs.worldviewFilter !== "全部" ? 1 : 0) +
+    (prefs.genderFilter !== "全部" ? 1 : 0) +
+    (prefs.visualStyleFilter !== "全部" ? 1 : 0) +
+    (prefs.sortMode !== "updated-desc" ? 1 : 0);
+  const [isGroupedCards, setIsGroupedCards] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const groupedCards = isGroupedCards && visibleCharacters.length > LARGE_ROSTER;
+
+  const cardRows = useMemo(() => {
+    type Row =
+      | { kind: "head"; group: string; count: number }
+      | { kind: "card"; character: Character };
+
+    if (!groupedCards) {
+      return visibleCharacters.map((character): Row => ({ kind: "card", character }));
+    }
+
+    const buckets = new Map<string, Character[]>();
+    for (const character of visibleCharacters) {
+      const key = (character.worldview || "").trim() || "未填写世界观";
+      const bucket = buckets.get(key);
+      if (bucket) {
+        bucket.push(character);
+      } else {
+        buckets.set(key, [character]);
+      }
+    }
+
+    // Biggest group first: the group an author is most likely to be working in.
+    const groups = [...buckets.entries()]
+      .map(([group, characters]) => ({ group, characters }))
+      .sort((a, b) => b.characters.length - a.characters.length || a.group.localeCompare(b.group, "zh"));
+
+    const rows: Row[] = [];
+    for (const entry of groups) {
+      rows.push({ kind: "head", group: entry.group, count: entry.characters.length });
+      if (collapsedGroups[entry.group] !== true) {
+        for (const character of entry.characters) {
+          rows.push({ kind: "card", character });
+        }
+      }
+    }
+    return rows;
+  }, [collapsedGroups, groupedCards, visibleCharacters]);
   const hasActiveSearchOrFilter =
     prefs.searchTerm.trim() ||
     prefs.worldviewFilter !== "全部" ||
@@ -1279,6 +1335,21 @@ export function Dashboard({
                    </span>
                  </button>
               )}
+              {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
+                <button
+                  aria-label={isGroupedCards ? "取消按世界观分组" : "按世界观分组"}
+                  aria-pressed={groupedCards}
+                  className="ghost-button bulk-select-button"
+                  data-tooltip={isGroupedCards ? "取消分组" : "按世界观分组"}
+                  onClick={() => setIsGroupedCards((current) => !current)}
+                  type="button"
+                >
+                  <span className="desktop-label">{isGroupedCards ? "已按世界观分组" : "按世界观分组"}</span>
+                  <span className="mobile-icon">
+                    <Icon name="grid" size={16} />
+                  </span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1477,7 +1548,28 @@ export function Dashboard({
           </div>
           ) : (
           <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
-            {visibleCharacters.map((character) => {
+            {cardRows.map((row) => {
+              if (row.kind === "head") {
+                const isCollapsed = collapsedGroups[row.group] === true;
+                return (
+                  <div className="character-group-head" key={`head-${row.group}`}>
+                    <button
+                      aria-expanded={!isCollapsed}
+                      className={isCollapsed ? "character-group-toggle collapsed" : "character-group-toggle"}
+                      onClick={() =>
+                        setCollapsedGroups((current) => ({ ...current, [row.group]: !current[row.group] }))
+                      }
+                      type="button"
+                    >
+                      <Icon name="chevronDown" size={15} />
+                      <span>{row.group}</span>
+                      <em>{row.count}</em>
+                    </button>
+                  </div>
+                );
+              }
+
+              const character = row.character;
               const tags = getPersonalityTags(character);
               const visibleTags = tags.slice(0, cardTagLimit);
               const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
@@ -1763,6 +1855,8 @@ export function Dashboard({
               placeholder="搜索角色名、职业、世界观、性格标签"
             />
           </label>
+          {(!isNarrowScreen || isAdvancedOpen) && (
+            <>
           <label>
             范围
             <select
@@ -1836,6 +1930,23 @@ export function Dashboard({
               ))}
             </select>
           </label>
+            </>
+          )}
+          {isNarrowScreen && (
+            <button
+              aria-expanded={isAdvancedOpen}
+              className="ghost-button dashboard-advanced-toggle"
+              onClick={() => setIsAdvancedOpen((current) => !current)}
+              type="button"
+            >
+              {isAdvancedOpen
+                ? "收起筛选"
+                : activeFilterCount > 0
+                  ? `筛选 · ${activeFilterCount} 项生效`
+                  : "筛选选项"}
+              <Icon name="chevronDown" size={15} />
+            </button>
+          )}
         </div>
       </div>
     );
