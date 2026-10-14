@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { canvasBox, nodePositions, type GraphPoint } from "../src/pages/RelationshipGraph";
+import {
+  canvasBox,
+  labelZoomThreshold,
+  nodePositions,
+  type GraphPoint,
+} from "../src/pages/RelationshipGraph";
 
 const NODE_RADIUS = 30;
 const NAME_DROP = 44;
@@ -39,6 +44,27 @@ describe("relationship graph layout", () => {
       const distance = Math.hypot(point.x - 320, point.y - 320);
       expect(distance).toBeCloseTo(236, 5);
     }
+  });
+
+  it("grows the ring with the roster so a hundred nodes stop overlapping", () => {
+    for (const count of [30, 112]) {
+      const points = nodePositions(count);
+      const radius = Math.hypot(points[0].x - 320, points[0].y - 320);
+      // Distance between two neighbours along the arc.
+      const spacing = (2 * Math.PI * radius) / count;
+
+      // On the old fixed 236 radius, 112 characters sat 13.2 units apart while each
+      // node is 60 units across.
+      expect(spacing).toBeGreaterThanOrEqual(60);
+      expect(points).toHaveLength(count);
+    }
+  });
+
+  it("asks for more zoom before showing names as the roster grows", () => {
+    expect(labelZoomThreshold(12)).toBe(1.5);
+    expect(labelZoomThreshold(60)).toBe(1.5);
+    expect(labelZoomThreshold(112)).toBeCloseTo(2.8, 5);
+    expect(labelZoomThreshold(112)).toBeGreaterThan(labelZoomThreshold(40));
   });
 
   it("stops reserving a 640 square for a two-node graph", () => {

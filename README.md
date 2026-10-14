@@ -1,6 +1,7 @@
 # Character Studio
 
-> **发布状态：v2.5.0**（Sprint 15.1）—— 编辑页折叠记忆与「跳到下一个未完成」、z-index 令牌化、关系网画布自适应。
+> **发布状态：v2.6.0**（Sprint 16.1）—— 填充式按钮语言、角色选择器（搜索/已选置顶）、关系网缩放平移与自适应半径。
+> 已知未修：主页视图模式在进出编辑页后仍会被重置（见 CHANGELOG 2.6.0）。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 

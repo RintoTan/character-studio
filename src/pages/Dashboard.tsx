@@ -1345,7 +1345,13 @@ export function Dashboard({
                         />
                       ) : (
                         <>
-                          <button className="bare-icon-button table-edit-button" onClick={() => onEdit(character)} type="button">
+                          <button
+                          aria-label="编辑"
+                          className="bare-icon-button table-edit-button"
+                          onClick={() => onEdit(character)}
+                          title="编辑"
+                          type="button"
+                        >
                             <Icon name="pencil" size={16} />
                           </button>
                           <div className="card-menu-wrap table-menu-wrap" ref={openCardMenuId === character.id ? cardMenuRef : null}>

@@ -33,6 +33,12 @@
   --control-height: 42px;
   --control-radius: 8px;
   --btn-gap: 8px;
+  /* One fill scale for neutral controls: a block of the surface colour that
+     deepens as it is pointed at, instead of an outlined box. Derived from --text,
+     so both themes get it without a second palette. */
+  --control-fill: color-mix(in srgb, var(--text) 7%, var(--surface));
+  --control-fill-hover: color-mix(in srgb, var(--text) 12%, var(--surface));
+  --control-fill-active: color-mix(in srgb, var(--text) 17%, var(--surface));
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --duration-fast: 150ms;
   --duration-medium: 190ms;
@@ -71,7 +77,7 @@
      full-bleed surface with its own constraints. */
   --dialog-radius: 10px;
   --dialog-padding: var(--pad-surface);
-  --developer-button-radius: 8px;
+  --developer-button-radius: 10px;
   --developer-font-scale: 1;
   color: var(--text-soft);
   background: var(--bg);
@@ -501,25 +507,61 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+/* Icon buttons, back in the original filled language: a soft block of surface
+   colour with no visible outline, which deepens on hover.
+   This block used to be a truncated selector list — `.hero-icon-button,
+   .bare-icon-button, .mini-icon,` with a blank line where the declarations should
+   have been — so the hover rule below was parsed as part of the same rule. Every
+   icon button therefore rendered permanently hovered. Measured at rest on the
+   dashboard: `.hero-icon-button` 35.7x31.5, a 2px border, a tinted fill and
+   `transform: matrix(1.05, 0, 0, 1.05, 0, 0)`. That is why the toolbars looked
+   boxier than the original design. */
+/* The toolbar buttons have no width or height of their own anywhere else, so the
+   box they had came from the line box of a text button. As a grid container that
+   line box is gone — measured 34x24 where it used to be 34x30 — so the size is
+   stated here instead of inherited from a font metric. 32 matches the other icon
+   buttons in the app. */
+.hero-icon-button {
+  width: 34px;
+  min-height: 32px;
+  height: 32px;
+}
+
 .hero-icon-button,
 .bare-icon-button,
-.mini-icon,
+.mini-icon {
+  display: grid;
+  place-items: center;
+  /* Transparent rather than `border: 0`: it keeps the box the 2px border gave
+     these controls, so removing the outline does not resize the toolbar. */
+  border: 2px solid transparent;
+  background: var(--control-fill);
+  color: var(--text-soft);
+  box-shadow: none;
+  transform: none;
+  transition:
+    background var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
 
 .hero-icon-button:hover,
-.hero-icon-button.active,
 .bare-icon-button:hover,
-.mini-icon:hover,
-.floating-action:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-subtle);
+.mini-icon:hover {
+  background: var(--control-fill-hover);
   color: var(--text);
-  transform: scale(1.05);
+  transform: none;
+}
+
+/* The pressed state is the fill going one step deeper, not a size change. */
+.hero-icon-button:active,
+.bare-icon-button:active,
+.mini-icon:active {
+  background: var(--control-fill-active);
 }
 
 .hero-icon-button.active {
-  border-color: color-mix(in srgb, var(--primary) 30%, var(--border));
-  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 8%, transparent);
+  background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+  color: var(--text);
 }
 
 .button-badge {
@@ -671,42 +713,55 @@ h2 {
   border-color: var(--primary-hover);
 }
 
-/* Tonal rather than filled: the most important action that must not compete with
-   the primary one. */
+/* Filled, not outlined. The most important action that must not compete with the
+   primary one gets the same block as a neutral control, with its label one step
+   darker. */
 .secondary-button {
-  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
-  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
+  border-color: transparent;
+  background: var(--control-fill);
   color: var(--text);
 }
 
 .secondary-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
-  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  background: var(--control-fill-hover);
+}
+
+.secondary-button:active:not(:disabled) {
+  background: var(--control-fill-active);
 }
 
 .ghost-button {
-  background: var(--surface);
+  border-color: transparent;
+  background: var(--control-fill);
   color: var(--text-soft);
-  border-color: var(--border-strong);
 }
 
 .ghost-button:hover:not(:disabled) {
-  border-color: var(--muted);
-  background: var(--surface-subtle);
+  background: var(--control-fill-hover);
   color: var(--text);
+}
+
+.ghost-button:active:not(:disabled) {
+  background: var(--control-fill-active);
 }
 
 /* Destructive actions carry their own colour in the resting state, not only on
    hover, so a delete control is identifiable before it is pointed at. */
+/* Same neutral block as any other control; the destructive part is carried by the
+   label, and by the fill warming up once the control is pointed at. */
 .danger-button {
-  border-color: var(--danger-border);
-  background: var(--surface);
+  border-color: transparent;
+  background: var(--control-fill);
   color: var(--danger);
 }
 
 .danger-button:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: var(--danger-bg);
+  background: color-mix(in srgb, var(--danger) 14%, var(--surface));
+  color: var(--danger);
+}
+
+.danger-button:active:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 20%, var(--surface));
 }
 
 .hidden-input {
@@ -4647,18 +4702,33 @@ kbd {
   transform: translateY(-2px);
 }
 
-.floating-actions {
-  position: fixed;
-  right: 22px;
-  bottom: 22px;
-  z-index: var(--z-inline-6);
-  display: grid;
-  gap: 9px;
+/* One container instead of a column of loose circles. It reads as a single
+   control surface, carries one shadow rather than four, and its buttons are the
+   same filled blocks the rest of the app uses. */
+/* With padding and a border the container is now visible when it is empty, which
+   used to be harmless (a 0x0 div). It measured 12x12 on a dashboard whose actions
+   are all scroll-gated, so an empty cluster now hides itself. */
+.floating-actions:empty {
+  display: none;
 }
 
-/* Speaks the same language as the buttons inside the page: border, fill and
-   colour move, the control itself does not travel. The glyph-era font-size and
-   font-weight are gone with the text glyphs they were sizing. */
+.floating-actions {
+  position: fixed;
+  right: 18px;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  z-index: var(--z-inline-6);
+  display: grid;
+  gap: 3px;
+  border: 1px solid color-mix(in srgb, var(--text) 9%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  box-shadow: var(--shadow-strong);
+  padding: 5px;
+  backdrop-filter: blur(12px);
+}
+
+/* Inside the container the button carries no border and no shadow of its own: the
+   filled block is the whole treatment, matching the icon buttons in the page. */
 .floating-action {
   position: relative;
   display: grid;
@@ -4666,28 +4736,24 @@ kbd {
   min-height: 44px;
   height: 44px;
   place-items: center;
-  border: 1px solid var(--border-strong);
+  border: 0;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: transparent;
   color: var(--text-soft);
-  box-shadow: var(--shadow-strong);
+  box-shadow: none;
   padding: 0;
-  backdrop-filter: blur(10px);
   transition:
     background var(--duration-fast) var(--ease-standard),
-    border-color var(--duration-fast) var(--ease-standard),
-    color var(--duration-fast) var(--ease-standard),
-    box-shadow var(--duration-fast) var(--ease-standard);
+    color var(--duration-fast) var(--ease-standard);
 }
 
 .floating-action:hover {
-  border-color: var(--muted);
-  background: var(--surface-subtle);
+  background: var(--control-fill-hover);
   color: var(--text);
 }
 
 .floating-action:active {
-  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  background: var(--control-fill-active);
 }
 
 .floating-action:focus-visible {
@@ -5871,6 +5937,50 @@ kbd {
   max-width: 640px;
   margin: 8px auto;
   display: block;
+  /* A control now rather than a picture: drag to pan, wheel to zoom. Touch keeps
+     its page scrolling — `touch-action: pan-y` — and uses the zoom buttons. */
+  cursor: grab;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.relationship-canvas:active {
+  cursor: grabbing;
+}
+
+.graph-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-zoom .bare-icon-button {
+  width: 34px;
+  height: 34px;
+}
+
+.graph-zoom-value {
+  min-width: 46px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* Hovering a node dims everything unrelated to it, which is the only way to read
+   one node's connections out of a dense ring. */
+.relationship-node.dimmed {
+  opacity: 0.3;
+}
+
+.relationship-node.active circle {
+  stroke: var(--primary);
+  stroke-width: 3;
+}
+
+.relationship-edge.active line {
+  stroke: var(--primary);
+  stroke-width: 3;
 }
 
 .relationship-edge line {
@@ -6115,6 +6225,108 @@ kbd {
   padding: 0 6px;
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+/* Character picker: search, chosen-first ordering and a bounded list. With a
+   hundred characters the picker used to be a flat scroll of every name in the
+   workspace — no way to find one, and no sign of what was already chosen. */
+.character-picker {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  padding: 10px 12px;
+}
+
+.character-picker-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.character-picker-search {
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border-radius: var(--control-radius);
+  background: var(--control-fill);
+  color: var(--muted);
+  padding: 0 10px;
+}
+
+.character-picker-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.character-picker-search button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: var(--control-fill-hover);
+  color: var(--text-soft);
+  padding: 0;
+}
+
+.character-picker-count {
+  color: var(--muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.character-picker-count strong {
+  color: var(--text);
+}
+
+.character-picker-list {
+  display: grid;
+  gap: 1px;
+  max-height: 264px;
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  overflow-y: auto;
+  padding: 6px;
+}
+
+/* Tighter than the settings list these rows borrow their switch from: a hundred
+   of them have to be scannable. */
+.character-picker-list .settings-check {
+  margin-top: 0;
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.character-picker-list .settings-check:hover {
+  background: var(--control-fill);
+}
+
+.character-picker-meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+}
+
+.character-picker-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.character-picker-actions .ghost-button {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12.5px;
 }
 
 /* World manager (2.0). Category groups with a nested tree; plain lists and

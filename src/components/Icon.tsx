@@ -35,6 +35,7 @@ export type IconName =
   | "monitor"
   | "moon"
   | "more"
+  | "minus"
   | "package"
   | "pencil"
   | "pin"
@@ -202,6 +203,7 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M12 11.5v9.1" />
     </>
   ),
+  minus: <path d="M5 12h14" />,
   plus: <path d="M12 5v14M5 12h14" />,
   refresh: (
     <>

@@ -63,6 +63,7 @@ const WorldManager = lazy(() =>
 
 const THEME_KEY = "character-studio.theme";
 const ABOUT_SEEN_KEY = "character-studio.about-seen";
+const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 
 // The app is served from a repository subpath on GitHub Pages, so route URLs are
 // derived from the deployment base instead of being hard-coded to "/developer".
@@ -225,34 +226,31 @@ function App() {
       localStorage.setItem(ABOUT_SEEN_KEY, "true");
     }
 
+    // Seed the dashboard's preferences only when nothing is stored yet.
+    //
+    // This used to rewrite the whole object on every settings change, and it hard
+    // wrote `viewMode` and `sortMode` from the developer defaults while doing it.
+    // The dashboard persists the user's own choice under the same key, so any
+    // settings change — including the ones the dashboard itself pushes — undid it:
+    // that is why switching to the list view did not survive a trip through the
+    // editor. A default is an initial value, not a policy.
     try {
-      const dashboardPrefs = JSON.parse(localStorage.getItem("character-studio.dashboard-prefs") || "{}");
-      localStorage.setItem(
-        "character-studio.dashboard-prefs",
-        JSON.stringify({
-          searchTerm: "",
-          worldviewFilter: "全部",
-          genderFilter: "全部",
-          visualStyleFilter: "全部",
-          favoriteMode: "all",
-          ...dashboardPrefs,
-          viewMode: developerSettings.dashboardDefaults.viewMode,
-          sortMode: developerSettings.dashboardDefaults.sortMode,
-        }),
-      );
+      if (!localStorage.getItem(DASHBOARD_PREFS_KEY)) {
+        localStorage.setItem(
+          DASHBOARD_PREFS_KEY,
+          JSON.stringify({
+            searchTerm: "",
+            worldviewFilter: "全部",
+            genderFilter: "全部",
+            visualStyleFilter: "全部",
+            favoriteMode: "all",
+            viewMode: developerSettings.dashboardDefaults.viewMode,
+            sortMode: developerSettings.dashboardDefaults.sortMode,
+          }),
+        );
+      }
     } catch {
-      localStorage.setItem(
-        "character-studio.dashboard-prefs",
-        JSON.stringify({
-          searchTerm: "",
-          worldviewFilter: "全部",
-          genderFilter: "全部",
-          visualStyleFilter: "全部",
-          favoriteMode: "all",
-          viewMode: developerSettings.dashboardDefaults.viewMode,
-          sortMode: developerSettings.dashboardDefaults.sortMode,
-        }),
-      );
+      // Storage unavailable: the dashboard falls back to its own defaults.
     }
   }, [developerSettings]);
 

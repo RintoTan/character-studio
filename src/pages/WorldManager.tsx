@@ -8,6 +8,7 @@ import {
   worldChildren,
 } from "../storage/worldStorage";
 import type { Character } from "../types/character";
+import { CharacterPicker } from "../components/CharacterPicker";
 import { Icon } from "../components/Icon";
 import {
   WORLD_CATEGORIES,
@@ -314,26 +315,12 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
               />
             </label>
             {characters.length > 0 && (
-              <fieldset className="field timeline-character-picker">
-                <legend>关联角色</legend>
-                {characters.map((character) => (
-                  <label className="settings-check" key={character.id}>
-                    <input
-                      checked={draft.characterIds.includes(character.id)}
-                      onChange={(event) =>
-                        setDraft({
-                          ...draft,
-                          characterIds: event.target.checked
-                            ? [...draft.characterIds, character.id]
-                            : draft.characterIds.filter((id) => id !== character.id),
-                        })
-                      }
-                      type="checkbox"
-                    />
-                    <span>{character.name || "未命名角色"}</span>
-                  </label>
-                ))}
-              </fieldset>
+              <CharacterPicker
+                characters={characters}
+                legend="关联角色"
+                onChange={(characterIds) => setDraft({ ...draft, characterIds })}
+                selectedIds={draft.characterIds}
+              />
             )}
             <div className="form-actions">
               <button className="ghost-button" onClick={() => setDraft(null)} type="button">
