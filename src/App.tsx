@@ -33,6 +33,7 @@ import {
 } from "./utils/importExport";
 import { Dashboard } from "./pages/Dashboard";
 import { pruneRelationships } from "./storage/relationshipStorage";
+import { pruneTimelineCharacters } from "./storage/timelineStorage";
 
 // The editor, the preview and the developer panel are not needed for the first
 // paint, so they are code-split out of the entry chunk. Dashboard stays static:
@@ -49,6 +50,9 @@ const DeveloperCenter = lazy(() =>
 );
 const RelationshipGraph = lazy(() =>
   import("./pages/RelationshipGraph").then((module) => ({ default: module.RelationshipGraph })),
+);
+const Timeline = lazy(() =>
+  import("./pages/Timeline").then((module) => ({ default: module.Timeline })),
 );
 
 const THEME_KEY = "character-studio.theme";
@@ -580,6 +584,7 @@ function App() {
   function handleDelete(character: Character) {
     setCharacters(deleteCharacter(character.id));
     pruneRelationships(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
+    pruneTimelineCharacters(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
 
     if (selectedCharacter?.id === character.id) {
       setSelectedCharacter(null);
@@ -740,6 +745,9 @@ function App() {
               ? () => setPage("relationships")
               : undefined
           }
+          onOpenTimeline={
+            developerSettings.featureFlags.experimentalTimeline ? () => setPage("timeline") : undefined
+          }
           onDashboardSettingsChange={(patch) =>
             updateDeveloperSettings({
               ...developerSettings,
@@ -807,6 +815,19 @@ function App() {
         />
       )}
 
+      {page === "timeline" && (
+        <Timeline
+          characters={characters}
+          onBack={() => setPage("dashboard")}
+          onOpenCharacter={(characterId) => {
+            const target = characters.find((entry) => entry.id === characterId);
+            if (target) {
+              setSelectedCharacter(target);
+              setPage("preview");
+            }
+          }}
+        />
+      )}
       {page === "relationships" && (
         <RelationshipGraph
           characters={characters}

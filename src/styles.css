@@ -5621,3 +5621,144 @@ kbd {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* Timeline (2.0). A plain ordered list with a rail rather than a canvas, so the
+   content stays real text for assistive technology and for search. */
+.timeline-rail {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0 0 0 14px;
+  border-left: 2px solid var(--border);
+  display: grid;
+  gap: 18px;
+}
+
+.timeline-year-group {
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-year {
+  margin: 0;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.timeline-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.timeline-item {
+  position: relative;
+}
+
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.timeline-card {
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  background: var(--surface-subtle);
+  padding: 12px 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.timeline-card h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.timeline-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-card-head time {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.timeline-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+.timeline-kind-chip {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  padding: 1px 10px;
+  font-size: 0.78rem;
+  color: var(--text-soft);
+}
+
+.timeline-kind-chip.kind-origin,
+.timeline-kind-chip.kind-bond {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.timeline-kind-chip.kind-conflict,
+.timeline-kind-chip.kind-loss {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.timeline-meta,
+.timeline-description {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.timeline-characters {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.timeline-dialog {
+  width: min(600px, 100%);
+  max-height: min(88vh, 720px);
+  overflow: auto;
+}
+
+.field-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.timeline-character-picker {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  padding: 10px 12px;
+}
+
+.timeline-character-picker legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}

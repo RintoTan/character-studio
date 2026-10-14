@@ -179,7 +179,8 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     assetLibrary: true,
     personalPreferences: true,
     compactMobileEditor: true,
-    experimentalTimeline: false,
+    // Now gates a shipped screen rather than a plan.
+    experimentalTimeline: true,
     // Now gates a shipped screen rather than a plan.
     experimentalRelationshipGraph: true,
   },

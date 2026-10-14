@@ -153,6 +153,7 @@ const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
   "assetLibrary",
   "personalPreferences",
   "experimentalRelationshipGraph",
+  "experimentalTimeline",
 ]);
 
 // Content fields that are editable and persisted but not rendered anywhere yet.
