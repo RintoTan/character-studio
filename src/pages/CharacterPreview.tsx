@@ -3,6 +3,7 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
+import { defaultDeveloperSettings } from "../config/developerSettings";
 
 type CharacterPreviewProps = {
   character: Character;
@@ -505,7 +506,7 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
             className="preview-export-footer"
             data-pdf-hidden={exportSettings?.includeFooter === true ? undefined : "true"}
           >
-            Character Studio · {exportSettings?.footerText || "RINTO © 2026"}
+            Character Studio · {exportSettings?.footerText || defaultDeveloperSettings.content.footerText}
           </div>
         </div>
       </div>

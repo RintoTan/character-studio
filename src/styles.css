@@ -33,6 +33,13 @@
   --z-modal-overlay: 900;
   --z-modal-content: 910;
   --z-toast: 1000;
+  /* Layer order, low to high. The inline popover tier is not a mistake to be
+     folded into the dialog tier: those layers are opened from different
+     surfaces and are meant to sit at different depths.
+       5-40    inline popovers and menus anchored to a control
+       120-160 overlay surfaces that must clear the page but stay under modals
+       900/910 modal backdrop and its content
+       1000    toasts, above everything */
   --developer-card-radius: 8px;
   /* Standard dialogs share these two. The crop editor is excluded: it is a
      full-bleed surface with its own constraints. */
@@ -364,7 +371,7 @@ button:disabled {
 .character-card,
 .preview-card {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--developer-card-radius);
   background: var(--surface);
   box-shadow: var(--shadow);
 }
@@ -793,7 +800,7 @@ h2 {
 
 .first-about {
   display: grid;
-  gap: 18px;
+  gap: 12px;
 }
 
 .first-about-hero {
@@ -978,7 +985,7 @@ h2 {
 .developer-card {
   scroll-margin-top: 20px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--developer-card-radius);
   background: var(--surface);
   box-shadow: var(--shadow);
   padding: 16px;
@@ -2753,7 +2760,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .workspace-card {
   scroll-margin-top: 20px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--developer-card-radius);
   background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -3932,7 +3939,7 @@ kbd {
 .settings-grid article {
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--developer-card-radius);
   background: var(--surface-subtle);
   padding: 14px;
 }
@@ -4023,7 +4030,7 @@ kbd {
 .about-grid article {
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--developer-card-radius);
   background: var(--surface-subtle);
   padding: 14px;
 }

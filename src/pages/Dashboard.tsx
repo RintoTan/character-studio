@@ -2556,7 +2556,8 @@ export function Dashboard({
                       ))}
                     </div>
                     <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
-                    {dashboardSettings?.showUpdatedTime !== false && <span>{formatDate(character.updatedAt)}</span>}
+                    {dashboardSettings?.showUpdatedTime !== false &&
+                    dashboardSettings?.hideLowPriority !== true && <span>{formatDate(character.updatedAt)}</span>}
                     <div className="table-actions">
                       {isBulkMode ? (
                         <button
@@ -2831,7 +2832,8 @@ export function Dashboard({
                       >
                         {isFavorite ? "♥" : "♡"}
                       </button>
-                      {dashboardSettings?.showUpdatedTime !== false && (
+                      {dashboardSettings?.showUpdatedTime !== false &&
+                    dashboardSettings?.hideLowPriority !== true && (
                         <button
                           className="card-time-button preview-hit"
                           onClick={() => onPreview(character)}
@@ -2870,7 +2872,8 @@ export function Dashboard({
                 )}
                 {(isBulkMode || isDraft) && (
                   <div className="card-meta">
-                    {dashboardSettings?.showUpdatedTime !== false && (
+                    {dashboardSettings?.showUpdatedTime !== false &&
+                    dashboardSettings?.hideLowPriority !== true && (
                       <button
                         className="card-time-button preview-hit"
                         onClick={() => onPreview(character)}

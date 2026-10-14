@@ -776,8 +776,26 @@ function normalizePromptPart(value?: string) {
     .replace(/[,.，；、。]+$/g, "") || "";
 }
 
+// Fragments already used by the current generation. Without this the same
+// fragment could be picked for several fields at once, which is what made the
+// generated inspiration feel repetitive.
+let usedFragments = new Set<string>();
+
+function resetUsedFragments() {
+  usedFragments = new Set<string>();
+}
+
 function pickRandom(options: string[]) {
-  return options[Math.floor(Math.random() * options.length)];
+  if (!options?.length) {
+    return "";
+  }
+
+  const fresh = options.filter((option) => !usedFragments.has(option));
+  // Once a pool is exhausted, reuse rather than returning nothing.
+  const pool = fresh.length ? fresh : options;
+  const value = pool[Math.floor(Math.random() * pool.length)];
+  usedFragments.add(value);
+  return value;
 }
 
 function chance(probability: number) {
@@ -920,6 +938,7 @@ function generateHelperSet(sectionId: HelperSectionId) {
 }
 
 function generateHelperContent(sectionId: HelperSectionId, kind: HelperKind) {
+  resetUsedFragments();
   const shared = pickFragmentGroup("shared");
   const unique = (builder: () => string) => {
     for (let index = 0; index < 8; index += 1) {
@@ -3105,7 +3124,7 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设世界观"
-                        value={worldviewOptions.includes(formData.worldview || "") ? "" : "__custom"}
+                        value={worldviewOptions.includes((formData.worldview || "").trim()) ? "" : "__custom"}
                         onChange={(event) => {
                           if (event.target.value !== "__custom") {
                             updateField("worldview", event.target.value);
@@ -3132,7 +3151,7 @@ export function CharacterForm({
                       />
                       <select
                         aria-label="选择预设视觉风格"
-                        value={visualStyleOptions.includes(formData.visualStyle || "") ? "" : "__custom"}
+                        value={visualStyleOptions.includes((formData.visualStyle || "").trim()) ? "" : "__custom"}
                         onChange={(event) => {
                           if (event.target.value !== "__custom") {
                             updateField("visualStyle", event.target.value);
