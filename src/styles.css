@@ -5960,6 +5960,12 @@ kbd {
   gap: 6px;
 }
 
+/* Phones get the short label: "显示全部角色（114）" is 176px wide and pushed the
+   toolbar into a fourth row. */
+.graph-toggle-short {
+  display: none;
+}
+
 .graph-zoom .bare-icon-button {
   width: 34px;
   height: 34px;
@@ -6215,7 +6221,9 @@ kbd {
 
 .timeline-dialog {
   width: min(600px, 100%);
-  max-height: min(88vh, 720px);
+  /* dvh rather than vh: on a phone vh includes the browser chrome, so 88vh is
+     taller than what actually fits on screen. */
+  max-height: min(88dvh, 720px);
   overflow: auto;
 }
 
@@ -6444,6 +6452,10 @@ kbd {
   }
 
   .workspace-toolbar {
+    /* An earlier narrow-screen block turns this into a column, which is why every
+       button ended up on a row of its own. Stated explicitly so the wrap and the
+       flex bases below actually apply. */
+    flex-direction: row;
     flex-wrap: wrap;
     width: 100%;
     justify-content: flex-start;
@@ -6460,8 +6472,43 @@ kbd {
     max-height: 52vh;
   }
 
+  /* Three deliberate rows. The first attempt used `flex: 1 1 44%`, which let a lone
+     button grow to the full row and pushed the toolbar from four rows to five
+     (measured 142px -> 192px). `flex-basis: 0` makes the two secondary actions
+     share one row instead. */
   .graph-zoom {
     order: -1;
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .workspace-toolbar > .ghost-button {
+    flex: 1 1 0;
+  }
+
+  .workspace-toolbar > .primary-button {
+    flex: 1 1 100%;
+  }
+
+  /* The picker's list is a scroll area inside a scrolling dialog; on a phone that
+     nesting costs more than the height it saves. */
+  .character-picker-list {
+    max-height: 180px;
+  }
+
+  .confirm-dialog {
+    max-height: calc(100dvh - 24px);
+  }
+
+  /* Scoped to the toolbar because a later `span { display: grid }` rule was beating
+     a single-class `display: none` here — both labels then rendered, and their
+     combined width pushed the toolbar to four rows. */
+  .workspace-toolbar .graph-toggle-full {
+    display: none;
+  }
+
+  .workspace-toolbar .graph-toggle-short {
+    display: inline;
   }
 
   /* The floating cluster is fixed to the corner and was sitting on top of the last

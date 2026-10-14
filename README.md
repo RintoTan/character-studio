@@ -1,6 +1,7 @@
 # Character Studio
 
-> **发布状态：v2.8.0**（Sprint 18.1）—— 关系网 / 世界观 / 时间线可与角色一起备份与恢复（JSON 与 CSV 同一文件）；
+> **发布状态：v2.9.0**（Sprint 19.1）—— 375px 移动端系统过一遍：弹窗 dvh、选择器列表收窄、关系网工具栏三行排布。
+> 上一版：v2.8.0（Sprint 18.1）—— 关系网 / 世界观 / 时间线可与角色一起备份与恢复（JSON 与 CSV 同一文件）；
 > 关系网只画有连接的角色、箭头可见、触摸拖拽与双指缩放；手机端版本号字距已修。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。

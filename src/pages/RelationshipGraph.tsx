@@ -371,7 +371,12 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
               onClick={() => setShowAll((current) => !current)}
               type="button"
             >
-              {showAll ? `只显示有关系（${connectedIds.size}）` : `显示全部角色（${characters.length}）`}
+              <span className="graph-toggle-full">
+                {showAll ? `只显示有关系（${connectedIds.size}）` : `显示全部角色（${characters.length}）`}
+              </span>
+              <span className="graph-toggle-short">
+                {showAll ? `只显关联 ${connectedIds.size}` : `全部 ${characters.length}`}
+              </span>
             </button>
           )}
           <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
