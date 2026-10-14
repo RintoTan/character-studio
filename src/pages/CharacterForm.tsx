@@ -2336,16 +2336,27 @@ export function CharacterForm({
       }
 
       onDelete(character);
+
+      // Deleting clears the filters so the author lands back on a full list, but it
+      // should not also discard the layout they picked: the view mode and the sort
+      // order are carried over from whatever is already stored.
+      let storedPrefs: Record<string, unknown> = {};
+      try {
+        storedPrefs = JSON.parse(localStorage.getItem(DASHBOARD_PREFS_KEY) || "{}") as Record<string, unknown>;
+      } catch {
+        storedPrefs = {};
+      }
+
       localStorage.setItem(
         DASHBOARD_PREFS_KEY,
         JSON.stringify({
           searchTerm: "",
-          sortMode: "updated-desc",
           worldviewFilter: "全部",
           genderFilter: "全部",
           visualStyleFilter: "全部",
           favoriteMode: character.isDraft ? "drafts" : "all",
-          viewMode: "cards",
+          sortMode: typeof storedPrefs.sortMode === "string" ? storedPrefs.sortMode : "updated-desc",
+          viewMode: storedPrefs.viewMode === "list" ? "list" : "cards",
         }),
       );
       setPendingFormAction(null);

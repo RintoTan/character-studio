@@ -98,6 +98,9 @@ type CharacterExportChoice = "json" | "zip" | "csv" | "pdf" | "jpg" | "png";
 
 const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 const DASHBOARD_FLAGS_KEY = "character-studio.dashboard-flags";
+// Past this many characters the dashboard shows its search and filter controls on
+// arrival instead of leaving them folded behind a toolbar icon.
+const LARGE_ROSTER = 30;
 
 type DashboardPrefs = {
   searchTerm: string;
@@ -170,7 +173,11 @@ export function Dashboard({
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(
-    () => dashboardSettings?.openSearch ?? false,
+    // A long roster has to arrive with its controls showing. Scrolling 112 cards
+    // looking for one character, with the search folded behind a toolbar icon, is
+    // the state the workspace was in. The developer setting still decides for a
+    // small roster; past this size the panel opens itself.
+    () => (dashboardSettings?.openSearch ?? false) || characters.length > LARGE_ROSTER,
   );
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
@@ -239,17 +246,39 @@ export function Dashboard({
   const isFavoriteView = prefs.favoriteMode === "favorites";
   const isDraftView = prefs.favoriteMode === "drafts";
 
+  // Developer defaults are a starting point, not a policy.
+  //
+  // This used to copy `viewMode` and `sortMode` out of the defaults on every run,
+  // including the mount that happens when the author comes back from the editor.
+  // Combined with the effect that persists `prefs`, it wrote the default straight
+  // over the author's choice: switch to the list view, edit one character, come
+  // back, and the dashboard was showing cards again. The defaults are applied only
+  // when the developer actually changes one, which is also what keeps the two
+  // controls in the developer centre honest instead of inert.
+  const appliedDefaultsRef = useRef<{ viewMode?: ViewMode; sortMode?: SortMode }>({});
+  const nextViewMode = dashboardSettings?.viewMode;
+  const nextSortMode = dashboardSettings?.sortMode;
+
   useEffect(() => {
     if (!dashboardSettings) {
       return;
     }
 
-    setPrefs((current) => ({
-      ...current,
-      viewMode: dashboardSettings.viewMode,
-      sortMode: dashboardSettings.sortMode,
-    }));
-  }, [dashboardSettings?.sortMode, dashboardSettings?.viewMode]);
+    const previous = appliedDefaultsRef.current;
+    appliedDefaultsRef.current = { viewMode: nextViewMode, sortMode: nextSortMode };
+
+    const changed: Partial<DashboardPrefs> = {};
+    if (previous.viewMode !== undefined && previous.viewMode !== nextViewMode) {
+      changed.viewMode = nextViewMode;
+    }
+    if (previous.sortMode !== undefined && previous.sortMode !== nextSortMode) {
+      changed.sortMode = nextSortMode;
+    }
+
+    if (Object.keys(changed).length > 0) {
+      setPrefs((current) => ({ ...current, ...changed }));
+    }
+  }, [dashboardSettings, nextSortMode, nextViewMode]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
