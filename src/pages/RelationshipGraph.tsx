@@ -141,7 +141,29 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     setRelationships(pruneRelationships(characters.map((character) => character.id)));
   }, [characters]);
 
-  const positions = useMemo(() => nodePositions(characters.length), [characters.length]);
+  const [showAll, setShowAll] = useState(false);
+
+  const connectedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const relationship of relationships) {
+      ids.add(relationship.fromId);
+      ids.add(relationship.toId);
+    }
+    return ids;
+  }, [relationships]);
+
+  // Only characters that are actually in a relationship are drawn by default. A
+  // roster of a hundred with one relationship is a ring of ninety-nine dots that
+  // say nothing about anyone; the rest of the roster is one click away.
+  const visibleCharacters = useMemo(
+    () => (showAll ? characters : characters.filter((character) => connectedIds.has(character.id))),
+    [characters, connectedIds, showAll],
+  );
+
+  const positions = useMemo(
+    () => nodePositions(visibleCharacters.length),
+    [visibleCharacters.length],
+  );
   const canvas = useMemo(() => canvasBox(positions), [positions]);
 
   // Zoom and pan live in the drawing's own coordinates, so the wheel stays on the
@@ -154,6 +176,11 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     lastY: number;
     moved: boolean;
   } | null>(null);
+  // Every active pointer, so one finger pans and two fingers pinch. Touch was left
+  // out of the first version to protect page scrolling; on a canvas this large that
+  // was the wrong trade — dragging the graph is the interaction people reach for.
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{ distance: number } | null>(null);
 
   const neighbours = useMemo(() => {
     const ids = new Set<string>();
@@ -167,7 +194,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     return ids;
   }, [hoveredId, relationships]);
 
-  const showLabels = view.k >= labelZoomThreshold(characters.length);
+  const showLabels = view.k >= labelZoomThreshold(visibleCharacters.length);
 
   function zoomBy(factor: number) {
     setView((current) => ({ ...current, k: clampZoom(current.k * factor) }));
@@ -177,14 +204,15 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     setView({ k: 1, x: 0, y: 0 });
   }
 
-  function handleWheel(event: ReactWheelEvent<SVGSVGElement>) {
-    const rect = event.currentTarget.getBoundingClientRect();
+  /** Zooms about a point given in client coordinates, so the point stays put. */
+  function zoomAround(svg: SVGSVGElement, clientX: number, clientY: number, factor: number) {
+    const rect = svg.getBoundingClientRect();
     const [boxX, boxY, boxW, boxH] = canvas.viewBox.split(" ").map(Number);
-    const pointerX = boxX + ((event.clientX - rect.left) / rect.width) * boxW;
-    const pointerY = boxY + ((event.clientY - rect.top) / rect.height) * boxH;
+    const pointerX = boxX + ((clientX - rect.left) / rect.width) * boxW;
+    const pointerY = boxY + ((clientY - rect.top) / rect.height) * boxH;
 
     setView((current) => {
-      const k = clampZoom(current.k * (event.deltaY < 0 ? 1.15 : 1 / 1.15));
+      const k = clampZoom(current.k * factor);
       const ratio = k / current.k;
 
       return {
@@ -195,16 +223,55 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     });
   }
 
+  function handleWheel(event: ReactWheelEvent<SVGSVGElement>) {
+    zoomAround(event.currentTarget, event.clientX, event.clientY, event.deltaY < 0 ? 1.15 : 1 / 1.15);
+  }
+
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
-    // Touch keeps its page scrolling; the zoom buttons are the touch path.
-    if (event.pointerType !== "mouse" || event.button !== 0) {
+    if (event.pointerType === "mouse" && event.button !== 0) {
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
-    panRef.current = { pointerId: event.pointerId, lastX: event.clientX, lastY: event.clientY, moved: false };
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointersRef.current.size === 2) {
+      const [first, second] = [...pointersRef.current.values()];
+      pinchRef.current = { distance: Math.hypot(first.x - second.x, first.y - second.y) };
+      panRef.current = null;
+      return;
+    }
+
+    panRef.current = {
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      moved: false,
+    };
   }
 
   function movePan(event: ReactPointerEvent<SVGSVGElement>) {
+    const pointers = pointersRef.current;
+    if (!pointers.has(event.pointerId)) {
+      return;
+    }
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size >= 2) {
+      const [first, second] = [...pointers.values()];
+      const distance = Math.hypot(first.x - second.x, first.y - second.y);
+      const previous = pinchRef.current;
+      if (previous && previous.distance > 0 && distance > 0) {
+        zoomAround(
+          event.currentTarget,
+          (first.x + second.x) / 2,
+          (first.y + second.y) / 2,
+          distance / previous.distance,
+        );
+      }
+      pinchRef.current = { distance };
+      return;
+    }
+
     const pan = panRef.current;
     if (!pan || pan.pointerId !== event.pointerId) {
       return;
@@ -221,10 +288,25 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
   }
 
-  function endPan() {
-    panRef.current = null;
+  function endPan(event: ReactPointerEvent<SVGSVGElement>) {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
+    }
+    if (pointersRef.current.size === 0) {
+      panRef.current = null;
+    }
   }
-  const byId = useMemo(() => new Map(characters.map((character, index) => [character.id, { character, ...positions[index] }])), [characters, positions]);
+  const byId = useMemo(
+    () =>
+      new Map(
+        visibleCharacters.map((character, index) => [
+          character.id,
+          { character, ...positions[index] },
+        ]),
+      ),
+    [visibleCharacters, positions],
+  );
 
   function openDraft() {
     setDraft({
@@ -283,6 +365,15 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
               </button>
             </div>
           )}
+          {canLink && (
+            <button
+              className="ghost-button"
+              onClick={() => setShowAll((current) => !current)}
+              type="button"
+            >
+              {showAll ? `只显示有关系（${connectedIds.size}）` : `显示全部角色（${characters.length}）`}
+            </button>
+          )}
           <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
             新建关系
           </button>
@@ -293,6 +384,12 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
         <div className="empty-state">
           <h3>至少需要两个角色</h3>
           <p>关系网描述角色之间的连接，先创建第二个角色再回来。</p>
+        </div>
+      ) : relationships.length === 0 ? (
+        /* An empty wheel of a hundred unconnected dots said nothing at all. */
+        <div className="empty-state">
+          <h3>还没有关系</h3>
+          <p>关系网只画有连接的角色。点「新建关系」连接两个角色，它们就会出现在这里。</p>
         </div>
       ) : (
         <>
@@ -306,7 +403,6 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             className="relationship-canvas"
             onPointerCancel={endPan}
             onPointerDown={beginPan}
-            onPointerLeave={endPan}
             onPointerMove={movePan}
             onPointerUp={endPan}
             onWheel={handleWheel}
@@ -314,11 +410,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             viewBox={canvas.viewBox}
             xmlns="http://www.w3.org/2000/svg"
           >
-            <defs>
-              <marker id="relationship-arrow" markerHeight="8" markerWidth="8" orient="auto" refX="26" refY="4">
-                <path d="M0,0 L8,4 L0,8 Z" fill="currentColor" />
-              </marker>
-            </defs>
+            <defs />
             <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
             {relationships.map((relationship) => {
               const from = byId.get(relationship.fromId);
@@ -328,6 +420,23 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
               }
               const midX = (from.x + to.x) / 2;
               const midY = (from.y + to.y) / 2;
+              // The line stops at the node's edge and the head is drawn as geometry
+              // rather than a marker. A marker is scaled by the stroke width and
+              // placed from its own origin, so with refX=26 and a 2px stroke the
+              // head landed inside the destination node — drawn before the nodes,
+              // and therefore invisible. That is the "new relationship shows no
+              // arrow" report.
+              const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+              const ux = (to.x - from.x) / length;
+              const uy = (to.y - from.y) / length;
+              const startX = from.x + ux * (NODE_RADIUS + 2);
+              const startY = from.y + uy * (NODE_RADIUS + 2);
+              const tipX = to.x - ux * (NODE_RADIUS + 3);
+              const tipY = to.y - uy * (NODE_RADIUS + 3);
+              const headBackX = tipX - ux * 10;
+              const headBackY = tipY - uy * 10;
+              const headWingX = -uy * 4.5;
+              const headWingY = ux * 4.5;
               const touchesHovered =
                 hoveredId !== null &&
                 (relationship.fromId === hoveredId || relationship.toId === hoveredId);
@@ -336,14 +445,18 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                   className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}`}
                   key={relationship.id}
                 >
-                  <line markerEnd="url(#relationship-arrow)" x1={from.x} x2={to.x} y1={from.y} y2={to.y} />
+                  <line x1={startX} x2={headBackX} y1={startY} y2={headBackY} />
+                  <polygon
+                    className="relationship-arrow-head"
+                    points={`${tipX},${tipY} ${headBackX + headWingX},${headBackY + headWingY} ${headBackX - headWingX},${headBackY - headWingY}`}
+                  />
                   <text x={midX} y={midY}>
                     {relationshipKindLabel(relationship.kind)}
                   </text>
                 </g>
               );
             })}
-            {characters.map((character, index) => {
+            {visibleCharacters.map((character, index) => {
               const isHovered = hoveredId === character.id;
               const isNeighbour = neighbours.has(character.id);
               const labelled = showLabels || isHovered || isNeighbour;

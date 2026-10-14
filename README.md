@@ -1,6 +1,7 @@
 # Character Studio
 
-> **发布状态：v2.6.1**（Sprint 16.2）—— 填充式按钮语言、角色选择器、关系网缩放平移与自适应半径；视图模式重置已修复。
+> **发布状态：v2.7.0**（Sprint 17.1）—— 关系网只画有连接的角色、箭头可见、触摸拖拽与双指缩放；手机端版本号字距已修。
+> 已知未做：关系网 / 世界观 / 时间线的备份导入导出（见 CHANGELOG 2.7.0）。
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 

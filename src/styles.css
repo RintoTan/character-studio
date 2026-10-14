@@ -1899,10 +1899,13 @@ h2 {
 .card-tags,
 .card-tags button,
 .table-tags,
-.table-tags button,
-.status-badge {
-  font-family: var(--emoji-font);
-}
+/* Deliberately not `font-family: var(--emoji-font)` any more.
+   That stack puts "Apple Color Emoji" first, and a badge's content is text, not an
+   emoji: Apple Color Emoji carries ASCII digits, so on iOS "Version 2.5.0" had its
+   digits taken from the emoji font — full-width, evenly spaced, with the period
+   falling back to another font's dot. Measured on the phone screenshot as
+   "2 · 5 · 0" and "2 0 2 6". An emoji that does end up in a badge still renders in
+   colour, because the root font stack ends with the emoji fonts. */
 
 .table-tags {
   display: flex;
@@ -5940,7 +5943,10 @@ kbd {
   /* A control now rather than a picture: drag to pan, wheel to zoom. Touch keeps
      its page scrolling — `touch-action: pan-y` — and uses the zoom buttons. */
   cursor: grab;
-  touch-action: pan-y;
+  /* The canvas takes the gesture instead of the page: one finger pans, two pinch.
+     `pan-y` was the first attempt, to keep page scrolling, but on a canvas this
+     large dragging the graph is the interaction people reach for. */
+  touch-action: none;
   user-select: none;
 }
 
@@ -5981,6 +5987,12 @@ kbd {
 .relationship-edge.active line {
   stroke: var(--primary);
   stroke-width: 3;
+}
+
+/* The arrow head is geometry rather than a marker, so it inherits the edge's own
+   colour — including the per-kind colours below. */
+.relationship-arrow-head {
+  fill: currentColor;
 }
 
 .relationship-edge line {
@@ -6418,4 +6430,48 @@ kbd {
   width: min(600px, 100%);
   max-height: min(90vh, 760px);
   overflow: auto;
+}
+
+/* Mobile pass for the graph page and the pages that carry the floating cluster.
+   Declared at the end of the sheet so it wins over the base rules without
+   reordering them. */
+@media (max-width: 720px) {
+  /* The card head puts a title, the zoom group and two buttons in one row. On a
+     phone they fought over the same line and the buttons landed on top of the
+     title, so the toolbar takes its own full-width row. */
+  .workspace-card-head {
+    flex-wrap: wrap;
+  }
+
+  .workspace-toolbar {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .workspace-toolbar .primary-button,
+  .workspace-toolbar .ghost-button {
+    flex: 1 1 auto;
+  }
+
+  /* A square canvas taller than the phone is not a canvas, it is a screenful. */
+  .relationship-canvas {
+    max-height: 52vh;
+  }
+
+  .graph-zoom {
+    order: -1;
+  }
+
+  /* The floating cluster is fixed to the corner and was sitting on top of the last
+     row of the relationship list. */
+  .page-grid {
+    padding-bottom: 84px;
+  }
+
+  .relationship-list li {
+    align-items: flex-start;
+    padding-right: 0;
+  }
 }
