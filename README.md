@@ -200,6 +200,7 @@ npm run preview
 其他脚本：
 
 ```bash
+npm run test             # 单元测试（vitest）
 npm run typecheck        # 仅类型检查
 npm run build:pages      # 构建 GitHub Pages 版本（带子路径与构建信息）
 npm run verify:deploy    # 比对线上产物与本地构建
