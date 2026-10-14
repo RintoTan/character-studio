@@ -209,7 +209,11 @@ npm run verify:deploy    # 比对线上产物与本地构建
 
 ## 部署
 
-线上地址：<https://rintotan.github.io/character-studio/>
+线上地址：<https://rintotan.github.io/character-studio/>（唯一正式地址）
+
+> 历史：项目曾部署在 `character-studio-nine.vercel.app`。该 Vercel 项目已于 2026-10-14 删除，
+> 域名返回 `DEPLOYMENT_NOT_FOUND`，Git 集成同步解除，Pages 现在是唯一的发布目标。
+> 注意应用数据按 origin 隔离，旧域名下的 `localStorage` / `IndexedDB` 不会迁移过来。
 
 发布流程由 [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml) 驱动：
 推送到 `main` 触发 `pnpm install --frozen-lockfile` → `typecheck` → `build:pages`
