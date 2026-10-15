@@ -99,7 +99,7 @@
 | 命令 | 结果 |
 | --- | --- |
 | `npm run typecheck`（`tsc -b`） | **通过**，退出码 0，无输出 |
-| `npm test`（`vitest run`） | **通过**：`Test Files 31 passed (31)`、`Tests 360 passed (360)`，用时 4.01s |
+| `npm test`（`vitest run`） | **通过**：`Test Files 35 passed (35)`、`Tests 385 passed (385)`，0 失败 0 跳过（Sprint 38 新增 4 个文件 / 25 个用例后的实测值；Sprint 38 开始前为 31 / 360） |
 | `npm run build`（`tsc -b && vite build`） | 见 `docs/DEVELOPMENT_LOG.md` 的「本轮验证」一节 |
 | 线上 `build-info.json` | `commit: bccec24…`（= 本地 HEAD）、`version: 2.27.0`、`entry: index-CJaOoWIX.js`、`stylesheet: index-C1wTYI6I.css`、列出 **19 个文件** |
 
@@ -155,3 +155,22 @@
 3. **把「暂未应用」的配置项收敛**（KI-06 / KI-09）——围绕「设置不能承诺它做不到的事」这条既有原则。
 4. **补 `useDialogKeyboard` 的有效验证**（KI-05）——它是全站键盘可达性的唯一入口，当前只有类型检查。
 5. 长期：`docs/ROADMAP.md` 的中期 / 长期项。
+
+---
+
+## 9. Sprint 38（2026-10-15）—— 基线核验、数据安全与导航缺陷
+
+本次不新增功能、不改 UI，只做核验、修复与补测。**已提交但未推送、未部署**（Sprint 规则明确禁止自动推送）。
+
+| 项 | 结果 |
+| --- | --- |
+| 基线 | 起始 commit `5b1e625`；工作区干净；`APP_VERSION` 2.27.0 / `APP_SPRINT` 37.1；线上部署 commit = 本地 HEAD |
+| KI-12 | **部分修复**。两条「清空本地数据」入口收敛为唯一实现 `src/storage/localDataReset.ts`；App 路径现在也保住角色级恢复副本。**未关闭**：快照仍只含角色；「写失败是否阻止删除」与代码内既有决策冲突；浏览器级异常路径未验证 |
+| KI-14 | **已确认，未修复（被阻塞）**。5 条测试复现了机制（同名导入角色夺取名字、同文件同名最后一个胜出、世界观无法区分、指向不存在的角色被静默丢弃）。三种方案都会改变用户看到的结果，属数据语义决策，等待所有者确认 |
+| KI-15 | **已复现、已修复、待验证**。`popstate` 曾只认 3 个页面，关系网 / 时间线 / 世界观无法被后退恢复。已改为按 7 项清单校验 |
+| KI-16 | **新记录（P3）**：清空时会连带删掉**已有**的恢复快照。仅源码确认，无测试 |
+| KI-05 | **部分验证**：`useDialogKeyboard` 补了 10 条单测并通过变异检验；真实浏览器与真机仍未测 |
+| 测试总量 | 31 文件 / 360 用例 → **35 文件 / 385 用例**，全部通过；3 组变异检验确认新测试不是空转断言 |
+| 生产构建 | `tsc -b && vite build` 退出码 0，无警告无错误 |
+| 浏览器验证 | 本地以 Pages 子路径构建 + 真实 Chrome，跑了 6 个 History 场景（见 `docs/DEVELOPMENT_LOG.md` 第 11 节） |
+| 未执行 | 未推送、未部署、未改版本号、未执行 `docs/DEBUG_STRESS_TEST_PLAN.md` 的用例 |

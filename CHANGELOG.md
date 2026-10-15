@@ -5,6 +5,54 @@
 
 ---
 
+## 2026-10-15（第四次）—— Sprint 38：数据安全、导航缺陷与补测（**未发布应用版本**）
+
+**不是应用版本**：`APP_VERSION` 仍为 `2.27.0`、`APP_SPRINT` 仍为 `37.1`，没有创建标签、没有推送、没有部署。按 Sprint 规则，推送与部署需项目所有者授权。
+
+### ① 修复：两条「清空本地数据」的安全等级不同（KI-12，**部分修复**）
+
+主页 Data 区的清空会先写一份自动快照、清空后再回写；App 设置里的同名入口**什么都不写**，而且它删得更多（角色 + 关系网 + 时间线 + 世界观 + 全部设置 + IndexedDB 全部头像素材）。两条入口都可达。
+
+现在两者共用唯一实现 `src/storage/localDataReset.ts`（`createSnapshot` → `localStorage.clear()` → `writeSnapshot` 回写），角色数据由此获得与主页入口相同的保护。
+
+**没有关闭这一项**，因为三件事仍在：快照只含角色记录（头像素材、三个工作域、设置仍不可恢复）；Sprint 要求「快照写失败时阻止删除」，而 `src/storage/backup.ts:35-38` 明确写着相反的决策（「A full quota must never block the operation the user actually asked for」），改它会同时改变主页路径的行为；浏览器级配额失败路径未验证。
+
+### ② 修复：浏览器后退无法恢复三个工作区页面（KI-15）
+
+`src/App.tsx` 的 `popstate` 处理只接受 `form` / `preview` / `developer`，其余值一律回落到 `dashboard`。三个工作区页面是在这个处理函数写完之后加入的，从未被补进名单。
+
+**实测（真实 Chrome，Pages 子路径构建）**：`工作台 → 关系网 → 时间线` 之后按一次后退，`history.state` 是 `relationships`，**界面渲染的却是 Dashboard**。前进同样。7 个页面里 3 个无法被后退恢复。
+
+修法：新增模块级 `RESTORABLE_PAGES`（7 项）与 `isRestorablePage()`，`popstate` 改为按清单校验。未引入路由库，未改动 `pushState` 时机与 URL 策略。三个工作区的 flag 只控制菜单入口、不控制渲染，因此「关掉 flag 再后退」仍会渲染该页面——**边界情形，未处理，已记录**。
+
+### ③ 调查：CSV 重名会错误建立关系（KI-14，**未修复，等待确认**）
+
+`src/utils/importExport.ts:669-679` 用角色**名字**建立 `nameToId`，先由现有角色填充、再被本次导入的同名角色覆盖。新增 `test/csvNameCollision.test.ts`（5 例）把当前行为全部复现：同名导入角色夺取名字、同一文件内同名时后读到的胜出、世界观无法用于区分、指向不存在角色的行被静默丢弃。
+
+三种修法（歧义即不导入并在预览计数 / 要求用户点选 / 增加稳定 ID 列）都会改变用户看到的结果，属数据语义决策，**未擅自实施**。
+
+### ④ 补测：`useDialogKeyboard`（KI-05）
+
+新增 `test/useDialogKeyboard.test.ts`（10 例），覆盖 Escape、Enter 的三种豁免、`confirmDisabled`、焦点进入与归还、触发元素已离页。此前这一项只有类型检查保证（2.24.0 的探针是空转断言）。
+
+### ⑤ 新增记录
+
+- **KI-16（P3）**：清空时会连同**已有**的恢复快照一起删掉 —— 列表为空时 `createSnapshot` 返回 `null`，而 `localStorage.clear()` 已经删掉上一份。仅源码确认，无测试。
+
+### 本次检查
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck` | 通过，退出码 0 |
+| `npm test` | 通过：**35 文件 / 385 用例**（Sprint 38 前为 31 / 360），0 失败 0 跳过 |
+| `npm run build` / `build:pages` | 通过，无警告无错误 |
+| 变异检验（3 组） | 移除快照回写 → 3 条失败；新增裸 `localStorage.clear()` → 守卫失败；注释 Escape 与焦点恢复 → 2 条失败。均恢复后全绿 |
+| 真实浏览器 | 本地 Pages 子路径构建 + Chrome，6 个 History 场景；结果与边界见 `docs/DEVELOPMENT_LOG.md` 第 11 节 |
+
+**未执行**：未推送、未部署、未改版本号、未执行 `docs/DEBUG_STRESS_TEST_PLAN.md` 的用例。
+
+---
+
 ## 2026-10-15（第三次）—— 文档落位规整与版本口径统一（**未发布应用版本**）
 
 同样**不是应用版本**：没有修改任何应用源码、样式、测试、依赖或部署脚本。唯一的非文档改动是 `package.json` 的 `version` 字段（包元数据，不进入构建产物）。
