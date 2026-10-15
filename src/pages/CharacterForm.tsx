@@ -16,6 +16,7 @@ import type { Character, CharacterDraft } from "../types/character";
 import { useAvatarEditing } from "../hooks/useAvatarEditing";
 import { useCharacterSave } from "../hooks/useCharacterSave";
 import { useEditorSections } from "../hooks/useEditorSections";
+import { useIdentityEditing } from "../hooks/useIdentityEditing";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { fragmentRoot } from "../utils/textFragments";
 import { CharacterPreview } from "./CharacterPreview";
@@ -1134,41 +1135,6 @@ function generateImagePrompt(character: CharacterDraft) {
     : prompt;
 }
 
-function calculateAgeFromDate(value: string) {
-  if (!value) {
-    return "";
-  }
-
-  const birthDate = new Date(value);
-
-  if (Number.isNaN(birthDate.getTime())) {
-    return "";
-  }
-
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const hasBirthdayPassed =
-    today.getMonth() > birthDate.getMonth() ||
-    (today.getMonth() === birthDate.getMonth() &&
-      today.getDate() >= birthDate.getDate());
-
-  if (!hasBirthdayPassed) {
-    age -= 1;
-  }
-
-  return age >= 0 ? String(age) : "";
-}
-
-function calculateAgeFromYear(value: string) {
-  const year = Number(value);
-  const currentYear = new Date().getFullYear();
-
-  if (!Number.isInteger(year) || year < 0 || year > currentYear) {
-    return "";
-  }
-
-  return String(currentYear - year);
-}
 
 function autoGrowTextArea(event: ChangeEvent<HTMLTextAreaElement>) {
   event.currentTarget.style.height = "auto";
@@ -1199,12 +1165,25 @@ export function CharacterForm({
     effectiveEditorSettings.showPersonalPreferences && effectiveFeatureFlags.personalPreferences;
   const { message: toastMessage, show: showToast } = useTransientMessage();
   const [formData, setFormData] = useState<CharacterDraft>(initialCharacter);
-  const [customTag, setCustomTag] = useState("");
-  const [customGender, setCustomGender] = useState("");
-  const [genderMode, setGenderMode] = useState("自定义");
-  const [ageMode, setAgeMode] = useState<"manual" | "birthDate">(
-    "manual",
-  );
+  // The tag box, the gender escape hatch and the two ways of saying an age: the
+  // identity block's own input state, returned under the names this file already used.
+  const {
+    customTag,
+    setCustomTag,
+    customGender,
+    setCustomGender,
+    genderMode,
+    setGenderMode,
+    ageMode,
+    setAgeMode,
+    togglePersonalityTag,
+    handleGenderModeChange,
+    handleCustomGenderChange,
+    setManualAge,
+    setBirthDate,
+    addCustomTag,
+    removeTag,
+  } = useIdentityEditing({ setFormData, setField: updateField });
   const [formError, setFormError] = useState("");
   const [isRandomizing, setIsRandomizing] = useState(false);
 
@@ -1490,77 +1469,6 @@ export function CharacterForm({
   function runEditorMoreAction(action: () => void) {
     setIsEditorMoreOpen(false);
     action();
-  }
-
-  function togglePersonalityTag(tag: string) {
-    setFormData((current) => {
-      const currentTags = current.personalityTags || [];
-      const hasTag = currentTags.includes(tag);
-      const personalityTags = hasTag
-        ? currentTags.filter((item) => item !== tag)
-        : [...currentTags, tag];
-
-      return { ...current, personalityTags };
-    });
-  }
-
-  function handleGenderModeChange(value: string) {
-    setGenderMode(value);
-    updateField("gender", value === "自定义" ? customGender : value);
-  }
-
-  function handleCustomGenderChange(value: string) {
-    setCustomGender(value);
-    updateField("gender", value);
-  }
-
-  function setManualAge(value: string) {
-    const numericValue = value.replace(/[^\d]/g, "");
-    setAgeMode("manual");
-    setFormData((current) => ({
-      ...current,
-      age: numericValue,
-      birthDate: "",
-      birthYear: "",
-    }));
-  }
-
-  function setBirthDate(value: string) {
-    setAgeMode("birthDate");
-    setFormData((current) => ({
-      ...current,
-      age: calculateAgeFromDate(value),
-      birthDate: value,
-      birthYear: "",
-    }));
-  }
-
-  function addCustomTag() {
-    const nextTag = customTag.trim();
-
-    if (!nextTag) {
-      return;
-    }
-
-    setFormData((current) => {
-      const currentTags = current.personalityTags || [];
-
-      if (currentTags.includes(nextTag)) {
-        return current;
-      }
-
-      return { ...current, personalityTags: [...currentTags, nextTag] };
-    });
-    setCustomTag("");
-  }
-
-  function removeTag(tag: string) {
-    setFormData((current) => ({
-      ...current,
-      personalityTags: (current.personalityTags || []).filter(
-        (item) => item !== tag,
-      ),
-    }));
   }
 
   function handleRandomCharacter() {
