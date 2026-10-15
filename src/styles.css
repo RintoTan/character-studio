@@ -1769,6 +1769,51 @@ h2 {
 
 /* Group headers inside the card grid: the grid is four columns, so a header spans
    all of them, and it sticks under the topbar while its group scrolls past. */
+/* Bulk edit dialog: one row per field, with the switch on the left and the value
+   input beside it. Unticked rows keep their control but grey it out. */
+/* Scoped with the base class: `.confirm-dialog` sets its own width later in the
+   sheet, so a single class here never took effect. */
+.confirm-dialog.bulk-edit-dialog {
+  width: min(560px, 100%);
+}
+
+.bulk-edit-hint {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.bulk-edit-row {
+  display: grid;
+  grid-template-columns: auto 88px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.bulk-edit-row > span {
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.bulk-edit-input,
+.bulk-edit-row select {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.bulk-edit-input:disabled,
+.bulk-edit-row select:disabled {
+  opacity: 0.45;
+}
+
 .character-group-head {
   grid-column: 1 / -1;
   position: sticky;
@@ -1998,6 +2043,24 @@ h2 {
 
 .select-circle.inline {
   position: static;
+}
+
+/* The table's first cell: the selection circle and the name button share it, so a
+   row keeps its eight columns whether or not bulk mode is on. */
+.table-character-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.table-character-cell .table-main {
+  min-width: 0;
+}
+
+.table-character-cell .select-circle {
+  flex: 0 0 auto;
+  margin-top: 0;
 }
 
 .character-card {
@@ -6589,5 +6652,16 @@ kbd {
   .relationship-list li {
     align-items: flex-start;
     padding-right: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .bulk-edit-row {
+    grid-template-columns: auto 72px minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .bulk-edit-row > span {
+    font-size: 12.5px;
   }
 }

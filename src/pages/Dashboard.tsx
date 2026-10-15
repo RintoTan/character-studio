@@ -28,6 +28,13 @@ import {
 } from "../utils/avatarAssets";
 import { createSnapshot, readSnapshot, writeSnapshot, type LocalSnapshot } from "../storage/backup";
 import { readWorkspaceDatasets } from "../storage/workspaceBackup";
+import {
+  applyBulkPatch,
+  describeBulkPatch,
+  isEmptyBulkPatch,
+  parseTagInput,
+  type CharacterBulkPatch,
+} from "../utils/bulkEdit";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { defaultContent } from "../content/defaultContent";
 
@@ -173,6 +180,20 @@ export function Dashboard({
   editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
+  // Bulk editing: every field is opt-in, so an edit only touches what is switched on.
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  const [bulkDraft, setBulkDraft] = useState({
+    worldviewOn: false,
+    worldview: "",
+    visualStyleOn: false,
+    visualStyle: "",
+    favoriteOn: false,
+    favorite: true,
+    addTagsOn: false,
+    addTags: "",
+    removeTagsOn: false,
+    removeTags: "",
+  });
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(
     () => dashboardSettings?.openSearch ?? false,
@@ -255,6 +276,20 @@ export function Dashboard({
     (prefs.genderFilter !== "全部" ? 1 : 0) +
     (prefs.visualStyleFilter !== "全部" ? 1 : 0) +
     (prefs.sortMode !== "updated-desc" ? 1 : 0);
+  const worldviewSuggestions = useMemo(
+    () =>
+      [...new Set(characters.map((entry) => (entry.worldview || "").trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, "zh"),
+      ),
+    [characters],
+  );
+  const visualStyleSuggestions = useMemo(
+    () =>
+      [...new Set(characters.map((entry) => (entry.visualStyle || "").trim()).filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b, "zh"),
+      ),
+    [characters],
+  );
   const [isGroupedCards, setIsGroupedCards] = useState(true);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const groupedCards = isGroupedCards && visibleCharacters.length > LARGE_ROSTER;
@@ -610,6 +645,50 @@ export function Dashboard({
     setSelectedIds([]);
     setIsBulkMode(false);
     showToast(`已复制 ${selected.length} 个角色`);
+  }
+
+  function updateBulkDraft(patch: Partial<typeof bulkDraft>) {
+    setBulkDraft((current) => ({ ...current, ...patch }));
+  }
+
+  function applyBulkEdit() {
+    if (selectedIds.length === 0) {
+      showToast("请先选择角色");
+      return;
+    }
+
+    const patch: CharacterBulkPatch = {};
+    if (bulkDraft.worldviewOn && bulkDraft.worldview.trim()) {
+      patch.worldview = bulkDraft.worldview;
+    }
+    if (bulkDraft.visualStyleOn && bulkDraft.visualStyle.trim()) {
+      patch.visualStyle = bulkDraft.visualStyle;
+    }
+    if (bulkDraft.favoriteOn) {
+      patch.favorite = bulkDraft.favorite;
+    }
+    if (bulkDraft.addTagsOn) {
+      patch.addTags = parseTagInput(bulkDraft.addTags);
+    }
+    if (bulkDraft.removeTagsOn) {
+      patch.removeTags = parseTagInput(bulkDraft.removeTags);
+    }
+
+    if (isEmptyBulkPatch(patch)) {
+      showToast("请先勾选要修改的字段");
+      return;
+    }
+
+    const result = applyBulkPatch(characters, selectedIds, patch);
+    onImport(result.characters);
+    setIsBulkEditOpen(false);
+
+    const parts = describeBulkPatch(result.fieldCounts);
+    showToast(
+      parts.length > 0
+        ? `已更新 ${result.changedCount} 个角色（${parts.join(" · ")}）`
+        : "选中的角色不需要修改",
+    );
   }
 
   function confirmBulkDelete() {
@@ -1221,6 +1300,14 @@ export function Dashboard({
                         ? "取消全选"
                         : "全选"}
                     </button>
+                    <button
+                      className="ghost-button"
+                      disabled={selectedIds.length === 0}
+                      onClick={() => setIsBulkEditOpen(true)}
+                      type="button"
+                    >
+                      批量编辑
+                    </button>
                     {!isDraftView && (
                       <>
                         {isFavoriteView ? (
@@ -1292,6 +1379,15 @@ export function Dashboard({
                          <Icon name="checkSquare" size={15} />
                          {selectedIds.length === visibleCharacters.length ? "取消全选" : "全选"}
                        </button>
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length === 0}
+                        onClick={() => setIsBulkEditOpen(true)}
+                        type="button"
+                      >
+                        <Icon name="pencil" size={15} />
+                        编辑
+                      </button>
                       {!isDraftView && (
                         <button
                           className="ghost-button"
@@ -1417,14 +1513,31 @@ export function Dashboard({
                     }
                     key={character.id}
                   >
-                    <button className="table-main" onClick={() => onPreview(character)} type="button">
+                    {/* One grid cell, not two: the row is a grid, so the circle and the
+                        name have to share the first column rather than push every other
+                        column along by one. */}
+                    <div className="table-character-cell">
+                      {isBulkMode && (
+                        <button
+                          aria-label={`选择 ${character.name || "未命名角色"}`}
+                          className={
+                            selectedIds.includes(character.id)
+                              ? "select-circle inline selected"
+                              : "select-circle inline"
+                          }
+                          onClick={() => toggleSelected(character.id)}
+                          type="button"
+                        />
+                      )}
+                      <button className="table-main" onClick={() => onPreview(character)} type="button">
                       <AvatarDisplay
                         assetId={character.avatarAssetId}
                         className="table-avatar"
                         emoji={character.avatarEmoji || "🙂"}
                       />
-                      <strong>{character.name || "未命名角色"}</strong>
-                    </button>
+                        <strong>{character.name || "未命名角色"}</strong>
+                      </button>
+                    </div>
                     <span>{character.occupation || "未填写"}</span>
                     <span>{character.worldview || "未填写"}</span>
                     <span>{character.age || "未填写"}</span>
@@ -2327,6 +2440,135 @@ export function Dashboard({
                 type="button"
               >
                 确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isBulkEditOpen && (
+        <div
+          className="modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setIsBulkEditOpen(false);
+            }
+          }}
+          role="presentation"
+        >
+          <div aria-modal="true" className="confirm-dialog bulk-edit-dialog" role="dialog">
+            <h2>批量编辑 {selectedIds.length} 个角色</h2>
+            <p className="bulk-edit-hint">只修改你勾选的字段，其余字段保持原样。</p>
+
+            <label className="bulk-edit-row">
+              <input
+                checked={bulkDraft.worldviewOn}
+                onChange={(event) => updateBulkDraft({ worldviewOn: event.target.checked })}
+                type="checkbox"
+              />
+              <span>世界观</span>
+              <input
+                className="bulk-edit-input"
+                disabled={!bulkDraft.worldviewOn}
+                list="bulk-worldview-options"
+                onChange={(event) => updateBulkDraft({ worldview: event.target.value })}
+                placeholder="例如：赛博朋克"
+                type="text"
+                value={bulkDraft.worldview}
+              />
+            </label>
+
+            <label className="bulk-edit-row">
+              <input
+                checked={bulkDraft.visualStyleOn}
+                onChange={(event) => updateBulkDraft({ visualStyleOn: event.target.checked })}
+                type="checkbox"
+              />
+              <span>视觉风格</span>
+              <input
+                className="bulk-edit-input"
+                disabled={!bulkDraft.visualStyleOn}
+                list="bulk-visualstyle-options"
+                onChange={(event) => updateBulkDraft({ visualStyle: event.target.value })}
+                placeholder="例如：厚涂"
+                type="text"
+                value={bulkDraft.visualStyle}
+              />
+            </label>
+
+            <label className="bulk-edit-row">
+              <input
+                checked={bulkDraft.favoriteOn}
+                onChange={(event) => updateBulkDraft({ favoriteOn: event.target.checked })}
+                type="checkbox"
+              />
+              <span>收藏状态</span>
+              <select
+                disabled={!bulkDraft.favoriteOn}
+                onChange={(event) => updateBulkDraft({ favorite: event.target.value === "yes" })}
+                value={bulkDraft.favorite ? "yes" : "no"}
+              >
+                <option value="yes">设为已收藏</option>
+                <option value="no">移出收藏</option>
+              </select>
+            </label>
+
+            <label className="bulk-edit-row">
+              <input
+                checked={bulkDraft.addTagsOn}
+                onChange={(event) => updateBulkDraft({ addTagsOn: event.target.checked })}
+                type="checkbox"
+              />
+              <span>添加标签</span>
+              <input
+                className="bulk-edit-input"
+                disabled={!bulkDraft.addTagsOn}
+                onChange={(event) => updateBulkDraft({ addTags: event.target.value })}
+                placeholder="逗号分隔，例如：反派、冷面"
+                type="text"
+                value={bulkDraft.addTags}
+              />
+            </label>
+
+            <label className="bulk-edit-row">
+              <input
+                checked={bulkDraft.removeTagsOn}
+                onChange={(event) => updateBulkDraft({ removeTagsOn: event.target.checked })}
+                type="checkbox"
+              />
+              <span>移除标签</span>
+              <input
+                className="bulk-edit-input"
+                disabled={!bulkDraft.removeTagsOn}
+                onChange={(event) => updateBulkDraft({ removeTags: event.target.value })}
+                placeholder="逗号分隔"
+                type="text"
+                value={bulkDraft.removeTags}
+              />
+            </label>
+
+            <datalist id="bulk-worldview-options">
+              {worldviewSuggestions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+            <datalist id="bulk-visualstyle-options">
+              {visualStyleSuggestions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setIsBulkEditOpen(false)} type="button">
+                取消
+              </button>
+              <button
+                className="primary-button"
+                disabled={selectedIds.length === 0}
+                onClick={applyBulkEdit}
+                type="button"
+              >
+                应用到 {selectedIds.length} 个角色
               </button>
             </div>
           </div>
