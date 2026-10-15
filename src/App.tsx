@@ -134,6 +134,7 @@ function App() {
   const [isAppAssetLibraryOpen, setIsAppAssetLibraryOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
   const [isAppClearDataOpen, setIsAppClearDataOpen] = useState(false);
+  const [clearDataError, setClearDataError] = useState<string | null>(null);
   const [isDeveloperResetOpen, setIsDeveloperResetOpen] = useState(false);
   const [pendingAppAssetDelete, setPendingAppAssetDelete] = useState<AvatarAssetRecord | null>(null);
   const [pendingAppAssetBatchDeleteIds, setPendingAppAssetBatchDeleteIds] = useState<string[]>([]);
@@ -459,7 +460,17 @@ function App() {
     // every setting), but the character list is the part a snapshot can bring back,
     // and it used to get none at all. Same helper as the dashboard, so the two
     // entries cannot drift into different meanings again.
-    clearLocalDataPreservingSnapshot("清空本地数据前自动备份", characters);
+    const outcome = clearLocalDataPreservingSnapshot("清空本地数据前自动备份", characters);
+    if (!outcome.ok) {
+      // DEC-38-01: without a recovery copy the clear does not run. The dialog stays
+      // open so the message sits next to the button that failed.
+      setClearDataError(
+        `自动备份失败（${outcome.reason}），已取消清空。请清理浏览器存储空间，或先自行导出备份后再试。`,
+      );
+      return;
+    }
+
+    setClearDataError(null);
     await clearAvatarAssets();
     saveCharacters([]);
     setCharacters([]);
@@ -1617,9 +1628,24 @@ function App() {
         <div className="modal-backdrop" role="presentation">
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>清空本地数据</h2>
-            <p>确定要清空角色、设置和所有本地头像素材吗？此操作不可撤销。</p>
+            <p>
+              确定要清空角色、设置和所有本地头像素材吗？清空前会自动备份一份角色文字资料，但头像素材、
+              角色关系网、世界观时间线、世界观条目和全部设置都不在这份备份里，清空后无法用它找回。
+            </p>
+            {clearDataError && (
+              <div className="form-error" role="alert">
+                {clearDataError}
+              </div>
+            )}
             <div className="form-actions">
-              <button className="ghost-button" onClick={() => setIsAppClearDataOpen(false)} type="button">
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  setClearDataError(null);
+                  setIsAppClearDataOpen(false);
+                }}
+                type="button"
+              >
                 取消
               </button>
               <button className="danger-button" onClick={() => void clearAppLocalData()} type="button">

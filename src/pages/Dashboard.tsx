@@ -1007,7 +1007,16 @@ export function Dashboard({
   async function clearLocalData() {
     // Clearing wipes the entire list, so keep a recovery copy first. The app-level
     // clear under the same name calls the same helper.
-    clearLocalDataPreservingSnapshot("清空本地数据前自动备份", characters);
+    const outcome = clearLocalDataPreservingSnapshot("清空本地数据前自动备份", characters);
+    if (!outcome.ok) {
+      // DEC-38-01: no recovery copy, no deletion.
+      showToast(
+        `自动备份失败（${outcome.reason}），已取消清空。请清理浏览器存储空间，或先自行导出备份后再试。`,
+        "warning",
+      );
+      return;
+    }
+
     await clearAvatarAssets();
     onImport([]);
     setSelectedIds([]);
@@ -2407,7 +2416,10 @@ export function Dashboard({
         <div className="modal-backdrop" role="presentation">
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>删除角色</h2>
-            <p>确定要删除这个角色吗？此操作不可撤销。</p>
+            <p>
+              确定要删除这个角色吗？删除后可以撤销一次；但它在关系网、时间线和世界观里的关联会
+              立即清除，撤销不会把它们找回。
+            </p>
             <div className="form-actions">
               <button
                 className="ghost-button"
@@ -2562,7 +2574,8 @@ export function Dashboard({
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>批量删除</h2>
             <p>
-              确定要删除选中的 {selectedIds.length} 个角色吗？此操作不可撤销。
+              确定要删除选中的 {selectedIds.length} 个角色吗？这些角色在关系网、时间线和世界观里的
+              关联会一并清除，且无法恢复 —— 批量删除没有撤销入口，也不写自动备份。
             </p>
             <div className="form-actions">
               <button
@@ -3170,6 +3183,17 @@ export function Dashboard({
                     <span>未绑定头像：{importPlan.preview.unmatchedAvatarCount} 个</span>
                     <span>重复头像素材：{importPlan.preview.duplicateAssetCount} 个</span>
                     <span>同名角色：{importPlan.preview.duplicateCharacterCount} 个</span>
+                    {importPlan.preview.unresolvedReferences.ambiguous +
+                      importPlan.preview.unresolvedReferences.missing >
+                      0 && (
+                      <span>
+                        未导入的关联：
+                        {importPlan.preview.unresolvedReferences.ambiguous +
+                          importPlan.preview.unresolvedReferences.missing}{" "}
+                        条 —— 角色重名 {importPlan.preview.unresolvedReferences.ambiguous} 条、
+                        角色不存在 {importPlan.preview.unresolvedReferences.missing} 条，无法确定指向，因此没有建立
+                      </span>
+                    )}
                     <span>数据版本：{getDataVersionLabel(importPlan.preview.dataVersion)}</span>
                     <span>完整备份信息：{importPlan.preview.hasBackupInfo ? "包含" : "未包含"}</span>
                   </div>
@@ -3179,6 +3203,11 @@ export function Dashboard({
                 <h3>冲突处理</h3>
                 <p className="muted">
                   当前策略为保留全部角色；同 ID 会自动生成新 ID，重复头像素材会自动复用。
+                </p>
+                <p className="muted">
+                  按角色名建立的关系会先校验名字是否唯一：名字同时对应多个角色、或找不到对应角色时，
+                  该关联不会导入，并在上面的导入摘要里计数 —— 角色名不是身份标识，宁可少导入一条，
+                  也不要连到错误的角色上。
                 </p>
                 <p className="muted">
                   头像只根据备份内的头像绑定信息或单角色内嵌头像恢复，不会靠文件名猜测。
@@ -3230,7 +3259,11 @@ export function Dashboard({
         <div className="modal-backdrop" role="presentation">
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>清空本地数据</h2>
-            <p>确定要清空所有本地角色数据吗？当前共 {characters.length} 个角色。清空前会自动保留一份可恢复的备份（仅角色数据，不含头像图片）。</p>
+            <p>
+              确定要清空所有本地角色数据吗？当前共 {characters.length} 个角色。清空前会自动备份一份
+              角色文字资料，但头像图片、角色关系网、世界观时间线、世界观条目和全部设置都不在这份
+              备份里，清空后无法用它找回。
+            </p>
             <div className="form-actions">
               <button className="ghost-button" onClick={() => setIsClearDataOpen(false)} type="button">
                 取消

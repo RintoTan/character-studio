@@ -6,7 +6,9 @@
 //
 // Scope is deliberate: only the character records (small, text) are captured.
 // Avatar binaries live in IndexedDB and are not snapshotted, so a restore can
-// leave avatar references pointing at assets that are no longer there.
+// leave avatar references pointing at assets that are no longer there. A caller
+// that describes this copy to the user must not call it a full backup - see the
+// two "clear local data" confirmations.
 import type { Character } from "../types/character";
 
 export const BACKUP_KEY = "character-studio.backup";
@@ -18,9 +20,19 @@ export type LocalSnapshot = {
   characters: Character[];
 };
 
-export function createSnapshot(reason: string, characters: Character[]): LocalSnapshot | null {
+export type SnapshotAttempt =
+  | { status: "empty" }
+  | { status: "created"; snapshot: LocalSnapshot }
+  | { status: "failed"; reason: string };
+
+// "There was nothing worth keeping" and "the copy could not be written" used to be
+// the same answer - null - and that made them indistinguishable to callers. They
+// call for opposite decisions: the first is harmless, the second must stop the very
+// operation the copy was protecting. So the attempt reports which one happened and
+// the decision is left to the caller.
+export function attemptSnapshot(reason: string, characters: Character[]): SnapshotAttempt {
   if (characters.length === 0) {
-    return null;
+    return { status: "empty" };
   }
 
   const snapshot: LocalSnapshot = {
@@ -32,12 +44,29 @@ export function createSnapshot(reason: string, characters: Character[]): LocalSn
 
   try {
     localStorage.setItem(BACKUP_KEY, JSON.stringify(snapshot));
-  } catch {
-    // A full quota must never block the operation the user actually asked for.
-    return null;
+  } catch (error) {
+    return { status: "failed", reason: describeSnapshotFailure(error) };
   }
 
-  return snapshot;
+  return { status: "created", snapshot };
+}
+
+function describeSnapshotFailure(error: unknown): string {
+  const name = (error as { name?: string } | null)?.name;
+  if (name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED") {
+    return "浏览器存储空间不足";
+  }
+  return "浏览器拒绝了本地写入";
+}
+
+// Snapshot-or-null, for the callers that keep going without one. Clearing is no
+// longer among them: DEC-38-01 makes a failed copy stop the clear, so that path
+// calls attemptSnapshot through storage/localDataReset instead. The import path
+// still uses this and still continues, which is a difference worth closing later -
+// it is recorded rather than changed here.
+export function createSnapshot(reason: string, characters: Character[]): LocalSnapshot | null {
+  const attempt = attemptSnapshot(reason, characters);
+  return attempt.status === "created" ? attempt.snapshot : null;
 }
 
 // "Clear local data" calls localStorage.clear(), which would also delete the
