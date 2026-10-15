@@ -97,6 +97,20 @@ const BASE_PATH = import.meta.env.BASE_URL;
 const DEVELOPER_PATH = `${BASE_PATH.replace(/\/+$/, "")}/developer`;
 const isDeveloperPath = (pathname: string) => pathname.replace(/\/+$/, "") === DEVELOPER_PATH;
 
+// Every screen the app pushes a history entry for has to be listed here, or Back
+// quietly lands somewhere else instead of the screen the entry names.
+const RESTORABLE_PAGES: readonly Page[] = [
+  "dashboard",
+  "form",
+  "preview",
+  "developer",
+  "relationships",
+  "timeline",
+  "world",
+];
+const isRestorablePage = (value: unknown): value is Page =>
+  typeof value === "string" && (RESTORABLE_PAGES as readonly string[]).includes(value);
+
 function PageFallback() {
   return (
     <div className="page-fallback" role="status" aria-live="polite">
@@ -524,12 +538,12 @@ function App() {
 
     function handlePopState(event: PopStateEvent) {
       isHistoryNavigationRef.current = true;
+      // This used to name three pages and send every other value to the dashboard.
+      // The three workspaces arrived after it was written and were never added, so
+      // leaving one and pressing Back showed the dashboard while the history entry
+      // still said "relationships" — measured, see KI-15.
       const nextPage = event.state?.characterStudioPage;
-      setPage(
-        nextPage === "form" || nextPage === "preview" || nextPage === "developer"
-          ? nextPage
-          : "dashboard",
-      );
+      setPage(isRestorablePage(nextPage) ? nextPage : "dashboard");
       setIsAppAboutOpen(false);
       setIsFirstAboutOpen(false);
       setIsAppSettingsOpen(false);
