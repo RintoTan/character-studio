@@ -37,6 +37,18 @@ import {
   type CharacterBulkPatch,
 } from "../utils/bulkEdit";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useDashboardPrefs } from "../hooks/useDashboardPrefs";
+import {
+  clearedFilters,
+  defaultPrefs,
+  loadDashboardFlags,
+  saveDashboardFlags,
+  type DashboardFlags,
+  type DashboardPrefs,
+  type ScopeMode,
+  type SortMode,
+  type ViewMode,
+} from "../storage/dashboardPrefs";
 import { defaultContent } from "../content/defaultContent";
 
 type DashboardProps = {
@@ -103,48 +115,12 @@ type DashboardProps = {
   onOpenWorld?: () => void;
 };
 
-type SortMode = "updated-desc" | "created-desc" | "name-asc" | "name-desc";
-type ScopeMode = "all" | "favorites" | "drafts";
-type ViewMode = "cards" | "list";
 type ThemeMode = "system" | "light" | "dark";
 type CharacterExportScope = "all" | "selected";
 type CharacterExportChoice = "json" | "zip" | "csv" | "pdf" | "jpg" | "png";
-
-const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
-const DASHBOARD_FLAGS_KEY = "character-studio.dashboard-flags";
 // Past this many characters the dashboard shows its search and filter controls on
 // arrival instead of leaving them folded behind a toolbar icon.
 const LARGE_ROSTER = 30;
-
-type DashboardPrefs = {
-  searchTerm: string;
-  sortMode: SortMode;
-  worldviewFilter: string;
-  genderFilter: string;
-  visualStyleFilter: string;
-  favoriteMode: ScopeMode;
-  viewMode: ViewMode;
-};
-
-type DashboardFlags = {
-  favoriteIds: string[];
-  pinnedIds: string[];
-};
-
-const defaultPrefs: DashboardPrefs = {
-  searchTerm: "",
-  sortMode: "updated-desc",
-  worldviewFilter: "全部",
-  genderFilter: "全部",
-  visualStyleFilter: "全部",
-  favoriteMode: "all",
-  viewMode: "cards",
-};
-
-const defaultFlags: DashboardFlags = {
-  favoriteIds: [],
-  pinnedIds: [],
-};
 
 export function Dashboard({
   characters,
@@ -241,7 +217,10 @@ export function Dashboard({
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
-  const [prefs, setPrefs] = useState<DashboardPrefs>(loadDashboardPrefs);
+  const [prefs, setPrefs] = useDashboardPrefs({
+    resetSignal: filtersResetSignal,
+    resetFavoriteMode: filtersResetFavoriteMode,
+  });
   const [flags, setFlags] = useState<DashboardFlags>(loadDashboardFlags);
   const [undoCharacter, setUndoCharacter] = useState<Character | null>(null);
   const [toastMessage, setToastMessage] = useState("");
@@ -474,9 +453,7 @@ export function Dashboard({
     return () => document.removeEventListener("keydown", handleKeyboardShortcuts);
   }, [onCreate]);
 
-  useEffect(() => {
-    localStorage.setItem(DASHBOARD_PREFS_KEY, JSON.stringify(prefs));
-  }, [prefs]);
+
 
   useEffect(() => {
     const hasDialogOpen =
@@ -537,7 +514,7 @@ export function Dashboard({
   }, [searchSignal]);
 
   useEffect(() => {
-    localStorage.setItem(DASHBOARD_FLAGS_KEY, JSON.stringify(flags));
+    saveDashboardFlags(flags);
   }, [flags]);
 
   useEffect(() => {
@@ -910,33 +887,8 @@ export function Dashboard({
   }
 
   function clearSearchAndFilters() {
-    setPrefs((current) => ({
-      ...current,
-      searchTerm: "",
-      sortMode: "updated-desc",
-      worldviewFilter: "全部",
-      genderFilter: "全部",
-      visualStyleFilter: "全部",
-      favoriteMode: "all",
-    }));
+    setPrefs((current) => clearedFilters(current, { favoriteMode: "all", resetSort: true }));
   }
-
-  // Applying another screen's request to clear the filters. Keyed on the signal so
-  // a repeated request (same favourite mode) still applies, and ignores the initial
-  // value so a plain mount never wipes what the author had.
-  useEffect(() => {
-    if (!filtersResetSignal) {
-      return;
-    }
-    setPrefs((current) => ({
-      ...current,
-      searchTerm: "",
-      worldviewFilter: "全部",
-      genderFilter: "全部",
-      visualStyleFilter: "全部",
-      favoriteMode: filtersResetFavoriteMode,
-    }));
-  }, [filtersResetSignal, filtersResetFavoriteMode]);
 
   function updatePrefs(nextPrefs: Partial<DashboardPrefs>) {
     setPrefs((current) => ({ ...current, ...nextPrefs }));
@@ -3563,29 +3515,6 @@ function getVisibleCharacters(
 
       return getTime(b.updatedAt) - getTime(a.updatedAt);
     });
-}
-
-function loadDashboardPrefs(): DashboardPrefs {
-  try {
-    const value = localStorage.getItem(DASHBOARD_PREFS_KEY);
-    const parsedValue = value ? { ...defaultPrefs, ...JSON.parse(value) } : defaultPrefs;
-
-    return {
-      ...parsedValue,
-      viewMode: parsedValue.viewMode === "list" ? "list" : "cards",
-    };
-  } catch {
-    return defaultPrefs;
-  }
-}
-
-function loadDashboardFlags(): DashboardFlags {
-  try {
-    const value = localStorage.getItem(DASHBOARD_FLAGS_KEY);
-    return value ? { ...defaultFlags, ...JSON.parse(value) } : defaultFlags;
-  } catch {
-    return defaultFlags;
-  }
 }
 
 function getHeroCopy(scope: ScopeMode) {

@@ -2412,11 +2412,6 @@ h2 {
   min-height: var(--control-height-icon);
 }
 
-.icon-button {
-  min-width: var(--control-height-icon);
-  padding: 0;
-}
-
 .card-menu-wrap {
   position: relative;
 }

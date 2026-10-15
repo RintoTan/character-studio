@@ -34,6 +34,11 @@ import {
   exportFullBackupZip,
 } from "./utils/importExport";
 import { Dashboard } from "./pages/Dashboard";
+import {
+  DASHBOARD_PREFS_KEY,
+  defaultPrefs,
+  saveDashboardPrefs,
+} from "./storage/dashboardPrefs";
 import { pruneCharacterReferences } from "./storage/referenceIntegrity";
 import { readWorkspaceDatasets } from "./storage/workspaceBackup";
 import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
@@ -63,7 +68,6 @@ const WorldManager = lazy(() =>
 
 const THEME_KEY = "character-studio.theme";
 const ABOUT_SEEN_KEY = "character-studio.about-seen";
-const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 
 // The app is served from a repository subpath on GitHub Pages, so route URLs are
 // derived from the deployment base instead of being hard-coded to "/developer".
@@ -240,23 +244,15 @@ function App() {
     // settings change — including the ones the dashboard itself pushes — undid it:
     // that is why switching to the list view did not survive a trip through the
     // editor. A default is an initial value, not a policy.
-    try {
-      if (!localStorage.getItem(DASHBOARD_PREFS_KEY)) {
-        localStorage.setItem(
-          DASHBOARD_PREFS_KEY,
-          JSON.stringify({
-            searchTerm: "",
-            worldviewFilter: "全部",
-            genderFilter: "全部",
-            visualStyleFilter: "全部",
-            favoriteMode: "all",
-            viewMode: developerSettings.dashboardDefaults.viewMode,
-            sortMode: developerSettings.dashboardDefaults.sortMode,
-          }),
-        );
-      }
-    } catch {
-      // Storage unavailable: the dashboard falls back to its own defaults.
+    // Built from the dashboard's own defaults rather than a second hand-written
+    // copy of the same seven fields, so adding a field cannot leave the seeded
+    // value missing it.
+    if (!localStorage.getItem(DASHBOARD_PREFS_KEY)) {
+      saveDashboardPrefs({
+        ...defaultPrefs,
+        viewMode: developerSettings.dashboardDefaults.viewMode,
+        sortMode: developerSettings.dashboardDefaults.sortMode,
+      });
     }
   }, [developerSettings]);
 
