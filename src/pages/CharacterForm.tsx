@@ -11,24 +11,15 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import { DEFAULT_AVATAR_EMOJI, avatarCategories } from "../data/avatarCategories";
-import {
-  defaultCollapseState,
-  loadCollapseState,
-  saveCollapseState,
-  type EditorSectionId,
-} from "../storage/editorUiState";
+import { defaultCollapseState, type EditorSectionId } from "../storage/editorUiState";
 import type { Character, CharacterDraft } from "../types/character";
 import { useAvatarEditing } from "../hooks/useAvatarEditing";
 import { useCharacterSave } from "../hooks/useCharacterSave";
+import { useEditorSections } from "../hooks/useEditorSections";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { fragmentRoot } from "../utils/textFragments";
 import { CharacterPreview } from "./CharacterPreview";
-import {
-  EDITOR_SECTIONS,
-  completionStatus,
-  nextUnfinishedSection,
-  sectionShortTitle,
-} from "./editor/sections";
+import { EDITOR_SECTIONS, completionStatus, sectionShortTitle } from "./editor/sections";
 import { loadDeveloperSettings, type DeveloperSettings } from "../config/developerSettings";
 
 type CharacterFormProps = {
@@ -1302,11 +1293,6 @@ export function CharacterForm({
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false);
   const actionBarRef = useRef<HTMLDivElement>(null);
-  const [activeSection, setActiveSection] = useState<SectionId>("basic");
-  const [editorMode, setEditorMode] = useState<"edit" | "preview">("edit");
-  const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>(
-    () => loadCollapseState() ?? defaultCollapseState,
-  );
   // Building a character, watching whether it is saved, and the two ways the
   // browser is told about it -- the autosave timer and the unload prompt -- are one
   // domain, so they are one hook.
@@ -1344,6 +1330,25 @@ export function CharacterForm({
   const visibleSectionMeta = EDITOR_SECTIONS.filter((section) =>
     section.id === "prompt" ? showPromptSection : true,
   );
+
+  // Which module the author is looking at, whether the form or the preview is
+  // showing, and which modules are folded. Declared after `visibleSectionMeta`
+  // because the jump-to-next control needs the sections that are actually on offer.
+  const {
+    activeSection,
+    editorMode,
+    setEditorMode,
+    collapsedSections,
+    applyDefaultCollapse,
+    toggleSection,
+    jumpToSection,
+    jumpToNextUnfinished,
+    openEditorPreview,
+  } = useEditorSections({
+    formData,
+    visibleSectionIds: visibleSectionMeta.map((section) => section.id),
+    showToast,
+  });
 
   const activeAvatarCategory =
     avatarCategories.find((category) => category.id === activeAvatarCategoryId) ||
@@ -1395,10 +1400,12 @@ export function CharacterForm({
     }
     setFormError("");
     setEditorMode("edit");
+    // The developer's per-open default, not the author's fold: applied to this
+    // session without being written back over what the author stored.
     if (effectiveEditorSettings.expandAllSections) {
-      setCollapsedSections(defaultCollapseState);
+      applyDefaultCollapse(defaultCollapseState);
     } else if (effectiveEditorSettings.collapseAllSections) {
-      setCollapsedSections({
+      applyDefaultCollapse({
         ...defaultCollapseState,
         appearance: true,
         personality: true,
@@ -1480,56 +1487,9 @@ export function CharacterForm({
   // Folding a module is a work habit, so both the toggle and a jump write the
   // new layout through. The state is applied directly rather than from the
   // updater so the stored value is exactly what this action produced.
-  function applyCollapseState(next: Record<SectionId, boolean>) {
-    setCollapsedSections(next);
-    saveCollapseState(next);
-  }
-
-  function toggleSection(sectionId: SectionId) {
-    applyCollapseState({
-      ...collapsedSections,
-      [sectionId]: !collapsedSections[sectionId],
-    });
-  }
-
-  function jumpToSection(sectionId: SectionId) {
-    setActiveSection(sectionId);
-    applyCollapseState({ ...collapsedSections, [sectionId]: false });
-    window.setTimeout(() => {
-      document
-        .getElementById(`workspace-${sectionId}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
-  }
-
-  function jumpToNextUnfinished() {
-    // Continue from wherever the author is, and wrap around so the control
-    // always lands somewhere instead of going dead at the last section.
-    const targetId = nextUnfinishedSection(
-      formData,
-      activeSection,
-      visibleSectionMeta.map((section) => section.id),
-    );
-
-    if (!targetId) {
-      showToast("所有模块都已完成");
-      return;
-    }
-
-    jumpToSection(targetId);
-    showToast(`已跳到「${EDITOR_SECTIONS.find((section) => section.id === targetId)?.title ?? targetId}」`);
-  }
-
   function runEditorMoreAction(action: () => void) {
     setIsEditorMoreOpen(false);
     action();
-  }
-
-  function openEditorPreview() {
-    setEditorMode("preview");
-    window.requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    });
   }
 
   function togglePersonalityTag(tag: string) {
