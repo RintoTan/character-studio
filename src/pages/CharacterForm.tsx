@@ -10,6 +10,7 @@ import {
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
+import { avatarCategories } from "../data/avatarCategories";
 import {
   defaultCollapseState,
   loadCollapseState,
@@ -17,21 +18,10 @@ import {
   type EditorSectionId,
 } from "../storage/editorUiState";
 import type { Character } from "../types/character";
-import { loadRecentAvatars, saveRecentAvatar } from "../storage/recentAvatars";
+import { useAvatarEditing } from "../hooks/useAvatarEditing";
 import { useTransientMessage } from "../hooks/useTransientMessage";
-import {
-  clampCropDraft as clampDraftToMetrics,
-  cropMetrics,
-  visibleCrop as computeVisibleCrop,
-} from "../utils/cropGeometry";
 import { fragmentRoot } from "../utils/textFragments";
-import {
-  compressImageToAvatarBlob,
-  listAvatarAssets,
-  saveAvatarBlob,
-  validateAvatarFile,
-  type AvatarAssetRecord,
-} from "../utils/avatarAssets";
+import { saveAvatarBlob } from "../utils/avatarAssets";
 import { CharacterPreview } from "./CharacterPreview";
 import {
   EDITOR_SECTIONS,
@@ -71,12 +61,6 @@ type CharacterFormProps = {
 // editor cannot drift apart about which sections exist.
 type SectionId = EditorSectionId;
 
-type AvatarCategory = {
-  id: string;
-  label: string;
-  emojis: string[];
-};
-
 type HelperSectionId = Exclude<SectionId, "basic" | "prompt">;
 type HelperField =
   | "personalityTags"
@@ -105,68 +89,6 @@ const defaultEditorFeatureFlags = {
   personalPreferences: true,
   compactMobileEditor: true,
 };
-
-const avatarCategories: AvatarCategory[] = [
-  {
-    id: "people",
-    label: "😀 人物",
-    emojis: ["🙂", "😀", "😐", "😌", "😎", "🤨", "😶", "😏", "🥲", "🤔", "😤", "😈"],
-  },
-  {
-    id: "female",
-    label: "👩 女性",
-    emojis: ["👩", "👧", "👱‍♀️", "👩‍🦰", "👩‍🦱", "👩‍🦳", "👩‍🦲", "👸", "👰‍♀️", "🧕", "👮‍♀️", "🕵️‍♀️"],
-  },
-  {
-    id: "male",
-    label: "👨 男性",
-    emojis: ["👨", "👦", "👱‍♂️", "👨‍🦰", "👨‍🦱", "👨‍🦳", "👨‍🦲", "🤴", "🤵‍♂️", "👮‍♂️", "🕵️‍♂️", "🥷"],
-  },
-  {
-    id: "youth",
-    label: "🧒 儿童 / 少年",
-    emojis: ["🧒", "👶", "👧", "👦", "🙋", "🙋‍♀️", "🙋‍♂️", "🧑‍🎓", "👩‍🎓", "👨‍🎓", "🧑‍🦱", "🧑‍🦰"],
-  },
-  {
-    id: "elder",
-    label: "👴 老年",
-    emojis: ["👴", "👵", "🧓", "👨‍🦳", "👩‍🦳", "🧙‍♂️", "🧙‍♀️", "🧑‍🏫", "👨‍🏫", "👩‍🏫"],
-  },
-  {
-    id: "magic",
-    label: "🧙 魔法角色",
-    emojis: ["🧙", "🧙‍♀️", "🧙‍♂️", "🧚", "🧚‍♀️", "🧚‍♂️", "🧞", "🧞‍♀️", "🧞‍♂️", "🧛", "🧛‍♀️", "🧛‍♂️"],
-  },
-  {
-    id: "hero",
-    label: "🦸 英雄",
-    emojis: ["🦸", "🦸‍♀️", "🦸‍♂️", "🦹", "🦹‍♀️", "🦹‍♂️", "🥷", "🧑‍🚀", "👩‍🚀", "👨‍🚀", "🧑‍✈️", "🧑‍🚒"],
-  },
-  {
-    id: "fantasy-race",
-    label: "🧝 奇幻种族",
-    emojis: ["🧝", "🧝‍♀️", "🧝‍♂️", "🧌", "🧟", "🧟‍♀️", "🧟‍♂️", "🧜", "🧜‍♀️", "🧜‍♂️", "🧞", "🧛"],
-  },
-  {
-    id: "monster",
-    label: "👻 怪物 / 幽灵",
-    emojis: ["👻", "💀", "☠️", "👽", "👾", "🤖", "👹", "👺", "😈", "👿", "🧟", "🧌"],
-  },
-  {
-    id: "animal",
-    label: "🐱 动物",
-    emojis: ["🐱", "🐶", "🦊", "🐺", "🐰", "🐻", "🐼", "🐯", "🦁", "🐮", "🐭", "🐵"],
-  },
-  {
-    id: "creature",
-    label: "🐉 幻想生物",
-    emojis: ["🐉", "🐲", "🦄", "🦅", "🦇", "🦋", "🐍", "🦎", "🦖", "🦕", "🪶", "🪽"],
-  },
-];
-
-const avatarEmojiOptions = Array.from(
-  new Set(avatarCategories.flatMap((category) => category.emojis)),
-);
 
 const initialCharacter: CharacterDraft = {
   name: "",
@@ -1298,30 +1220,68 @@ export function CharacterForm({
   const [formError, setFormError] = useState("");
   const [isRandomizing, setIsRandomizing] = useState(false);
 
-  const [activeAvatarCategoryId, setActiveAvatarCategoryId] = useState(
-    avatarCategories[0].id,
-  );
-  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
-  const [isAvatarImageMenuOpen, setIsAvatarImageMenuOpen] = useState(false);
-  const [isAvatarUrlOpen, setIsAvatarUrlOpen] = useState(false);
-  const [avatarUrlValue, setAvatarUrlValue] = useState("");
-  const [isAvatarDragActive, setIsAvatarDragActive] = useState(false);
-  const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
-  const [avatarAssets, setAvatarAssets] = useState<AvatarAssetRecord[]>([]);
-  const [pendingAvatar, setPendingAvatar] = useState<{
-    blob: Blob;
-    name: string;
-    previewUrl: string;
-  } | null>(null);
-  const [cropDraft, setCropDraft] = useState<{
-    fileName: string;
-    imageUrl: string;
-    offsetX: number;
-    offsetY: number;
-    zoom: number;
-  } | null>(null);
-  const [cropDrag, setCropDrag] = useState<{ x: number; y: number } | null>(null);
-  const [recentAvatars, setRecentAvatars] = useState(() => loadRecentAvatars(avatarEmojiOptions));
+  // The whole avatar domain -- emoji, upload menu, crop dialog and local asset
+  // library -- now lives in one hook. It comes back under the names this file
+  // already used, so none of the JSX below had to change; the boundary is the
+  // reviewable part, not a wall of renames.
+  const {
+    activeAvatarCategoryId,
+    setActiveAvatarCategoryId,
+    isAvatarPickerOpen,
+    setIsAvatarPickerOpen,
+    isAvatarImageMenuOpen,
+    setIsAvatarImageMenuOpen,
+    isAvatarUrlOpen,
+    setIsAvatarUrlOpen,
+    avatarUrlValue,
+    setAvatarUrlValue,
+    isAvatarDragActive,
+    setIsAvatarDragActive,
+    isAssetLibraryOpen,
+    setIsAssetLibraryOpen,
+    avatarAssets,
+    setAvatarAssets,
+    pendingAvatar,
+    setPendingAvatar,
+    cropDraft,
+    setCropDraft,
+    cropDrag,
+    setCropDrag,
+    recentAvatars,
+    setRecentAvatars,
+    avatarFileInputRef,
+    avatarImageMenuRef,
+    cropImageRef,
+    cropStageRef,
+    cropFrameRef,
+    selectAvatarEmoji,
+    closeAvatarOverlays,
+    openAvatarCrop,
+    handleAvatarUpload,
+    handleAvatarUrlSubmit,
+    adjustCropZoom,
+    handleAvatarDrop,
+    getCropMetrics,
+    clampCropDraft,
+    getVisibleCrop,
+    confirmCropAvatar,
+    clearPendingAvatar,
+    closeCropDialog,
+    openAssetLibrary,
+    selectAvatarAsset,
+    removeAvatarImage,
+  } = useAvatarEditing({
+    onEmojiChange: (nextEmoji) => updateField("avatarEmoji", nextEmoji),
+    onAssetIdChange: (nextAssetId) =>
+      setFormData((current) => ({ ...current, avatarAssetId: nextAssetId })),
+    showToast,
+    // Opening the library is also what closes these two, which belong to other
+    // domains -- so they are handed in rather than reached for across the boundary.
+    onBeforeOpenAssetLibrary: () => {
+      setHelperSuggestion(null);
+      setPendingClear(null);
+    },
+  });
   const [pendingClear, setPendingClear] = useState<{
     field:
       | "personalityTags"
@@ -1354,11 +1314,6 @@ export function CharacterForm({
     "idle" | "saving" | "saved" | "error"
   >("idle");
   const lastAutoSavedSnapshotRef = useRef("");
-  const avatarFileInputRef = useRef<HTMLInputElement>(null);
-  const avatarImageMenuRef = useRef<HTMLDivElement>(null);
-  const cropImageRef = useRef<HTMLImageElement>(null);
-  const cropStageRef = useRef<HTMLDivElement>(null);
-  const cropFrameRef = useRef<HTMLDivElement>(null);
 
   const previewCharacter = useMemo<Character>(
     () => ({
@@ -1489,14 +1444,6 @@ export function CharacterForm({
 
 
   useEffect(() => {
-    return () => {
-      if (pendingAvatar?.previewUrl) {
-        URL.revokeObjectURL(pendingAvatar.previewUrl);
-      }
-    };
-  }, [pendingAvatar?.previewUrl]);
-
-  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") {
         return;
@@ -1558,294 +1505,8 @@ export function CharacterForm({
     return () => window.removeEventListener("keydown", handleSaveShortcut);
   });
 
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (!isAvatarImageMenuOpen) {
-        return;
-      }
-
-      if (avatarImageMenuRef.current?.contains(event.target as Node)) {
-        return;
-      }
-
-      setIsAvatarImageMenuOpen(false);
-      setIsAvatarUrlOpen(false);
-      setAvatarUrlValue("");
-      setIsAvatarDragActive(false);
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [isAvatarImageMenuOpen]);
-
-  useEffect(() => {
-    function handlePaste(event: ClipboardEvent) {
-      if (!isAvatarImageMenuOpen) {
-        return;
-      }
-
-      const imageItem = Array.from(event.clipboardData?.items || []).find((item) =>
-        item.type.startsWith("image/"),
-      );
-
-      if (!imageItem) {
-        return;
-      }
-
-      const file = imageItem.getAsFile();
-
-      if (file) {
-        event.preventDefault();
-        void handleAvatarUpload(file);
-      }
-    }
-
-    document.addEventListener("paste", handlePaste);
-    return () => document.removeEventListener("paste", handlePaste);
-  }, [isAvatarImageMenuOpen]);
-
   function updateField(field: keyof CharacterDraft, value: string | string[]) {
     setFormData((current) => ({ ...current, [field]: value }));
-  }
-
-  function selectAvatarEmoji(emoji: string) {
-    updateField("avatarEmoji", emoji);
-    setRecentAvatars(saveRecentAvatar(emoji, loadRecentAvatars(avatarEmojiOptions)));
-    setIsAvatarPickerOpen(false);
-    setIsAvatarImageMenuOpen(false);
-  }
-
-  function closeAvatarOverlays() {
-    setIsAvatarImageMenuOpen(false);
-    setIsAvatarPickerOpen(false);
-    setIsAvatarUrlOpen(false);
-    setAvatarUrlValue("");
-    setIsAvatarDragActive(false);
-  }
-
-  function openAvatarCrop(file: File) {
-    closeAvatarOverlays();
-    setIsAssetLibraryOpen(false);
-    setCropDraft({
-      fileName: file.name || "avatar",
-      imageUrl: URL.createObjectURL(file),
-      offsetX: 0,
-      offsetY: 0,
-      zoom: 1,
-    });
-  }
-
-  async function handleAvatarUpload(file: File | undefined) {
-    if (!file) {
-      return;
-    }
-
-    const validationError = validateAvatarFile(file);
-
-    if (validationError) {
-      showToast(validationError);
-      if (avatarFileInputRef.current) {
-        avatarFileInputRef.current.value = "";
-      }
-      return;
-    }
-
-    openAvatarCrop(file);
-    setIsAvatarImageMenuOpen(false);
-
-    if (avatarFileInputRef.current) {
-      avatarFileInputRef.current.value = "";
-    }
-  }
-
-  function inferImageTypeFromUrl(value: string) {
-    const pathname = value.split("?")[0].toLowerCase();
-
-    if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) {
-      return "image/jpeg";
-    }
-    if (pathname.endsWith(".png")) {
-      return "image/png";
-    }
-    if (pathname.endsWith(".webp")) {
-      return "image/webp";
-    }
-
-    return "";
-  }
-
-  async function handleAvatarUrlSubmit(urlOverride?: string) {
-    const url = (urlOverride || avatarUrlValue).trim();
-
-    if (!url) {
-      showToast("请输入图片 URL");
-      return;
-    }
-
-    try {
-      const response = await fetch(url, { mode: "cors" });
-
-      if (!response.ok) {
-        throw new Error("图片读取失败");
-      }
-
-      const blob = await response.blob();
-      const mimeType = blob.type || inferImageTypeFromUrl(url);
-
-      if (!mimeType) {
-        throw new Error("无法识别图片格式");
-      }
-
-      const file = new File([blob.type ? blob : new Blob([blob], { type: mimeType })], "url-avatar", {
-        type: mimeType,
-      });
-      await handleAvatarUpload(file);
-      setIsAvatarUrlOpen(false);
-      setAvatarUrlValue("");
-      setIsAvatarImageMenuOpen(false);
-    } catch {
-      showToast("URL 图片读取失败，请下载后上传或尝试拖拽图片");
-    }
-  }
-
-  function adjustCropZoom(delta: number) {
-    setCropDraft((current) =>
-      clampCropDraft(
-        current
-          ? {
-              ...current,
-              zoom: Math.max(0.25, Math.min(8, current.zoom + delta)),
-            }
-          : current,
-      ),
-    );
-  }
-
-  async function handleAvatarDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setIsAvatarDragActive(false);
-
-    const file = Array.from(event.dataTransfer.files).find((item) =>
-      item.type.startsWith("image/"),
-    );
-
-    if (file) {
-      await handleAvatarUpload(file);
-      return;
-    }
-
-    const url =
-      event.dataTransfer.getData("text/uri-list") ||
-      event.dataTransfer.getData("text/plain");
-
-    if (url) {
-      await handleAvatarUrlSubmit(url);
-      return;
-    }
-
-    showToast("请拖入 JPG、PNG 或 WEBP 图片");
-  }
-
-  // The crop arithmetic lives in utils/cropGeometry; these three read the DOM,
-  // which is the only part that cannot be pure. An HTMLImageElement already
-  // satisfies the geometry module's size shape and a DOMRect its rect shape, so
-  // nothing is copied or converted on the way in.
-
-  function getCropMetrics(zoom = cropDraft?.zoom || 1) {
-    const image = cropImageRef.current;
-    const stage = cropStageRef.current;
-    const frame = cropFrameRef.current;
-
-    if (!image || !stage || !frame) {
-      return null;
-    }
-
-    return cropMetrics(image, stage.getBoundingClientRect(), frame.getBoundingClientRect(), zoom);
-  }
-
-  function clampCropDraft(nextDraft: typeof cropDraft) {
-    return clampDraftToMetrics(nextDraft, nextDraft ? getCropMetrics(nextDraft.zoom) : null);
-  }
-
-  function getVisibleCrop() {
-    const image = cropImageRef.current;
-    const stage = cropStageRef.current;
-    const frame = cropFrameRef.current;
-
-    if (!cropDraft || !image || !stage || !frame) {
-      return null;
-    }
-
-    return computeVisibleCrop(image, stage.getBoundingClientRect(), frame.getBoundingClientRect(), cropDraft);
-  }
-
-  async function confirmCropAvatar() {
-    const visibleCrop = getVisibleCrop();
-
-    if (!cropDraft || !cropImageRef.current || !visibleCrop) {
-      return;
-    }
-
-    try {
-      const blob = await compressImageToAvatarBlob(cropImageRef.current, {
-        ...cropDraft,
-        ...visibleCrop,
-      });
-      const previewUrl = URL.createObjectURL(blob);
-
-      clearPendingAvatar();
-      setPendingAvatar({ blob, name: cropDraft.fileName, previewUrl });
-      setFormData((current) => ({ ...current, avatarAssetId: "" }));
-      closeCropDialog();
-      showToast("头像已裁剪，保存角色后会写入本地素材库");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "头像保存失败");
-    }
-  }
-
-  function clearPendingAvatar() {
-    setPendingAvatar((current) => {
-      if (current?.previewUrl) {
-        URL.revokeObjectURL(current.previewUrl);
-      }
-
-      return null;
-    });
-  }
-
-  function closeCropDialog() {
-    if (cropDraft?.imageUrl) {
-      URL.revokeObjectURL(cropDraft.imageUrl);
-    }
-    setCropDraft(null);
-    setCropDrag(null);
-  }
-
-  async function openAssetLibrary() {
-    try {
-      closeAvatarOverlays();
-      setHelperSuggestion(null);
-      setPendingClear(null);
-      setAvatarAssets(await listAvatarAssets());
-      setIsAssetLibraryOpen(true);
-    } catch {
-      showToast("本地素材库读取失败");
-    }
-  }
-
-  function selectAvatarAsset(assetId: string) {
-    clearPendingAvatar();
-    setFormData((current) => ({ ...current, avatarAssetId: assetId }));
-    setIsAssetLibraryOpen(false);
-    setIsAvatarImageMenuOpen(false);
-    showToast("已应用本地素材头像");
-  }
-
-  function removeAvatarImage() {
-    clearPendingAvatar();
-    setFormData((current) => ({ ...current, avatarAssetId: "" }));
-    setIsAvatarImageMenuOpen(false);
-    showToast("已恢复 Emoji 头像");
   }
 
   // Folding a module is a work habit, so both the toggle and a jump write the
