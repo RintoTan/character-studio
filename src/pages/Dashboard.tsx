@@ -27,7 +27,8 @@ import {
   listAvatarAssets,
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
-import { createSnapshot, readSnapshot, writeSnapshot, type LocalSnapshot } from "../storage/backup";
+import { createSnapshot, readSnapshot, type LocalSnapshot } from "../storage/backup";
+import { clearLocalDataPreservingSnapshot } from "../storage/localDataReset";
 import { readWorkspaceDatasets } from "../storage/workspaceBackup";
 import {
   applyBulkPatch,
@@ -1004,13 +1005,9 @@ export function Dashboard({
   }
 
   async function clearLocalData() {
-    // Clearing wipes the entire list, so keep a recovery copy first.
-    const snapshot = createSnapshot("清空本地数据前自动备份", characters);
-    localStorage.clear();
-    if (snapshot) {
-      // localStorage.clear() removed the snapshot as well; write it back.
-      writeSnapshot(snapshot);
-    }
+    // Clearing wipes the entire list, so keep a recovery copy first. The app-level
+    // clear under the same name calls the same helper.
+    clearLocalDataPreservingSnapshot("清空本地数据前自动备份", characters);
     await clearAvatarAssets();
     onImport([]);
     setSelectedIds([]);

@@ -16,6 +16,7 @@ import {
   saveCharacters,
   upsertCharacter,
 } from "./storage/characterStorage";
+import { clearLocalDataPreservingSnapshot } from "./storage/localDataReset";
 import type { Page, ThemeMode } from "./types/app";
 import type { Character } from "./types/character";
 import {
@@ -440,7 +441,11 @@ function App() {
   }
 
   async function clearAppLocalData() {
-    localStorage.clear();
+    // This path wipes more than the dashboard's does (avatars, workspace data and
+    // every setting), but the character list is the part a snapshot can bring back,
+    // and it used to get none at all. Same helper as the dashboard, so the two
+    // entries cannot drift into different meanings again.
+    clearLocalDataPreservingSnapshot("清空本地数据前自动备份", characters);
     await clearAvatarAssets();
     saveCharacters([]);
     setCharacters([]);
