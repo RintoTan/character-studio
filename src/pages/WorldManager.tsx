@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import {
   createWorldEntry,
   deleteWorldEntry,
@@ -53,6 +54,17 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pendingDelete, setPendingDelete] = useState<WorldEntry | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Both dialogs take the keyboard: Escape cancels, Enter saves, focus moves in.
+  const draftDialogRef = useDialogKeyboard({
+    active: Boolean(draft),
+    onClose: () => setDraft(null),
+    onConfirm: submitDraft,
+  });
+  const deleteDialogRef = useDialogKeyboard({
+    active: Boolean(pendingDelete),
+    onClose: () => setPendingDelete(null),
+    onConfirm: confirmDelete,
+  });
 
   useEffect(() => {
     // A deleted character is removed from the entries it was linked to.
@@ -252,7 +264,13 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
 
       {draft && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog world-dialog" role="dialog" aria-modal="true" aria-label="世界观条目">
+          <div
+            className="confirm-dialog world-dialog"
+            ref={draftDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="世界观条目"
+          >
             <h2>{draft.id ? "编辑条目" : "新建条目"}</h2>
             <div className="field-row">
               <label className="field">
@@ -336,7 +354,13 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
 
       {pendingDelete && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-label="删除条目">
+          <div
+            className="confirm-dialog"
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="删除条目"
+          >
             <h2>删除条目</h2>
             <p>
               将删除「{pendingDelete.name}」。它的下级条目不会被删除，而是变为顶层。

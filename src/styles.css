@@ -468,13 +468,29 @@ button:disabled {
   gap: 20px;
 }
 
+/* The hero and its toolbar are one header: they stack, and the block sticks to the
+   top of the page for as long as the roster scrolls, so search / new / view stay
+   reachable without the title taking up the first screenful again. */
 .intro-panel {
+  position: sticky;
+  top: calc(var(--topbar-height, 46px) + 8px);
+  z-index: var(--z-dropdown);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
   border-color: var(--border-strong);
-  padding-block: 20px;
+  padding-block: 18px;
+  backdrop-filter: blur(10px);
+}
+
+.intro-panel[data-condensed="true"] .intro-copy,
+.intro-panel[data-condensed="true"] .dashboard-stats {
+  display: none;
+}
+
+.intro-panel[data-condensed="true"] {
+  padding-block: 10px;
 }
 
 .hero-actions {
@@ -489,20 +505,15 @@ button:disabled {
    live inside the hero, so on a long character list search / new / favourites
    were only reachable by scrolling back to the top. Pinned below the sticky
    topbar (46px tall) with a small gap. */
+/* Inside the hero block now, so it carries no card of its own: the panel is the
+   card, and a second border inside it would read as a bar that had been dropped in
+   rather than as part of the header. */
 .dashboard-action-bar {
-  position: sticky;
-  top: calc(var(--topbar-height, 46px) + 8px);
-  z-index: var(--z-dropdown);
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--developer-card-radius);
-  background: color-mix(in srgb, var(--surface) 93%, transparent);
-  box-shadow: var(--shadow);
-  padding: 10px 14px;
-  backdrop-filter: blur(10px);
+  min-width: 0;
 }
 
 .dashboard-hero-actions {
@@ -862,6 +873,44 @@ h2 {
 
 .export-menu button:hover {
   background: var(--surface-subtle);
+}
+
+/* The three workspaces: a taller row with a name and a line of explanation, so they
+   read as places to go rather than as three more settings of the same weight. */
+.export-menu-features {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.export-menu-feature {
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 6px 10px;
+}
+
+.export-menu-feature > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.export-menu-feature strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.export-menu-feature small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.export-menu-feature:hover {
+  box-shadow: inset 2px 0 0 var(--primary);
 }
 
 .export-backdrop {
@@ -1930,10 +1979,12 @@ h2 {
   background: var(--surface);
 }
 
+/* `--table-columns` comes from the component and follows the same flag the header
+   and the rows read; the fallback is the full eight-column layout. */
 .character-table-head,
 .character-table-row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr 0.6fr 1.2fr 0.7fr 1fr 0.7fr;
+  grid-template-columns: var(--table-columns, 1.4fr 1fr 1fr 0.6fr 1.2fr 0.8fr 1fr 0.7fr);
   align-items: center;
   gap: 10px;
   min-height: 54px;
@@ -2300,6 +2351,21 @@ h2 {
   border-color: color-mix(in srgb, #f59e0b 30%, var(--border));
   background: color-mix(in srgb, #f59e0b 10%, var(--surface));
   color: #a16207;
+}
+
+.status-badge.favorite {
+  border-color: color-mix(in srgb, #e11d48 26%, var(--border));
+  background: color-mix(in srgb, #e11d48 10%, var(--surface));
+  color: #be123c;
+}
+
+/* The status column can hold two badges (草稿/正式 plus 置顶 or 收藏), so it wraps
+   rather than narrowing the row it sits in. */
+.table-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
 }
 
 .tag-tone-0 { --tag-bg: #f3f4f6; --tag-border: #d1d5db; --tag-text: #374151; }

@@ -125,6 +125,7 @@ function App() {
   const [selectedAppAssetIds, setSelectedAppAssetIds] = useState<string[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
+  const [showQuickToBottom, setShowQuickToBottom] = useState(false);
 
   const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
   // A request to clear the dashboard filters, raised by the editor after a delete.
@@ -162,6 +163,12 @@ function App() {
       setShowQuickBackToTop(
         window.scrollY > 280 &&
           document.documentElement.scrollHeight > window.innerHeight + 120,
+      );
+      // The mirror of it, and conditional for the same reason: only while there is
+      // more than a screenful of page left below, so it never offers to scroll a
+      // distance the reader could cover with one flick.
+      setShowQuickToBottom(
+        document.documentElement.scrollHeight - window.innerHeight - window.scrollY > 280,
       );
     }
 
@@ -955,6 +962,19 @@ function App() {
             type="button"
           >
             <Icon name="arrowUp" />
+          </button>
+        )}
+        {showQuickToBottom && (
+          <button
+            aria-label="滑到底部"
+            className="floating-action"
+            data-tooltip="滑到底部"
+            onClick={() =>
+              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
+            }
+            type="button"
+          >
+            <Icon name="arrowDown" />
           </button>
         )}
         {isAppOverlayOpen && (

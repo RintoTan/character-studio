@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { CharacterPicker } from "../components/CharacterPicker";
 import {
   createTimelineEvent,
@@ -48,6 +49,17 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TimelineEvent | null>(null);
+  // Both dialogs take the keyboard: Escape cancels, Enter saves, focus moves in.
+  const draftDialogRef = useDialogKeyboard({
+    active: Boolean(draft),
+    onClose: () => setDraft(null),
+    onConfirm: submitDraft,
+  });
+  const deleteDialogRef = useDialogKeyboard({
+    active: Boolean(pendingDelete),
+    onClose: () => setPendingDelete(null),
+    onConfirm: confirmDelete,
+  });
 
   useEffect(() => {
     // Losing a character does not un-happen an event, but the link to it goes.
@@ -191,7 +203,13 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
 
       {draft && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog timeline-dialog" role="dialog" aria-modal="true" aria-label="时间线事件">
+          <div
+            className="confirm-dialog timeline-dialog"
+            ref={draftDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="时间线事件"
+          >
             <h2>{draft.id ? "编辑事件" : "新建事件"}</h2>
             <label className="field">
               <span>标题</span>
@@ -274,7 +292,13 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
 
       {pendingDelete && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-label="删除事件">
+          <div
+            className="confirm-dialog"
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="删除事件"
+          >
             <h2>删除事件</h2>
             <p>
               将删除「{pendingDelete.title}」（{formatTimelineDate(pendingDelete)}）。此操作不可撤销。

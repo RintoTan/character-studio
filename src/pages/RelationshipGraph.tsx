@@ -35,6 +35,7 @@ import {
 } from "../storage/graphPrefs";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { useTransientMessage } from "../hooks/useTransientMessage";
+import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 
 type RelationshipGraphProps = {
   characters: Character[];
@@ -637,6 +638,18 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     : undefined;
   const draftDuplicateReversed =
     draft && draftDuplicate ? draftDuplicate.fromId === draft.toId : false;
+  // Both dialogs take the keyboard: Escape cancels, Enter saves, focus moves in.
+  const draftDialogRef = useDialogKeyboard({
+    active: Boolean(draft),
+    onClose: () => setDraft(null),
+    onConfirm: submitDraft,
+    confirmDisabled: Boolean(draft) && (draft!.fromId === draft!.toId || Boolean(draftDuplicate)),
+  });
+  const deleteDialogRef = useDialogKeyboard({
+    active: Boolean(pendingDelete),
+    onClose: () => setPendingDelete(null),
+    onConfirm: confirmDelete,
+  });
 
   return (
     <section className="workspace-card relationship-page" id="workspace-relationships">
@@ -925,7 +938,13 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
 
       {draft && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-label="新建关系">
+          <div
+            className="confirm-dialog"
+            ref={draftDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="新建关系"
+          >
             <h2>新建关系</h2>
             {/* The three selects are labelled for the kind chosen: a symmetric
                 relationship has two equal sides, a 师承 edge has a direction. */}
@@ -999,7 +1018,13 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
 
       {pendingDelete && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true" aria-label="删除关系">
+          <div
+            className="confirm-dialog"
+            ref={deleteDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="删除关系"
+          >
             <h2>删除关系</h2>
             <p>
               将删除「{relationshipKindLabel(pendingDelete.kind)}」关系：{byId.get(pendingDelete.fromId)?.character.name}

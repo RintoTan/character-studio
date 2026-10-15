@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AiSettingsForm } from "../components/AiSettingsForm";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
@@ -161,6 +161,20 @@ export function Dashboard({
   onOpenWorld,
   editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
+  // The hero drops its copy once the roster starts scrolling: the title is worth
+  // reading once, the controls are worth having throughout, and the toolbar is what
+  // has to stay reachable on a hundred-character list.
+  const [isCondensedHeader, setIsCondensedHeader] = useState(false);
+
+  useEffect(() => {
+    function handleScroll() {
+      setIsCondensedHeader(window.scrollY > 72);
+    }
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   // Bulk editing: every field is opt-in, so an edit only touches what is switched on.
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
@@ -1452,7 +1466,20 @@ export function Dashboard({
           )}
           {prefs.viewMode === "list" ? (
           <div className="character-table-wrap">
-            <div className="character-table">
+            {/* The column template is driven by the same flag the header and the rows
+                read. With a fixed eight-track template, hiding the time column left the
+                last track reserved and empty, so the action column sat in the time
+                column's track and every row stopped short of the right edge. */}
+            <div
+              className="character-table"
+              style={
+                {
+                  "--table-columns": showUpdatedTime
+                    ? "1.4fr 1fr 1fr 0.6fr 1.2fr 0.8fr 1fr 0.7fr"
+                    : "1.4fr 1fr 1fr 0.6fr 1.2fr 0.8fr 0.7fr",
+                } as CSSProperties
+              }
+            >
               <div className="character-table-head">
                 <span>角色</span>
                 <span>职业</span>
@@ -1466,6 +1493,7 @@ export function Dashboard({
               {visibleCharacters.map((character) => {
                 const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
                 const isDraft = character.isDraft === true;
+                const isPinned = flags.pinnedIds.includes(character.id);
 
                 return (
                   <div
@@ -1516,7 +1544,17 @@ export function Dashboard({
                         </button>
                       ))}
                     </div>
-                    <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
+                    {/* The status column said 草稿 / 已收藏 / 正式, which left out the one
+                        state the card view does show — a pinned character read as plain
+                        正式 here. The badges are the card view's own, so the two views
+                        cannot describe the same character differently. */}
+                    <span className="table-status">
+                      <span className={`status-badge${isDraft ? " draft" : ""}`}>
+                        {isDraft ? "草稿" : "正式"}
+                      </span>
+                      {isPinned && <span className="status-badge pinned">置顶</span>}
+                      {isFavorite && <span className="status-badge favorite">收藏</span>}
+                    </span>
                     {showUpdatedTime && <span>{formatStamp(character.updatedAt)}</span>}
                     <div className="table-actions">
                       {isBulkMode ? (
@@ -2031,8 +2069,8 @@ export function Dashboard({
   function renderIntroPanel() {
     return (
       <>
-      <div className="panel intro-panel">
-        <div>
+      <div className="panel intro-panel" data-condensed={isCondensedHeader ? "true" : "false"}>
+        <div className="intro-copy">
           <p className="eyebrow">OC Workspace</p>
           <h1>{heroCopy.title}</h1>
           <p className="muted">
@@ -2062,8 +2100,10 @@ export function Dashboard({
             </button>
           </div>
         </div>
-      </div>
-      <div className="dashboard-action-bar">
+        {/* The toolbar belongs to the hero block rather than floating under it as a
+            pill of its own: together they are one sticky header, and the copy is
+            dropped from it once the roster starts scrolling. */}
+        <div className="dashboard-action-bar">
           <div className="hero-actions dashboard-hero-actions">
             <button
               aria-label="搜索"
@@ -2155,6 +2195,51 @@ export function Dashboard({
               </button>
               {isMoreMenuOpen && (
                 <div className="export-menu">
+                  {/* The three workspaces are the reason to open this menu at all, so
+                      they come first and they are buttons rather than rows: as three
+                      entries of exactly the weight of 「导出 CSV」 they read as more
+                      settings, which is why they went unnoticed. */}
+                  <div className="export-menu-features">
+                    {onOpenRelationships && (
+                      <button
+                        className="export-menu-feature"
+                        onClick={onOpenRelationships}
+                        type="button"
+                      >
+                        <Icon name="link" size={18} />
+                        <span>
+                          <strong>角色关系网</strong>
+                          <small>角色之间的连接</small>
+                        </span>
+                      </button>
+                    )}
+                    {onOpenTimeline && (
+                      <button
+                        className="export-menu-feature"
+                        onClick={onOpenTimeline}
+                        type="button"
+                      >
+                        <Icon name="clock" size={18} />
+                        <span>
+                          <strong>世界观时间线</strong>
+                          <small>发生过的节点</small>
+                        </span>
+                      </button>
+                    )}
+                    {onOpenWorld && (
+                      <button
+                        className="export-menu-feature"
+                        onClick={onOpenWorld}
+                        type="button"
+                      >
+                        <Icon name="globe" size={18} />
+                        <span>
+                          <strong>世界观管理</strong>
+                          <small>设定与派系</small>
+                        </span>
+                      </button>
+                    )}
+                  </div>
                   <button
                     className="menu-responsive-only"
                     onClick={() => setIsSearchPanelOpen((current) => !current)}
@@ -2220,36 +2305,18 @@ export function Dashboard({
                     <Icon name="upload" size={16} />
                     导入角色 JSON/ZIP/CSV
                   </button>
+                  {/* One entry per direction, not per format: the dialog behind this
+                      asks which format, so 「导出 CSV」 beside it was a second way to
+                      the same screen — and it was the only one that skipped the dialog. */}
                   <button onClick={() => openCharacterExportDialog("all")} type="button">
                     <Icon name="package" size={16} />
-                    导出角色 JSON/ZIP
-                  </button>
-                  {onOpenRelationships && (
-                    <button onClick={onOpenRelationships} type="button">
-                      <Icon name="link" size={16} />
-                      角色关系网
-                    </button>
-                  )}
-                  {onOpenTimeline && (
-                    <button onClick={onOpenTimeline} type="button">
-                      <Icon name="clock" size={16} />
-                      世界观时间线
-                    </button>
-                  )}
-                  {onOpenWorld && (
-                    <button onClick={onOpenWorld} type="button">
-                      <Icon name="globe" size={16} />
-                      世界观管理
-                    </button>
-                  )}
-                  <button onClick={handleExportCsv} type="button">
-                    <Icon name="download" size={16} />
-                    导出 CSV
+                    导出角色 JSON/ZIP/CSV
                   </button>
                 </div>
               )}
             </div>
           </div>
+        </div>
       </div>
       </>
     );
