@@ -5,6 +5,57 @@
 
 ---
 
+## 2026-10-15 —— 文档与项目治理（**未发布应用版本**）
+
+**这一条不是应用版本。** 本次没有修改任何应用源码、样式、配置、依赖或测试，因此：
+不新增版本号、不创建 Git 标签、不触发生产部署（应用产物与线上 `bccec24` 保持逐字节一致）。
+
+本次变更的性质是**项目审计、文档治理与交接**：建立可信的项目基线，把散落在 `README` / `Developer Handbook` /
+`CHANGELOG` / Git 历史里的项目现状收敛为一份可持续维护的文档体系，并为 UI 设计改版准备独立的交接材料。
+
+### 新增文档
+
+| 文件 | 职责 |
+| --- | --- |
+| `PROJECT_STATUS.md` | 当前状态、版本与提交、已完成 / 部分完成 / 未完成、**验证等级**、已知问题摘要、下一步重点 |
+| `docs/PROJECT_OVERVIEW.md` | 定位、用户流程、模块边界、核心功能与总体架构 |
+| `docs/ARCHITECTURE.md` | 技术栈、路由、组件关系、数据模型、存储键、数据流、导入导出、测试与部署、高风险区域 |
+| `docs/FEATURES.md` | 全部实际功能的清单：状态 / 实现证据 / 用户可见行为 / 数据依赖 / 已知问题 / 验证情况 / 后续任务 |
+| `docs/ROADMAP.md` | 近期 / 中期 / 长期计划，含优先级、前置条件、验收标准、状态与「已取消 / 已被替代」 |
+| `docs/KNOWN_ISSUES.md` | 已确认问题（KI-01…KI-11，含复现条件、证据、建议方向）+ 待验证的设计假设 + 历史坑清单 |
+| `docs/DEVELOPMENT_LOG.md` | 重建的开发阶段、重要决策、回退、口径更正与测量教训 |
+| `docs/UI_AUDIT.md` | UI 现状审计：页面与布局清单、设计令牌、组件模式、交互行为（含验证等级）、已确认 UI 问题与优先级 |
+| `docs/UI_DESIGN_HANDOFF.md` | 交给其他设计智能体的独立任务输入（必须保留的行为、不可突破的限制、交付要求、改版优先级） |
+| `docs/CHATGPT_REVIEW_PACKAGE.md` | 交给 ChatGPT 独立审查的项目资料入口（索引与摘要，不复制源码） |
+
+### 更新的文档
+
+| 文件 | 更新内容 |
+| --- | --- |
+| `README.md` | 发布状态由 v2.22.0 更正为 **v2.27.0**；补上三个世界观工作区、批量编辑、状态与验证；更正项目结构树与按需加载清单；快捷键补 `Ctrl/Cmd + S` 并写明 `/` 打开的是搜索框；新增「已知限制与未完成」与「项目文档」索引 |
+| `Developer Handbook.md` | 更正 5 处过期事实：Vercel 部署（项目已删除）、「当前项目缺少自动化测试」（现为 31 文件 / 360 用例）、Settings 列表中的两个已退休开关、浮动栏的已移除按钮、缺失的三个工作区页面；补上新文档索引 |
+| `CHANGELOG.md` | 本条目 |
+
+### 本次执行的检查（均为只读，未修改任何测试或配置）
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck`（`tsc -b`） | 通过，退出码 0 |
+| `npm test`（`vitest run`） | 通过：`Test Files 31 passed (31)`、`Tests 360 passed (360)` |
+| `npm run build` | 通过：`tsc -b && vite build`，325 modules |
+| 线上 `build-info.json` | `commit` `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（= 本地 HEAD）、`version` `2.27.0`、19 个文件 |
+| `git status --porcelain`（构建后） | 只有本次新增的 Markdown；`dist` 已被忽略，无 `*.tsbuildinfo` 残留 |
+
+### 本次发现的、已如实记录但**未修复**的问题
+
+未修改源码是本任务的硬性边界。发现的问题全部记录在 `docs/KNOWN_ISSUES.md`，其中：
+
+- **KI-04**：Developer Center 有 4 组永不渲染的分节分支（`ai` / `debug` / `data` / `update` 不在 `developerSections` 列表里）。
+- **KI-06**：`compactMobileEditor` 开关写 `data-compact-mobile-editor`，而 `styles.css` **0 处**读取它。
+- **KI-07**：`package.json` 的 `version`（`1.0.0`）与应用版本号（`2.27.0`）不同源。
+
+---
+
 ## 2.27.0 —— 关系网控件与交互返工；三处遮挡/挤压修复（Sprint 37.1）
 
 ### ① 关系网：滚轮不再把页面一起带走（截图：桌面端鼠标滚动全局联动）

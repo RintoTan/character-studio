@@ -21,7 +21,7 @@ Character Studio 的设计理念是“简洁、克制、可长期维护”。它
 
 第二，MVP 阶段最重要的是创作体验，而不是账号、权限、账单、同步冲突和云端资产管理。Local First 让项目能优先打磨 Dashboard、Editor、Preview、导入导出和素材管理。
 
-第三，本地版本更容易部署。当前项目可以通过 Vite 构建为静态站点，部署到 Vercel 等平台，不需要数据库、对象存储、API 服务或认证服务。
+第三，本地版本更容易部署。当前项目可以通过 Vite 构建为静态站点，部署到 GitHub Pages（**当前唯一的发布目标**；早期的 Vercel 项目已于 2026-10-14 删除，旧域名返回 `DEPLOYMENT_NOT_FOUND`），不需要数据库、对象存储、API 服务或认证服务。
 
 第四，本地数据结构一旦稳定，未来再接入云同步会更安全。现在的 localStorage、IndexedDB、manifest、backup-info、assetId 设计，都可以看作未来同步协议的前身。
 
@@ -646,20 +646,29 @@ Avatar Picker 管理角色头像选择。
 src/
   App.tsx
   main.tsx
-  styles.css
-  components/
-    AvatarDisplay.tsx
+  styles.css                 # 唯一样式表，含全部设计令牌
+  components/                # AvatarDisplay / Icon（42 个图标）/ CharacterPicker / AiSettingsForm
+  hooks/                     # useCharacterSave / useAvatarEditing / useEditorSections /
+                             # useIdentityEditing / useDashboardPrefs / useDashboardLayers /
+                             # useDialogKeyboard / useTransientMessage / useMediaQuery
   pages/
     Dashboard.tsx
     CharacterForm.tsx
-    CharacterPreview.tsx
-  storage/
-    characterStorage.ts
-  types/
-    character.ts
-  utils/
-    avatarAssets.ts
-    importExport.ts
+    CharacterPreview.tsx     # 双模式：browse / editing
+    DeveloperCenter.tsx
+    RelationshipGraph.tsx
+    Timeline.tsx
+    WorldManager.tsx
+    dashboard/layers.ts      # 仪表盘弹窗/浮层的一份声明
+    editor/sections.ts       # 六个分节的元数据与完成度规则
+  config/                    # developerSettings / themeTokens / version
+  content/defaultContent.ts
+  data/                      # avatarCategories / external-inspiration-library.txt（懒加载词库）
+  lib/developerStorage.ts
+  storage/                   # 每个数据集一个模块（见下方「storage/」）
+  types/                     # character / relationship / timeline / world / app
+  utils/                     # cropGeometry / bulkEdit / age / workspaceCsv / importExport /
+                             # lazyImport / avatarAssets / textFragments
 ```
 
 ### App.tsx
@@ -681,16 +690,17 @@ src/
 
 页面级模块。
 
-- `Dashboard.tsx`：角色管理中心。
-- `CharacterForm.tsx`：角色编辑工作台。
-- `CharacterPreview.tsx`：展示和导出。
+- `Dashboard.tsx`：角色管理中心（唯一静态打入首屏包的页面）。
+- `CharacterForm.tsx`：角色编辑工作台（懒加载）。
+- `CharacterPreview.tsx`：展示和导出；**同一页面两种用法，由打开它的入口决定**（`browse` / `editing`）。
+- `DeveloperCenter.tsx`：开发者中心（懒加载，**唯一有真实 URL 的路由**，`${BASE_URL}developer`）。
+- `RelationshipGraph.tsx`：角色关系网（懒加载）。
+- `Timeline.tsx`：世界观时间线（懒加载）。
+- `WorldManager.tsx`：世界观管理（懒加载）。
 
 未来新增页面应放在 `pages/`，例如：
 
-- `RelationshipGraph.tsx`
-- `Timeline.tsx`
-- `WorldManager.tsx`
-- `MapManager.tsx`
+- `MapManager.tsx`（地图与地点，尚未实现）
 
 ### components/
 
@@ -858,17 +868,20 @@ IndexedDB 保存头像素材。
 
 ### Settings
 
-Settings 当前主要通过 localStorage 分散保存，例如：
+Settings 的**单一真相源已经是统一对象**：`character-studio-developer-settings`（由 `src/config/developerSettings.ts` 拥有）。它按分组保存：
 
-- Theme。
-- 默认视图。
-- 移动端简洁模式。
-- 默认展开搜索。
-- 自动隐藏低优先级信息。
-- JPG 导出质量。
-- PDF Light Mode。
+- `theme` 相关的 Theme（`system` / `light` / `dark`）单独放在 `character-studio.theme`。
+- 默认视图（`dashboardDefaults.viewMode`）。
+- 移动端简洁模式（`editorDefaults.compactMobileEditor`；**注意：对应的 `data-compact-mobile-editor` 目前没有任何 CSS 读取它**，见 `docs/KNOWN_ISSUES.md` KI-06）。
+- JPG 导出质量、PDF Light Mode（`exportDefaults.*`）。
+- 品牌资源、内容中心文案、Prompt 中心、实验开关（`featureFlags.*`）。
 
-未来可以统一成一个 settings 对象，但不要在当前阶段为此大重构。
+**已退休 / 已删除的两个开关，不要再加回来**：
+
+- ~~默认展开搜索~~（`dashboardDefaults.openSearch`）—— 2.23.0 整条退休。「进入页面搜索栏关闭」是不变量，**故意不提供「进入页面时展开」的偏好**：有了它，这条不变量就必须输给它。
+- ~~自动隐藏低优先级信息~~（`hideLowPriority`）—— 2.22.0 删除。它与 `showUpdatedTime` 管同一件事，默认 `true` 把后者的显示静默关掉。
+
+历史扁平键（`character-studio.settings.*` 等）**只作一次性迁移输入，不再写入**；全库对它们的写入为 0 处。
 
 ### Theme
 
@@ -1518,13 +1531,17 @@ Preview 和导出逻辑非常脆弱。新增样式时要注意：
 
 常用定位：
 
+- 页面调度 / 全局弹窗 / 浮动栏：`src/App.tsx`
 - Dashboard：`src/pages/Dashboard.tsx`
 - Editor：`src/pages/CharacterForm.tsx`
-- Preview：`src/pages/CharacterPreview.tsx`
+- Preview：`src/pages/CharacterPreview.tsx`（双模式 `browse` / `editing`）
+- 关系网 / 时间线 / 世界观：`src/pages/RelationshipGraph.tsx`、`Timeline.tsx`、`WorldManager.tsx`
+- 开发者中心：`src/pages/DeveloperCenter.tsx`、`src/config/developerSettings.ts`
+- 状态域：`src/hooks/`（保存、头像、分节、身份字段、图层、偏好、消息、媒体查询、弹窗键盘）
 - Avatar：`src/components/AvatarDisplay.tsx`、`src/utils/avatarAssets.ts`
-- 导入导出：`src/utils/importExport.ts`
-- 类型：`src/types/character.ts`
-- 样式：`src/styles.css`
+- 导入导出：`src/utils/importExport.ts`、`src/utils/workspaceCsv.ts`
+- 类型：`src/types/`（`character` / `relationship` / `timeline` / `world` / `app`）
+- 样式：`src/styles.css`（唯一样式表，含全部设计令牌）
 
 ### 使用 apply_patch
 
@@ -1577,35 +1594,39 @@ npm run build
 - 基础测试。
 - 更细的错误提示。
 
+> **本节为历史计划，实际交付顺序与此不同，已于 2026-10-15 标注更正。**
+> 关系网、时间线、世界观管理三项已经在 **v1.1.0 / v1.2.0 / v2.0.0** 交付（不是 2.x / 3.x）；
+> 项目实际的版本节奏与阶段划分见 `docs/DEVELOPMENT_LOG.md`，当前的任务清单见 `docs/ROADMAP.md`。
+> 下列清单中**尚未实现**的部分：关系亲密度 / 冲突强度、时间轴筛选、魔法 / 科技规则、地图、世界树。
+
 ### 2.x：关系网与时间线
 
 角色创作天然需要关系和事件。
 
 可加入：
 
-- Character Relationship。
-- 关系图。
-- 关系类型。
-- 亲密度 / 冲突 / 阵营。
-- Timeline。
-- 角色事件。
-- 世界事件。
-- 时间轴筛选。
+- ~~Character Relationship~~（v1.1.0 已交付）。
+- ~~关系图~~（v1.1.0 已交付）。
+- ~~关系类型~~（v1.1.0 已交付，8 种）。
+- 亲密度 / 冲突 / 阵营（**未实现**）。
+- ~~Timeline~~（v1.2.0 已交付）。
+- ~~角色事件~~（v1.2.0 已交付）。
+- ~~世界事件~~（v1.2.0 已交付）。
+- 时间轴筛选（**未实现**）。
 
 ### 3.x：World Manager
 
 世界观管理是角色系统的自然扩展。
 
-可加入：
-
-- 世界观条目。
-- 地点。
-- 阵营。
-- 组织。
-- 物种。
-- 魔法 / 科技规则。
-- 地图。
-- 世界树。
+- ~~世界观条目~~（v2.0.0 已交付）。
+- ~~地点~~（v2.0.0 已交付，作为「分类」之一）。
+- 阵营（**未实现**，作为独立模块）。
+- 组织（**未实现**，作为独立模块）。
+- ~~物种~~（v2.0.0 已交付，作为「分类」之一）。
+- ~~物品 / 概念~~（v2.0.0 已交付）。
+- 魔法 / 科技规则（**未实现**）。
+- 地图（**未实现**）。
+- 世界树（**未实现**；当前是「分类 + 最多 6 层层级」的结构）。
 
 ### 4.x：多版本角色
 
@@ -1664,15 +1685,18 @@ AI 必须作为可选辅助，不应替代本地编辑能力。
 
 ### 测试
 
-当前项目缺少自动化测试。
+**这一节已经过期，已于 2026-10-15 更正。** 项目现在有自动化测试：**31 个文件 / 360 个用例**
+（vitest + happy-dom + fake-indexeddb，不需要浏览器），CI 在构建前执行 `typecheck` 与 `test`。
 
-建议优先补：
+已经覆盖：存储层往返与容错（角色 / 关系 / 时间线 / 世界观 / 备份 / 引用清理 / 恢复快照 /
+仪表盘偏好 / 图偏好 / 编辑器 UI 状态 / 最近头像 / AI 设置）、纯逻辑（批量编辑 / 裁剪几何 /
+年龄 / 文本片段 / CSV / 导入导出 / 颜色降级 / 懒加载恢复 / 图层声明 / 关系语义与布局 / 编辑器分节）。
 
-- importExport 工具测试。
-- avatarAssets 工具测试。
-- characterStorage 测试。
-- JSON / ZIP 导入导出回归测试。
-- Dashboard 排序筛选测试。
+**仍然没有覆盖**（优先补这些）：
+
+- `useDialogKeyboard` 的键盘行为（Escape / Enter / 焦点进入与恢复）—— 目前只有类型检查保证，见 `docs/KNOWN_ISSUES.md` KI-05。
+- Developer Center 的多数控件回调。
+- 渲染层（页面的实际布局与视觉回归）。
 
 ### 数据安全
 
@@ -1774,8 +1798,8 @@ Asset Library 可继续扩展：
 - `components/`：拆出可复用 UI。
 - `utils/importExport.ts`：增加新导出格式或迁移工具。
 - `utils/avatarAssets.ts`：扩展素材类型。
-- `pages/`：新增关系网、时间线、世界观页面。
-- `styles.css`：继续沉淀 Design System token。
+- `pages/`：新增领域页面（地图与地点 `MapManager.tsx` 尚未实现）。
+- `styles.css`：继续沉淀 Design System token（仍有约 140 处硬编码颜色字面量待收敛）。
 
 ### 长期维护原则
 
@@ -1788,3 +1812,22 @@ Asset Library 可继续扩展：
 - 不要为了短期方便破坏导入导出和旧数据兼容。
 
 如果未来开发者或 AI 只读一份文档，请先读这份 Developer Handbook。
+
+### 配套文档（2026-10-15 建立）
+
+这份 Handbook 是**长期手册**（历史、架构、规范、经验）。项目的**当前状态与任务管理**已独立成文档，两者互补：
+
+| 文档 | 什么时候读它 |
+| --- | --- |
+| `README.md` | 第一次接触项目：定位、版本、功能、运行方式、文档索引 |
+| `PROJECT_STATUS.md` | 想知道「现在到哪一步了、哪些验证过、哪些没有」 |
+| `docs/ARCHITECTURE.md` | 要改数据模型、存储、导入导出或部署 |
+| `docs/FEATURES.md` | 要查某个功能的状态、入口、数据依赖与验证情况 |
+| `docs/ROADMAP.md` | 要知道下一步做什么、优先级与验收标准 |
+| `docs/KNOWN_ISSUES.md` | 要修缺陷，或想确认某个观感是否已被证实 |
+| `docs/DEVELOPMENT_LOG.md` | 想查某个决定/回退的来由，以及踩过的坑 |
+| `docs/UI_AUDIT.md` | 要做 UI 改动或设计评审 |
+| `docs/UI_DESIGN_HANDOFF.md` | 要把 UI 工作交给其他设计智能体 |
+| `docs/CHATGPT_REVIEW_PACKAGE.md` | 要让外部审查者（如 ChatGPT）快速了解项目 |
+
+**口径原则**：数据与功能状态以源码为准；文档与实现冲突时以代码为当前实现证据，冲突记录见 `docs/DEVELOPMENT_LOG.md` 第 8 节。
