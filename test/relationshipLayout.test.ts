@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   canvasBox,
+  edgeBends,
+  edgeGeometry,
   labelZoomThreshold,
+  measureNameWidth,
   nodePositions,
+  widestNameHalfWidth,
   type GraphPoint,
 } from "../src/pages/RelationshipGraph";
+import { graphMetrics } from "../src/storage/graphPrefs";
 
 const NODE_RADIUS = 30;
 const NAME_DROP = 44;
@@ -98,5 +103,134 @@ describe("relationship graph layout", () => {
       viewBox: "160 240 320 180",
       width: 320,
     });
+  });
+});
+
+describe("name measurement", () => {
+  it("measures a CJK name at a full em per character", () => {
+    expect(measureNameWidth("沈青梧", 13)).toBeCloseTo(39, 5);
+    // Five full-width characters plus the narrow "·" separator between them.
+    expect(measureNameWidth("文森特·梵高", 13)).toBeCloseTo(5 * 13 + 0.55 * 13, 5);
+  });
+
+  it("measures Latin and digits at about half an em", () => {
+    expect(measureNameWidth("Al", 13)).toBeCloseTo(14.3, 5);
+    expect(measureNameWidth("", 13)).toBe(0);
+  });
+
+  it("takes the widest of the names it is given", () => {
+    expect(widestNameHalfWidth(["闻人雪", "顾寒声"], 13)).toBeCloseTo(19.5, 5);
+    expect(widestNameHalfWidth([], 13)).toBe(0);
+  });
+});
+
+describe("canvas box versus names", () => {
+  const half = widestNameHalfWidth(["文森特·梵高"], 13);
+
+  function dims(boxed: { viewBox: string }) {
+    const [x, y, w, h] = boxed.viewBox.split(" ").map(Number);
+
+    return { x, y, w, h };
+  }
+
+  it("grows sideways once a label is wider than the node it belongs to", () => {
+    const ring = nodePositions(6);
+    const plain = dims(canvasBox(ring));
+    const named = dims(canvasBox(ring, undefined, half));
+
+    expect(named.w).toBeGreaterThan(plain.w);
+    // Vertically it is the reserved name drop, not the label's width, that decides.
+    expect(named.h).toBe(plain.h);
+  });
+
+  it("never lets a centred name overhang the canvas, at any roster size", () => {
+    // This is the two-sided clipping: the outermost nodes of a wheel are exactly
+    // where a centred label overhangs the edge of the drawing.
+    for (const count of [2, 3, 6, 12, 30]) {
+      const positions = nodePositions(count);
+      const { x, w } = dims(canvasBox(positions, undefined, half));
+
+      for (const point of positions) {
+        expect(point.x - half).toBeGreaterThanOrEqual(x - 0.01);
+        expect(point.x + half).toBeLessThanOrEqual(x + w + 0.01);
+      }
+    }
+  });
+});
+
+describe("edge geometry", () => {
+  const from: GraphPoint = { x: 170, y: 320 };
+  const to: GraphPoint = { x: 470, y: 320 };
+  const metrics = graphMetrics({ avatarSize: "medium", nameSize: "medium" });
+  const rim = { start: from.x + metrics.radius + 2, end: to.x - metrics.radius - 3 };
+
+  it("runs rim to rim instead of centre to centre", () => {
+    expect(edgeGeometry(from, to, { metrics }).path).toBe(
+      `M ${rim.start} 320 L ${rim.end} 320`,
+    );
+  });
+
+  it("keeps the kind label clear of the stroke it names", () => {
+    const edge = edgeGeometry(from, to, { metrics });
+
+    // The chord runs along y = 320; the label is set well off it, so a 2px stroke
+    // cannot pass through the glyphs.
+    expect(Math.abs(edge.labelY - 320)).toBeGreaterThanOrEqual(10);
+    expect(edge.labelX).toBeCloseTo((rim.start + rim.end) / 2, 1);
+  });
+
+  it("draws no arrow head for a symmetric relationship", () => {
+    expect(edgeGeometry(from, to, { metrics, symmetrical: true }).arrow).toBeNull();
+    expect(edgeGeometry(from, to, { metrics }).arrow).not.toBeNull();
+  });
+
+  it("aims the arrow head at the target node", () => {
+    const tip = edgeGeometry(from, to, { metrics }).arrow?.split(" ")[0].split(",").map(Number);
+
+    expect(tip?.[0]).toBeCloseTo(rim.end, 1);
+    expect(tip?.[1]).toBeCloseTo(320, 1);
+  });
+
+  it("bulges a bent edge and reads its label from the outside", () => {
+    const straight = edgeGeometry(from, to, { metrics });
+    const bent = edgeGeometry(from, to, { metrics, bend: 1 });
+
+    expect(bent.path).toContain("Q");
+    // The left normal of a left-to-right edge points down in SVG, so a positive
+    // bend and its label both end up below the chord.
+    expect(bent.labelY).toBeGreaterThan(straight.labelY);
+  });
+
+  it("reserves no bend for a pair with a single edge", () => {
+    const bends = edgeBends([{ id: "ab", fromId: "a", toId: "b" }]);
+
+    expect(bends.get("ab")).toBe(0);
+  });
+
+  it("fans reciprocal edges onto opposite sides of the same chord", () => {
+    const bends = edgeBends([
+      { id: "ab", fromId: "a", toId: "b" },
+      { id: "ba", fromId: "b", toId: "a" },
+    ]);
+    const forward = edgeGeometry(from, to, { bend: bends.get("ab") as number, metrics });
+    const backward = edgeGeometry(to, from, { bend: bends.get("ba") as number, metrics });
+
+    expect(bends.get("ab")).not.toBe(0);
+    // Stored the other way round, each edge still bulges clear of the other: without
+    // mirroring the bend to the pair's own order both normals flip and the two edges
+    // land on the same side again, which is the overlap this exists to remove.
+    expect(Math.sign(forward.labelY - 320)).not.toBe(Math.sign(backward.labelY - 320));
+  });
+
+  it("fans three edges of one pair apart, leaving the middle one straight", () => {
+    const bends = edgeBends([
+      { id: "ab", fromId: "a", toId: "b" },
+      { id: "ba", fromId: "b", toId: "a" },
+      { id: "ab2", fromId: "a", toId: "b" },
+    ]);
+
+    // The middle edge of three stays on the chord; the outer two take opposite sides.
+    expect(bends.get("ba")).toBe(0);
+    expect(Math.sign(bends.get("ab") as number)).toBe(-Math.sign(bends.get("ab2") as number));
   });
 });

@@ -1,26 +1,21 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
-import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
-import { defaultDeveloperSettings, getContentCopy } from "../config/developerSettings";
+import { getContentCopy } from "../config/developerSettings";
 
+// This screen is what the workspace shows behind 「预览」, and it is read-only on
+// purpose. It used to carry its own export menu (JSON/PDF/JPG/PNG) and three copy
+// buttons, on top of the exports the dashboard already offers and the copy buttons
+// the editor already has — the same four formats and the same two fields, in the
+// third place. They are gone: one screen, one job. The data attributes that only
+// existed so the export capture could hide parts of this page went with them.
 type CharacterPreviewProps = {
   character: Character;
-  exportSettings?: {
-    jpgQuality: number;
-    pngScale: number;
-    pdfLightMode: boolean;
-    includeFooter: boolean;
-    includePromptSection: boolean;
-    includeTimeInfo: boolean;
-    footerText?: string;
-  };
   onBack: () => void;
   onEdit?: () => void;
   onToggleFavorite?: () => void;
-  exportSignal?: number;
 };
 
 const basicFields: Array<[keyof Character, string]> = [
@@ -35,40 +30,9 @@ function displayValue(value?: string) {
   return value?.trim() || "未填写";
 }
 
-function buildFullCharacterText(character: Character) {
-  return [
-    `角色名：${displayValue(character.name)}`,
-    `性别：${displayValue(character.gender)}`,
-    `年龄：${displayValue(character.age)}`,
-    `种族：${displayValue(character.species)}`,
-    `职业：${displayValue(character.occupation)}`,
-    `世界观：${displayValue(character.worldview)}`,
-    `性格标签：${
-      character.personalityTags?.length
-        ? character.personalityTags.join("、")
-        : "未填写"
-    }`,
-    `视觉风格：${displayValue(character.visualStyle)}`,
-    `外貌描述：${displayValue(character.appearanceDescription)}`,
-    `能力描述：${displayValue(character.abilityDescription)}`,
-    `背景故事：${displayValue(character.backstory)}`,
-    `喜好：${displayValue(character.likes)}`,
-    `厌恶：${displayValue(character.dislikes)}`,
-    `习惯：${displayValue(character.habits)}`,
-    `重要物品：${displayValue(character.importantItems)}`,
-    `人际关系关键词：${displayValue(character.relationshipKeywords)}`,
-    `中文人物关键词：${displayValue(character.characterKeywords)}`,
-    `英文 AI Prompt：${displayValue(character.imagePrompt)}`,
-  ].join("\n");
-}
-
-export function CharacterPreview({ character, exportSettings, onBack, onEdit, onToggleFavorite, exportSignal = 0 }: CharacterPreviewProps) {
+export function CharacterPreview({ character, onBack, onEdit, onToggleFavorite }: CharacterPreviewProps) {
   const [toastMessage, setToastMessage] = useState("");
-  const [loadingAction, setLoadingAction] = useState<string | null>(null);
-  const [isExportOpen, setIsExportOpen] = useState(false);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
-  const previewRef = useRef<HTMLDivElement>(null);
-  const exportSignalRef = useRef(exportSignal);
   const isFavorite = Boolean(character.favorite ?? character.isFavorite);
 
   function showToast(message: string) {
@@ -79,7 +43,6 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setIsExportOpen(false);
         closeAvatarPreview();
       }
     }
@@ -87,96 +50,6 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (exportSignal === exportSignalRef.current) {
-      return;
-    }
-
-    exportSignalRef.current = exportSignal;
-    setIsExportOpen(true);
-  }, [exportSignal]);
-
-  async function copyText(text: string, message: string) {
-    await navigator.clipboard.writeText(text || "未填写");
-    showToast(message);
-  }
-
-  async function handleExportJson() {
-    setLoadingAction("json");
-    try {
-      await exportCharacterJson(character);
-      showToast("当前角色 JSON 已导出");
-    } catch {
-      showToast("JSON 导出失败");
-    } finally {
-      setLoadingAction(null);
-    }
-  }
-
-  async function handleExportPdf() {
-    if (!previewRef.current) {
-      showToast("找不到可导出的角色展示区域");
-      return;
-    }
-
-    setLoadingAction("pdf");
-
-    try {
-      await exportPreviewPdf(previewRef.current, character.name || "未命名角色", {
-        forceLightMode: exportSettings?.pdfLightMode !== false,
-        scale: exportSettings?.pngScale || 2,
-      });
-      showToast("PDF 已导出");
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "PDF 导出失败，请稍后重试");
-    } finally {
-      setLoadingAction(null);
-    }
-  }
-
-  async function handleExportImage(format: "jpg" | "png") {
-    if (!previewRef.current) {
-      showToast("找不到可导出的角色展示区域");
-      return;
-    }
-
-    setLoadingAction(format);
-
-    try {
-      await exportPreviewImage(
-        previewRef.current,
-        character.name || "未命名角色",
-        format,
-        exportSettings?.jpgQuality || 0.9,
-        {
-          forceLightMode: exportSettings?.pdfLightMode !== false,
-          scale: exportSettings?.pngScale || 2,
-        },
-      );
-      showToast(`${format.toUpperCase()} 已导出`);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : `${format.toUpperCase()} 导出失败`);
-    } finally {
-      setLoadingAction(null);
-    }
-  }
-
-  function runExport(format: "json" | "pdf" | "jpg" | "png") {
-    setIsExportOpen(false);
-
-    if (format === "json") {
-      void handleExportJson();
-      return;
-    }
-
-    if (format === "pdf") {
-      void handleExportPdf();
-      return;
-    }
-
-    void handleExportImage(format);
-  }
 
   async function openAvatarPreview() {
     if (!character.avatarAssetId) {
@@ -210,52 +83,9 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
   return (
     <section className="preview-page">
       {toastMessage && <div className="toast">{toastMessage}</div>}
-      {isExportOpen && (
-        <div
-          className="modal-backdrop export-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setIsExportOpen(false);
-            }
-          }}
-          role="presentation"
-        >
-          <div className="export-dialog" role="dialog" aria-modal="true">
-            <div className="preview-card-title">
-              <div>
-                <p className="eyebrow">Export</p>
-                <h2>导出角色</h2>
-              </div>
-              <button
-                className="ghost-button"
-                onClick={() => setIsExportOpen(false)}
-                type="button"
-              >
-                关闭
-              </button>
-            </div>
-            <div className="export-dialog-list">
-              <button onClick={() => runExport("json")} type="button">
-                导出 JSON
-              </button>
-              <button onClick={() => runExport("pdf")} type="button">
-                {loadingAction === "pdf" ? "导出中..." : "导出 PDF"}
-              </button>
-              <button onClick={() => runExport("jpg")} type="button">
-                {loadingAction === "jpg" ? "导出中..." : "导出 JPG"}
-              </button>
-              <button onClick={() => runExport("png")} type="button">
-                {loadingAction === "png" ? "导出中..." : "导出 PNG"}
-              </button>
-            </div>
-            <p className="muted export-dialog-note">{getContentCopy("exportGuide")}</p>
-          </div>
-        </div>
-      )}
       {avatarPreviewUrl && (
         <div
           className="modal-backdrop avatar-preview-backdrop"
-          data-pdf-hidden="true"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) {
               closeAvatarPreview();
@@ -272,13 +102,12 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
         </div>
       )}
 
-      <div ref={previewRef} data-pdf-export-root="true">
+      <div>
         <div className="preview-hero">
           <div className="preview-identity">
             <button
               aria-label="查看头像大图"
               className="preview-avatar-button"
-              data-pdf-keep="true"
               onClick={() => void openAvatarPreview()}
               type="button"
             >
@@ -297,7 +126,7 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
             </p>
             </div>
           </div>
-          <div className="preview-actions" data-pdf-hidden="true">
+          <div className="preview-actions">
             {onEdit && (
               <button
                 aria-label="编辑"
@@ -329,33 +158,6 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
                 </span>
               </button>
             )}
-            <button
-              aria-label="复制完整设定"
-              className="ghost-button preview-action-button"
-              data-tooltip="复制"
-              onClick={() =>
-                copyText(buildFullCharacterText(character), "完整角色设定已复制")
-              }
-              type="button"
-            >
-              <span className="desktop-label">复制完整设定</span>
-              <span className="mobile-icon">
-                  <Icon name="copy" size={16} />
-                </span>
-            </button>
-            <button
-              aria-label="导出"
-              className="ghost-button preview-action-button"
-              data-tooltip="导出"
-              disabled={loadingAction !== null}
-              onClick={() => setIsExportOpen(true)}
-              type="button"
-            >
-              <span className="desktop-label">{loadingAction ? "导出中..." : "导出"}</span>
-              <span className="mobile-icon">
-                  {loadingAction ? "…" : <Icon name="download" size={16} />}
-                </span>
-            </button>
             <button
               aria-label="返回"
               className="ghost-button preview-action-button"
@@ -408,20 +210,14 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
             <p>{displayValue(character.visualStyle)}</p>
           </article>
 
-          <article
-            className="preview-card wide-card"
-            data-pdf-hidden={exportSettings?.includePromptSection === false ? "true" : undefined}
-          >
+          <article className="preview-card wide-card">
             <div className="preview-card-title">
               <h2>外貌描述</h2>
             </div>
             <p>{displayValue(character.appearanceDescription)}</p>
           </article>
 
-          <article
-            className="preview-card wide-card"
-            data-pdf-hidden={exportSettings?.includePromptSection === false ? "true" : undefined}
-          >
+          <article className="preview-card wide-card">
             <div className="preview-card-title">
               <h2>能力描述</h2>
             </div>
@@ -466,19 +262,6 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
           <article className="preview-card wide-card">
             <div className="preview-card-title">
               <h2>中文人物关键词</h2>
-              <button
-                className="ghost-button"
-                data-pdf-hidden="true"
-                onClick={() =>
-                  copyText(
-                    displayValue(character.characterKeywords),
-                    "中文人物关键词已复制",
-                  )
-                }
-                type="button"
-              >
-                复制
-              </button>
             </div>
             <p>{displayValue(character.characterKeywords)}</p>
           </article>
@@ -486,24 +269,11 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
           <article className="preview-card wide-card">
             <div className="preview-card-title">
               <h2>英文 AI Prompt</h2>
-              <button
-                className="ghost-button"
-                data-pdf-hidden="true"
-                onClick={() =>
-                  copyText(displayValue(character.imagePrompt), "英文 Prompt 已复制")
-                }
-                type="button"
-              >
-                复制
-              </button>
             </div>
             <p>{displayValue(character.imagePrompt)}</p>
           </article>
 
-          <article
-            className="preview-card wide-card preview-time-card"
-            data-pdf-hidden={exportSettings?.includeTimeInfo === false ? "true" : undefined}
-          >
+          <article className="preview-card wide-card preview-time-card">
             <div>
               <span>创建时间</span>
               <strong>{formatPreviewTime(character.createdAt)}</strong>
@@ -514,11 +284,8 @@ export function CharacterPreview({ character, exportSettings, onBack, onEdit, on
             </div>
           </article>
 
-          <div
-            className="preview-export-footer"
-            data-pdf-hidden={exportSettings?.includeFooter === true ? undefined : "true"}
-          >
-            Character Studio · {exportSettings?.footerText || defaultDeveloperSettings.content.footerText}
+          <div className="preview-export-footer">
+            Character Studio · {getContentCopy("footerText")}
           </div>
         </div>
       </div>

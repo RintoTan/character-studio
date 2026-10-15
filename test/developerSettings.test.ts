@@ -105,17 +105,23 @@ describe("developerSettings", () => {
   describe("legacy flat-key migration", () => {
     it("seeds the unified object from the legacy keys on first load", () => {
       // The removed mirror wrote these keys; they are now migration input only.
-      localStorage.setItem("character-studio.settings.open-search", "true");
       localStorage.setItem("character-studio.settings.compact-mobile", "false");
       localStorage.setItem("character-studio.prompt.complexity", "high");
       localStorage.setItem("character-studio.settings.jpg-quality", "0.5");
 
       const settings = loadDeveloperSettings();
 
-      expect(settings.dashboardDefaults.openSearch).toBe(true);
       expect(settings.editorDefaults.compactMobileEditor).toBe(false);
       expect(settings.promptCenter.complexity).toBe("high");
       expect(settings.exportDefaults.jpgQuality).toBe(0.5);
+    });
+
+    it("does not resurrect a retired key that is still in storage", () => {
+      // "open-search" is gone: the panel is folded on arrival whatever it says, so
+      // migrating it would only reinstate a setting nothing reads.
+      localStorage.setItem("character-studio.settings.open-search", "true");
+
+      expect(loadDeveloperSettings().dashboardDefaults).not.toHaveProperty("openSearch");
     });
 
     it("keeps untouched settings at their defaults", () => {
@@ -123,8 +129,8 @@ describe("developerSettings", () => {
 
       const settings = loadDeveloperSettings();
 
-      expect(settings.dashboardDefaults.openSearch).toBe(
-        defaultDeveloperSettings.dashboardDefaults.openSearch,
+      expect(settings.editorDefaults.compactMobileEditor).toBe(
+        defaultDeveloperSettings.editorDefaults.compactMobileEditor,
       );
       expect(settings.promptCenter.customLibraryText).toBe(
         defaultDeveloperSettings.promptCenter.customLibraryText,
@@ -133,10 +139,10 @@ describe("developerSettings", () => {
 
     it("ignores the legacy keys once the unified object has been stored", () => {
       // Otherwise a stale flat key would silently overwrite a deliberate change.
-      saveDeveloperSettings(mergeDeveloperSettings({ dashboardDefaults: { openSearch: false } }));
-      localStorage.setItem("character-studio.settings.open-search", "true");
+      saveDeveloperSettings(mergeDeveloperSettings({ editorDefaults: { compactMobileEditor: true } }));
+      localStorage.setItem("character-studio.settings.compact-mobile", "false");
 
-      expect(loadDeveloperSettings().dashboardDefaults.openSearch).toBe(false);
+      expect(loadDeveloperSettings().editorDefaults.compactMobileEditor).toBe(true);
     });
 
     it("ignores an unparsable legacy number rather than storing NaN", () => {

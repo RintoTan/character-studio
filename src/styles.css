@@ -4259,10 +4259,6 @@ input[type="number"]::-webkit-inner-spin-button {
   text-align: center;
 }
 
-.preview-export-footer[data-pdf-hidden="true"] {
-  display: none;
-}
-
 .pdf-safe {
   background: #f3f4f6 !important;
   color: #111827 !important;
@@ -6080,10 +6076,22 @@ kbd {
 
 /* Relationship graph (2.0). Colours come from the theme tokens so the developer
    centre's accent reaches it like the rest of the app. */
+/* The canvas takes the width of the card and a share of the viewport height.
+   It used to be pinned to the drawing's natural width — 500-odd units for a
+   three-character graph — which left a small wheel floating in a wide empty card.
+   With a height budget and the default `xMidYMid meet` the drawing is scaled up to
+   fill it instead, and nothing is ever cropped: `meet` fits, it does not clip. */
+/* Holds the drawing and nothing else: this is the element an export captures, so
+   anything else inside it would end up in the picture. The margins live here rather
+   than on the <svg> so they are not part of the captured rectangle. */
+.graph-canvas-frame {
+  width: 100%;
+  margin: 8px auto;
+}
+
 .relationship-canvas {
   width: 100%;
-  max-width: 640px;
-  margin: 8px auto;
+  height: clamp(320px, 58vh, 680px);
   display: block;
   /* A control now rather than a picture: drag to pan, wheel to zoom. Touch keeps
      its page scrolling — `touch-action: pan-y` — and uses the zoom buttons. */
@@ -6134,7 +6142,7 @@ kbd {
   stroke-width: 3;
 }
 
-.relationship-edge.active line {
+.relationship-edge.active path {
   stroke: var(--primary);
   stroke-width: 3;
 }
@@ -6145,27 +6153,36 @@ kbd {
   fill: currentColor;
 }
 
-.relationship-edge line {
+.relationship-edge path {
+  fill: none;
   stroke: var(--border-strong);
   stroke-width: 2;
   color: var(--muted);
 }
 
+/* The kind label sits beside its own stroke rather than on top of it, and the halo
+   is the second half of that: where the two still meet — a curve passing close to a
+   label of a neighbouring edge — the stroke is knocked out behind the glyphs
+   instead of running through them. */
 .relationship-edge text {
   fill: var(--muted);
   font-size: 13px;
   text-anchor: middle;
   dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-linejoin: round;
+  stroke-width: 3px;
 }
 
-.relationship-edge.kind-family line,
-.relationship-edge.kind-romance line {
+.relationship-edge.kind-family path,
+.relationship-edge.kind-romance path {
   stroke: var(--primary);
   color: var(--primary);
 }
 
-.relationship-edge.kind-enemy line,
-.relationship-edge.kind-rival line {
+.relationship-edge.kind-enemy path,
+.relationship-edge.kind-rival path {
   stroke: var(--danger);
   color: var(--danger);
   stroke-dasharray: 6 4;
@@ -6186,46 +6203,131 @@ kbd {
   stroke: var(--primary);
 }
 
+/* Sizes come from the graph's own preference (inline style); these carry only what
+   does not change with it. */
 .relationship-node-emoji {
   font-family: var(--emoji-font);
-  font-size: 26px;
   text-anchor: middle;
   dominant-baseline: middle;
 }
 
 .relationship-node-name {
   fill: var(--text);
-  font-size: 13px;
   text-anchor: middle;
 }
 
-.relationship-list {
-  list-style: none;
-  margin: 12px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-}
-
-.relationship-list li {
+/* Canvas options and output, under the drawing they act on. */
+.graph-canvas-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 4px;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--dialog-radius);
   background: var(--surface-subtle);
 }
 
-.relationship-list-text {
-  flex: 1 1 auto;
-  min-width: 0;
+.graph-size-groups,
+.graph-export {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
 }
 
-.relationship-note {
-  flex-basis: 100%;
+.graph-size-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+}
+
+.graph-size-label {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.graph-size-button {
+  min-width: 30px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: calc(var(--control-radius) - 2px);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.graph-size-button:hover {
+  background: var(--control-fill-hover);
+}
+
+.graph-size-button.selected {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.graph-message {
+  margin: 8px 0 0;
+  color: var(--muted);
   font-size: 0.86rem;
+}
+
+.relationship-table-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 16px 0 8px;
+}
+
+.relationship-table-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.relationship-table-wrap {
+  overflow-x: auto;
+}
+
+.relationship-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.relationship-table th,
+.relationship-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.relationship-table th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.82rem;
+}
+
+.relationship-table tbody tr:hover {
+  background: var(--surface-subtle);
+}
+
+/* The only column allowed to wrap: a note is prose, the rest are values. */
+.relationship-table-note {
+  max-width: 32ch;
+  white-space: normal;
+  color: var(--muted);
 }
 
 .relationship-kind-chip {
@@ -6661,9 +6763,12 @@ kbd {
     padding-bottom: 84px;
   }
 
-  .relationship-list li {
-    align-items: flex-start;
-    padding-right: 0;
+  /* The bar's two halves each take a full row: side by side, the export buttons
+     were pushed to the edge and the size pickers squeezed to their minimum. */
+  .graph-size-groups,
+  .graph-export {
+    flex: 1 1 100%;
+    justify-content: space-between;
   }
 }
 

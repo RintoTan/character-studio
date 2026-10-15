@@ -331,7 +331,6 @@ export function DeveloperCenter({
     ["JPG 导出质量", String(settings.exportDefaults.jpgQuality)],
     ["PDF Light Mode", settings.exportDefaults.pdfLightMode ? "开启" : "关闭"],
     ["小屏简洁模式", settings.editorDefaults.compactMobileEditor ? "开启" : "关闭"],
-    ["默认展开搜索", settings.dashboardDefaults.openSearch ? "开启" : "关闭"],
   ];
   const designComponents = [
     ["Primary Button", "主要按钮", <button className="primary-button" type="button">保存</button>, "用于主要确认与提交。"],

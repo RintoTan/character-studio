@@ -1298,7 +1298,7 @@ async function capturePreviewCanvas(element: HTMLElement, options: PreviewCaptur
   }
 }
 
-async function waitForImages(element: HTMLElement) {
+async function waitForImages(element: Element) {
   const images = Array.from(element.querySelectorAll("img"));
 
   await Promise.all(
@@ -1317,7 +1317,7 @@ async function waitForImages(element: HTMLElement) {
   );
 }
 
-async function waitForAvatarImages(element: HTMLElement) {
+async function waitForAvatarImages(element: Element) {
   const deadline = Date.now() + 1200;
 
   while (Date.now() < deadline) {
@@ -1333,30 +1333,11 @@ async function waitForAvatarImages(element: HTMLElement) {
   }
 }
 
-export async function exportPreviewImage(
-  element: HTMLElement,
-  characterName: string,
-  format: "png" | "jpg",
-  quality = 0.9,
-  options: PreviewCaptureOptions = {},
-) {
-  const canvas = await capturePreviewCanvas(element, options);
-
-  if (canvas.width <= 0 || canvas.height <= 0) {
-    throw new Error("图片截图生成失败");
-  }
-
-  const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, mimeType, format === "jpg" ? quality : undefined),
-  );
-
-  if (!blob) {
-    throw new Error("图片导出失败");
-  }
-
-  downloadBlob(blob, exportNodeName(characterName, format), mimeType);
-}
+// `exportPreviewImage` and `exportPreviewPdf` used to sit here: thin wrappers that
+// downloaded a capture of the character preview page. Their only caller was the
+// preview page's own export menu, which is gone, so the wrappers went with it. The
+// capture itself stays — the dashboard's batch snapshot export builds a detached
+// element and calls `capturePreviewCanvas` directly.
 
 async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptureOptions = {}) {
   const [{ jsPDF }, canvas] = await Promise.all([
@@ -1390,9 +1371,118 @@ async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptur
     return pdf.output("blob");
 }
 
-export async function exportPreviewPdf(element: HTMLElement, characterName: string, options: PreviewCaptureOptions = {}) {
-  const blob = await createPreviewPdfBlob(element, options);
-  downloadBlob(blob, exportNodeName(characterName, "pdf"), "application/pdf");
+/**
+ * Capture for screens that are not a character sheet — currently the relationship
+ * graph. It differs from the preview capture on purpose:
+ *
+ * - the background is passed in, because a graph is exported in the theme it is
+ *   drawn in rather than forced to light, and a JPEG has no alpha channel to fall
+ *   back on;
+ * - nothing is forced to light mode and no fields are hidden by tag name, so what
+ *   comes out is what the author is looking at;
+ * - `label` names the region in the error, which is the only part of the two
+ *   capture paths that has to differ word for word.
+ */
+type SurfaceCaptureOptions = {
+  background?: string;
+  label?: string;
+  scale?: number;
+};
+
+// Element rather than HTMLElement: the graph exports an <svg>, and everything this
+// path does — measuring, querying, and handing the node to html2canvas — works on
+// any element.
+async function captureSurfaceCanvas(element: Element, options: SurfaceCaptureOptions = {}) {
+  const label = options.label ?? "内容区域";
+
+  if (!element.isConnected) {
+    throw new Error(`找不到可导出的${label}`);
+  }
+
+  await waitForAvatarImages(element);
+  await waitForImages(element);
+  await new Promise((resolve) => window.requestAnimationFrame(resolve));
+
+  const bounds = element.getBoundingClientRect();
+
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    throw new Error(`${label}尺寸异常，无法导出`);
+  }
+
+  const { default: html2canvas } = await importWithRecovery(() => import("html2canvas"));
+
+  return await html2canvas(element as HTMLElement, {
+    backgroundColor: options.background ?? "#ffffff",
+    height: Math.ceil(bounds.height),
+    scale: options.scale || 2,
+    scrollX: 0,
+    scrollY: 0,
+    useCORS: true,
+    width: Math.ceil(bounds.width),
+    windowHeight: Math.max(document.documentElement.scrollHeight, window.innerHeight),
+    windowWidth: Math.max(document.documentElement.scrollWidth, window.innerWidth),
+  });
+}
+
+export async function exportSurfaceImage(
+  element: Element,
+  baseName: string,
+  format: "png" | "jpg",
+  quality = 0.92,
+  options: SurfaceCaptureOptions = {},
+) {
+  const canvas = await captureSurfaceCanvas(element, options);
+
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("图片截图生成失败");
+  }
+
+  const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, mimeType, format === "jpg" ? quality : undefined),
+  );
+
+  if (!blob) {
+    throw new Error("图片导出失败");
+  }
+
+  downloadBlob(blob, exportNodeName(baseName, format), mimeType);
+}
+
+export async function exportSurfacePdf(
+  element: Element,
+  baseName: string,
+  options: SurfaceCaptureOptions = {},
+) {
+  const [canvas, { jsPDF }] = await Promise.all([
+    captureSurfaceCanvas(element, options),
+    importWithRecovery(() => import("jspdf")),
+  ]);
+
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("PDF 截图生成失败");
+  }
+
+  const imageData = canvas.toDataURL("image/png");
+  const pdf = new jsPDF("p", "mm", "a4");
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imageWidth = pageWidth;
+  const imageHeight = (canvas.height * imageWidth) / canvas.width;
+  let position = 0;
+  let remainingHeight = imageHeight;
+
+  pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
+  remainingHeight -= pageHeight;
+
+  while (remainingHeight > 0) {
+    position -= pageHeight;
+    pdf.addPage();
+    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
+    remainingHeight -= pageHeight;
+  }
+
+  downloadBlob(pdf.output("blob"), exportNodeName(baseName, "pdf"), "application/pdf");
 }
 
 async function getAvatarSnapshotHtml(character: Character) {

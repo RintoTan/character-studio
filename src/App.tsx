@@ -125,7 +125,7 @@ function App() {
   const [selectedAppAssetIds, setSelectedAppAssetIds] = useState<string[]>([]);
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
-  const [previewExportSignal, setPreviewExportSignal] = useState(0);
+
   const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
   // A request to clear the dashboard filters, raised by the editor after a delete.
   // The counter makes each request distinct so a repeat still applies.
@@ -827,10 +827,6 @@ function App() {
           onDashboardSettingsChange={(patch) =>
             updateDeveloperSettings({
               ...developerSettings,
-              dashboardDefaults: {
-                ...developerSettings.dashboardDefaults,
-                ...(patch.dashboardDefaults ?? {}),
-              },
               editorDefaults: {
                 ...developerSettings.editorDefaults,
                 ...(patch.editorDefaults ?? {}),
@@ -883,14 +879,9 @@ function App() {
       {page === "preview" && selectedCharacter && (
         <CharacterPreview
           character={selectedCharacter}
-          exportSettings={{
-            ...developerSettings.exportDefaults,
-            footerText: developerSettings.content.footerText,
-          }}
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
           onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}
-          exportSignal={previewExportSignal}
         />
       )}
 
@@ -1032,21 +1023,14 @@ function App() {
             <Icon name="pencil" />
           </button>
         )}
-        {!isAppOverlayOpen && page === "preview" && selectedCharacter && (
-          <button
-            aria-label="导出"
-            className="floating-action"
-            data-tooltip="导出"
-            onClick={() => setPreviewExportSignal((current) => current + 1)}
-            type="button"
-          >
-            <Icon name="download" />
-          </button>
-        )}
+        {/* The floating export button went with the preview page's own export menu —
+            it existed only to open that dialog. Character exports live in the
+            dashboard, where the scope (one character, the selection, or everything)
+            and the format are chosen in one place. */}
       </div>
 
       {page !== "dashboard" && (
-        <footer className="dashboard-footer app-footer" data-pdf-hidden="true">
+        <footer className="dashboard-footer app-footer">
           <button onClick={() => {
             setIsFirstAboutOpen(false);
             setIsAppAboutOpen(true);

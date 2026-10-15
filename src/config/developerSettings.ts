@@ -59,7 +59,6 @@ export type DeveloperSettings = {
     showDraftCount: boolean;
     showFavoriteCount: boolean;
     showUpdatedTime: boolean;
-    openSearch: boolean;
   };
   exportDefaults: {
     jpgQuality: number;
@@ -144,7 +143,6 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     showDraftCount: true,
     showFavoriteCount: true,
     showUpdatedTime: true,
-    openSearch: false,
   },
   exportDefaults: {
     jpgQuality: 0.9,
@@ -259,10 +257,9 @@ function migrateLegacySettings(settings: DeveloperSettings): DeveloperSettings {
 
   return {
     ...settings,
-    dashboardDefaults: {
-      ...settings.dashboardDefaults,
-      openSearch: bool("character-studio.settings.open-search", settings.dashboardDefaults.openSearch),
-    },
+    // "character-studio.settings.open-search" used to seed dashboardDefaults. The
+    // panel is folded on arrival in every case now, so the key is retired rather
+    // than migrated: seeding it would restore a setting nothing reads.
     editorDefaults: {
       ...settings.editorDefaults,
       compactMobileEditor: bool("character-studio.settings.compact-mobile", settings.editorDefaults.compactMobileEditor),

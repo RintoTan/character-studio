@@ -77,7 +77,6 @@ type DashboardProps = {
     showDraftCount: boolean;
     showFavoriteCount: boolean;
     showUpdatedTime: boolean;
-    openSearch: boolean;
   };
   aiSettingsEnabled?: boolean;
   assetLibraryEnabled?: boolean;
@@ -105,7 +104,6 @@ type DashboardProps = {
   // the dashboard edits the single settings object instead of its own keys.
   editorSettings?: { compactMobileEditor: boolean };
   onDashboardSettingsChange?: (patch: {
-    dashboardDefaults?: Partial<{ openSearch: boolean }>;
     editorDefaults?: Partial<{ compactMobileEditor: boolean }>;
     exportDefaults?: Partial<{ jpgQuality: number; pdfLightMode: boolean }>;
   }) => void;
@@ -118,8 +116,9 @@ type DashboardProps = {
 type ThemeMode = "system" | "light" | "dark";
 type CharacterExportScope = "all" | "selected";
 type CharacterExportChoice = "json" | "zip" | "csv" | "pdf" | "jpg" | "png";
-// Past this many characters the dashboard shows its search and filter controls on
-// arrival instead of leaving them folded behind a toolbar icon.
+// Past this many characters the card view groups its cards by worldview, because a
+// single flat wall of them stops being scannable. A presentation threshold only:
+// the search panel is never opened on arrival, at any roster size.
 const LARGE_ROSTER = 30;
 
 export function Dashboard({
@@ -178,23 +177,14 @@ export function Dashboard({
     removeTags: "",
   });
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(
-    () => dashboardSettings?.openSearch ?? false,
-  );
-  // A long roster has to arrive with its controls showing: scrolling 112 cards
-  // looking for one character, with the search folded behind a toolbar icon, is the
-  // state the workspace was in. This cannot be the initial state alone — the
-  // dashboard mounts before the characters are loaded, so it reads an empty roster
-  // and never recomputes. It opens when the roster crosses the threshold instead,
-  // and re-arms if it drops back below.
-  const longRosterRef = useRef(false);
-  useEffect(() => {
-    const isLongRoster = characters.length > LARGE_ROSTER;
-    if (isLongRoster && !longRosterRef.current) {
-      setIsSearchPanelOpen(true);
-    }
-    longRosterRef.current = isLongRoster;
-  }, [characters.length]);
+  // Folded on arrival, in every case, and the dashboard is the only thing that
+  // opens it. Three separate writers used to force it open on entry — the setting
+  // below, that same setting's checkbox in Settings, and an effect that expanded
+  // the panel once the roster passed LARGE_ROSTER — so "closed" was not a state a
+  // reader could rely on. Folded is an invariant here, not a default: there is
+  // deliberately no way to store an "open on arrival" preference, because one
+  // would have to lose to this line.
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [openCardMenuId, setOpenCardMenuId] = useState<string | null>(null);
   const [exportTarget, setExportTarget] = useState<Character | null>(null);
@@ -3025,19 +3015,6 @@ export function Dashboard({
                     }
                   />
                   <span>简洁模式</span>
-                </label>
-                <label className="settings-check">
-                  <input
-                    type="checkbox"
-                    checked={dashboardSettings?.openSearch ?? false}
-                    onChange={(event) => {
-                      onDashboardSettingsChange?.({
-                        dashboardDefaults: { openSearch: event.target.checked },
-                      });
-                      setIsSearchPanelOpen(event.target.checked);
-                    }}
-                  />
-                  <span>默认展开搜索</span>
                 </label>
               </article>
               <article>
