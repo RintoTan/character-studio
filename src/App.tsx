@@ -112,6 +112,7 @@ function App() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
+  const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isFirstAboutOpen, setIsFirstAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
@@ -126,6 +127,18 @@ function App() {
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [showQuickToBottom, setShowQuickToBottom] = useState(false);
+  // What the switcher says you are in. The character workspace covers its own
+  // sub-screens: editing and previewing a character is still that workspace.
+  const workspaceLabel =
+    page === "relationships"
+      ? "角色关系网"
+      : page === "timeline"
+        ? "世界观时间线"
+        : page === "world"
+          ? "世界观管理"
+          : page === "developer"
+            ? "开发者中心"
+            : "角色创作工作台";
 
   const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
   // A request to clear the dashboard filters, raised by the editor after a delete.
@@ -145,6 +158,7 @@ function App() {
     null,
   );
   const themeMenuRef = useRef<HTMLDivElement>(null);
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const topbarRef = useRef<HTMLElement>(null);
   const appAssetImportInputRef = useRef<HTMLInputElement>(null);
   const isHistoryNavigationRef = useRef(false);
@@ -189,11 +203,16 @@ function App() {
       ) {
         setIsThemeMenuOpen(false);
       }
+
+      if (workspaceMenuRef.current && !workspaceMenuRef.current.contains(event.target as Node)) {
+        setIsWorkspaceMenuOpen(false);
+      }
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsThemeMenuOpen(false);
+        setIsWorkspaceMenuOpen(false);
         setIsAppAboutOpen(false);
         setIsFirstAboutOpen(false);
         setIsAppAssetLibraryOpen(false);
@@ -746,9 +765,96 @@ function App() {
           Character Studio
         </button>
         <div className="nav-actions">
-          <button className="ghost-button" onClick={() => goDashboard()}>
-            Dashboard
-          </button>
+          {/* Workspace navigation lives here, not in the home page's 「更多」 menu:
+              which module you are in is a property of the app, and it used to be
+              reachable only by opening a menu whose rows were indistinguishable from
+              「导出 CSV」. The entries are gated exactly as the dashboard's own were —
+              a nav that lists a page the build does not ship has a dead entry in it.
+              The theme control stays a separate thing beside it. */}
+          <div className="workspace-menu-wrap" ref={workspaceMenuRef}>
+            <button
+              aria-expanded={isWorkspaceMenuOpen}
+              aria-haspopup="menu"
+              className={isWorkspaceMenuOpen ? "workspace-switch active" : "workspace-switch"}
+              onClick={() => setIsWorkspaceMenuOpen((current) => !current)}
+              type="button"
+            >
+              <Icon name="grid" size={16} />
+              <span className="workspace-switch-label">{workspaceLabel}</span>
+              <Icon name="chevronDown" size={15} />
+            </button>
+            {isWorkspaceMenuOpen && (
+              <div className="workspace-menu" role="menu">
+                <p className="workspace-menu-group">工作区</p>
+                <button
+                  className={page === "dashboard" ? "selected" : ""}
+                  onClick={() => {
+                    setIsWorkspaceMenuOpen(false);
+                    goDashboard();
+                  }}
+                  role="menuitem"
+                  type="button"
+                >
+                  <Icon name="grid" size={16} />
+                  <span>
+                    <strong>角色创作工作台</strong>
+                    <small>角色列表、编辑与预览</small>
+                  </span>
+                </button>
+                {developerSettings.featureFlags.experimentalRelationshipGraph && (
+                  <button
+                    className={page === "relationships" ? "selected" : ""}
+                    onClick={() => {
+                      setIsWorkspaceMenuOpen(false);
+                      setPage("relationships");
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <Icon name="link" size={16} />
+                    <span>
+                      <strong>角色关系网</strong>
+                      <small>角色之间的连接</small>
+                    </span>
+                  </button>
+                )}
+                {developerSettings.featureFlags.experimentalTimeline && (
+                  <button
+                    className={page === "timeline" ? "selected" : ""}
+                    onClick={() => {
+                      setIsWorkspaceMenuOpen(false);
+                      setPage("timeline");
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <Icon name="clock" size={16} />
+                    <span>
+                      <strong>世界观时间线</strong>
+                      <small>发生过的节点</small>
+                    </span>
+                  </button>
+                )}
+                {developerSettings.featureFlags.worldManager && (
+                  <button
+                    className={page === "world" ? "selected" : ""}
+                    onClick={() => {
+                      setIsWorkspaceMenuOpen(false);
+                      setPage("world");
+                    }}
+                    role="menuitem"
+                    type="button"
+                  >
+                    <Icon name="globe" size={16} />
+                    <span>
+                      <strong>世界观管理</strong>
+                      <small>设定与派系</small>
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className="theme-menu-wrap" ref={themeMenuRef}>
             <div className="theme-combo" aria-label="主题控制">
               <button

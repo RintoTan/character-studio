@@ -24,6 +24,7 @@ export type IconName =
   | "download"
   | "eye"
   | "file"
+  | "filter"
   | "gear"
   | "globe"
   | "grid"
@@ -211,6 +212,13 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M3.4 3.6V9h5.4" />
       <path d="M3.4 12.6A8.7 8.7 0 0 0 18 17.4l2.6-2.4" />
       <path d="M20.6 20.4V15h-5.4" />
+    </>
+  ),
+  // A funnel: the toolbar's filter control had no icon of its own, and borrowing
+  // the list icon for it made two adjacent controls look like the same button.
+  filter: (
+    <>
+      <path d="M3.5 5h17l-6.4 7.4v5.9l-4.2 2.2v-8.1z" />
     </>
   ),
   search: (

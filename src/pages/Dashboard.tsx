@@ -161,20 +161,11 @@ export function Dashboard({
   onOpenWorld,
   editorSettings,}: DashboardProps) {
   const [pendingDelete, setPendingDelete] = useState<Character | null>(null);
-  // The hero drops its copy once the roster starts scrolling: the title is worth
-  // reading once, the controls are worth having throughout, and the toolbar is what
-  // has to stay reachable on a hundred-character list.
-  const [isCondensedHeader, setIsCondensedHeader] = useState(false);
-
-  useEffect(() => {
-    function handleScroll() {
-      setIsCondensedHeader(window.scrollY > 72);
-    }
-
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  // The search field is folded by default: a permanent input spent the whole toolbar
+  // width on a control used a few times a session. A keyword survives being closed —
+  // that is the rule the old panel had — so the icon stays marked as active instead
+  // of the list quietly staying filtered.
+  const [isSearchBoxOpen, setIsSearchBoxOpen] = useState(false);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   // Bulk editing: every field is opt-in, so an edit only touches what is switched on.
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
@@ -489,8 +480,7 @@ export function Dashboard({
 
       if (event.key === "/") {
         event.preventDefault();
-        setIsSearchPanelOpen(true);
-        window.setTimeout(() => searchInputRef.current?.focus(), 0);
+        setIsSearchBoxOpen(true);
       }
     }
 
@@ -524,9 +514,18 @@ export function Dashboard({
     }
 
     searchSignalRef.current = searchSignal;
-    setIsSearchPanelOpen(true);
-    window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    // The search field, not the filter panel: 「搜索」 arriving from another screen
+    // has to land on the field where the word can be typed.
+    setIsSearchBoxOpen(true);
   }, [searchSignal]);
+
+  // Focused once it is on the page: the field is created by the same render that
+  // opens it, so the handler that opens it has nothing to focus yet.
+  useEffect(() => {
+    if (isSearchBoxOpen) {
+      window.setTimeout(() => searchInputRef.current?.focus(), 0);
+    }
+  }, [isSearchBoxOpen]);
 
   useEffect(() => {
     saveDashboardFlags(flags);
@@ -1264,7 +1263,7 @@ export function Dashboard({
     return (
       <div className="panel">
 
-        <div className="section-title">
+        <div className="section-title list-section-title">
           <div>
             <h2>{listTitle}</h2>
             <span>
@@ -1277,6 +1276,7 @@ export function Dashboard({
               )}
             </span>
           </div>
+          {renderListToolbar()}
           {visibleCharacters.length > 0 && (
             <div className="bulk-actions">
               {isBulkMode ? (
@@ -1953,21 +1953,9 @@ export function Dashboard({
          >
            <Icon name={hasSearchOrFilter || prefs.favoriteMode !== "all" ? "close" : "chevronDown"} />
          </button>
+        {/* The search field moved into the toolbar: this is the filter panel, and it
+            holds only the fields that narrow the list. */}
         <div className="dashboard-controls">
-          <label>
-            搜索
-            <input
-              ref={searchInputRef}
-              value={prefs.searchTerm}
-              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  openFirstSearchResult();
-                }
-              }}
-              placeholder="搜索角色名、职业、世界观、性格标签"
-            />
-          </label>
           {(!isNarrowScreen || isAdvancedOpen) && (
             <>
           <label>
@@ -2069,7 +2057,7 @@ export function Dashboard({
   function renderIntroPanel() {
     return (
       <>
-      <div className="panel intro-panel" data-condensed={isCondensedHeader ? "true" : "false"}>
+      <div className="panel intro-panel">
         <div className="intro-copy">
           <p className="eyebrow">OC Workspace</p>
           <h1>{heroCopy.title}</h1>
@@ -2100,227 +2088,174 @@ export function Dashboard({
             </button>
           </div>
         </div>
-        {/* The toolbar belongs to the hero block rather than floating under it as a
-            pill of its own: together they are one sticky header, and the copy is
-            dropped from it once the roster starts scrolling. */}
-        <div className="dashboard-action-bar">
-          <div className="hero-actions dashboard-hero-actions">
-            <button
-              aria-label="搜索"
-              className={isSearchPanelOpen ? "hero-icon-button hero-collapsible active" : "hero-icon-button hero-collapsible"}
-              data-tooltip="搜索"
-              onClick={() => setIsSearchPanelOpen((current) => !current)}
-              type="button"
-            >
-              <Icon name="search" />
-              <span className="mobile-search-label">搜索</span>
-            </button>
-            <button
-              aria-label="新建角色"
-              className="hero-icon-button hero-collapsible primary-icon"
-              data-tooltip="新建角色"
-              onClick={onCreate}
-              type="button"
-            >
-              <Icon name="plus" />
-            </button>
-            <button
-              aria-label="草稿箱"
-              className={
-                prefs.favoriteMode === "drafts"
-                  ? "hero-icon-button hero-collapsible active"
-                  : "hero-icon-button hero-collapsible"
-              }
-              data-tooltip="草稿箱"
-              onClick={() =>
-                updatePrefs({
-                  favoriteMode:
-                    prefs.favoriteMode === "drafts" ? "all" : "drafts",
-                })
-              }
-              type="button"
-            >
-              <Icon name="file" />
-              {stats.draftCount > 0 && <span className="button-badge">{stats.draftCount}</span>}
-            </button>
-            <button
-              aria-label="收藏夹"
-              className={
-                prefs.favoriteMode === "favorites"
-                  ? "hero-icon-button hero-collapsible active"
-                  : "hero-icon-button hero-collapsible"
-              }
-              data-tooltip="收藏夹"
-              onClick={() =>
-                updatePrefs({
-                  favoriteMode:
-                    prefs.favoriteMode === "favorites" ? "all" : "favorites",
-                })
-              }
-              type="button"
-            >
-              <Icon name="heart" />
-            </button>
-            <button
-              aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
-              className="hero-icon-button"
-              data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
-              onClick={() =>
-                updatePrefs({
-                  viewMode: prefs.viewMode === "cards" ? "list" : "cards",
-                })
-              }
-              type="button"
-            >
-              <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
-            </button>
-            <div className="dashboard-actions" ref={moreMenuRef}>
-              <input
-                accept="application/json,.json,application/zip,.zip,.csv,text/csv"
-                className="hidden-input"
-                multiple
-                onChange={(event) => handleImportJson(event.target.files)}
-                ref={fileInputRef}
-                type="file"
-              />
-              <button
-                aria-label="更多操作"
-                className="hero-icon-button"
-                data-tooltip="更多操作"
-                disabled={loadingAction !== null}
-                onClick={() => setIsMoreMenuOpen((current) => !current)}
-                type="button"
-              >
-                {loadingAction ? "…" : <Icon name="more" />}
-              </button>
-              {isMoreMenuOpen && (
-                <div className="export-menu">
-                  {/* The three workspaces are the reason to open this menu at all, so
-                      they come first and they are buttons rather than rows: as three
-                      entries of exactly the weight of 「导出 CSV」 they read as more
-                      settings, which is why they went unnoticed. */}
-                  <div className="export-menu-features">
-                    {onOpenRelationships && (
-                      <button
-                        className="export-menu-feature"
-                        onClick={onOpenRelationships}
-                        type="button"
-                      >
-                        <Icon name="link" size={18} />
-                        <span>
-                          <strong>角色关系网</strong>
-                          <small>角色之间的连接</small>
-                        </span>
-                      </button>
-                    )}
-                    {onOpenTimeline && (
-                      <button
-                        className="export-menu-feature"
-                        onClick={onOpenTimeline}
-                        type="button"
-                      >
-                        <Icon name="clock" size={18} />
-                        <span>
-                          <strong>世界观时间线</strong>
-                          <small>发生过的节点</small>
-                        </span>
-                      </button>
-                    )}
-                    {onOpenWorld && (
-                      <button
-                        className="export-menu-feature"
-                        onClick={onOpenWorld}
-                        type="button"
-                      >
-                        <Icon name="globe" size={18} />
-                        <span>
-                          <strong>世界观管理</strong>
-                          <small>设定与派系</small>
-                        </span>
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    className="menu-responsive-only"
-                    onClick={() => setIsSearchPanelOpen((current) => !current)}
-                    type="button"
-                  >
-                    <Icon name="search" size={16} />
-                    搜索
-                  </button>
-                  <button
-                    className="menu-responsive-only"
-                    onClick={onCreate}
-                    type="button"
-                  >
-                    <Icon name="plus" size={16} />
-                    新建角色
-                  </button>
-                  <button
-                    className="menu-responsive-only"
-                    onClick={() =>
-                      updatePrefs({
-                        favoriteMode:
-                          prefs.favoriteMode === "drafts" ? "all" : "drafts",
-                      })
-                    }
-                    type="button"
-                  >
-                    <Icon name="file" size={16} />
-                    {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
-                  </button>
-                  <button
-                    className="menu-responsive-only"
-                    onClick={() =>
-                      updatePrefs({
-                        favoriteMode:
-                          prefs.favoriteMode === "favorites"
-                            ? "all"
-                            : "favorites",
-                      })
-                    }
-                    type="button"
-                  >
-                    <Icon name="heart" size={16} />
-                    {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
-                  </button>
-                  {/* Grouping is a display option, so it belongs with the other
-                      display options rather than as a button of its own beside the
-                      list title -- where it competed with the title and, on a phone,
-                      pushed the title into an ellipsis. */}
-                  {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
-                    <button
-                      aria-pressed={groupedCards}
-                      onClick={() => setIsGroupedCards((current) => !current)}
-                      type="button"
-                    >
-                      <Icon name="grid" size={16} />
-                      {isGroupedCards ? "取消按世界观分组" : "按世界观分组"}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    type="button"
-                  >
-                    <Icon name="upload" size={16} />
-                    导入角色 JSON/ZIP/CSV
-                  </button>
-                  {/* One entry per direction, not per format: the dialog behind this
-                      asks which format, so 「导出 CSV」 beside it was a second way to
-                      the same screen — and it was the only one that skipped the dialog. */}
-                  <button onClick={() => openCharacterExportDialog("all")} type="button">
-                    <Icon name="package" size={16} />
-                    导出角色 JSON/ZIP/CSV
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
       </>
     );
   }
+
+  /**
+   * The toolbar sits with the list it acts on, not under the hero.
+   *
+   * The hero used to carry it, which put two rows of controls in the first
+   * screenful and left the hero's lower half empty on a wide window; and it put
+   * 生成 the same controls a row away from the list they change. The order here is
+   * the order they are reached for: search, filter, view, create, everything else.
+   */
+  function renderListToolbar() {
+    return (
+      <div className="list-toolbar">
+        <div className={isSearchBoxOpen ? "list-search open" : "list-search"}>
+          {isSearchBoxOpen && (
+            <input
+              aria-label="搜索角色"
+              className="list-search-input"
+              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  openFirstSearchResult();
+                }
+
+                // Closing the field keeps the keyword: it is the rule the panel had
+                // before this — reopening shows the same search, and 清空筛选 in the
+                // filter panel is what clears it.
+                if (event.key === "Escape") {
+                  setIsSearchBoxOpen(false);
+                }
+              }}
+              placeholder="搜索角色名、职业、世界观、性格标签"
+              ref={searchInputRef}
+              type="search"
+              value={prefs.searchTerm}
+            />
+          )}
+          <button
+            aria-expanded={isSearchBoxOpen}
+            aria-label="搜索"
+            className={
+              prefs.searchTerm ? "hero-icon-button active" : "hero-icon-button"
+            }
+            data-tooltip="搜索"
+            onClick={() => setIsSearchBoxOpen((current) => !current)}
+            type="button"
+          >
+            <Icon name="search" />
+          </button>
+        </div>
+        <div className="list-filter-wrap">
+          <button
+            aria-expanded={isSearchPanelOpen}
+            aria-label="筛选"
+            className={
+              hasSearchOrFilter || prefs.favoriteMode !== "all"
+                ? "hero-icon-button active"
+                : "hero-icon-button"
+            }
+            data-tooltip="筛选"
+            onClick={() => setIsSearchPanelOpen((current) => !current)}
+            type="button"
+          >
+            <Icon name="filter" />
+          </button>
+          {renderSearchControls()}
+        </div>
+        <button
+          aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
+          className="hero-icon-button"
+          data-tooltip={prefs.viewMode === "cards" ? "列表视图" : "卡片视图"}
+          onClick={() =>
+            updatePrefs({
+              viewMode: prefs.viewMode === "cards" ? "list" : "cards",
+            })
+          }
+          type="button"
+        >
+          <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
+        </button>
+        <button className="primary-button list-create-button" onClick={onCreate} type="button">
+          <Icon name="plus" size={16} />
+          新建角色
+        </button>
+        <div className="dashboard-actions" ref={moreMenuRef}>
+          <input
+            accept="application/json,.json,application/zip,.zip,.csv,text/csv"
+            className="hidden-input"
+            multiple
+            onChange={(event) => handleImportJson(event.target.files)}
+            ref={fileInputRef}
+            type="file"
+          />
+          <button
+            aria-expanded={isMoreMenuOpen}
+            aria-label="更多操作"
+            className="hero-icon-button"
+            data-tooltip="更多操作"
+            disabled={loadingAction !== null}
+            onClick={() => setIsMoreMenuOpen((current) => !current)}
+            type="button"
+          >
+            {loadingAction ? "…" : <Icon name="more" />}
+          </button>
+          {isMoreMenuOpen && (
+            <div className="export-menu">
+              {/* Grouped by what the row does: the workspaces that used to open this
+                  menu now live in the global navigation, so what is left is the
+                  character list's own business. The grouping control is a switch with
+                  its state spelled out — as a plain row it read as navigation. */}
+              <p className="export-menu-group">角色管理</p>
+              <button
+                aria-pressed={prefs.favoriteMode === "drafts"}
+                onClick={() =>
+                  updatePrefs({
+                    favoriteMode: prefs.favoriteMode === "drafts" ? "all" : "drafts",
+                  })
+                }
+                type="button"
+              >
+                <Icon name="file" size={16} />
+                {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
+                <span className="export-menu-count">{stats.draftCount}</span>
+              </button>
+              <button
+                aria-pressed={prefs.favoriteMode === "favorites"}
+                onClick={() =>
+                  updatePrefs({
+                    favoriteMode: prefs.favoriteMode === "favorites" ? "all" : "favorites",
+                  })
+                }
+                type="button"
+              >
+                <Icon name="heart" size={16} />
+                {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
+                <span className="export-menu-count">{stats.favoriteCount}</span>
+              </button>
+              <p className="export-menu-group">显示与布局</p>
+              {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
+                <button
+                  aria-pressed={groupedCards}
+                  onClick={() => setIsGroupedCards((current) => !current)}
+                  type="button"
+                >
+                  <Icon name="grid" size={16} />
+                  按世界观分组
+                  <span className="export-menu-state">{isGroupedCards ? "已开启" : "已关闭"}</span>
+                </button>
+              )}
+              <p className="export-menu-group">数据管理</p>
+              <button onClick={() => fileInputRef.current?.click()} type="button">
+                <Icon name="upload" size={16} />
+                导入角色 JSON/ZIP/CSV
+              </button>
+              <button onClick={() => openCharacterExportDialog("all")} type="button">
+                <Icon name="package" size={16} />
+                导出角色 JSON/ZIP/CSV
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
 
 
   function renderAssetLibraryDialog() {
@@ -3361,8 +3296,6 @@ export function Dashboard({
       )}
 
         {renderIntroPanel()}
-
-        {renderSearchControls()}
 
         {renderCharacterListPanel()}
       <footer className="dashboard-footer">

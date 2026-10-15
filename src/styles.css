@@ -405,6 +405,104 @@ button:disabled {
   font-size: 12px;
 }
 
+/* Workspace navigation: the module you are in, and the others you can switch to.
+   Same dropdown language as the theme menu beside it — these are both properties of
+   the app, not of the character list. */
+.workspace-menu-wrap {
+  position: relative;
+}
+
+.workspace-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height-icon);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--control-fill);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 650;
+  padding: 0 10px 0 12px;
+}
+
+.workspace-switch:hover,
+.workspace-switch.active {
+  background: var(--control-fill-hover);
+}
+
+.workspace-switch-label {
+  max-width: 30vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-inline-5);
+  display: grid;
+  gap: 2px;
+  width: min(268px, calc(100vw - 24px));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 6px;
+  animation: menu-in 120ms ease-out;
+}
+
+.workspace-menu-group {
+  margin: 0;
+  padding: 6px 10px 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.workspace-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.workspace-menu button > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workspace-menu button strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workspace-menu button small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.workspace-menu button:hover {
+  background: var(--control-fill-hover);
+}
+
+.workspace-menu button.selected {
+  background: var(--control-fill);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
 .theme-menu {
   position: absolute;
   top: calc(100% + 8px);
@@ -468,66 +566,123 @@ button:disabled {
   gap: 20px;
 }
 
-/* The hero and its toolbar are one header: they stack, and the block sticks to the
-   top of the page for as long as the roster scrolls, so search / new / view stay
-   reachable without the title taking up the first screenful again. */
+/* The hero says where you are and how much you have; it no longer carries the
+   controls. Those moved to the list toolbar, which is what had made this card two
+   rows deep and left its lower half empty on a wide window. */
 .intro-panel {
-  position: sticky;
-  top: calc(var(--topbar-height, 46px) + 8px);
-  z-index: var(--z-dropdown);
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 6px;
   border-color: var(--border-strong);
-  padding-block: 18px;
-  backdrop-filter: blur(10px);
+  padding-block: 20px 18px;
 }
 
-.intro-panel[data-condensed="true"] .intro-copy,
-.intro-panel[data-condensed="true"] .dashboard-stats {
-  display: none;
+.intro-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
-.intro-panel[data-condensed="true"] {
-  padding-block: 10px;
+.intro-panel h1 {
+  margin: 0;
 }
 
-.hero-actions {
+.intro-panel .dashboard-stats {
+  margin-top: 6px;
+}
+
+/* The list's own controls, next to the list's own title.
+   They used to sit in a bar under the hero, which made the first screenful two rows
+   of interface before any character showed up, and put the search field two rows
+   away from the thing it searches. This row follows the scroll instead, so on a long
+   roster the controls stay reachable — that is the behaviour the old bar had, moved
+   to where the controls now live. */
+.list-toolbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: nowrap;
-  gap: 10px;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
 }
 
-/* Follows the scroll, like the editor's action bar. The action cluster used to
-   live inside the hero, so on a long character list search / new / favourites
-   were only reachable by scrolling back to the top. Pinned below the sticky
-   topbar (46px tall) with a small gap. */
-/* Inside the hero block now, so it carries no card of its own: the panel is the
-   card, and a second border inside it would read as a bar that had been dropped in
-   rather than as part of the header. */
-.dashboard-action-bar {
+.list-search {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Grows from the icon's own width, so opening it moves the row's other controls
+   rather than pushing the list down. */
+.list-search-input {
+  width: clamp(160px, 34vw, 280px);
+  min-height: var(--control-height-icon);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13.5px;
+  padding: 0 10px;
+}
+
+.list-search-input:focus-visible {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.list-filter-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+/* The filter panel is a popover anchored to its button: as an in-flow panel it
+   pushed the whole list down every time it opened. Its fields, its state and its
+   clear behaviour are the ones it already had. */
+.list-filter-wrap .dashboard-controls-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--z-inline-5);
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: var(--developer-card-radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 12px;
+}
+
+.list-create-button {
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.list-header-actions {
+  display: flex;
+  align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.dashboard-hero-actions {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.dashboard-hero-actions .dashboard-actions {
-  width: auto;
-  flex-wrap: nowrap;
-}
-
-.dashboard-hero-actions button {
-  flex: 0 0 auto;
+/* Follows the scroll, pinned under the topbar. Only the character list's header: the
+   other panels that share `.section-title` are not controls for a long scroll. */
+.section-title.list-section-title {
+  position: sticky;
+  top: calc(var(--topbar-height, 46px) + 8px);
+  z-index: var(--z-dropdown);
+  align-items: center;
+  padding: 10px 12px;
+  margin: -10px -12px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--developer-card-radius);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
 }
 
 /* Icon buttons, back in the original filled language: a soft block of surface
@@ -875,42 +1030,41 @@ h2 {
   background: var(--surface-subtle);
 }
 
-/* The three workspaces: a taller row with a name and a line of explanation, so they
-   read as places to go rather than as three more settings of the same weight. */
-.export-menu-features {
-  display: grid;
-  gap: 2px;
-  margin-bottom: 4px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.export-menu-feature {
-  align-items: center;
-  gap: 10px;
-  min-height: 46px;
-  padding: 6px 10px;
-}
-
-.export-menu-feature > span {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.export-menu-feature strong {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.export-menu-feature small {
+/* The menu is grouped by what a row does — 角色管理 / 显示与布局 / 数据管理 — and the
+   workspace entries that used to head it now live in the global navigation. */
+.export-menu-group {
+  margin: 0;
+  padding: 8px 10px 4px;
   color: var(--muted);
   font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
-.export-menu-feature:hover {
-  box-shadow: inset 2px 0 0 var(--primary);
+.export-menu-group:first-child {
+  padding-top: 4px;
+}
+
+/* A count or an on/off state at the end of a row, so a toggle cannot be mistaken
+   for a destination: 「按世界观分组」 with no state was read as navigation. */
+.export-menu-count,
+.export-menu-state {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.export-menu-state {
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.export-menu button[aria-pressed="true"] .export-menu-state {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--primary);
 }
 
 .export-backdrop {
@@ -2572,10 +2726,6 @@ h2 {
 }
 
 .mobile-icon {
-  display: none;
-}
-
-.mobile-search-label {
   display: none;
 }
 
@@ -5091,12 +5241,11 @@ kbd {
 }
 
 @media (max-width: 860px) {
-  .hero-collapsible {
-    display: none;
-  }
-
-  .menu-responsive-only {
-    display: block;
+  /* The toolbar wraps instead of shedding entries: search, filter, view, create and
+     more are all still there on a phone, where three of them used to disappear into
+     the 「更多」 menu at this width. */
+  .list-toolbar {
+    justify-content: flex-start;
   }
 }
 
@@ -5672,26 +5821,30 @@ kbd {
     padding: 18px;
   }
 
-  .dashboard-hero-actions,
-  .dashboard-hero-actions .dashboard-actions {
+  /* Title and controls on separate rows, and the open search field takes the row it
+     needs: squeezed beside five icons it was about four characters wide. */
+  .section-title.list-section-title {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .list-toolbar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .list-search.open {
+    flex: 1 1 100%;
+  }
+
+  .list-search-input {
+    flex: 1 1 auto;
     width: auto;
-    align-self: flex-end;
   }
 
-  .dashboard-hero-actions button {
-    flex: 0 0 auto;
-  }
-
-  .hero-icon-button .mobile-search-label {
-    display: inline;
-    margin-left: 4px;
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  .hero-icon-button.hero-collapsible:first-child {
-    width: auto;
-    padding: 0 10px;
+  .list-create-button {
+    flex: 1 1 auto;
+    justify-content: center;
   }
 
   .export-menu,
