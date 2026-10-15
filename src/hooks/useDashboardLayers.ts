@@ -8,10 +8,12 @@ import {
 /**
  * Ties the layer declarations to the state they describe.
  *
+ * Escape dismisses every declared layer -- the reasons are in pages/dashboard/layers.ts.
+ *
  * `dismiss` reads the latest declarations through a ref rather than closing over
- * them, so the document-level keydown listener can keep its empty dependency array
- * — re-registering it on every state change would add and remove a listener for
- * each keystroke's worth of typing in the search box.
+ * them, so the document-level keydown listener can keep its empty dependency array.
+ * Re-registering it on every state change would add and remove a listener for each
+ * keystroke's worth of typing in the search box.
  */
 export function useDashboardLayers(layers: readonly DashboardLayerActions[]) {
   const latest = useRef(layers);
@@ -19,9 +21,7 @@ export function useDashboardLayers(layers: readonly DashboardLayerActions[]) {
 
   const dismiss = useCallback(() => {
     for (const layer of latest.current) {
-      if (layer.escape) {
-        layer.close();
-      }
+      layer.close();
     }
   }, []);
 

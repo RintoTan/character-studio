@@ -242,52 +242,50 @@ export function Dashboard({
 
   // Every layer the dashboard can have on top of it, declared once.
   //
-  // `escape` and `blocksMenus` are both stated on every entry rather than
-  // defaulted, because the entries where the two disagree are the interesting
-  // ones. The order is the order the Escape handler used to run them.
+  // Escape dismisses all of them; only `blocksMenus` differs, so that is what each
+  // entry states. The order is the order the Escape handler used to run them.
   //
-  // Four entries are called out below. Two of them (`pendingDelete`,
-  // `isBulkDeleteOpen`) are the drift this replaced: they count as dialogs but
-  // Escape leaves them alone, while the two destructive confirmations that are
-  // arguably worse (`isClearDataOpen`, `pendingAssetDelete`) are dismissed by
-  // Escape. The other two (`isBulkEditOpen`, `pendingRestore`) were in neither of
-  // the old lists at all. All four keep their current behaviour; what changed is
-  // that the behaviour is now written down.
+  // The four entries marked below are where the three old hand-written lists
+  // disagreed. All four now take the same rules as everything else:
+  //
+  //   - `character-delete` and `bulk-delete` used to refuse Escape while the two
+  //     destructive confirmations that are worse (`clear-data`, `asset-delete`)
+  //     accepted it. Escape on a confirmation means cancel, so refusing it never
+  //     protected anything -- it only removed the keyboard way out.
+  //   - `bulk-edit` and `restore-snapshot` were in none of the old lists, so Escape
+  //     did not close them and the background menus did not close behind them
+  //     either. Both are modals and now say so.
   const layers = useDashboardLayers([
-    // Dropdowns and panel toggles: Escape closes them, they do not suppress
-    // anything (there is nothing underneath them to suppress).
-    { id: "more-menu", open: isMoreMenuOpen, escape: true, blocksMenus: false, close: () => setIsMoreMenuOpen(false) },
-    { id: "card-menu", open: openCardMenuId !== null, escape: true, blocksMenus: false, close: () => setOpenCardMenuId(null) },
-    { id: "search-panel", open: isSearchPanelOpen, escape: true, blocksMenus: false, close: () => setIsSearchPanelOpen(false) },
+    // Dropdowns and panel toggles: nothing underneath them to suppress.
+    { id: "more-menu", open: isMoreMenuOpen, blocksMenus: false, close: () => setIsMoreMenuOpen(false) },
+    { id: "card-menu", open: openCardMenuId !== null, blocksMenus: false, close: () => setOpenCardMenuId(null) },
+    { id: "search-panel", open: isSearchPanelOpen, blocksMenus: false, close: () => setIsSearchPanelOpen(false) },
 
     // Modals.
-    { id: "export-target", open: Boolean(exportTarget), escape: true, blocksMenus: true, close: () => setExportTarget(null) },
-    { id: "bulk-export", open: isBulkExportOpen, escape: true, blocksMenus: true, close: () => setIsBulkExportOpen(false) },
-    { id: "bulk-more", open: isBulkMoreOpen, escape: true, blocksMenus: true, close: () => setIsBulkMoreOpen(false) },
-    { id: "character-export", open: Boolean(characterExportScope), escape: true, blocksMenus: true, close: () => setCharacterExportScope(null) },
-    { id: "command", open: isCommandOpen, escape: true, blocksMenus: true, close: () => setIsCommandOpen(false) },
-    { id: "about", open: isAboutOpen, escape: true, blocksMenus: true, close: () => setIsAboutOpen(false) },
-    { id: "settings", open: isSettingsOpen, escape: true, blocksMenus: true, close: () => setIsSettingsOpen(false) },
-    { id: "asset-library", open: isAssetLibraryOpen, escape: true, blocksMenus: true, close: () => setIsAssetLibraryOpen(false) },
-    { id: "import-plan", open: Boolean(importPlan), escape: true, blocksMenus: true, close: () => setImportPlan(null) },
-    { id: "clear-data", open: isClearDataOpen, escape: true, blocksMenus: true, close: () => setIsClearDataOpen(false) },
-    { id: "asset-cleanup", open: isAssetCleanupOpen, escape: true, blocksMenus: true, close: () => setIsAssetCleanupOpen(false) },
-    { id: "asset-delete", open: Boolean(pendingAssetDelete), escape: true, blocksMenus: true, close: () => setPendingAssetDelete(null) },
-    { id: "asset-batch-delete", open: pendingAssetBatchDeleteIds.length > 0, escape: true, blocksMenus: true, close: () => setPendingAssetBatchDeleteIds([]) },
+    { id: "export-target", open: Boolean(exportTarget), blocksMenus: true, close: () => setExportTarget(null) },
+    { id: "bulk-export", open: isBulkExportOpen, blocksMenus: true, close: () => setIsBulkExportOpen(false) },
+    { id: "bulk-more", open: isBulkMoreOpen, blocksMenus: true, close: () => setIsBulkMoreOpen(false) },
+    { id: "character-export", open: Boolean(characterExportScope), blocksMenus: true, close: () => setCharacterExportScope(null) },
+    { id: "command", open: isCommandOpen, blocksMenus: true, close: () => setIsCommandOpen(false) },
+    { id: "about", open: isAboutOpen, blocksMenus: true, close: () => setIsAboutOpen(false) },
+    { id: "settings", open: isSettingsOpen, blocksMenus: true, close: () => setIsSettingsOpen(false) },
+    { id: "asset-library", open: isAssetLibraryOpen, blocksMenus: true, close: () => setIsAssetLibraryOpen(false) },
+    { id: "import-plan", open: Boolean(importPlan), blocksMenus: true, close: () => setImportPlan(null) },
+    { id: "clear-data", open: isClearDataOpen, blocksMenus: true, close: () => setIsClearDataOpen(false) },
+    { id: "asset-cleanup", open: isAssetCleanupOpen, blocksMenus: true, close: () => setIsAssetCleanupOpen(false) },
+    { id: "asset-delete", open: Boolean(pendingAssetDelete), blocksMenus: true, close: () => setPendingAssetDelete(null) },
+    { id: "asset-batch-delete", open: pendingAssetBatchDeleteIds.length > 0, blocksMenus: true, close: () => setPendingAssetBatchDeleteIds([]) },
+    { id: "bulk-edit", open: isBulkEditOpen, blocksMenus: true, close: () => setIsBulkEditOpen(false) },
+    { id: "restore-snapshot", open: Boolean(pendingRestore), blocksMenus: true, close: () => setPendingRestore(null) },
 
-    // Destructive character confirmations: counted as dialogs, not dismissible by
-    // Escape. See the note above -- deliberate or not, it is now explicit.
-    { id: "character-delete", open: Boolean(pendingDelete), escape: false, blocksMenus: true, close: () => setPendingDelete(null) },
-    { id: "bulk-delete", open: isBulkDeleteOpen, escape: false, blocksMenus: true, close: () => setIsBulkDeleteOpen(false) },
+    // Destructive character confirmations. Escape cancels them, like every other
+    // confirmation; see the note above.
+    { id: "character-delete", open: Boolean(pendingDelete), blocksMenus: true, close: () => setPendingDelete(null) },
+    { id: "bulk-delete", open: isBulkDeleteOpen, blocksMenus: true, close: () => setIsBulkDeleteOpen(false) },
 
-    // Modes and selection: Escape leaves them, nothing to suppress.
-    { id: "bulk-mode", open: isBulkMode, escape: true, blocksMenus: false, close: () => setIsBulkMode(false) },
-    { id: "selection", open: selectedIds.length > 0, escape: true, blocksMenus: false, close: () => setSelectedIds([]) },
-
-    // The two gaps: a modal in neither old list, so Escape does not close it and
-    // the background menus do not close behind it.
-    { id: "bulk-edit", open: isBulkEditOpen, escape: false, blocksMenus: false, close: () => setIsBulkEditOpen(false) },
-    { id: "restore-snapshot", open: Boolean(pendingRestore), escape: false, blocksMenus: false, close: () => setPendingRestore(null) },
+    // Modes and selection: nothing to suppress.
+    { id: "bulk-mode", open: isBulkMode, blocksMenus: false, close: () => setIsBulkMode(false) },
+    { id: "selection", open: selectedIds.length > 0, blocksMenus: false, close: () => setSelectedIds([]) },
   ]);
 
   const worldviewOptions = getUniqueOptions(characters, "worldview");
