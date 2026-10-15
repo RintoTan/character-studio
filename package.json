@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "verify:deploy": "node scripts/verify-deploy.mjs",
+  "verify:version": "node scripts/verify-version.mjs",
+  "verify:browser": "node scripts/verify-browser.mjs",
     "test": "vitest run"
   },
   "dependencies": {
