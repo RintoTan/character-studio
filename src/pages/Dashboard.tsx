@@ -37,6 +37,7 @@ import {
   type CharacterBulkPatch,
 } from "../utils/bulkEdit";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useDashboardLayers } from "../hooks/useDashboardLayers";
 import { useDashboardPrefs } from "../hooks/useDashboardPrefs";
 import {
   clearedFilters,
@@ -239,6 +240,56 @@ export function Dashboard({
   const searchSignalRef = useRef(searchSignal);
   const cardTagLimit = Math.max(0, Math.min(dashboardSettings?.cardTagCount ?? 5, 8));
 
+  // Every layer the dashboard can have on top of it, declared once.
+  //
+  // `escape` and `blocksMenus` are both stated on every entry rather than
+  // defaulted, because the entries where the two disagree are the interesting
+  // ones. The order is the order the Escape handler used to run them.
+  //
+  // Four entries are called out below. Two of them (`pendingDelete`,
+  // `isBulkDeleteOpen`) are the drift this replaced: they count as dialogs but
+  // Escape leaves them alone, while the two destructive confirmations that are
+  // arguably worse (`isClearDataOpen`, `pendingAssetDelete`) are dismissed by
+  // Escape. The other two (`isBulkEditOpen`, `pendingRestore`) were in neither of
+  // the old lists at all. All four keep their current behaviour; what changed is
+  // that the behaviour is now written down.
+  const layers = useDashboardLayers([
+    // Dropdowns and panel toggles: Escape closes them, they do not suppress
+    // anything (there is nothing underneath them to suppress).
+    { id: "more-menu", open: isMoreMenuOpen, escape: true, blocksMenus: false, close: () => setIsMoreMenuOpen(false) },
+    { id: "card-menu", open: openCardMenuId !== null, escape: true, blocksMenus: false, close: () => setOpenCardMenuId(null) },
+    { id: "search-panel", open: isSearchPanelOpen, escape: true, blocksMenus: false, close: () => setIsSearchPanelOpen(false) },
+
+    // Modals.
+    { id: "export-target", open: Boolean(exportTarget), escape: true, blocksMenus: true, close: () => setExportTarget(null) },
+    { id: "bulk-export", open: isBulkExportOpen, escape: true, blocksMenus: true, close: () => setIsBulkExportOpen(false) },
+    { id: "bulk-more", open: isBulkMoreOpen, escape: true, blocksMenus: true, close: () => setIsBulkMoreOpen(false) },
+    { id: "character-export", open: Boolean(characterExportScope), escape: true, blocksMenus: true, close: () => setCharacterExportScope(null) },
+    { id: "command", open: isCommandOpen, escape: true, blocksMenus: true, close: () => setIsCommandOpen(false) },
+    { id: "about", open: isAboutOpen, escape: true, blocksMenus: true, close: () => setIsAboutOpen(false) },
+    { id: "settings", open: isSettingsOpen, escape: true, blocksMenus: true, close: () => setIsSettingsOpen(false) },
+    { id: "asset-library", open: isAssetLibraryOpen, escape: true, blocksMenus: true, close: () => setIsAssetLibraryOpen(false) },
+    { id: "import-plan", open: Boolean(importPlan), escape: true, blocksMenus: true, close: () => setImportPlan(null) },
+    { id: "clear-data", open: isClearDataOpen, escape: true, blocksMenus: true, close: () => setIsClearDataOpen(false) },
+    { id: "asset-cleanup", open: isAssetCleanupOpen, escape: true, blocksMenus: true, close: () => setIsAssetCleanupOpen(false) },
+    { id: "asset-delete", open: Boolean(pendingAssetDelete), escape: true, blocksMenus: true, close: () => setPendingAssetDelete(null) },
+    { id: "asset-batch-delete", open: pendingAssetBatchDeleteIds.length > 0, escape: true, blocksMenus: true, close: () => setPendingAssetBatchDeleteIds([]) },
+
+    // Destructive character confirmations: counted as dialogs, not dismissible by
+    // Escape. See the note above -- deliberate or not, it is now explicit.
+    { id: "character-delete", open: Boolean(pendingDelete), escape: false, blocksMenus: true, close: () => setPendingDelete(null) },
+    { id: "bulk-delete", open: isBulkDeleteOpen, escape: false, blocksMenus: true, close: () => setIsBulkDeleteOpen(false) },
+
+    // Modes and selection: Escape leaves them, nothing to suppress.
+    { id: "bulk-mode", open: isBulkMode, escape: true, blocksMenus: false, close: () => setIsBulkMode(false) },
+    { id: "selection", open: selectedIds.length > 0, escape: true, blocksMenus: false, close: () => setSelectedIds([]) },
+
+    // The two gaps: a modal in neither old list, so Escape does not close it and
+    // the background menus do not close behind it.
+    { id: "bulk-edit", open: isBulkEditOpen, escape: false, blocksMenus: false, close: () => setIsBulkEditOpen(false) },
+    { id: "restore-snapshot", open: Boolean(pendingRestore), escape: false, blocksMenus: false, close: () => setPendingRestore(null) },
+  ]);
+
   const worldviewOptions = getUniqueOptions(characters, "worldview");
   const genderOptions = getUniqueOptions(characters, "gender");
   const visualStyleOptions = getUniqueOptions(characters, "visualStyle");
@@ -390,24 +441,7 @@ export function Dashboard({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        setIsMoreMenuOpen(false);
-        setOpenCardMenuId(null);
-        setExportTarget(null);
-        setIsBulkExportOpen(false);
-        setIsBulkMoreOpen(false);
-        setCharacterExportScope(null);
-        setIsSearchPanelOpen(false);
-        setIsCommandOpen(false);
-        setIsAboutOpen(false);
-        setIsSettingsOpen(false);
-        setIsAssetLibraryOpen(false);
-        setImportPlan(null);
-        setIsClearDataOpen(false);
-        setIsAssetCleanupOpen(false);
-        setPendingAssetDelete(null);
-        setPendingAssetBatchDeleteIds([]);
-        setIsBulkMode(false);
-        setSelectedIds([]);
+        layers.dismiss();
       }
     }
 
@@ -417,7 +451,8 @@ export function Dashboard({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, []);
+    // `dismiss` is stable, so this still registers exactly one listener.
+  }, [layers.dismiss]);
 
   useEffect(() => {
     function handleKeyboardShortcuts(event: KeyboardEvent) {
@@ -455,45 +490,15 @@ export function Dashboard({
 
 
 
+  // A dropdown has no business staying open behind a dialog. Which layers count is
+  // declared above; the signature stands in for the fifteen values this effect used
+  // to depend on, so it re-runs on the same changes it always did.
   useEffect(() => {
-    const hasDialogOpen =
-      Boolean(pendingDelete) ||
-      isBulkDeleteOpen ||
-      Boolean(exportTarget) ||
-      isBulkExportOpen ||
-      isBulkMoreOpen ||
-      Boolean(characterExportScope) ||
-      isCommandOpen ||
-      isAboutOpen ||
-      isSettingsOpen ||
-      isAssetLibraryOpen ||
-      Boolean(importPlan) ||
-      isClearDataOpen ||
-      isAssetCleanupOpen ||
-      Boolean(pendingAssetDelete) ||
-      pendingAssetBatchDeleteIds.length > 0;
-
-    if (hasDialogOpen) {
+    if (layers.blocksMenus) {
       setIsMoreMenuOpen(false);
       setOpenCardMenuId(null);
     }
-  }, [
-    pendingDelete,
-    isBulkDeleteOpen,
-    exportTarget,
-    isBulkExportOpen,
-    isBulkMoreOpen,
-    characterExportScope,
-    isCommandOpen,
-    isAboutOpen,
-    isSettingsOpen,
-    isAssetLibraryOpen,
-    importPlan,
-    isClearDataOpen,
-    isAssetCleanupOpen,
-    pendingAssetDelete,
-    pendingAssetBatchDeleteIds.length,
-  ]);
+  }, [layers.blockingSignature, layers.blocksMenus]);
 
   useEffect(() => {
     if (!isSettingsOpen && !isAssetLibraryOpen) {
