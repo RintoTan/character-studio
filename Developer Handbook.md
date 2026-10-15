@@ -1819,8 +1819,9 @@ Asset Library 可继续扩展：
 
 | 文档 | 什么时候读它 |
 | --- | --- |
+| `docs/README.md` | 不知道该读哪一份文档（**文档总索引**：落位规则、清单、按目的导航） |
 | `README.md` | 第一次接触项目：定位、版本、功能、运行方式、文档索引 |
-| `PROJECT_STATUS.md` | 想知道「现在到哪一步了、哪些验证过、哪些没有」 |
+| `docs/PROJECT_STATUS.md` | 想知道「现在到哪一步了、哪些验证过、哪些没有」 |
 | `docs/ARCHITECTURE.md` | 要改数据模型、存储、导入导出或部署 |
 | `docs/FEATURES.md` | 要查某个功能的状态、入口、数据依赖与验证情况 |
 | `docs/ROADMAP.md` | 要知道下一步做什么、优先级与验收标准 |
@@ -1829,5 +1830,6 @@ Asset Library 可继续扩展：
 | `docs/UI_AUDIT.md` | 要做 UI 改动或设计评审 |
 | `docs/UI_DESIGN_HANDOFF.md` | 要把 UI 工作交给其他设计智能体 |
 | `docs/CHATGPT_REVIEW_PACKAGE.md` | 要让外部审查者（如 ChatGPT）快速了解项目 |
+| `docs/DEBUG_STRESS_TEST_PLAN.md` | 要执行系统测试，或把测试交给测试智能体 |
 
 **口径原则**：数据与功能状态以源码为准；文档与实现冲突时以代码为当前实现证据，冲突记录见 `docs/DEVELOPMENT_LOG.md` 第 8 节。

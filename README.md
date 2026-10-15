@@ -9,7 +9,8 @@
 > 变更见 [CHANGELOG.md](CHANGELOG.md)；线上地址 <https://rintotan.github.io/character-studio/>。
 > 构建会注入提交号，线上站点可在 About 面板反查自己由哪次提交构建。
 >
-> **项目文档索引**见本文件末尾的「项目文档」一节。当前状态与验证等级见 [PROJECT_STATUS.md](PROJECT_STATUS.md)。
+> **项目文档索引**见本文件末尾的「项目文档」一节，或直接打开 [docs/README.md](docs/README.md)（按目的是找该读哪一份）。
+> 当前状态与验证等级见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
 
 
 **Character Studio** 是一个面向 OC（Original Character，原创角色）创作的本地优先角色工作台。
@@ -413,10 +414,14 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
 
 ## 项目文档
 
+仓库根目录只保留 GitHub 约定文件与应用内硬引用的手册（`README.md`、`CHANGELOG.md`、`Developer Handbook.md` —— 后者被页面里 7 处链接指向 `blob/main/Developer%20Handbook.md`），其余文档统一收在 [docs/](docs/) 下。
+**不知道该读哪一份时，先打开 [docs/README.md](docs/README.md)**：它按「我要做什么」组织导航。
+
 | 文档 | 职责 |
 | --- | --- |
+| [docs/README.md](docs/README.md) | **文档总索引**：落位规则、文档清单、按目的导航、口径原则、维护规则 |
 | [README.md](README.md) | 本文件：项目定位、版本、功能、技术栈、运行方式、文档索引 |
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | **当前状态总览**：版本与提交、已完成 / 部分完成 / 未完成、验证等级、已知问题摘要、下一步重点 |
+| [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | **当前状态总览**：版本与提交、已完成 / 部分完成 / 未完成、验证等级、已知问题摘要、下一步重点 |
 | [CHANGELOG.md](CHANGELOG.md) | 每个发布版本的变更与**验证边界**（哪些实测、哪些未验证） |
 | [Developer Handbook.md](Developer%20Handbook.md) | 面向开发者与 AI 协作者的长期手册：历史、架构、数据结构、UI 与开发规范、路线图 |
 | [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | 项目定位、用户流程、模块边界、核心功能与总体架构 |
@@ -426,6 +431,7 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
 | [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) | 已确认问题（复现条件 / 影响 / 优先级 / 证据 / 建议方向）+ 待验证的设计假设 |
 | [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) | 可确认的开发阶段、重要决策、关键修复、回退与口径更正 |
 | [docs/UI_AUDIT.md](docs/UI_AUDIT.md) | UI 现状审计：页面结构、设计令牌、组件模式、交互行为、响应式与主题、已确认的 UI 问题 |
+| [docs/DEBUG_STRESS_TEST_PLAN.md](docs/DEBUG_STRESS_TEST_PLAN.md) | **可执行的 Debug / 压力测试规范**：294 条用例（含 34 条历史回归）、11 条端到端旅程、测试环境与安全规则、结果与缺陷模板、自动化转化路径 |
 | [docs/UI_DESIGN_HANDOFF.md](docs/UI_DESIGN_HANDOFF.md) | **交给其他设计智能体的独立任务输入**（定位、页面清单、设计系统、必须保留的行为、限制、交付要求） |
 | [docs/CHATGPT_REVIEW_PACKAGE.md](docs/CHATGPT_REVIEW_PACKAGE.md) | **交给 ChatGPT 独立审查的项目资料入口**（概况、状态、架构与 UI 摘要、关键文件索引、待决策问题） |
 

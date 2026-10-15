@@ -216,7 +216,7 @@
 | 内容与词库 | `src/content/defaultContent.ts`、`src/data/avatarCategories.ts`、`src/data/external-inspiration-library.txt` |
 | 测试 | `test/`（31 个文件） |
 | 构建与部署 | `scripts/build-identity.mjs`、`scripts/build-info.mjs`、`scripts/verify-deploy.mjs`、`.github/workflows/deploy-pages.yml`、`vite.config.ts` |
-| 项目文档 | `README.md`、`PROJECT_STATUS.md`、`CHANGELOG.md`、`Developer Handbook.md`、`docs/`（本目录，见 README 的「项目文档」索引） |
+| 项目文档 | 根目录只放 `README.md`、`CHANGELOG.md`、`Developer Handbook.md`（后者被应用内 7 处链接指向 `blob/main/Developer%20Handbook.md`，故不移动）；**其余全部文档在本目录下**，索引见 `docs/README.md` |
 
 ---
 

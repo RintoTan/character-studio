@@ -2,6 +2,7 @@
 
 > 文档最后核查日期：**2026-10-15** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
 > 本文只记录**有证据**的结论。凡未验证的，一律显式标注。
+> **位置变更**：本文件原在仓库根目录，2026-10-15 随文档落位规整移入 `docs/`（根目录只保留 `README.md` / `CHANGELOG.md` / `Developer Handbook.md`）。文档索引见 [`README.md`](README.md)。
 
 ---
 
@@ -13,14 +14,16 @@
 | Sprint | **37.1**（`APP_SPRINT`） |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
-| HEAD 提交 | `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（短号 `bccec24`） |
+| 审计基线提交 | `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（短号 `bccec24`）—— 本文与 `docs/ARCHITECTURE.md` 等文档中的代码行号均以此为基准 |
+| 文档提交 | `f94f321`（重建文档体系）→ `3445979`（外部审查入口）→ `36b1cd6`（更正用例数）→ 本轮「文档落位规整与版本口径统一」（提交号见 `CHANGELOG.md` 对应条目） |
 | 工作区状态 | **干净**（`git status --porcelain` 无输出） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
-| 线上部署提交 | `bccec24` —— **与本地 HEAD 一致**（来源：线上 `build-info.json` 的 `commit` / `commitShort`） |
+| 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
 
-`package.json` 的 `version` 字段是 **`1.0.0`**，与应用版本号（2.27.0）**不同源**。
-应用内所有版本显示读的是 `src/config/version.ts`；`package.json` 的版本号只作为包标识，不参与界面显示。这是一处**已知的口径不一致**，未在本轮修改（改它属于源码/配置改动，超出本次文档治理范围）。
+**版本号口径已统一（原 KI-07，2026-10-15 修复）**：`package.json` 的 `version` 已由 `1.0.0` 改为 **`2.27.0`**，与 `src/config/version.ts` 的 `APP_VERSION` 一致。
+应用内所有版本显示仍然只读 `version.ts`；`package.json` 的版本号是包元数据，不参与界面与构建产物（`scripts/build-info.mjs` 从 `version.ts` 取值）。
+两处尚未合并为单一来源 —— 见 `docs/ROADMAP.md` 的 R-13。
 
 ### 运行方式（from `package.json` scripts）
 
@@ -114,18 +117,23 @@
 
 ## 6. 已知问题
 
-完整清单见 **`docs/KNOWN_ISSUES.md`**。摘要：
+完整清单见 **`docs/KNOWN_ISSUES.md`**。摘要（按优先级）：
 
+- **KI-12（P0，数据安全）** App 设置里的「清空本地数据」直接 `localStorage.clear()` + 清空 IndexedDB 头像素材，**不写快照**；而主页同名入口会先写快照并在清空后写回。两条同名入口的安全等级不同，App 那条路径不可恢复。**仅记录，未修复。**
 - **KI-01**（P2）设置弹窗未加宽 / 未中文化 / 未折叠未发布项。
 - **KI-02**（P2）编辑页六个分节设计语言未统一。
-- **KI-03**（P2）浮动栏「贴近主栏」需求含义未确认，无法安全实施。
-- **KI-04**（P3）Developer Center 有 4 组不可达分节渲染分支（`ai` / `debug` / `data` / `update`）。
+- **KI-03**（P2，阻塞）浮动栏「贴近主栏」需求含义未确认，无法安全实施。
 - **KI-05**（P2）`useDialogKeyboard` 的键盘行为无有效验证证据。
+- **KI-14**（P2）CSV 的关系行按角色名解析，重名时映射被导入角色覆盖 → 关系可能连到错误角色（静默）。
+- **KI-10**（P2，需真机）Apple 设备日期控件、Windows Emoji 显示未在真机验收。
+- **KI-04**（P3）Developer Center 有 4 组不可达分节渲染分支（`ai` / `debug` / `data` / `update`）。
 - **KI-06**（P3）`compactMobileEditor` 开关写入 `data-compact-mobile-editor`，而样式表**无任何规则读取它**。
-- **KI-07**（P3）`package.json` 版本号（1.0.0）与应用版本号（2.27.0）不同源。
 - **KI-08**（P3）`styles.css` 仍有约 140 处硬编码颜色字面量。
 - **KI-09**（P3）Developer Center 中 7 个文案字段与若干导出选项标注「暂未应用」。
-- **KI-10**（待验证）Apple 设备日期控件、Windows Emoji 显示需真机验收。
+- **KI-11**（P3）三档视口下的关系网重排未实测。
+- **KI-13**（P3）完整备份 ZIP 的 `backup-info.json` 里 `appVersion` 硬编码 `0.1.0`。
+
+**已修复（2026-10-15）**：**KI-07** —— `package.json` 的 `version` 已由 `1.0.0` 统一为 `2.27.0`，与应用版本号一致。
 
 ---
 

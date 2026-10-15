@@ -5,6 +5,67 @@
 
 ---
 
+## 2026-10-15（第三次）—— 文档落位规整与版本口径统一（**未发布应用版本**）
+
+同样**不是应用版本**：没有修改任何应用源码、样式、测试、依赖或部署脚本。唯一的非文档改动是 `package.json` 的 `version` 字段（包元数据，不进入构建产物）。
+
+### ① 位置规则收敛为一条
+
+> **根目录只放 GitHub 约定文件与应用内硬引用的手册；其余文档全部在 `docs/` 下。**
+
+| 动作 | 文件 |
+| --- | --- |
+| 移动 | `PROJECT_STATUS.md` → `docs/PROJECT_STATUS.md`；`DEBUG_STRESS_TEST_PLAN.md` → `docs/DEBUG_STRESS_TEST_PLAN.md`（**内容不变**） |
+| 保持原位、不改名 | `Developer Handbook.md` —— 应用内有 **7 处**链接指向 `blob/main/Developer%20Handbook.md`（`App.tsx` ×3、`Dashboard.tsx` ×2、`DeveloperCenter.tsx` ×2），移动或改名会打断线上入口 |
+| 新增 | `docs/README.md` —— 文档总索引：落位规则 / 文档清单 / 按「我要做什么」导航 / 口径原则 / 维护规则 |
+
+规整后根目录只剩三份 Markdown：`README.md`、`CHANGELOG.md`、`Developer Handbook.md`。
+
+### ② 引用与口径同步
+
+| 文件 | 更新内容 |
+| --- | --- |
+| `README.md` | 顶部与「项目文档」索引改为新路径，加入 `docs/README.md` 入口；写明根目录只留三份文档的原因 |
+| `Developer Handbook.md` | 配套文档表路径更正，补上 `docs/README.md` 与 `docs/DEBUG_STRESS_TEST_PLAN.md` |
+| `docs/ROADMAP.md` | 两处 `PROJECT_STATUS.md` 引用更正；R-13 由「待开始」改为「部分完成（数值已统一，守卫未加）」 |
+| `docs/CHATGPT_REVIEW_PACKAGE.md` | 关键文件索引中的「项目文档」一行改为新落位说明 |
+| `docs/KNOWN_ISSUES.md` | 见 ③ |
+| `docs/PROJECT_STATUS.md` | 版本口径、提交记录、已知问题摘要按实际更新 |
+| `docs/DEVELOPMENT_LOG.md` | 新增第 10 节记录本轮 |
+
+### ③ 台账修正（`docs/KNOWN_ISSUES.md`）
+
+- **关闭 KI-07**：`package.json` 的 `version` 由 `1.0.0` 改为 **`2.27.0`**，与 `src/config/version.ts` 的 `APP_VERSION` 一致；机制与教训移入第 2 节第 15 行。`pnpm-lock.yaml` 不含项目版本，`--frozen-lockfile` 不受影响（`npm run typecheck` 的输出头已显示 `character-studio@2.27.0`）。
+- **新增 KI-13（P3）**：完整备份 ZIP 的 `backup-info.json` 里 `appVersion` 是硬编码 `"0.1.0"`（`src/utils/importExport.ts:453`）。导入校验读的是 `schemaVersion`，因此只影响「这份备份是哪个版本导的」这一信息的准确性。
+- **新增 KI-14（P2）**：CSV 的关系行按**角色名**解析 —— `nameToId` 先由现有角色建立、再被本次导入的同名角色覆盖（`src/utils/importExport.ts:669-679`），因此重名时关系会被连到导入的那个角色上，且静默无提示。这两条原本只写在本文件的上一轮条目里，未进台账，导致台账与索引不一致，现补齐。
+- **修正一处自相矛盾**：`docs/KNOWN_ISSUES.md` 开头写「没有 P0 与 P1 级的已知问题」，而上一轮新增的 `KI-12` 正是 P0（加 KI-12 时漏改这句）。现改为「1 项 P0、0 项 P1」，并注明 KI-12 是**仅记录、未修复**。
+- **补齐摘要**：`docs/PROJECT_STATUS.md` 第 6 节的已知问题摘要此前只列到 `KI-10`，漏了 `KI-11`、`KI-12`，现按优先级重排并补齐 KI-11…KI-14。
+
+### ④ 有意没做的事
+
+- **没有加「版本号一致性」的 CI 断言**：那会新增测试文件，「31 个文件 / 360 个用例」这个写在多份文档里的数字要跟着改，对一条 P3 的元数据问题收益不成比例。已把「加守卫」留在 `docs/ROADMAP.md` 的 R-13 并标注为未做。
+- **没有移动或改名 `Developer Handbook.md`**（原因见 ①）。
+- **没有改动任何历史条目**：`CHANGELOG.md` 与 `docs/DEVELOPMENT_LOG.md` 的旧条目记录的是当时的布局与数值，改了历史就不可信。因此**上一轮条目里出现的 `PROJECT_STATUS.md` / `DEBUG_STRESS_TEST_PLAN.md` 保留旧路径**，现行位置以本条与 `docs/README.md` 为准。这条原则已记入 `docs/KNOWN_ISSUES.md` 第 2 节第 16 行。
+
+### ⑤ 本次执行的检查
+
+| 命令 | 结果 |
+| --- | --- |
+| `npm run typecheck`（`tsc -b`） | **通过**，退出码 0；输出头显示 `character-studio@2.27.0` |
+| `npm test`（`vitest run`） | **通过**：`Test Files 31 passed (31)`、`Tests 360 passed (360)`，3.49s |
+| 全库 Markdown 相对链接检查（自写脚本遍历 15 份文档） | **42 个相对链接，0 死链** |
+| `npm run build:pages` + 线上 `build-info.json` | 见下方「验证边界」 |
+
+### 验证边界
+
+**已由工具确认**：类型检查、全部单测、以及全部文档的相对链接可达性（脚本遍历，非目视）。
+
+**须在提交后重建才有效**：`npm run build:pages` 与 `verify:deploy`。脏工作树会让构建身份带上 `-dirty` 后缀 → 内容哈希变化 → 比对必然失败；因此顺序必须是**先提交、再重建、再校验**（这条是项目既有纪律，见 `docs/KNOWN_ISSUES.md` 第 2 节第 10 行）。
+
+**应用产物预期不变**：本次唯一触及构建图的文件是 `package.json`，而它**不参与打包** —— `scripts/build-info.mjs` 与 `scripts/build-identity.mjs` 都从 `src/config/version.ts` 与 Git 推导。因此推送后线上应用应与上一版逐字节一致，站点可见的变化只有 About 面板里的提交号（以及 GitHub 上仓库的文档布局）。
+
+---
+
 ## 2026-10-15 —— 文档与项目治理（**未发布应用版本**）
 
 **这一条不是应用版本。** 本次没有修改任何应用源码、样式、配置、依赖或测试，因此：
@@ -53,6 +114,32 @@
 - **KI-04**：Developer Center 有 4 组永不渲染的分节分支（`ai` / `debug` / `data` / `update` 不在 `developerSections` 列表里）。
 - **KI-06**：`compactMobileEditor` 开关写 `data-compact-mobile-editor`，而 `styles.css` **0 处**读取它。
 - **KI-07**：`package.json` 的 `version`（`1.0.0`）与应用版本号（`2.27.0`）不同源。
+
+---
+
+## 2026-10-15（第二次）—— 测试规范（**未发布应用版本**）
+
+同样**不是应用版本**：本次没有修改任何源码、样式、配置、依赖或测试，只新增一份测试文档并更新索引。
+
+### 新增
+
+| 文件 | 内容 |
+| --- | --- |
+| `DEBUG_STRESS_TEST_PLAN.md` | 可执行的 Debug / 压力测试规范：**294 条用例**（其中 34 条为历史缺陷回归）、11 条端到端旅程、22 个章节 + 6 个附录；含测试环境与安全规则、执行/停止条件、结果与缺陷模板、覆盖率矩阵、自动化转化路径 |
+
+### 更新
+
+| 文件 | 更新内容 |
+| --- | --- |
+| `README.md` | 文档索引加入测试规范 |
+| `docs/KNOWN_ISSUES.md` | 新增 **KI-12（P0）**：App 设置里的「清空本地数据」不写快照，与主页同名入口的安全等级不同 —— 这是编写测试规范时的代码审计新发现，**仅记录，未修复** |
+| `CHANGELOG.md` | 本条目 |
+
+### 审计新发现（已记录，未修）
+
+- **KI-12（P0）**：`src/App.tsx:442-454` 的 `clearAppLocalData()` 直接 `localStorage.clear()` + `clearAvatarAssets()`，**没有任何 `createSnapshot`**；而主页入口（`Dashboard.tsx:1008-1013`）会先写快照、清空后再把快照写回。两条路径的确认文案也不同。修它需要改源码，超出本次范围。
+- **ZIP 备份里的 `appVersion` 是硬编码 `0.1.0`**（`importExport.ts:450-461`），与应用版本 `2.27.0` 不符 —— 属信息不准确。
+- **CSV 的关系行按角色名解析**（`importExport.ts:666-679`）：导入时新角色被追加到 `nameToId` 之后，因此**同名的导入角色会覆盖同名现有角色的映射**，可能把关系连到错误的角色上（代码中对此无注释）。
 
 ---
 

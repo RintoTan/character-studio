@@ -254,3 +254,25 @@
 | `git status --porcelain`（构建后） | 仅出现本次新增的 Markdown 文件；`dist` 已被 `.gitignore` 忽略，无 `*.tsbuildinfo` 残留 |
 
 **未执行**：`npm run verify:deploy`（它逐字节比对本地 `build:pages` 产物与线上；本轮文档变更不影响产物，且本地产物要用 `build:pages` 而非 `build` 才有意义 —— 见 `docs/ARCHITECTURE.md` 第 8 节）。
+
+---
+
+## 10. 文档落位规整与版本口径统一（2026-10-15，第二轮）
+
+上一轮的文档体系建起来了，但**位置**是散的：`PROJECT_STATUS.md` 与 `DEBUG_STRESS_TEST_PLAN.md` 留在仓库根目录，与 `docs/` 下的 9 份同类文档分居两处。这一轮把位置规则收敛成一条：
+
+> **根目录只放 GitHub 约定文件与应用内硬引用的手册；其余文档全部在 `docs/` 下。**
+
+| 动作 | 详情 |
+| --- | --- |
+| 移动 | `PROJECT_STATUS.md` → `docs/PROJECT_STATUS.md`；`DEBUG_STRESS_TEST_PLAN.md` → `docs/DEBUG_STRESS_TEST_PLAN.md`（`git mv` / 常规移动后 `git add`，**内容不变**） |
+| 不动的 | `Developer Handbook.md` **留在根目录且不改名** —— 应用内有 7 处链接指向 `blob/main/Developer%20Handbook.md`（`App.tsx` ×3、`Dashboard.tsx` ×2、`DeveloperCenter.tsx` ×2），移动或改名会打断线上入口。这条约束已写进 `docs/README.md` 的落位规则 |
+| 新增 | `docs/README.md` —— 文档总索引：落位规则、文档清单、按「我要做什么」导航、口径原则、维护规则 |
+| 更新引用 | `README.md`、`Developer Handbook.md`、`docs/ROADMAP.md`、`docs/CHATGPT_REVIEW_PACKAGE.md`、`docs/KNOWN_ISSUES.md`、`docs/PROJECT_STATUS.md` 中指向旧路径的位置。`CHANGELOG.md` **只新增本轮条目**，旧条目未动（见文末「没有改的东西」） |
+| 版本口径 | `package.json` 的 `version` 由 `1.0.0` 改为 `2.27.0`，与 `src/config/version.ts` 的 `APP_VERSION` 一致（关闭原 **KI-07**）。`pnpm-lock.yaml` 不含项目版本，`--frozen-lockfile` 不受影响 |
+| 补齐台账 | 新增 **KI-13**（ZIP 备份 `appVersion` 硬编码 `0.1.0`，P3）与 **KI-14**（CSV 关系行按名解析、重名时映射被导入角色覆盖，P2）—— 这两条上一轮只写进了 `CHANGELOG.md`，未进 `docs/KNOWN_ISSUES.md`，索引因此与台账不一致 |
+| 修正矛盾 | `docs/KNOWN_ISSUES.md` 开头写「没有 P0 与 P1 级的已知问题」，而 `KI-12` 就是 P0（上一轮加 KI-12 时漏改这句）；`docs/PROJECT_STATUS.md` 第 6 节的摘要漏列 KI-11、KI-12，只列到 KI-10 |
+
+**为什么没有顺手加一条「版本号一致性」的 CI 断言**：那会新增一个测试文件，于是 `31 个文件 / 360 个用例` 这句写在 6 份文档里的数字全部要改，而这条本身是 P3 的元数据问题。收益不成比例，因此只统一数值，并把「加守卫」留在 `docs/ROADMAP.md` 的 R-13 里如实标注为未做。
+
+**没有改的东西**：任何应用源码、样式、测试、依赖、部署脚本；`CHANGELOG.md` 与 `docs/DEVELOPMENT_LOG.md` 里的**历史条目一律未动**（它们记录的是当时的布局与数值，改了历史就不可信 —— 这条已作为第 2 节第 16 行记入 `docs/KNOWN_ISSUES.md`）。
