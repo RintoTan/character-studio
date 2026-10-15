@@ -31,6 +31,18 @@
   --pad-card: 16px;
   --pad-rail: 12px;
   --control-height: 42px;
+  /* The icon tier.
+     The three icon classes are one visual language, so they get one number, stated
+     once on their shared selector. Two of them used to have no height of their own
+     and inherited whatever the line box happened to measure, which is how identical
+     buttons ended up 32 in a card and 36 in the dashboard bar. Height and width are
+     the same value: these buttons are square. */
+  --control-height-icon: 36px;
+  /* The third tier, and the only one that is not a look: these are the rows that
+     cannot afford the icon tier — the phone navigation chips and the mobile
+     editor's action row, where 2px per control is the difference between a bar
+     that fits the screen and one that wraps. */
+  --control-height-compact: 34px;
   --control-radius: 8px;
   --btn-gap: 8px;
   /* One fill scale for neutral controls: a block of the surface colour that
@@ -412,7 +424,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -522,10 +534,13 @@ button:disabled {
    stated here instead of inherited from a font metric.
    36 rather than 32: measured across the four control bars, the dashboard's icon
    buttons were the only 32s in the app, against 42 for every labelled button. */
-.hero-icon-button {
-  width: 36px;
-  min-height: 36px;
-  height: 36px;
+.hero-icon-button,
+.bare-icon-button,
+.mini-icon {
+  width: var(--control-height-icon);
+  min-width: var(--control-height-icon);
+  min-height: var(--control-height-icon);
+  height: var(--control-height-icon);
 }
 
 .hero-icon-button,
@@ -796,7 +811,7 @@ h2 {
 .bulk-actions select {
   width: auto;
   min-width: 132px;
-  min-height: 42px;
+  min-height: var(--control-height);
   padding-top: 0;
   padding-bottom: 0;
 }
@@ -831,7 +846,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -1827,7 +1842,7 @@ h2 {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border: 0;
   border-radius: var(--developer-button-radius);
   background: var(--control-fill);
@@ -1892,7 +1907,7 @@ h2 {
 }
 
 .single-list-note .ghost-button {
-  min-height: 34px;
+  min-height: var(--control-height-compact);
   padding: 0 12px;
   white-space: nowrap;
 }
@@ -2377,10 +2392,8 @@ h2 {
   gap: 6px;
 }
 
+/* Size comes from the icon tier above; only paint is stated here. */
 .mini-icon {
-  width: 32px;
-  min-height: 32px;
-  height: 32px;
   color: #9ca3af;
   font-size: 13px;
 }
@@ -2396,11 +2409,11 @@ h2 {
 }
 
 .card-actions button {
-  min-height: 32px;
+  min-height: var(--control-height-icon);
 }
 
 .icon-button {
-  min-width: 32px;
+  min-width: var(--control-height-icon);
   padding: 0;
 }
 
@@ -2427,7 +2440,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 9px;
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -3034,7 +3047,7 @@ input[type="number"]::-webkit-inner-spin-button {
   align-items: center;
   justify-content: flex-start;
   gap: 9px;
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -3105,7 +3118,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .mobile-editor-more-menu button {
   justify-content: flex-start;
-  min-height: 34px;
+  min-height: var(--control-height-compact);
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -3386,7 +3399,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .avatar-actions .ghost-button {
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border-radius: 9px;
   padding-inline: 12px;
   font-size: 13px;
@@ -3889,9 +3902,9 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .emoji-option {
   display: grid;
-  width: 36px;
-  min-height: 36px;
-  height: 36px;
+  width: var(--control-height-icon);
+  min-height: var(--control-height-icon);
+  height: var(--control-height-icon);
   place-items: center;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -3941,7 +3954,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .helper-row .ghost-button,
 .inline-actions .ghost-button {
-  min-height: 34px;
+  min-height: var(--control-height-compact);
   padding: 0 12px;
   font-size: 13px;
 }
@@ -4159,7 +4172,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .preview-card-title button {
-  min-height: 34px;
+  min-height: var(--control-height-compact);
   padding: 0 12px;
 }
 
@@ -4347,7 +4360,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .theme-select {
-  min-height: 42px;
+  min-height: var(--control-height);
   width: auto;
   border-radius: 8px;
   padding: 0 12px;
@@ -4433,7 +4446,7 @@ input[type="number"]::-webkit-inner-spin-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 42px;
+  min-height: var(--control-height);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -4489,7 +4502,7 @@ kbd {
 
 .segmented-row button,
 .settings-actions button {
-  min-height: 36px;
+  min-height: var(--control-height-icon);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
@@ -5129,10 +5142,15 @@ kbd {
     place-items: center;
   }
 
+  /* An icon-only button, so it is square on the compact tier. The width was
+     already 34 here while the height came from the ghost-button base at 42, which
+     made the one square button on the phone the only non-square one. */
   .bulk-select-button {
-    flex: 0 0 34px !important;
-    width: 34px;
-    min-width: 34px;
+    flex: 0 0 var(--control-height-compact) !important;
+    width: var(--control-height-compact);
+    min-width: var(--control-height-compact);
+    height: var(--control-height-compact);
+    min-height: var(--control-height-compact);
     padding: 0;
   }
 
@@ -5282,16 +5300,16 @@ kbd {
   }
 
   .mobile-editor-primary {
-    height: 34px;
-    min-height: 34px;
+    height: var(--control-height-compact);
+    min-height: var(--control-height-compact);
     padding: 0 12px;
     font-size: 13px;
     white-space: nowrap;
   }
 
   .mobile-editor-more > .ghost-button {
-    height: 34px;
-    min-height: 34px;
+    height: var(--control-height-compact);
+    min-height: var(--control-height-compact);
     padding: 0 10px;
     font-size: 13px;
   }
@@ -5324,7 +5342,7 @@ kbd {
 
   .workspace-nav button {
     min-width: max-content;
-    min-height: 34px;
+    min-height: var(--control-height-compact);
     grid-template-columns: 1fr auto;
     align-items: center;
     gap: 6px;
@@ -5462,7 +5480,7 @@ kbd {
   }
 
   .workspace-footer button {
-    min-height: 36px;
+    min-height: var(--control-height-icon);
     font-size: 13px;
   }
 
@@ -5576,10 +5594,10 @@ kbd {
   }
 
   .preview-actions .preview-action-button {
-    flex: 0 0 34px;
-    width: 34px;
-    min-width: 34px;
-    min-height: 34px;
+    flex: 0 0 var(--control-height-compact);
+    width: var(--control-height-compact);
+    min-width: var(--control-height-compact);
+    min-height: var(--control-height-compact);
     padding: 0;
   }
 
@@ -6098,10 +6116,9 @@ kbd {
   display: none;
 }
 
-.graph-zoom .bare-icon-button {
-  width: 34px;
-  height: 34px;
-}
+/* The zoom buttons used to be forced to 34 here, which made the two zoom controls
+   a different size from every other icon button on the same screen. They now take
+   the icon tier like the rest. */
 
 .graph-zoom-value {
   min-width: 46px;

@@ -57,9 +57,49 @@ describe("developerSettings", () => {
 
     expect(merged.appearance.accentColor).toBe("#123456");
     // Untouched siblings keep their defaults rather than becoming undefined.
-    expect(merged.appearance.borderRadius).toBe(defaultDeveloperSettings.appearance.borderRadius);
+    expect(merged.appearance.cardRadius).toBe(defaultDeveloperSettings.appearance.cardRadius);
     expect(merged.project.version).toBe(defaultDeveloperSettings.project.version);
     expect(() => mergeDeveloperSettings(null)).not.toThrow();
+  });
+
+  it("declares no setting that nothing applies", () => {
+    // Regression guard for the retired appearance/design tokens. Each of these was
+    // persisted and shown as if configurable while no code ever read it, so a
+    // reader could wire one up believing it already worked.
+    for (const retired of ["borderRadius", "spacingDensity", "animationSpeed"]) {
+      expect(Object.keys(defaultDeveloperSettings.appearance)).not.toContain(retired);
+      expect(Object.keys(defaultDeveloperSettings.designTokens)).not.toContain(retired);
+    }
+  });
+
+  it("drops a retired key that is already sitting in storage", () => {
+    const merged = mergeDeveloperSettings({
+      appearance: { cardRadius: 12, borderRadius: 8 },
+      designTokens: { inputRadius: 6, spacingDensity: "compact", animationSpeed: "fast" },
+    });
+
+    expect(merged.appearance.cardRadius).toBe(12);
+    expect(merged.designTokens.inputRadius).toBe(6);
+    expect(merged.appearance).not.toHaveProperty("borderRadius");
+    expect(merged.designTokens).not.toHaveProperty("spacingDensity");
+    expect(merged.designTokens).not.toHaveProperty("animationSpeed");
+  });
+
+  it("does not carry an undeclared key through load and back into storage", () => {
+    // The old merge spread the stored record, so a key no longer in the type went
+    // in, came out again, and was written back on the next save.
+    saveDeveloperSettings(
+      mergeDeveloperSettings({ appearance: { accentColor: "#123456", borderRadius: 9 } }),
+    );
+
+    const reread = loadDeveloperSettings();
+    expect(reread.appearance.accentColor).toBe("#123456");
+    expect(reread.appearance).not.toHaveProperty("borderRadius");
+
+    saveDeveloperSettings(reread);
+    expect(JSON.parse(localStorage.getItem(DEVELOPER_SETTINGS_KEY) || "{}").appearance).not.toHaveProperty(
+      "borderRadius",
+    );
   });
 
   describe("legacy flat-key migration", () => {

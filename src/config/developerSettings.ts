@@ -24,7 +24,6 @@ export type DeveloperSettings = {
   };
   appearance: {
     accentColor: string;
-    borderRadius: number;
     cardRadius: number;
     buttonRadius: number;
     shadowStrength: "none" | "soft" | "medium" | "strong";
@@ -32,10 +31,13 @@ export type DeveloperSettings = {
     compactUi: boolean;
     fontScale: number;
   };
+  // `spacingDensity` and `animationSpeed` used to sit here. Both were declared,
+  // defaulted and persisted, but nothing ever read them: `motionLevel` above is
+  // what actually drives the durations, and spacing was never given a control.
+  // A setting that looks applied and is not is worse than no setting, so they are
+  // gone rather than left for the next reader to wire up by mistake.
   designTokens: {
     inputRadius: number;
-    spacingDensity: "compact" | "comfortable" | "spacious";
-    animationSpeed: "slow" | "normal" | "fast";
   };
   brandAssets: {
     showAppLogo: boolean;
@@ -113,7 +115,6 @@ export const defaultDeveloperSettings: DeveloperSettings = {
   content: defaultContent,
   appearance: {
     accentColor: "#635ab2",
-    borderRadius: 8,
     cardRadius: 8,
     buttonRadius: 8,
     shadowStrength: "soft",
@@ -123,8 +124,6 @@ export const defaultDeveloperSettings: DeveloperSettings = {
   },
   designTokens: {
     inputRadius: 8,
-    spacingDensity: "comfortable",
-    animationSpeed: "normal",
   },
   brandAssets: {
     showAppLogo: true,
@@ -195,62 +194,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Only declared fields survive a merge.
+//
+// Spreading the stored record instead let a key that no longer exists in the type
+// travel through load and back out to storage on every save, forever: a retired
+// design token would still be sitting in the object, indistinguishable from a
+// setting that works. Anything the defaults do not declare is dropped here, once.
+function pickKnown<T extends Record<string, unknown>>(defaults: T, stored: unknown): T {
+  if (!isRecord(stored)) {
+    return { ...defaults };
+  }
+
+  const next = { ...defaults };
+  for (const key of Object.keys(defaults) as Array<keyof T>) {
+    const value = stored[key as string];
+    if (value !== undefined) {
+      next[key] = value as T[keyof T];
+    }
+  }
+
+  return next;
+}
+
 export function mergeDeveloperSettings(value: unknown): DeveloperSettings {
   if (!isRecord(value)) {
     return defaultDeveloperSettings;
   }
 
   return {
-    ...defaultDeveloperSettings,
-    ...value,
-    project: {
-      ...defaultDeveloperSettings.project,
-      ...(isRecord(value.project) ? value.project : {}),
-    },
-    content: {
-      ...defaultDeveloperSettings.content,
-      ...(isRecord(value.content) ? value.content : {}),
-    },
-    appearance: {
-      ...defaultDeveloperSettings.appearance,
-      ...(isRecord(value.appearance) ? value.appearance : {}),
-    },
-    designTokens: {
-      ...defaultDeveloperSettings.designTokens,
-      ...(isRecord(value.designTokens) ? value.designTokens : {}),
-    },
-    brandAssets: {
-      ...defaultDeveloperSettings.brandAssets,
-      ...(isRecord(value.brandAssets) ? value.brandAssets : {}),
-    },
-    editorDefaults: {
-      ...defaultDeveloperSettings.editorDefaults,
-      ...(isRecord(value.editorDefaults) ? value.editorDefaults : {}),
-    },
-    dashboardDefaults: {
-      ...defaultDeveloperSettings.dashboardDefaults,
-      ...(isRecord(value.dashboardDefaults) ? value.dashboardDefaults : {}),
-    },
-    exportDefaults: {
-      ...defaultDeveloperSettings.exportDefaults,
-      ...(isRecord(value.exportDefaults) ? value.exportDefaults : {}),
-    },
-    promptCenter: {
-      ...defaultDeveloperSettings.promptCenter,
-      ...(isRecord(value.promptCenter) ? value.promptCenter : {}),
-    },
-    application: {
-      ...defaultDeveloperSettings.application,
-      ...(isRecord(value.application) ? value.application : {}),
-    },
-    featureFlags: {
-      ...defaultDeveloperSettings.featureFlags,
-      ...(isRecord(value.featureFlags) ? value.featureFlags : {}),
-    },
-    developerMode: {
-      ...defaultDeveloperSettings.developerMode,
-      ...(isRecord(value.developerMode) ? value.developerMode : {}),
-    },
+    project: pickKnown(defaultDeveloperSettings.project, value.project),
+    content: pickKnown(defaultDeveloperSettings.content, value.content),
+    appearance: pickKnown(defaultDeveloperSettings.appearance, value.appearance),
+    designTokens: pickKnown(defaultDeveloperSettings.designTokens, value.designTokens),
+    brandAssets: pickKnown(defaultDeveloperSettings.brandAssets, value.brandAssets),
+    editorDefaults: pickKnown(defaultDeveloperSettings.editorDefaults, value.editorDefaults),
+    dashboardDefaults: pickKnown(defaultDeveloperSettings.dashboardDefaults, value.dashboardDefaults),
+    exportDefaults: pickKnown(defaultDeveloperSettings.exportDefaults, value.exportDefaults),
+    promptCenter: pickKnown(defaultDeveloperSettings.promptCenter, value.promptCenter),
+    application: pickKnown(defaultDeveloperSettings.application, value.application),
+    featureFlags: pickKnown(defaultDeveloperSettings.featureFlags, value.featureFlags),
+    developerMode: pickKnown(defaultDeveloperSettings.developerMode, value.developerMode),
   };
 }
 

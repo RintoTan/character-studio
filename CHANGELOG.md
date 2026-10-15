@@ -5,6 +5,70 @@
 
 ---
 
+## 2.13.0 —— 阶段 B：架构收敛（Sprint 23.1）
+
+阶段 A 关掉了数据可靠性的缺口，这一版转向「同一件事只写一次、同一个东西只有一个尺寸」。三项，都不改功能。
+
+### P0-3　两份 AI 设置表单合成一份
+
+`App.tsx` 与 `Dashboard.tsx` 各有一份**逐字节同构**的 AI 设置卡片，各自把 7 个 `character-studio.ai.*` 键名内联写在 JSX 里。改一个键名要改两处，而且没有任何东西可测 —— 值只以原始字符串的形式活在 JSX 中。
+
+- 新增 `storage/aiSettings.ts`：键名、默认值、读写与解析的**单一真相源**。默认值按**逐键回退**，所以只改过 model 的人仍然拿到默认的 temperature。
+- 新增 `components/AiSettingsForm.tsx`：两处引用同一个组件。
+- 唯一的语义差异：旧写法把 `localStorage.getItem(...)` 直接当作 `defaultValue`，理论上可能在编辑中途重填。现在改成挂载时读一次。
+
+**实测（1440px，浏览器内）**：卡片从 Dashboard 的 Settings 打开两次，均渲染 8 个控件、标题与徽章一致、Provider 选项为 `custom` / `OpenAI Compatible`、API Key 与「连接测试」均为 disabled；读回的值是**种子里非默认的那两个**（model = `probe-model`、temperature = `0.3`）与默认的 `1` / `1200` / streaming `true` —— 即「确实从存储读回」，不是拿默认值糊过去。在 Model 框输入后，`character-studio.ai.model` 变为 `typed-model`，而 temperature 与 streaming **未被触碰**。控制台与页面错误均 0。
+
+### B1　删掉三个「看起来能配、实际没人读」的字段
+
+`animationSpeed`、`spacingDensity`、`appearance.borderRadius` 三个字段：**有类型、有默认值、会被持久化，但全项目没有任何一处读取它们**。Developer Center 里也没有对应控件。
+
+它们不是无害的残留。`buttonRadius` / `cardRadius` / `inputRadius` 才是真正驱动 CSS 变量的那三个，所以 `borderRadius` 的存在会让下一个读代码的人以为圆角配置在这儿 —— 正是 3.0 要消灭的那类「静默失效的设置」。
+
+- 三个字段从类型与默认值中删除。
+- `mergeDeveloperSettings` 顺带改了策略：**只保留默认值声明过的键**。原先是把存储对象整个展开，于是「类型里已经没有的键」会进得来、出得去、下一次保存又被写回存储，永远留在那儿。现在未知键在合并这一步就被丢掉。
+
+**实测（1440px，同一份浏览器 profile）**：先用一份「旧版本写下的」记录播种（其中 `appearance` 含 `borderRadius`、`designTokens` 含 `spacingDensity` 与 `animationSpeed`），再冷启动 → 存储中被重写为 `appearance: [accentColor, cardRadius, buttonRadius, shadowStrength, motionLevel, compactUi, fontScale]`、`designTokens: [inputRadius]`，三个字段**均不存在**；同时**活着的字段一个没丢**：`--developer-button-radius: 5px`、`--developer-card-radius: 11px`、`--control-radius: 6px`、`--primary: #0f766e` 全部按种子值生效。
+
+### B2　控制高度阶梯：图标按钮从三个尺寸收敛为一个令牌
+
+规划里写的是「34 / 36 / 42 收敛为两档」。**实测之后要修正这个前提**：34 / 36 / 42 是 CSS 里**声明**的字面量，而真正渲染出来的阶梯更宽 —— 同一套图标语言在同一个工具栏里同时是 **32** 和 **36**。原因是只有 `.hero-icon-button` 自己写了高宽，`.bare-icon-button` 与 `.mini-icon` 没有，于是它们的高度来自那一行的行盒字体度量。
+
+- 新增 `--control-height-icon: 36px`，**写在三个图标类的共享选择器上**（高宽同值：这些按钮是方的）。`.mini-icon` 的 32 与 `.graph-zoom .bare-icon-button` 的 34 覆盖一并删除 —— 后者让同一屏里的两个缩放按钮和所有其它图标按钮都不一样大。
+- `--control-height: 42px` 保持不变，继续服务带文字的控件。
+- 保留 `--control-height-compact: 34px` 作为第三档，并只用于**装不下图标档的紧凑行**（手机导航 chip、移动编辑器操作行）。规划要求「两档」，这里定为三档并说明理由：34 在这些行里是布局约束，不是审美偏好，硬拉到 36 会让手机操作条换行。已把散落的 `34 / 36 / 42` 字面量全部换成令牌，于是以后加的是令牌而不是新的字面量。
+
+**实测：同一次构建内做 A/B**（用 CDP 把 `--control-height-icon` 分别设为 32 与 36，其它一切不变，因此差值只可能来自这一档）：
+
+| | 1440px | 375px |
+|---|---|---|
+| 图标按钮（卡片 / 表格 / 关系网缩放） | 32×32 → **36×36**（与 hero 一致） | 同 |
+| 卡片盒子 | 254×269.23 → **254×269.23（未变）** | 309×224（未变） |
+| 卡片操作行 | 70×32 → 78×36 | 32×32 → 36×36 |
+| Dashboard 操作条 | 1120×54 → **1120×58** | 359×54 → **359×58** |
+| 表格行 | → 54 高 | → 110 高 |
+| 横向溢出 | **0**（两种档位都是 0） | **0** |
+| 控制台 / 页面错误 | **0** | **0** |
+
+也就是说：图标档统一的代价是 Dashboard 操作条高 4px、页面长 4px，卡片本身没有变大（操作行原本就有余量）。
+
+顺带修掉一处同源问题：375px 下「批量选择」是手机上唯一的图标按钮，宽度早已是 34 而高度来自 `.ghost-button` 基础规则的 42 —— 也就是唯一的非正方形。现在它是 34×34（紧凑档，正方形）。
+
+另核实了一处**并非本版引入**的问题：375px 下列表标题「角色列表」被截断 2px（`clientWidth 74 / scrollWidth 76`）。把图标档设为 32 与 36 测得**完全相同**，因此与本次改动无关，记为已知项、未在本版处理。
+
+### 测试
+
+新增 `test/aiSettings.test.ts`（9 例：默认值、逐键回退、复选库存成字符串、读旧版本写入的值、非法 Provider 回退、清空数字框不被默认值顶回、键集合就是声明的 7 个、写入失败不外泄）。`test/developerSettings.test.ts` 增 3 例：不再声明无人读取的设置、丢弃已躺在存储里的退役键、未声明的键不会经由 load-save 往返留存。
+
+全库 **18 个文件 / 192 用例**通过，`tsc -b` 通过。
+
+### 未纳入本版（阶段 B 剩余项）
+
+- **Dashboard / CharacterForm 按域抽 hook**：两个文件仍是 3.7k 行的单体。这一项需要「行为零变化」的 A/B 对照，探针已经就位（`probe-layout.js` 的几何指纹 + `probe-icon-tier-ab.js` 的同构建 A/B 手法），但改动面比本版三项加起来还大，留作下一批**单独**做。附带项：`.icon-button` 这个类在 TSX 中已无引用，其 `min-width` 已改指令牌，类本身待确认后删除。
+- **图标按钮高度的其它家族**：`theme-combo` 40、`brand-button` 46、`.export-dialog-list button` 40、`filter-clear-button` 30 在实测中仍各不相同。它们是**不同角色**（分段组合控件、品牌按钮、列表行、小号清除按钮），不是图标阶梯的成员，因此没有并入本版；是否统一属于设计决策，需要先定这些角色的层级。
+
+---
+
 ## 2.12.0 —— 阶段 A：数据与状态可靠性（Sprint 22.1）
 
 3.0 规划的第一优先级。这一版只做两件事，都不改界面。

@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
+import { AiSettingsForm } from "./components/AiSettingsForm";
 import { AvatarDisplay } from "./components/AvatarDisplay";
 import { Icon } from "./components/Icon";
 import {
@@ -1287,53 +1288,7 @@ function App() {
                   ))}
                 </div>
               </article>
-              {developerSettings.featureFlags.aiSettings && (
-              <article className="ai-settings-card">
-                <div className="settings-card-head">
-                  <h3>AI 设置 / AI Settings</h3>
-                  <span className="status-badge">🚧 Coming Soon</span>
-                </div>
-                <p className="muted">面向所有用户，开发中。当前不会调用 AI，也不会上传任何用户数据；未来可填写自己的 API Key。</p>
-                <div className="settings-form-grid">
-                  <label>
-                    Provider
-                    <select defaultValue={localStorage.getItem("character-studio.ai.provider") || "custom"} onChange={(event) => localStorage.setItem("character-studio.ai.provider", event.target.value)}>
-                      <option value="custom">Custom</option>
-                      <option value="openai">OpenAI Compatible</option>
-                    </select>
-                  </label>
-                  <label>
-                    API Key
-                    <input disabled placeholder="功能未启用，暂不可填写" type="password" />
-                  </label>
-                  <label>
-                    Base URL
-                    <input placeholder="https://api.example.com/v1" defaultValue={localStorage.getItem("character-studio.ai.base-url") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.base-url", event.target.value)} />
-                  </label>
-                  <label>
-                    Model
-                    <input placeholder="model-name" defaultValue={localStorage.getItem("character-studio.ai.model") || ""} onChange={(event) => localStorage.setItem("character-studio.ai.model", event.target.value)} />
-                  </label>
-                  <label>
-                    Temperature
-                    <input type="number" min="0" max="2" step="0.1" defaultValue={localStorage.getItem("character-studio.ai.temperature") || "0.8"} onChange={(event) => localStorage.setItem("character-studio.ai.temperature", event.target.value)} />
-                  </label>
-                  <label>
-                    Top P
-                    <input type="number" min="0" max="1" step="0.05" defaultValue={localStorage.getItem("character-studio.ai.top-p") || "1"} onChange={(event) => localStorage.setItem("character-studio.ai.top-p", event.target.value)} />
-                  </label>
-                  <label>
-                    Max Tokens
-                    <input type="number" min="1" step="1" defaultValue={localStorage.getItem("character-studio.ai.max-tokens") || "1200"} onChange={(event) => localStorage.setItem("character-studio.ai.max-tokens", event.target.value)} />
-                  </label>
-                  <label className="settings-check">
-                    <input type="checkbox" defaultChecked={localStorage.getItem("character-studio.ai.streaming") === "true"} onChange={(event) => localStorage.setItem("character-studio.ai.streaming", String(event.target.checked))} />
-                    <span>Streaming</span>
-                  </label>
-                </div>
-                <button className="ghost-button" disabled type="button">连接测试 / Connection Test</button>
-              </article>
-              )}
+              {developerSettings.featureFlags.aiSettings && <AiSettingsForm />}
               <article>
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步。</p>
