@@ -1269,6 +1269,9 @@ async function capturePreviewCanvas(element: HTMLElement, options: PreviewCaptur
             item.style.boxShadow = "none";
             item.style.textShadow = "none";
           });
+
+          // After the strip, because a stripped property has no colour left in it.
+          downgradeModernColors(documentClone, exportRoot);
         }
 
         documentClone
@@ -1295,6 +1298,88 @@ async function capturePreviewCanvas(element: HTMLElement, options: PreviewCaptur
     });
   } finally {
     element.classList.remove("pdf-safe");
+  }
+}
+
+/**
+ * html2canvas reads colours with its own parser, which knows rgb/rgba/hsl/hex and
+ * nothing newer. Modern CSS produces `color(srgb r g b)` for anything derived — a
+ * `color-mix()` token such as `--control-fill`, which is how the neutral control
+ * fills are built — and the parser throws
+ * `Attempting to parse an unsupported color function "color"` for it, failing the
+ * entire capture.
+ *
+ * So the clone gets downgraded before it is rendered, rather than the whole
+ * stylesheet being held back to colour syntax from 2015. `color(srgb …)` is a
+ * straight conversion; anything else is left alone.
+ */
+export function toLegacyColorFunctions(value: string): string {
+  return value.replace(
+    // Channels may carry a sign and may fall outside 0–1 on a wide-gamut display;
+    // they are clamped rather than rejected, so no convertable value is skipped.
+    /color\(\s*srgb\s+([-+]?[\d.]+%?)\s+([-+]?[\d.]+%?)\s+([-+]?[\d.]+%?)\s*(?:\/\s*([-+]?[\d.]+%?))?\s*\)/gi,
+    (match, red: string, green: string, blue: string, alpha?: string) => {
+      const channel = (raw: string) =>
+        Math.max(0, Math.min(255, Math.round(raw.endsWith("%") ? (Number.parseFloat(raw) / 100) * 255 : Number.parseFloat(raw) * 255)));
+      const opacity = (() => {
+        if (alpha === undefined) {
+          return 1;
+        }
+        const parsed = alpha.endsWith("%") ? Number.parseFloat(alpha) / 100 : Number.parseFloat(alpha);
+        return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 1;
+      })();
+
+      if (![red, green, blue].every((raw) => Number.isFinite(Number.parseFloat(raw)))) {
+        return match;
+      }
+
+      return `rgba(${channel(red)}, ${channel(green)}, ${channel(blue)}, ${opacity})`;
+    },
+  );
+}
+
+// Everything html2canvas reads as a colour.
+const CAPTURE_COLOR_PROPERTIES = [
+  "color",
+  "background-color",
+  "background-image",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "outline-color",
+  "text-decoration-color",
+  "caret-color",
+  "box-shadow",
+  "fill",
+  "stroke",
+];
+
+function downgradeModernColors(clonedDocument: Document, root: Element) {
+  const view = clonedDocument.defaultView;
+
+  if (!view) {
+    return;
+  }
+
+  const nodes: Element[] = [root, ...root.querySelectorAll("*")];
+
+  for (const node of nodes) {
+    const computed = view.getComputedStyle(node);
+
+    for (const property of CAPTURE_COLOR_PROPERTIES) {
+      const value = computed.getPropertyValue(property);
+
+      if (!value || !value.includes("color(")) {
+        continue;
+      }
+
+      const converted = toLegacyColorFunctions(value);
+
+      if (converted !== value) {
+        (node as HTMLElement).style.setProperty(property, converted);
+      }
+    }
   }
 }
 
@@ -1333,11 +1418,30 @@ async function waitForAvatarImages(element: Element) {
   }
 }
 
-// `exportPreviewImage` and `exportPreviewPdf` used to sit here: thin wrappers that
-// downloaded a capture of the character preview page. Their only caller was the
-// preview page's own export menu, which is gone, so the wrappers went with it. The
-// capture itself stays — the dashboard's batch snapshot export builds a detached
-// element and calls `capturePreviewCanvas` directly.
+export async function exportPreviewImage(
+  element: HTMLElement,
+  characterName: string,
+  format: "png" | "jpg",
+  quality = 0.9,
+  options: PreviewCaptureOptions = {},
+) {
+  const canvas = await capturePreviewCanvas(element, options);
+
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("图片截图生成失败");
+  }
+
+  const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, mimeType, format === "jpg" ? quality : undefined),
+  );
+
+  if (!blob) {
+    throw new Error("图片导出失败");
+  }
+
+  downloadBlob(blob, exportNodeName(characterName, format), mimeType);
+}
 
 async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptureOptions = {}) {
   const [{ jsPDF }, canvas] = await Promise.all([
@@ -1369,6 +1473,15 @@ async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptur
     }
 
     return pdf.output("blob");
+}
+
+export async function exportPreviewPdf(
+  element: HTMLElement,
+  characterName: string,
+  options: PreviewCaptureOptions = {},
+) {
+  const blob = await createPreviewPdfBlob(element, options);
+  downloadBlob(blob, exportNodeName(characterName, "pdf"), "application/pdf");
 }
 
 /**
@@ -1414,6 +1527,11 @@ async function captureSurfaceCanvas(element: Element, options: SurfaceCaptureOpt
   return await html2canvas(element as HTMLElement, {
     backgroundColor: options.background ?? "#ffffff",
     height: Math.ceil(bounds.height),
+    // Same reason as the character sheet: a `color-mix()` token inside the drawing
+    // comes back as a colour function html2canvas cannot parse.
+    onclone: (documentClone, clonedElement) => {
+      downgradeModernColors(documentClone, clonedElement);
+    },
     scale: options.scale || 2,
     scrollX: 0,
     scrollY: 0,

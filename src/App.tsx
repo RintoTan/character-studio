@@ -886,6 +886,10 @@ function App() {
       {page === "preview" && selectedCharacter && (
         <CharacterPreview
           character={selectedCharacter}
+          exportSettings={{
+            ...developerSettings.exportDefaults,
+            footerText: developerSettings.content.footerText,
+          }}
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
           onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}

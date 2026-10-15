@@ -3051,11 +3051,15 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-toolbar,
-.workspace-preview-top {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
+/* Destructive, but still a ghost: it stands beside 保存角色, and a filled red button
+   there would compete with the primary action for the eye. */
+.preview-action-button.danger {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--border));
+  color: var(--danger);
+}
+
+.preview-action-button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
 }
 
 /* The editor's action bar follows the scroll. Desktop previously had no labelled

@@ -1740,6 +1740,41 @@ export function CharacterForm({
     );
   }
 
+  // Rendered from both editor modes: the preview offers 删除角色, so the confirmation
+  // it raises has to exist there too rather than only inside the form.
+  function renderFormActionDialog() {
+    if (!pendingFormAction) {
+      return null;
+    }
+
+    return (
+      <div className="modal-backdrop" role="presentation">
+        <div className="confirm-dialog" role="dialog" aria-modal="true">
+          <h2>{pendingFormAction === "clear" ? "清空编辑内容" : "删除角色"}</h2>
+          <p>
+            {pendingFormAction === "clear"
+              ? "确定要清空当前编辑页的全部内容吗？此操作不会删除角色。"
+              : character
+                ? `确定要删除「${character.name || "未命名角色"}」吗？此操作不可撤销。`
+                : "当前角色尚未保存，删除会清空当前内容。"}
+          </p>
+          <div className="form-actions">
+            <button
+              className="ghost-button"
+              onClick={() => setPendingFormAction(null)}
+              type="button"
+            >
+              取消
+            </button>
+            <button className="danger-button" onClick={confirmFormAction} type="button">
+              {pendingFormAction === "clear" ? "确认清空" : "确认删除"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (editorMode === "preview") {
     return (
       <section className="workspace-shell">
@@ -1764,19 +1799,17 @@ export function CharacterForm({
             </div>
           </div>
         )}
-        <div className="workspace-preview-top">
-          <button
-            className="ghost-button"
-            onClick={() => setEditorMode("edit")}
-            type="button"
-          >
-            返回编辑
-          </button>
-        </div>
+        {/* No bar above the preview: 返回编辑 is one of the preview's own actions, and
+            this bar made it two buttons doing the same thing on one screen. */}
         <CharacterPreview
           character={previewCharacter}
+          mode="editing"
           onBack={() => setEditorMode("edit")}
+          onDelete={() => setPendingFormAction("delete")}
+          onSave={() => void saveCurrentCharacter()}
+          onSaveDraft={() => void saveDraftCharacter()}
         />
+        {renderFormActionDialog()}
       </section>
     );
   }
@@ -2632,32 +2665,7 @@ export function CharacterForm({
           </div>
         </div>
       )}
-      {pendingFormAction && (
-        <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true">
-            <h2>{pendingFormAction === "clear" ? "清空编辑内容" : "删除角色"}</h2>
-            <p>
-              {pendingFormAction === "clear"
-                ? "确定要清空当前编辑页的全部内容吗？此操作不会删除角色。"
-                : character
-                  ? `确定要删除「${character.name || "未命名角色"}」吗？此操作不可撤销。`
-                  : "当前角色尚未保存，删除会清空当前内容。"}
-            </p>
-            <div className="form-actions">
-              <button
-                className="ghost-button"
-                onClick={() => setPendingFormAction(null)}
-                type="button"
-              >
-                取消
-              </button>
-              <button className="danger-button" onClick={confirmFormAction} type="button">
-                {pendingFormAction === "clear" ? "确认清空" : "确认删除"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {renderFormActionDialog()}
       {helperSuggestion && (
         <div
           className="modal-backdrop"

@@ -1,4 +1,56 @@
 // @vitest-environment happy-dom
+import { describe, expect, it } from "vitest";
+import { toLegacyColorFunctions } from "../src/utils/importExport";
+
+// html2canvas parses colours itself and knows nothing newer than rgb/rgba/hsl/hex.
+// A color-mix() token computes to `color(srgb …)`, which it rejects outright with
+// `Attempting to parse an unsupported color function "color"` — and that fails the
+// whole capture, not just the one property. So the clone is downgraded first.
+describe("colour downgrade for html2canvas", () => {
+  it("converts a computed color-mix() value to rgba", () => {
+    expect(toLegacyColorFunctions("color(srgb 0.934667 0.936588 0.940706)")).toBe(
+      "rgba(238, 239, 240, 1)",
+    );
+  });
+
+  it("keeps the alpha of a translucent value", () => {
+    expect(toLegacyColorFunctions("color(srgb 1 1 1 / 0.7)")).toBe("rgba(255, 255, 255, 0.7)");
+    expect(toLegacyColorFunctions("color(srgb 0 0 0 / 50%)")).toBe("rgba(0, 0, 0, 0.5)");
+  });
+
+  it("converts every colour inside a composite value", () => {
+    expect(
+      toLegacyColorFunctions(
+        "color(srgb 0 0 0 / 0.1) 0px 1px 2px 0px, color(srgb 1 1 1 / 0.7) 0px 1px 0px inset",
+      ),
+    ).toBe("rgba(0, 0, 0, 0.1) 0px 1px 2px 0px, rgba(255, 255, 255, 0.7) 0px 1px 0px inset");
+  });
+
+  it("leaves values it already understands untouched", () => {
+    for (const value of [
+      "rgb(17, 24, 39)",
+      "rgba(0, 0, 0, 0.5)",
+      "#f3f4f6",
+      "none",
+      "var(--text)",
+    ]) {
+      expect(toLegacyColorFunctions(value)).toBe(value);
+    }
+  });
+
+  it("clamps channels rather than emitting an invalid colour", () => {
+    expect(toLegacyColorFunctions("color(srgb 1.4 -0.2 0.5)")).toBe("rgba(255, 0, 128, 1)");
+  });
+
+  it("leaves a colour space it does not know alone", () => {
+    // Better an unparsed property than a wrong colour: oklch has no srgb-scale
+    // channels to read here.
+    expect(toLegacyColorFunctions("color(display-p3 0.4 0.5 0.6)")).toBe(
+      "color(display-p3 0.4 0.5 0.6)",
+    );
+  });
+});
+
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
