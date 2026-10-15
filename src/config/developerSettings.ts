@@ -60,7 +60,6 @@ export type DeveloperSettings = {
     showFavoriteCount: boolean;
     showUpdatedTime: boolean;
     openSearch: boolean;
-    hideLowPriority: boolean;
   };
   exportDefaults: {
     jpgQuality: number;
@@ -146,7 +145,6 @@ export const defaultDeveloperSettings: DeveloperSettings = {
     showFavoriteCount: true,
     showUpdatedTime: true,
     openSearch: false,
-    hideLowPriority: true,
   },
   exportDefaults: {
     jpgQuality: 0.9,
@@ -264,7 +262,6 @@ function migrateLegacySettings(settings: DeveloperSettings): DeveloperSettings {
     dashboardDefaults: {
       ...settings.dashboardDefaults,
       openSearch: bool("character-studio.settings.open-search", settings.dashboardDefaults.openSearch),
-      hideLowPriority: bool("character-studio.settings.hide-low-priority", settings.dashboardDefaults.hideLowPriority),
     },
     editorDefaults: {
       ...settings.editorDefaults,

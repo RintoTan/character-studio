@@ -8,6 +8,9 @@ import {
   listAvatarAssets,
   saveAvatarBlob,
 } from "./avatarAssets";
+// The two export libraries are large enough to load on demand, which makes them the
+// most likely thing in the app to be asked for by a page a deploy has moved on from.
+import { importWithRecovery } from "./lazyImport";
 import {
   WORKSPACE_BACKUP_VERSION,
   applyWorkspaceDatasets,
@@ -1238,7 +1241,7 @@ async function capturePreviewCanvas(element: HTMLElement, options: PreviewCaptur
   }
 
   try {
-    const { default: html2canvas } = await import("html2canvas");
+    const { default: html2canvas } = await importWithRecovery(() => import("html2canvas"));
 
     return await html2canvas(element, {
       backgroundColor: "#f3f4f6",
@@ -1357,7 +1360,7 @@ export async function exportPreviewImage(
 
 async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptureOptions = {}) {
   const [{ jsPDF }, canvas] = await Promise.all([
-    import("jspdf"),
+    importWithRecovery(() => import("jspdf")),
     capturePreviewCanvas(element, options),
   ]);
 

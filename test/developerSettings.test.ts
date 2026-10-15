@@ -123,7 +123,9 @@ describe("developerSettings", () => {
 
       const settings = loadDeveloperSettings();
 
-      expect(settings.dashboardDefaults.hideLowPriority).toBe(true);
+      expect(settings.dashboardDefaults.openSearch).toBe(
+        defaultDeveloperSettings.dashboardDefaults.openSearch,
+      );
       expect(settings.promptCenter.customLibraryText).toBe(
         defaultDeveloperSettings.promptCenter.customLibraryText,
       );

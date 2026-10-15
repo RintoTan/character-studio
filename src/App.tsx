@@ -42,28 +42,49 @@ import {
 import { pruneCharacterReferences } from "./storage/referenceIntegrity";
 import { readWorkspaceDatasets } from "./storage/workspaceBackup";
 import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
+import { importWithRecovery } from "./utils/lazyImport";
 
 // The editor, the preview and the developer panel are not needed for the first
 // paint, so they are code-split out of the entry chunk. Dashboard stays static:
 // it is the landing page, and fetching it through a second round-trip would
 // delay first paint more than the smaller entry chunk saves.
+//
+// Every route goes through importWithRecovery: a page left open across a deploy
+// holds the old entry script, and the first route it opens after that would ask for
+// a chunk the deploy has already removed.
+// `importWithRecovery` is written out at each route rather than wrapped in a helper:
+// a helper generic over the props cannot be inferred through `ComponentType`, which
+// is a union, so it degrades to `never` and rejects every component that requires
+// props. Writing it inline lets `lazy` supply the contextual type.
 const CharacterForm = lazy(() =>
-  import("./pages/CharacterForm").then((module) => ({ default: module.CharacterForm })),
+  importWithRecovery(() =>
+    import("./pages/CharacterForm").then((module) => ({ default: module.CharacterForm })),
+  ),
 );
 const CharacterPreview = lazy(() =>
-  import("./pages/CharacterPreview").then((module) => ({ default: module.CharacterPreview })),
+  importWithRecovery(() =>
+    import("./pages/CharacterPreview").then((module) => ({ default: module.CharacterPreview })),
+  ),
 );
 const DeveloperCenter = lazy(() =>
-  import("./pages/DeveloperCenter").then((module) => ({ default: module.DeveloperCenter })),
+  importWithRecovery(() =>
+    import("./pages/DeveloperCenter").then((module) => ({ default: module.DeveloperCenter })),
+  ),
 );
 const RelationshipGraph = lazy(() =>
-  import("./pages/RelationshipGraph").then((module) => ({ default: module.RelationshipGraph })),
+  importWithRecovery(() =>
+    import("./pages/RelationshipGraph").then((module) => ({ default: module.RelationshipGraph })),
+  ),
 );
 const Timeline = lazy(() =>
-  import("./pages/Timeline").then((module) => ({ default: module.Timeline })),
+  importWithRecovery(() =>
+    import("./pages/Timeline").then((module) => ({ default: module.Timeline })),
+  ),
 );
 const WorldManager = lazy(() =>
-  import("./pages/WorldManager").then((module) => ({ default: module.WorldManager })),
+  importWithRecovery(() =>
+    import("./pages/WorldManager").then((module) => ({ default: module.WorldManager })),
+  ),
 );
 
 const THEME_KEY = "character-studio.theme";
@@ -679,9 +700,18 @@ function App() {
     setIsThemeMenuOpen(false);
   }
 
-  function goDashboard() {
+  function goDashboard(options: { resetFilters?: boolean } = {}) {
     closeAppOverlays();
     setPage("dashboard");
+
+    // The mark is the way home, and it is on screen from every screen. An author who
+    // has wandered into 草稿箱 or 收藏夹 with a search typed in has no single other
+    // control that clears all of it, so going home from the mark means the dashboard
+    // as it opens rather than the dashboard as they left it. The Dashboard button
+    // next to it stays literal: go there, keep the view.
+    if (options.resetFilters) {
+      setDashboardFiltersReset((current) => ({ signal: current.signal + 1, favoriteMode: "all" }));
+    }
   }
 
   const isAppOverlayOpen =
@@ -696,7 +726,12 @@ function App() {
   return (
     <main className="app-shell">
       <nav className="topbar" ref={topbarRef}>
-        <button className="brand-button" onClick={goDashboard}>
+        <button
+          className="brand-button"
+          onClick={() => goDashboard({ resetFilters: true })}
+          title="回到初始界面（清除搜索、筛选与收藏／草稿视图）"
+          type="button"
+        >
           <svg className="brand-mark" aria-hidden="true" viewBox="0 0 566.43 637.56">
             <polygon className="brand-mark-primary" points="0 163.51 283.22 0 476.31 111.48 386.19 163.51 283.22 104.06 90.12 215.55 90.12 438.51 254.62 533.49 254.62 637.56 0 490.54 0 163.51" />
             <polygon className="brand-mark-accent" points="311.79 533.49 476.31 438.51 476.31 215.55 566.43 163.51 566.43 490.54 311.79 637.56 311.79 533.49" />
@@ -704,7 +739,7 @@ function App() {
           Character Studio
         </button>
         <div className="nav-actions">
-          <button className="ghost-button" onClick={goDashboard}>
+          <button className="ghost-button" onClick={() => goDashboard()}>
             Dashboard
           </button>
           <div className="theme-menu-wrap" ref={themeMenuRef}>
@@ -947,7 +982,7 @@ function App() {
             aria-label="回到主页"
             className="floating-action"
             data-tooltip="回到主页"
-            onClick={goDashboard}
+            onClick={() => goDashboard()}
             type="button"
           >
             <Icon name="home" />
@@ -980,7 +1015,7 @@ function App() {
             aria-label="回到主页"
             className="floating-action"
             data-tooltip="回到主页"
-            onClick={goDashboard}
+            onClick={() => goDashboard()}
             type="button"
           >
             <Icon name="home" />

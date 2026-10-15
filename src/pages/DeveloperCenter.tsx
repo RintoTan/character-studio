@@ -332,7 +332,6 @@ export function DeveloperCenter({
     ["PDF Light Mode", settings.exportDefaults.pdfLightMode ? "开启" : "关闭"],
     ["小屏简洁模式", settings.editorDefaults.compactMobileEditor ? "开启" : "关闭"],
     ["默认展开搜索", settings.dashboardDefaults.openSearch ? "开启" : "关闭"],
-    ["自动隐藏低优先级信息", settings.dashboardDefaults.hideLowPriority ? "开启" : "关闭"],
   ];
   const designComponents = [
     ["Primary Button", "主要按钮", <button className="primary-button" type="button">保存</button>, "用于主要确认与提交。"],

@@ -78,7 +78,6 @@ type DashboardProps = {
     showFavoriteCount: boolean;
     showUpdatedTime: boolean;
     openSearch: boolean;
-    hideLowPriority: boolean;
   };
   aiSettingsEnabled?: boolean;
   assetLibraryEnabled?: boolean;
@@ -106,7 +105,7 @@ type DashboardProps = {
   // the dashboard edits the single settings object instead of its own keys.
   editorSettings?: { compactMobileEditor: boolean };
   onDashboardSettingsChange?: (patch: {
-    dashboardDefaults?: Partial<{ openSearch: boolean; hideLowPriority: boolean }>;
+    dashboardDefaults?: Partial<{ openSearch: boolean }>;
     editorDefaults?: Partial<{ compactMobileEditor: boolean }>;
     exportDefaults?: Partial<{ jpgQuality: number; pdfLightMode: boolean }>;
   }) => void;
@@ -239,6 +238,15 @@ export function Dashboard({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSignalRef = useRef(searchSignal);
   const cardTagLimit = Math.max(0, Math.min(dashboardSettings?.cardTagCount ?? 5, 8));
+
+  // One switch, read once, used by the table header and the table cell.
+  //
+  // The header used to render unconditionally while the cell was conditional, so
+  // hiding the time left a column with a title and no data -- and pushed every
+  // later column one track to the left, which is what "the action column is not
+  // aligned" turned out to be. Gating both from the same value is what stops the
+  // two from ever disagreeing again.
+  const showUpdatedTime = dashboardSettings?.showUpdatedTime !== false;
 
   // Every layer the dashboard can have on top of it, declared once.
   //
@@ -1410,21 +1418,7 @@ export function Dashboard({
                    </span>
                  </button>
               )}
-              {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
-                <button
-                  aria-label={isGroupedCards ? "取消按世界观分组" : "按世界观分组"}
-                  aria-pressed={groupedCards}
-                  className="ghost-button bulk-select-button"
-                  data-tooltip={isGroupedCards ? "取消分组" : "按世界观分组"}
-                  onClick={() => setIsGroupedCards((current) => !current)}
-                  type="button"
-                >
-                  <span className="desktop-label">{isGroupedCards ? "已按世界观分组" : "按世界观分组"}</span>
-                  <span className="mobile-icon">
-                    <Icon name="grid" size={16} />
-                  </span>
-                </button>
-              )}
+
             </div>
           )}
         </div>
@@ -1476,7 +1470,7 @@ export function Dashboard({
                 <span>年龄</span>
                 <span>标签</span>
                 <span>状态</span>
-                <span>最后编辑</span>
+                {showUpdatedTime && <span>最后编辑</span>}
                 <span>操作</span>
               </div>
               {visibleCharacters.map((character) => {
@@ -1533,8 +1527,7 @@ export function Dashboard({
                       ))}
                     </div>
                     <span>{isDraft ? "草稿" : isFavorite ? "已收藏" : "正式"}</span>
-                    {dashboardSettings?.showUpdatedTime !== false &&
-                    dashboardSettings?.hideLowPriority !== true && <span>{formatDate(character.updatedAt)}</span>}
+                    {showUpdatedTime && <span>{formatStamp(character.updatedAt)}</span>}
                     <div className="table-actions">
                       {isBulkMode ? (
                         <button
@@ -1849,14 +1842,14 @@ export function Dashboard({
                       >
                          <Icon filled={isFavorite} name="heart" size={16} />
                        </button>
-                      {dashboardSettings?.showUpdatedTime !== false &&
-                    dashboardSettings?.hideLowPriority !== true && (
+                      {showUpdatedTime && (
                         <button
                           className="card-time-button preview-hit"
                           onClick={() => onPreview(character)}
+                          title={`创建 ${formatDate(character.createdAt)} · 最后编辑 ${formatDate(character.updatedAt)}`}
                           type="button"
                         >
-                          {formatDate(character.updatedAt)}
+                          创建 {formatStamp(character.createdAt)} · 编辑 {formatStamp(character.updatedAt)}
                         </button>
                       )}
                     </div>
@@ -1889,14 +1882,14 @@ export function Dashboard({
                 )}
                 {(isBulkMode || isDraft) && (
                   <div className="card-meta">
-                    {dashboardSettings?.showUpdatedTime !== false &&
-                    dashboardSettings?.hideLowPriority !== true && (
+                    {showUpdatedTime && (
                       <button
                         className="card-time-button preview-hit"
                         onClick={() => onPreview(character)}
+                        title={`创建 ${formatDate(character.createdAt)} · 最后编辑 ${formatDate(character.updatedAt)}`}
                         type="button"
                       >
-                        {formatDate(character.updatedAt)}
+                        创建 {formatStamp(character.createdAt)} · 编辑 {formatStamp(character.updatedAt)}
                       </button>
                     )}
                   </div>
@@ -2216,6 +2209,20 @@ export function Dashboard({
                     <Icon name="heart" size={16} />
                     {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
                   </button>
+                  {/* Grouping is a display option, so it belongs with the other
+                      display options rather than as a button of its own beside the
+                      list title -- where it competed with the title and, on a phone,
+                      pushed the title into an ellipsis. */}
+                  {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
+                    <button
+                      aria-pressed={groupedCards}
+                      onClick={() => setIsGroupedCards((current) => !current)}
+                      type="button"
+                    >
+                      <Icon name="grid" size={16} />
+                      {isGroupedCards ? "取消按世界观分组" : "按世界观分组"}
+                    </button>
+                  )}
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     type="button"
@@ -3032,18 +3039,6 @@ export function Dashboard({
                   />
                   <span>默认展开搜索</span>
                 </label>
-                <label className="settings-check">
-                  <input
-                    type="checkbox"
-                    checked={dashboardSettings?.hideLowPriority ?? true}
-                    onChange={(event) =>
-                      onDashboardSettingsChange?.({
-                        dashboardDefaults: { hideLowPriority: event.target.checked },
-                      })
-                    }
-                  />
-                  <span>自动隐藏低优先级信息</span>
-                </label>
               </article>
               <article>
                 <h3>Export</h3>
@@ -3585,6 +3580,34 @@ function getTagTone(tag: string) {
 
 function getTime(value?: string) {
   return value ? new Date(value).getTime() || 0 : 0;
+}
+
+/**
+ * A shorter stamp for places that carry two of them side by side -- the card shows
+ * when a character was created and when it was last edited, and two 12-hour stamps
+ * with an AM/PM on each do not fit. Days are dropped outside the current year.
+ */
+function formatStamp(value?: string) {
+  if (!value) {
+    return "未知";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "未知";
+  }
+
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  if (date.getFullYear() !== new Date().getFullYear()) {
+    return `${date.getFullYear()}/${month}/${day}`;
+  }
+
+  return `${month}/${day} ${hours}:${minutes}`;
 }
 
 function formatDate(value?: string) {
