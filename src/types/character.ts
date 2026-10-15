@@ -36,3 +36,10 @@ export type Character = {
   createdAt?: string;
   updatedAt: string;
 };
+
+/**
+ * A character as the editor holds it: everything but the identity the store owns.
+ * The editor writes the id and the timestamp on the way out, so a draft must not
+ * carry them.
+ */
+export type CharacterDraft = Omit<Character, "id" | "updatedAt">;

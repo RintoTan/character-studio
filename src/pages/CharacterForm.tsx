@@ -10,18 +10,18 @@ import {
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
-import { avatarCategories } from "../data/avatarCategories";
+import { DEFAULT_AVATAR_EMOJI, avatarCategories } from "../data/avatarCategories";
 import {
   defaultCollapseState,
   loadCollapseState,
   saveCollapseState,
   type EditorSectionId,
 } from "../storage/editorUiState";
-import type { Character } from "../types/character";
+import type { Character, CharacterDraft } from "../types/character";
 import { useAvatarEditing } from "../hooks/useAvatarEditing";
+import { useCharacterSave } from "../hooks/useCharacterSave";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { fragmentRoot } from "../utils/textFragments";
-import { saveAvatarBlob } from "../utils/avatarAssets";
 import { CharacterPreview } from "./CharacterPreview";
 import {
   EDITOR_SECTIONS,
@@ -30,8 +30,6 @@ import {
   sectionShortTitle,
 } from "./editor/sections";
 import { loadDeveloperSettings, type DeveloperSettings } from "../config/developerSettings";
-
-type CharacterDraft = Omit<Character, "id" | "updatedAt">;
 
 type CharacterFormProps = {
   character?: Character | null;
@@ -74,7 +72,6 @@ type HelperField =
   | "relationshipKeywords";
 type HelperKind = "example" | "inspiration" | "tip";
 
-const DEFAULT_AVATAR_EMOJI = "🙂";
 
 const defaultEditorSettings = {
   expandAllSections: false,
@@ -1310,10 +1307,28 @@ export function CharacterForm({
   const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>(
     () => loadCollapseState() ?? defaultCollapseState,
   );
-  const [saveStatus, setSaveStatus] = useState<
-    "idle" | "saving" | "saved" | "error"
-  >("idle");
-  const lastAutoSavedSnapshotRef = useRef("");
+  // Building a character, watching whether it is saved, and the two ways the
+  // browser is told about it -- the autosave timer and the unload prompt -- are one
+  // domain, so they are one hook.
+  const {
+    saveStatus,
+    markLoaded,
+    markCleared,
+    saveCurrentCharacter,
+    saveDraftCharacter,
+  } = useCharacterSave({
+    formData,
+    setFormData,
+    character,
+    pendingAvatar,
+    clearPendingAvatar,
+    showToast,
+    setFormError,
+    onSave,
+    onDraftSave,
+    onAutoSave,
+    autoSave: effectiveEditorSettings.autoSave,
+  });
 
   const previewCharacter = useMemo<Character>(
     () => ({
@@ -1369,8 +1384,7 @@ export function CharacterForm({
         };
 
     setFormData(nextData);
-    lastAutoSavedSnapshotRef.current = JSON.stringify(nextData);
-    setSaveStatus(character ? "saved" : "idle");
+    markLoaded(nextData);
     setAgeMode(character?.birthDate ? "birthDate" : "manual");
     if (character?.gender && genderOptions.includes(character.gender)) {
       setGenderMode(character.gender);
@@ -1395,52 +1409,6 @@ export function CharacterForm({
     }
     clearPendingAvatar();
   }, [character?.id, effectiveEditorSettings.collapseAllSections, effectiveEditorSettings.expandAllSections]);
-
-  useEffect(() => {
-    if (!effectiveEditorSettings.autoSave || !character?.isDraft || !onAutoSave) {
-      return;
-    }
-
-    const snapshot = JSON.stringify(formData);
-
-    if (snapshot === lastAutoSavedSnapshotRef.current) {
-      return;
-    }
-
-    setSaveStatus("saving");
-    const timer = window.setTimeout(() => {
-      try {
-        onAutoSave({
-          ...formData,
-          id: character.id,
-          createdAt: character.createdAt || new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          isDraft: character.isDraft === true,
-          draftOfId: character.draftOfId,
-          name: formData.name || character.name || "未命名角色",
-        });
-        lastAutoSavedSnapshotRef.current = snapshot;
-        setSaveStatus("saved");
-      } catch {
-        setSaveStatus("error");
-      }
-    }, 900);
-
-    return () => window.clearTimeout(timer);
-  }, [character, effectiveEditorSettings.autoSave, formData, onAutoSave]);
-
-  useEffect(() => {
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (JSON.stringify(formData) === lastAutoSavedSnapshotRef.current) {
-        return;
-      }
-
-      event.preventDefault();
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [formData]);
 
 
   useEffect(() => {
@@ -1806,61 +1774,6 @@ export function CharacterForm({
     );
   }
 
-  async function buildCharacter(isDraft: boolean) {
-    if (!formData.name.trim()) {
-      setFormError("请先填写角色名字");
-      showToast("请先填写角色名字");
-      return null;
-    }
-
-    let avatarAssetId = formData.avatarAssetId;
-
-    if (pendingAvatar) {
-      const asset = await saveAvatarBlob(pendingAvatar.blob, pendingAvatar.name);
-      avatarAssetId = asset.id;
-    }
-
-    setFormError("");
-    return {
-      ...formData,
-      avatarAssetId,
-      id: character?.id || crypto.randomUUID(),
-      createdAt: character?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      avatarEmoji: formData.avatarEmoji || DEFAULT_AVATAR_EMOJI,
-      isDraft,
-      name: formData.name.trim(),
-    };
-  }
-
-  async function saveCurrentCharacter() {
-    const nextCharacter = await buildCharacter(false);
-
-    if (!nextCharacter) {
-      return;
-    }
-
-    setSaveStatus("saving");
-    onSave(nextCharacter);
-    clearPendingAvatar();
-    setFormData((current) => ({ ...current, avatarAssetId: nextCharacter.avatarAssetId || "" }));
-    setSaveStatus("saved");
-  }
-
-  async function saveDraftCharacter() {
-    const nextCharacter = await buildCharacter(true);
-
-    if (!nextCharacter) {
-      return;
-    }
-
-    setSaveStatus("saving");
-    onDraftSave(nextCharacter);
-    clearPendingAvatar();
-    setFormData((current) => ({ ...current, avatarAssetId: nextCharacter.avatarAssetId || "" }));
-    setSaveStatus("saved");
-  }
-
   function clearField() {
     if (!pendingClear) {
       return;
@@ -1888,8 +1801,7 @@ export function CharacterForm({
     setGenderMode("");
     setAgeMode("manual");
     setFormError("");
-    setSaveStatus("idle");
-    lastAutoSavedSnapshotRef.current = JSON.stringify(nextData);
+    markCleared(nextData);
   }
 
   function confirmFormAction() {

@@ -73,3 +73,6 @@ export const avatarCategories: AvatarCategory[] = [
 export const avatarEmojiOptions = Array.from(
   new Set(avatarCategories.flatMap((category) => category.emojis)),
 );
+
+/** The emoji a character shows before the author picks one. */
+export const DEFAULT_AVATAR_EMOJI = "🙂";
