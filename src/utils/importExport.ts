@@ -26,7 +26,9 @@ import {
   WORKSPACE_CSV_HEADERS,
   readWorkspaceRowsFromCsv,
   resolveWorkspaceRows,
+  splitList,
   type CsvWorkspaceRows,
+  type NameToId,
 } from "./workspaceCsv";
 
 type AvatarAssetExportData = {
@@ -58,6 +60,41 @@ type PreparedCharacter = {
   avatarSourceKey?: string;
 };
 
+// Counts the character references a CSV could not turn into links. Those rows are in
+// the file but name someone the import cannot identify, so they are left out and the
+// author is told how many. The alternative - attaching them to a guess - produced
+// relationships that looked valid and pointed at the wrong character (KI-14).
+function countUnresolvedReferences(
+  rows: CsvWorkspaceRows,
+  nameToId: NameToId,
+  ambiguous: ReadonlySet<string>,
+): { ambiguous: number; missing: number } {
+  const counts = { ambiguous: 0, missing: 0 };
+
+  const tally = (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || nameToId.has(trimmed)) {
+      return;
+    }
+    counts[ambiguous.has(trimmed) ? "ambiguous" : "missing"] += 1;
+  };
+
+  for (const row of rows.relationships) {
+    tally(row.fromName);
+    tally(row.toName);
+  }
+  for (const row of rows.world) {
+    tally(row.parentName);
+  }
+  for (const row of rows.timeline) {
+    for (const name of splitList(row.characterNames)) {
+      tally(name);
+    }
+  }
+
+  return counts;
+}
+
 export type CharacterImportPreview = {
   roleCount: number;
   avatarCount: number;
@@ -71,6 +108,9 @@ export type CharacterImportPreview = {
   /** Counts for the relationship graph, the timeline and the world book, when the
    *  file carries them. Null for the character-only formats that predate them. */
   workspaceCounts: WorkspaceCounts | null;
+  /** Character references a CSV named but could not identify: names that match more
+   *  than one character, and names that match none. Neither is imported. */
+  unresolvedReferences: { ambiguous: number; missing: number };
 };
 
 export type PreparedCharacterImport = {
@@ -665,18 +705,43 @@ export async function prepareCharacterImport(
 
   // A CSV names characters instead of identifying them, so the rows are turned into
   // edges and links only once every name has an id to point at.
+  let unresolvedReferences: { ambiguous: number; missing: number } = { ambiguous: 0, missing: 0 };
   if (csvWorkspaceRows) {
-    const nameToId = new Map<string, string>();
-    for (const character of existingCharacters) {
-      if (character.name.trim()) {
-        nameToId.set(character.name.trim(), character.id);
+    // A name is not an identity. Two characters can share one - across worldviews, or
+    // because the file brings a character the author already has - and either answer
+    // would wire the edge to a character the author never named. So the map carries
+    // only names that identify exactly one character, and the rows that referenced
+    // the rest are reported by count instead of being silently attached to a guess.
+    // DEC-38-03; previously the last writer of a name won.
+    const candidates = new Map<string, Set<string>>();
+    const addCandidate = (name: string, id: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        return;
       }
+      const ids = candidates.get(trimmed) ?? new Set<string>();
+      ids.add(id);
+      candidates.set(trimmed, ids);
+    };
+
+    for (const character of existingCharacters) {
+      addCandidate(character.name, character.id);
     }
     for (const prepared of preparedCharacters) {
-      if (prepared.character.name.trim()) {
-        nameToId.set(prepared.character.name.trim(), prepared.character.id);
+      addCandidate(prepared.character.name, prepared.character.id);
+    }
+
+    const nameToId = new Map<string, string>();
+    const ambiguousNames = new Set<string>();
+    for (const [name, ids] of candidates) {
+      if (ids.size === 1) {
+        nameToId.set(name, [...ids][0]);
+      } else {
+        ambiguousNames.add(name);
       }
     }
+
+    unresolvedReferences = countUnresolvedReferences(csvWorkspaceRows, nameToId, ambiguousNames);
 
     const stamp = Date.now();
     const resolved = resolveWorkspaceRows(
@@ -727,6 +792,7 @@ export async function prepareCharacterImport(
       dataVersion,
       importType: hasCsv ? "csv" : hasZip && hasJson ? "mixed" : hasZip ? "zip" : "json",
       workspaceCounts: workspace ? countWorkspaceDatasets(workspace) : null,
+      unresolvedReferences,
     },
   };
 }

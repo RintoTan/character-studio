@@ -5,9 +5,11 @@ import { prepareCharacterImport } from "../src/utils/importExport";
 import type { Character } from "../src/types/character";
 
 // A CSV names characters instead of identifying them, so a relationship row is only
-// as trustworthy as the name -> id map built for it. These tests pin what that map
-// does today. KI-14 records the two rows marked 缺陷 below; they describe the defect
-// rather than a contract, and the fix will have to change them deliberately.
+// as good as the name -> id map built for it. DEC-38-03 settles what that map may do:
+// a name that identifies exactly one character resolves, and a name that identifies
+// none or several does not - the row is left out and counted. These cases are the
+// contract for that rule; before it, the last character to claim a name won and the
+// edge could point at someone the author never named (KI-14).
 
 const header = [
   "类型",
@@ -52,15 +54,15 @@ const existing = [
   character({ id: "existing-lu", name: "陆停云", worldview: "北境" }),
 ];
 
-const importCsv = (rows: string[][]) =>
-  prepareCharacterImport([asCsvFile(csvText(rows))] as unknown as FileList, existing);
+const importCsv = (rows: string[][], current: Character[] = existing) =>
+  prepareCharacterImport([asCsvFile(csvText(rows))] as unknown as FileList, current);
 
 beforeEach(() => {
   localStorage.clear();
 });
 
 describe("CSV character identity", () => {
-  it("缺陷 KI-14: an imported character of the same name takes over the existing one's relationships", async () => {
+  it("does not connect a relationship to an imported character of the same name", async () => {
     const plan = await importCsv([
       header,
       row({ 类型: "角色", 名字: "沈青梧", 性别: "女" }),
@@ -68,20 +70,17 @@ describe("CSV character identity", () => {
     ]);
 
     const imported = plan.characters.find((entry) => entry.character.name === "沈青梧")?.character;
+    // The import still brings the character in - a repeated name is allowed data.
     expect(imported).toBeTruthy();
-    // The import never re-keys onto an existing id, so this is a genuinely new record.
     expect(imported?.id).not.toBe("existing-shen");
 
-    // 缺陷: the edge names 沈青梧, and the name meant "existing-shen" before the file
-    // arrived. It now points at the newcomer, and nothing tells the author.
-    expect(plan.workspace?.relationships[0]).toMatchObject({
-      fromId: imported?.id,
-      toId: "existing-lu",
-      kind: "friend",
-    });
+    // The edge is not created at all, for either candidate, and the author is told.
+    expect(plan.workspace?.relationships).toEqual([]);
+    expect(plan.preview.unresolvedReferences.ambiguous).toBe(1);
+    expect(plan.preview.unresolvedReferences.missing).toBe(0);
   });
 
-  it("缺陷 KI-14: two characters of the same name inside one file collide as well", async () => {
+  it("does not pick between two characters of the same name inside one file", async () => {
     const plan = await importCsv([
       header,
       row({ 类型: "角色", 名字: "沈青梧", 性别: "女" }),
@@ -89,53 +88,44 @@ describe("CSV character identity", () => {
       row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "陆停云", 关系类型: "友人" }),
     ]);
 
-    const sameName = plan.characters.filter((entry) => entry.character.name === "沈青梧");
-    expect(sameName).toHaveLength(2);
-    const distinctIds = new Set(sameName.map((entry) => entry.character.id));
-    expect(distinctIds.size).toBe(2);
-
-    // 缺陷: whichever row was read last owns the name, so "the second one" wins.
-    expect(plan.workspace?.relationships[0]).toMatchObject({
-      fromId: sameName[1].character.id,
-      toId: "existing-lu",
-    });
+    expect(plan.characters.filter((entry) => entry.character.name === "沈青梧")).toHaveLength(2);
+    expect(plan.workspace?.relationships).toEqual([]);
+    expect(plan.preview.unresolvedReferences.ambiguous).toBe(1);
   });
 
-  it("does not distinguish two characters that share a name in different worldviews", async () => {
+  it("treats a name shared across worldviews as ambiguous rather than choosing one", async () => {
     const twoWorlds = [
       character({ id: "north-shen", name: "沈青梧", worldview: "北境" }),
       character({ id: "south-shen", name: "沈青梧", worldview: "南国" }),
     ];
-    const plan = await prepareCharacterImport(
+    const plan = await importCsv(
       [
-        asCsvFile(
-          csvText([
-            header,
-            row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "陆停云", 关系类型: "友人" }),
-            row({ 类型: "角色", 名字: "陆停云" }),
-          ]),
-        ),
-      ] as unknown as FileList,
+        header,
+        row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "陆停云", 关系类型: "友人" }),
+        row({ 类型: "角色", 名字: "陆停云" }),
+      ],
       twoWorlds,
     );
 
-    // The map is keyed by name alone, so the worldview column cannot break the tie.
-    expect(plan.workspace?.relationships[0]).toMatchObject({ fromId: "south-shen" });
+    expect(plan.workspace?.relationships).toEqual([]);
+    expect(plan.preview.unresolvedReferences.ambiguous).toBe(1);
   });
 
-  it("drops a relationship that names a character the import cannot resolve", async () => {
+  it("counts a reference to a character that does not exist, and still imports the rest", async () => {
     const plan = await importCsv([
       header,
       row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "查无此人", 关系类型: "友人" }),
       row({ 类型: "角色", 名字: "陆停云" }),
     ]);
 
-    // Existing semantics: an unresolvable name is dropped without a word. The defect
-    // above is that a resolvable-but-wrong name is not treated the same way.
     expect(plan.workspace?.relationships).toEqual([]);
+    expect(plan.preview.unresolvedReferences.missing).toBe(1);
+    expect(plan.preview.unresolvedReferences.ambiguous).toBe(0);
+    // The characters in the file still arrive: one bad row does not fail the import.
+    expect(plan.characters.map((entry) => entry.character.name)).toContain("陆停云");
   });
 
-  it("keeps a relationship whose names both resolve to existing characters", async () => {
+  it("keeps connecting relationships whose names both identify one character", async () => {
     const plan = await importCsv([
       header,
       row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "陆停云", 关系类型: "友人" }),
@@ -146,5 +136,44 @@ describe("CSV character identity", () => {
       fromId: "existing-shen",
       toId: "existing-lu",
     });
+    expect(plan.preview.unresolvedReferences).toEqual({ ambiguous: 0, missing: 0 });
+  });
+
+  it("imports the unambiguous rows of a file that also contains an ambiguous one", async () => {
+    const plan = await importCsv([
+      header,
+      row({ 类型: "角色", 名字: "沈青梧" }),
+      row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "陆停云", 关系类型: "友人" }),
+      row({ 类型: "关系", 源角色: "谢枯荣", 目标角色: "池镜", 关系类型: "同僚" }),
+      row({ 类型: "角色", 名字: "谢枯荣" }),
+      row({ 类型: "角色", 名字: "池镜" }),
+    ]);
+
+    // The ambiguous pair is dropped; the other pair is new to the file and resolves.
+    expect(plan.workspace?.relationships).toHaveLength(1);
+    expect(plan.preview.unresolvedReferences.ambiguous).toBe(1);
+  });
+
+  it("never half-connects an edge when only one end is ambiguous", async () => {
+    const plan = await importCsv([
+      header,
+      row({ 类型: "角色", 名字: "沈青梧" }),
+      row({ 类型: "关系", 源角色: "沈青梧", 目标角色: "陆停云", 关系类型: "友人" }),
+    ]);
+
+    expect(plan.workspace?.relationships).toEqual([]);
+  });
+
+  it("counts ambiguous timeline links and world parents too", async () => {
+    const plan = await importCsv([
+      header,
+      row({ 类型: "角色", 名字: "沈青梧" }),
+      row({ 类型: "时间线", 事件标题: "相遇", 事件日期: "2026-01-01", 涉及角色: "沈青梧、陆停云" }),
+      row({ 类型: "世界观", 名字: "白塔城", 分类: "地点", 父级: "沈青梧" }),
+    ]);
+
+    // One ambiguous name in the timeline cell, one in the world parent column.
+    expect(plan.preview.unresolvedReferences.ambiguous).toBe(2);
+    expect(plan.workspace?.timeline[0]?.characterIds ?? []).not.toContain("existing-shen");
   });
 });

@@ -62,7 +62,8 @@ function indexHeaders(row: string[]) {
   return index;
 }
 
-function splitList(value: string) {
+/** Splits a CSV cell that carries several names ("沈青梧、陆停云"). */
+export function splitList(value: string) {
   return value
     .split(/[、,，|]/)
     .map((item) => item.trim())
