@@ -17,6 +17,13 @@ import {
   type EditorSectionId,
 } from "../storage/editorUiState";
 import type { Character } from "../types/character";
+import { loadRecentAvatars, saveRecentAvatar } from "../storage/recentAvatars";
+import { useTransientMessage } from "../hooks/useTransientMessage";
+import {
+  clampCropDraft as clampDraftToMetrics,
+  cropMetrics,
+  visibleCrop as computeVisibleCrop,
+} from "../utils/cropGeometry";
 import { fragmentRoot } from "../utils/textFragments";
 import {
   compressImageToAvatarBlob,
@@ -84,7 +91,6 @@ type HelperField =
 type HelperKind = "example" | "inspiration" | "tip";
 
 const DEFAULT_AVATAR_EMOJI = "🙂";
-const RECENT_AVATAR_KEY = "character-studio.recent-avatars";
 
 const defaultEditorSettings = {
   expandAllSections: false,
@@ -904,25 +910,6 @@ function pickFragmentGroup<T extends HelperFragmentGroupName>(groupName: T) {
   )[groupName];
 }
 
-function loadRecentAvatars() {
-  try {
-    const value = localStorage.getItem(RECENT_AVATAR_KEY);
-    const parsedValue = value ? (JSON.parse(value) as unknown) : [];
-
-    return Array.isArray(parsedValue)
-      ? parsedValue.filter((item): item is string => avatarEmojiOptions.includes(item)).slice(0, 12)
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveRecentAvatar(emoji: string) {
-  const nextRecent = [emoji, ...loadRecentAvatars().filter((item) => item !== emoji)].slice(0, 12);
-  localStorage.setItem(RECENT_AVATAR_KEY, JSON.stringify(nextRecent));
-  return nextRecent;
-}
-
 function avatarCategoryTitle(label: string) {
   return label.replace(/^\S+\s*/, "");
 }
@@ -1300,6 +1287,7 @@ export function CharacterForm({
   const showPromptSection = effectiveEditorSettings.showPromptSection;
   const showPersonalPreferences =
     effectiveEditorSettings.showPersonalPreferences && effectiveFeatureFlags.personalPreferences;
+  const { message: toastMessage, show: showToast } = useTransientMessage();
   const [formData, setFormData] = useState<CharacterDraft>(initialCharacter);
   const [customTag, setCustomTag] = useState("");
   const [customGender, setCustomGender] = useState("");
@@ -1309,8 +1297,7 @@ export function CharacterForm({
   );
   const [formError, setFormError] = useState("");
   const [isRandomizing, setIsRandomizing] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const toastTimerRef = useRef<number | null>(null);
+
   const [activeAvatarCategoryId, setActiveAvatarCategoryId] = useState(
     avatarCategories[0].id,
   );
@@ -1334,7 +1321,7 @@ export function CharacterForm({
     zoom: number;
   } | null>(null);
   const [cropDrag, setCropDrag] = useState<{ x: number; y: number } | null>(null);
-  const [recentAvatars, setRecentAvatars] = useState(loadRecentAvatars);
+  const [recentAvatars, setRecentAvatars] = useState(() => loadRecentAvatars(avatarEmojiOptions));
   const [pendingClear, setPendingClear] = useState<{
     field:
       | "personalityTags"
@@ -1453,15 +1440,6 @@ export function CharacterForm({
     }
     clearPendingAvatar();
   }, [character?.id, effectiveEditorSettings.collapseAllSections, effectiveEditorSettings.expandAllSections]);
-
-  useEffect(
-    () => () => {
-      if (toastTimerRef.current !== null) {
-        window.clearTimeout(toastTimerRef.current);
-      }
-    },
-    [],
-  );
 
   useEffect(() => {
     if (!effectiveEditorSettings.autoSave || !character?.isDraft || !onAutoSave) {
@@ -1632,7 +1610,7 @@ export function CharacterForm({
 
   function selectAvatarEmoji(emoji: string) {
     updateField("avatarEmoji", emoji);
-    setRecentAvatars(saveRecentAvatar(emoji));
+    setRecentAvatars(saveRecentAvatar(emoji, loadRecentAvatars(avatarEmojiOptions)));
     setIsAvatarPickerOpen(false);
     setIsAvatarImageMenuOpen(false);
   }
@@ -1768,92 +1746,37 @@ export function CharacterForm({
     showToast("请拖入 JPG、PNG 或 WEBP 图片");
   }
 
-  function getVisibleCrop() {
-    if (!cropDraft || !cropImageRef.current) {
-      return null;
-    }
+  // The crop arithmetic lives in utils/cropGeometry; these three read the DOM,
+  // which is the only part that cannot be pure. An HTMLImageElement already
+  // satisfies the geometry module's size shape and a DOMRect its rect shape, so
+  // nothing is copied or converted on the way in.
 
+  function getCropMetrics(zoom = cropDraft?.zoom || 1) {
     const image = cropImageRef.current;
     const stage = cropStageRef.current;
     const frame = cropFrameRef.current;
 
-    if (!stage || !frame) {
+    if (!image || !stage || !frame) {
       return null;
     }
 
-    const stageRect = stage.getBoundingClientRect();
-    const frameRect = frame.getBoundingClientRect();
-    const imageAspect = image.naturalWidth / image.naturalHeight;
-    const stageAspect = stageRect.width / stageRect.height;
-    const baseWidth = imageAspect >= stageAspect
-      ? stageRect.width
-      : stageRect.height * imageAspect;
-    const baseHeight = imageAspect >= stageAspect
-      ? stageRect.width / imageAspect
-      : stageRect.height;
-    const renderedWidth = baseWidth * cropDraft.zoom;
-    const renderedHeight = baseHeight * cropDraft.zoom;
-    const imageLeft = stageRect.left + stageRect.width / 2 + cropDraft.offsetX - renderedWidth / 2;
-    const imageTop = stageRect.top + stageRect.height / 2 + cropDraft.offsetY - renderedHeight / 2;
-    const frameLeft = frameRect.left;
-    const frameTop = frameRect.top;
-    const frameSize = Math.min(frameRect.width, frameRect.height);
-    const sourceX = ((frameLeft - imageLeft) / renderedWidth) * image.naturalWidth;
-    const sourceY = ((frameTop - imageTop) / renderedHeight) * image.naturalHeight;
-    const sourceSize = (frameSize / renderedWidth) * image.naturalWidth;
-
-    return { sourceX, sourceY, sourceSize };
-  }
-
-  function getCropMetrics(zoom = cropDraft?.zoom || 1) {
-    if (!cropImageRef.current || !cropStageRef.current || !cropFrameRef.current) {
-      return null;
-    }
-
-    const image = cropImageRef.current;
-    const stageRect = cropStageRef.current.getBoundingClientRect();
-    const frameRect = cropFrameRef.current.getBoundingClientRect();
-    const imageAspect = image.naturalWidth / image.naturalHeight;
-    const stageAspect = stageRect.width / stageRect.height;
-    const baseWidth = imageAspect >= stageAspect
-      ? stageRect.width
-      : stageRect.height * imageAspect;
-    const baseHeight = imageAspect >= stageAspect
-      ? stageRect.width / imageAspect
-      : stageRect.height;
-    const minZoom = Math.max(1, frameRect.width / baseWidth, frameRect.height / baseHeight);
-    const nextZoom = Math.max(zoom, minZoom);
-    const renderedWidth = baseWidth * nextZoom;
-    const renderedHeight = baseHeight * nextZoom;
-    const frameLeft = frameRect.left - stageRect.left;
-    const frameTop = frameRect.top - stageRect.top;
-    const frameRight = frameLeft + frameRect.width;
-    const frameBottom = frameTop + frameRect.height;
-    const minX = frameRight - renderedWidth / 2 - stageRect.width / 2;
-    const maxX = frameLeft + renderedWidth / 2 - stageRect.width / 2;
-    const minY = frameBottom - renderedHeight / 2 - stageRect.height / 2;
-    const maxY = frameTop + renderedHeight / 2 - stageRect.height / 2;
-
-    return { minZoom, zoom: nextZoom, minX, maxX, minY, maxY };
+    return cropMetrics(image, stage.getBoundingClientRect(), frame.getBoundingClientRect(), zoom);
   }
 
   function clampCropDraft(nextDraft: typeof cropDraft) {
-    if (!nextDraft) {
-      return nextDraft;
+    return clampDraftToMetrics(nextDraft, nextDraft ? getCropMetrics(nextDraft.zoom) : null);
+  }
+
+  function getVisibleCrop() {
+    const image = cropImageRef.current;
+    const stage = cropStageRef.current;
+    const frame = cropFrameRef.current;
+
+    if (!cropDraft || !image || !stage || !frame) {
+      return null;
     }
 
-    const metrics = getCropMetrics(nextDraft.zoom);
-
-    if (!metrics) {
-      return nextDraft;
-    }
-
-    return {
-      ...nextDraft,
-      zoom: metrics.zoom,
-      offsetX: Math.max(metrics.minX, Math.min(metrics.maxX, nextDraft.offsetX)),
-      offsetY: Math.max(metrics.minY, Math.min(metrics.maxY, nextDraft.offsetY)),
-    };
+    return computeVisibleCrop(image, stage.getBoundingClientRect(), frame.getBoundingClientRect(), cropDraft);
   }
 
   async function confirmCropAvatar() {
@@ -1923,20 +1846,6 @@ export function CharacterForm({
     setFormData((current) => ({ ...current, avatarAssetId: "" }));
     setIsAvatarImageMenuOpen(false);
     showToast("已恢复 Emoji 头像");
-  }
-
-  function showToast(message: string) {
-    // Each toast used to arm its own timer, so a second action inside 1.8s had
-    // its message cut off by the first one's timer. One timer, restarted.
-    if (toastTimerRef.current !== null) {
-      window.clearTimeout(toastTimerRef.current);
-    }
-
-    setToastMessage(message);
-    toastTimerRef.current = window.setTimeout(() => {
-      setToastMessage("");
-      toastTimerRef.current = null;
-    }, 1800);
   }
 
   // Folding a module is a work habit, so both the toggle and a jump write the
