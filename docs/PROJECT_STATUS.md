@@ -99,7 +99,7 @@
 | 命令 | 结果 |
 | --- | --- |
 | `npm run typecheck`（`tsc -b`） | **通过**，退出码 0，无输出 |
-| `npm test`（`vitest run`） | **通过**：`Test Files 35 passed (35)`、`Tests 385 passed (385)`，0 失败 0 跳过（Sprint 38 新增 4 个文件 / 25 个用例后的实测值；Sprint 38 开始前为 31 / 360） |
+| `npm test`（`vitest run`） | **通过**：`Test Files 36 passed (36)`、`Tests 401 passed (401)`，0 失败 0 跳过（Sprint 38.1 后的实测值；Sprint 38 后为 35 / 385，Sprint 38 开始前为 31 / 360） |
 | `npm run build`（`tsc -b && vite build`） | 见 `docs/DEVELOPMENT_LOG.md` 的「本轮验证」一节 |
 | 线上 `build-info.json` | `commit: bccec24…`（= 本地 HEAD）、`version: 2.27.0`、`entry: index-CJaOoWIX.js`、`stylesheet: index-C1wTYI6I.css`、列出 **19 个文件** |
 
@@ -174,3 +174,38 @@
 | 生产构建 | `tsc -b && vite build` 退出码 0，无警告无错误 |
 | 浏览器验证 | 本地以 Pages 子路径构建 + 真实 Chrome，跑了 6 个 History 场景（见 `docs/DEVELOPMENT_LOG.md` 第 11 节） |
 | 未执行 | 未推送、未部署、未改版本号、未执行 `docs/DEBUG_STRESS_TEST_PLAN.md` 的用例 |
+
+---
+
+## 10. Sprint 38.1（2026-10-15）—— 数据安全决策落实与发布前验收
+
+落实所有者给出的六项决策（DEC-38-01…06）。仍不新增功能、不改 UI。**提交在本地，未推送、未部署、未改版本号。**
+
+| 决策 | 状态 | 证据 |
+| --- | --- | --- |
+| DEC-38-01 快照写失败即阻断清空 | **已落实** | 新增 `attemptSnapshot()`（`empty`/`created`/`failed`）；两条清空入口失败时不做任何删除并提示用户。单测 17 例（含注入 `setItem` 抛错）+ 变异检验（移除阻断 → 4 条失败）+ 真实浏览器（角色仍为 2 个、显示「自动备份失败」） |
+| DEC-38-02 恢复能力分阶段 | **短期已落实** | 两条确认文案改为准确区分「备份里只有角色文字资料」与「不在备份内」的内容；扩大快照范围登记为 R-27（长期、需批准） |
+| DEC-38-03 CSV 身份歧义 | **已落实** | `nameToId` 只收唯一名字；被跳过的引用在导入预览计数（「角色重名 X 条、角色不存在 Y 条」）；未改 CSV 结构、未新增 ID 列。契约测试 8 例 + 变异检验（6 条失败） |
+| DEC-38-04 暂不发布 | **遵守** | `APP_VERSION` 2.27.0 / `APP_SPRINT` 37.1 未动；无标签、无推送、无部署 |
+| DEC-38-05 保留两个清空入口 | **遵守** | 页面信息架构未改；两条入口共用 `src/storage/localDataReset.ts`，规则、范围、失败策略、确认机制一致，且都有测试覆盖 |
+| DEC-38-06 版本系统暂不重构 | **已落实** | 新增 `npm run verify:version`（零依赖，不一致退出码 1）与 `test/versionConsistency.test.ts`；未改版本号、未引入框架 |
+
+| 问题 | 状态 |
+| --- | --- |
+| KI-12 | **已实现 / 待验收**（P0 部分关闭；剩余为范围与验收事项） |
+| KI-14 | **已实现 / 待验收** |
+| KI-15 | **待验收**（修复 + 单测 + 变异检验 + 真实浏览器；守卫已进仓库但未接入 CI） |
+| KI-16 | **已实现 / 待验收** |
+| KI-17 | **待实施**（高优先级未解决，方案见 R-32） |
+| KI-05 | **部分验证**（10 条单测；真实浏览器与真机未测） |
+
+| 检查 | 结果 |
+| --- | --- |
+| `npm run typecheck` | 通过，退出码 0 |
+| `npm test` | **36 文件 / 401 用例**通过，0 失败 0 跳过 |
+| `npm run build` / `build:pages` | 通过，无警告无错误 |
+| `npm run verify:version` | 一致 → 0；故意改成 `1.0.0` → **1** |
+| `npm run verify:browser` | **6/6 通过**（真实 Chrome + Pages 子路径构建） |
+| 变异检验 | 3 组，全部被捕获（4 / 1 / 6 条失败） |
+
+**未做**：未执行 `docs/DEBUG_STRESS_TEST_PLAN.md` 的用例；真实配额耗尽、IndexedDB 写入失败、导入中途失败、刷新中断**未验证**；未推送、未部署、未改版本号、未开始 UI 改版。**发布建议见 Sprint 38.1 执行报告**：`v2.27.1` 待所有者授权。

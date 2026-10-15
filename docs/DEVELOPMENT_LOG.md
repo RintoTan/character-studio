@@ -329,3 +329,73 @@
 ### 11.7 探针位置与其局限
 
 `tools/probe-history.js` 与项目既有的探针一样放在仓库**外面**，因此**不在 CI 里**，也不会随仓库交付。History 回归的 CI 保护目前只到 `test/restorablePages.test.ts` 那一层（结构性守卫：读源码，断言每个 `setPage` 字面量都在可恢复名单里）。把探针移进仓库是待办，不是本轮决定。
+
+---
+
+## 12. Sprint 38.1：数据安全决策落实（2026-10-15）
+
+Sprint 38 把问题查清了，Sprint 38.1 落实所有者给出的六项决策（DEC-38-01…06）。仍不新增功能、不改 UI。
+
+### 12.1 DEC-38-01：快照写失败时必须阻止清空 —— 一次正式的安全决策变更
+
+**原有相反规则**：`src/storage/backup.ts` 里写着「A full quota must never block the operation the user actually asked for」，即配额满时静默返回 `null`、继续执行。该行为从快照机制第一天起就在，并且被注释明确记录为有意为之。
+
+**为什么改**：`createSnapshot` 用同一个 `null` 同时表示「没有需要保护的数据」和「快照写失败」。调用方因此无法区分，于是「写失败」被当成「没什么要保护的」放行 —— 而这类操作的确认文案恰恰承诺过「会自动保留一份可恢复的备份」。承诺与实际相反时，静默的那一侧会赢。DEC-38-01 把这条改成严格保护。
+
+**实现**：
+- `src/storage/backup.ts` 新增 `attemptSnapshot()`，返回 `empty | created | failed`（失败带原因），两个状态不再混为一谈；`createSnapshot()` 保留原契约（`snapshot | null`）供**导入**路径继续使用，其注释已改写以说明差异。
+- `src/storage/localDataReset.ts` 的顺序固定为：读旧快照 → 尝试写快照 → **失败即返回，不做任何删除** → 成功才 `localStorage.clear()` → 回写快照。
+- `src/App.tsx` 与 `src/pages/Dashboard.tsx`：失败时给用户明确提示（App 在对话框内显示 `form-error`，Dashboard 用既有 toast），保持数据不变，请用户清理存储空间或自行导出后再试。**没有**「忽略备份失败、仍然清空」按钮。
+- **入口检查**：全库 `localStorage.clear()` 只允许出现在 `src/storage/localDataReset.ts`（由测试守卫），两条清空入口都调用该 helper；`createSnapshot` 的其余调用点只有导入路径（`Dashboard.tsx` 导入前备份），**该路径仍为非阻断**，已登记为 R-33，不在本次扩大范围。
+
+**测试**：`test/localDataReset.test.ts`（17 例）。注入 `localStorage.setItem` 只对备份键抛错（`QuotaExceededError` 与其它错误名分别断言），确认删除没有发生、无关键未被清理、空列表仍可清空、失败后可重试。变异检验：移除阻断 → **4 条**失败。
+
+**真实浏览器**：`npm run verify:browser` 的「快照写入失败时不清空数据并要求用户处理」→ 角色仍为 2 个、对话框显示「自动备份失败」；随后写入恢复 → 清空成功且快照保留 2 个角色。
+
+### 12.2 DEC-38-02 / TASK-38.1-05：不再把角色快照说成完整备份
+
+当前快照只含角色记录。两条清空入口的确认文案改为：备份里**只有角色文字资料**，而头像素材、角色关系网、世界观时间线、世界观条目与全部设置**不在其中**、清空后无法用它找回。文本避免「完整备份」「所有数据都可恢复」这类说法，也没有引入存储术语。扩大快照覆盖范围属改存储协议，登记为 R-27。
+
+### 12.3 KI-16：不再销毁唯一可用的恢复副本
+
+列表为空时 `attemptSnapshot` 返回 `empty`，而 `localStorage.clear()` 已经把**上一份**快照删掉了。现在空列表的分支会把读到的旧快照写回，结果对象多一个 `keptPrevious`。3 条测试覆盖；变异检验 1 条失败。
+
+### 12.4 DEC-38-03 / KI-14：CSV 不再按名字猜身份
+
+`nameToId` 只收「唯一指向一个角色」的名字（现有角色与导入角色一起统计），重名者完全不参与解析；被跳过的引用数写入 `preview.unresolvedReferences`，在导入预览既有的统计列表里显示（仅在大于 0 时出现），「冲突处理」区说明规则。没有新弹窗、没有逐条选择、没有改 CSV 结构、没有新增 ID 列。
+
+`test/csvNameCollision.test.ts` 由「描述缺陷」改写为契约测试（8 例）。变异检验：恢复「最后一个写入者胜出」→ **6 条**失败。这是本次最有价值的一次改写 —— 上一轮那两条测试断言的是缺陷本身，如果不改，修好之后它们会继续绿着，把缺陷锁在测试里。
+
+### 12.5 KI-17：登记删除入口之间的保护差异
+
+主页单删有 10 秒撤销，但该撤销只把角色记录放回来（`restoreDeletedCharacter()` → `onImport([character, ...characters])`），关联已被 `pruneCharacterReferences()` 清掉；批删与编辑器删除**既无撤销也无快照**。三处确认文案改为如实描述。按 TASK-38.1-09「不能只恢复角色文本却悄悄丢失角色关系」，完整修复需要让快照覆盖三个工作域（改存储协议）或让撤销同时回写工作域，成本超出最小修复 → **登记为高优先级未解决项**，方案见 R-32。
+
+### 12.6 DEC-38-06 / TASK-38.1-13：版本一致性守卫
+
+新增 `scripts/verify-version.mjs`（`npm run verify:version`）：读 `src/config/version.ts` 的 `APP_VERSION` 与 `package.json` 的 `version`，不一致即以退出码 1 结束。零依赖、不影响构建。另有 `test/versionConsistency.test.ts`（4 例）覆盖比较逻辑本身。实测：一致时退出 0，把 `package.json` 改成 `1.0.0` 后退出 **1**，恢复后退出 0。不改变当前版本号（DEC-38-04）。
+
+### 12.7 TASK-38.1-03：浏览器验证脚本进仓库
+
+`scripts/verify-browser.mjs`（`npm run verify:browser`）：自带静态服务器（按 `/character-studio/` 子路径、带 SPA 回退）、自备临时 Chrome profile、`CHROME_PATH` / `CHROME_BIN` 可覆盖、逐项打印 PASS/FAIL、退出码反映结果。需要先 `npm run build:pages`，验证的是**真实构建产物**。**未接入 CI**：workflow 没有浏览器步骤，加它是另一个决定（R-30）。
+
+### 12.8 本次又踩到的一次「用错误的理由通过」
+
+第一次在浏览器里验证「配额写满时应当阻断」时，我用 256KB 的块把 localStorage 填满直到写入抛错。结果**检查失败**（清空照常完成），而真因不是产品：**最后一次失败的写入会留下接近一整块的剩余空间**，而两个角色的快照只有几百字节，轻松写进去 —— 于是「注入失败」这一步根本没失败。
+
+改为**确定性地让浏览器拒绝写入备份键**（`Storage.prototype.setItem` 对该键抛 `QuotaExceededError`），检查立刻变成 PASS，并额外断言角色仍在、对话框显示了失败原因。
+
+这与本项目已有的同类教训是同一条：**先确认注入真的发生了，再断言被测行为**。真实配额路径因此标注为「未验证」，而不是用这次注入冒充它。
+
+### 12.9 验证与证据等级
+
+| 结论 | 等级 |
+| --- | --- |
+| 快照失败即阻断（DEC-38-01）、旧快照保留（KI-16）、CSV 歧义不导入（DEC-38-03） | **E2** 自动化逻辑测试 + 变异检验 |
+| 阻断在真实浏览器中的表现、后退恢复工作区（KI-15） | **E3/E4** 真实 Chrome、Pages 子路径构建、注入失败路径 |
+| 版本一致性守卫 | **E2**（并实测退出码 1/0） |
+| 真实配额耗尽、IndexedDB 写入失败、导入中途失败、刷新中断 | **未验证**（无法在当前框架里可靠模拟；见执行报告） |
+| 删除入口保护（KI-17） | **E1** 源码确认，未修 |
+
+### 12.10 本轮改动范围
+
+`src/storage/backup.ts`、`src/storage/localDataReset.ts`、`src/App.tsx`、`src/pages/Dashboard.tsx`、`src/utils/importExport.ts`、`src/utils/workspaceCsv.ts`（只把 `splitList` 导出）、`package.json`（两个 npm 脚本）、新增 `scripts/verify-version.mjs`、`scripts/verify-browser.mjs`、`test/versionConsistency.test.ts`。**未**改：存储协议结构、CSV 格式、路由、UI 布局、样式表、依赖。未推送、未部署、未改版本号。

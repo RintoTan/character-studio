@@ -165,7 +165,7 @@ Character Studio 当前是 Local First 应用。
 | Vite | 开发与构建 |
 | html2canvas | 展示页与关系网截图导出（动态 import） |
 | jsPDF | PDF 导出（动态 import） |
-| vitest + happy-dom + fake-indexeddb | 单元测试（31 个文件 / 360 个用例，不需要浏览器） |
+| vitest + happy-dom + fake-indexeddb | 单元测试（36 个文件 / 401 个用例，不需要浏览器） |
 | localStorage | 角色文字数据与偏好 |
 | IndexedDB | 头像素材 Blob 存储 |
 
@@ -201,7 +201,7 @@ src/
 ├── types/                     # character / relationship / timeline / world / app
 └── utils/                     # 纯逻辑：裁剪几何、批量编辑、年龄、CSV、导入导出、颜色降级、懒加载恢复
 
-test/                          # 31 个文件 / 360 个用例（vitest + happy-dom + fake-indexeddb）
+test/                          # 36 个文件 / 401 个用例（vitest + happy-dom + fake-indexeddb）
 
 scripts/
 ├── build-identity.mjs         # 构建身份（环境变量优先，缺省从 git 推导，脏树标 -dirty）
@@ -269,6 +269,8 @@ npm run test             # 单元测试（vitest）
 npm run typecheck        # 仅类型检查
 npm run build:pages      # 构建 GitHub Pages 版本（带子路径与构建信息）
 npm run verify:deploy    # 比对线上产物与本地构建
+npm run verify:version   # APP_VERSION 与 package.json 的 version 必须一致（不一致退出码 1）
+npm run verify:browser   # 真实 Chrome 跑后退导航与「快照失败不清空」等 6 项（需先 build:pages）
 ```
 
 ---
@@ -347,7 +349,7 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
 - Light / Dark / Follow System
 - 基础 Design System 控件（令牌化的颜色、圆角、控件高度与层序）
 - Developer Center（版本/品牌/设计系统/文案/Prompt/应用配置/导出/工具/实验开关）
-- 31 个测试文件 / 360 个用例；CI 在构建前执行类型检查与测试
+- 36 个测试文件 / 401 个用例；CI 在构建前执行类型检查与测试
 
 ### 可访问性
 
@@ -401,7 +403,9 @@ Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toa
   需要先补齐针对这些交互的探针再做，否则是用回归风险换行数。
 - **设置弹窗**未加宽 / 未中文化 / 未折叠尚未发布的功能（P2）。
 - **编辑页六个分节**的设计语言未统一（P2，仅操作栏的玻璃效果已做）。
-- **`useDialogKeyboard` 的键盘行为**没有有效验证证据，目前只有类型检查保证（P2）。
+- **`useDialogKeyboard` 的键盘行为**已有 10 条单测（含 Escape、Enter 的三种豁免、焦点归还），但**真实浏览器与真机仍未验证**（P2）。
+- **删除操作的恢复能力不一致**（KI-17）：主页单删的 10 秒撤销只恢复角色记录，关联已被清除；批删与编辑器删除既无撤销也无快照。属高优先级未解决项（R-32）。
+- **自动快照只覆盖角色记录**：头像素材、关系网、时间线、世界观与设置不在其中，清空后无法用它找回（确认文案已如实说明；扩大范围需改存储协议）。
 - **约 140 处硬编码颜色字面量**、74 组共用声明体的 CSS 未合并（P3，需逐条判断层叠位置）。
 - **三档视口下的关系网重排、深色主题目视检查、导出分辨率 3x 的实际字节数**均未验证。
 - **Apple 设备的日期控件与 Windows 的 Emoji 显示**需要真机验收。
