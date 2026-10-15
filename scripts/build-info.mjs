@@ -9,14 +9,15 @@
 // 3. Adds .nojekyll so Pages publishes the directory as-is.
 import { copyFileSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { buildIdentity } from "./build-identity.mjs";
 
 const dist = "dist";
 const versionSource = readFileSync("src/config/version.ts", "utf8");
 
 const pick = (name) => versionSource.match(new RegExp(`export const ${name} = "([^"]*)"`))?.[1] ?? "unknown";
 
-const commit = process.env.VITE_BUILD_COMMIT || process.env.GITHUB_SHA || "local";
-const builtAt = process.env.VITE_BUILD_TIME || new Date().toISOString();
+// One derivation, shared with vite.config.ts, so the descriptor matches the bundle.
+const { commit, builtAt } = buildIdentity();
 
 function walk(dir, base = dir) {
   return readdirSync(dir).flatMap((entry) => {
