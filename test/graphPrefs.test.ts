@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  EXPORT_SCALES,
   AVATAR_SIZES,
   GRAPH_PREFS_KEY,
   NAME_SIZES,
@@ -21,22 +22,37 @@ describe("graph size preferences", () => {
   });
 
   it("round-trips the sizes the author picked", () => {
-    saveGraphPrefs({ avatarSize: "large", nameSize: "small" });
+    saveGraphPrefs({ avatarSize: "large", nameSize: "small", exportScale: 3 });
 
-    expect(loadGraphPrefs()).toEqual({ avatarSize: "large", nameSize: "small" });
+    expect(loadGraphPrefs()).toEqual({ avatarSize: "large", nameSize: "small", exportScale: 3 });
     expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}")).toEqual({
       avatarSize: "large",
       nameSize: "small",
+      exportScale: 3,
     });
   });
 
-  it("falls back per field, so one bad value does not reset the other", () => {
-    // The pair is stored as one object; reading it as one object would let a single
-    // unknown value take the field beside it down too.
-    expect(normalizeGraphPrefs({ avatarSize: "huge", nameSize: "large" })).toEqual({
+  it("falls back per field, so one bad value does not reset the others", () => {
+    // The three settings are stored as one object; reading it as one object would let
+    // a single unknown value take the fields beside it down too.
+    expect(normalizeGraphPrefs({ avatarSize: "huge", nameSize: "large", exportScale: 9 })).toEqual({
       avatarSize: defaultGraphPrefs.avatarSize,
       nameSize: "large",
+      exportScale: defaultGraphPrefs.exportScale,
     });
+  });
+
+  it("only accepts the export resolutions it offers", () => {
+    for (const value of EXPORT_SCALES) {
+      expect(normalizeGraphPrefs({ exportScale: value.value }).exportScale).toBe(value.value);
+    }
+
+    // 0 would produce an empty file and 10 a several-hundred-megabyte one.
+    for (const value of [0, 4, 10, -2, 2.5, "2", null]) {
+      expect(normalizeGraphPrefs({ exportScale: value }).exportScale).toBe(
+        defaultGraphPrefs.exportScale,
+      );
+    }
   });
 
   it("survives anything that is not an object at all", () => {

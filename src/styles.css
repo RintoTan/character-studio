@@ -303,10 +303,14 @@ button:disabled {
    navigable — the brand link, the dashboard button, the theme switcher — used to
    leave the viewport once the character list grew long. Blurred rather than solid
    so the edges of panels scrolling underneath stay faintly visible. */
+/* Above every sticky panel in the page. At the dropdown layer it tied with the
+   list header, which comes later in the document and therefore painted over the
+   workspace menu opened from here — the menu appeared with its middle entries
+   hidden behind the 角色列表 header. */
 .topbar {
   position: sticky;
   top: 0;
-  z-index: var(--z-dropdown);
+  z-index: var(--z-overlay-6);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -648,6 +652,20 @@ button:disabled {
    at 375px (-229): it grows leftwards from the button, and on a narrow screen the
    button is not far enough right for that. The header is as wide as the panel, so
    `right: 0` with a width of 100% of it always lands inside. */
+/* The fields wrap into two columns inside the popover. The panel's own grid is six
+   fixed-width tracks for a full-width bar; at 560px wide those tracks could not fit,
+   so the last ones were squeezed to a sliver a few pixels wide beside the others. */
+.list-filter-wrap .dashboard-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  border: 0;
+  background: transparent;
+  margin-bottom: 0;
+  padding: 0;
+}
+
 .list-filter-wrap .dashboard-controls-panel {
   position: absolute;
   top: calc(100% + 8px);
@@ -688,9 +706,12 @@ button:disabled {
   padding: 10px 12px;
   margin: -10px -12px 16px;
   border: 1px solid transparent;
+  border-bottom-color: var(--border);
   border-radius: var(--developer-card-radius);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(10px);
+  /* Opaque. At 92% with a blur behind it, the row scrolling underneath showed
+     through the bar — the first row of the list appeared cut in half, which reads as
+     a broken layout rather than as content passing under a header. */
+  background: var(--surface);
 }
 
 /* Icon buttons, back in the original filled language: a soft block of surface
@@ -3226,17 +3247,35 @@ input[type="number"]::-webkit-inner-spin-button {
    session. Sticking the bar keeps save / preview / back within reach, and the
    destructive pair moves into a menu so it no longer sits in the same row as
    the actions people actually came for. */
+/* A glass bar: translucent enough that the blur reads as glass rather than as a
+   white card. At 93% surface the backdrop-filter behind it was invisible, which is
+   why the bar looked like a plain panel laid over the form. */
 .editor-action-bar {
   position: sticky;
   top: calc(var(--topbar-height, 46px) + 8px);
   z-index: var(--z-dropdown);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
+  gap: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--developer-card-radius);
-  background: color-mix(in srgb, var(--surface) 93%, transparent);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
   box-shadow: var(--shadow);
   padding: 10px 14px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(16px) saturate(1.5);
+  -webkit-backdrop-filter: blur(16px) saturate(1.5);
+}
+
+/* Each cluster keeps its own edge when the bar wraps, so the status chip and the
+   actions do not end up bunched against the same margin. */
+.editor-action-bar > .editor-action-group {
+  flex: 0 1 auto;
+}
+
+.editor-action-bar > .editor-action-group + .editor-action-group {
+  margin-left: auto;
 }
 
 .editor-action-group {
@@ -6354,28 +6393,51 @@ kbd {
   cursor: grabbing;
 }
 
+/* Zoom is one segmented control: −, the current level, +. The level doubles as the
+   fit button, which is where the separate 「适配」 control went. */
 .graph-zoom {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
 }
 
-/* Phones get the short label: "显示全部角色（114）" is 176px wide and pushed the
-   toolbar into a fourth row. */
-.graph-toggle-short {
-  display: none;
+.graph-zoom-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  min-height: 26px;
+  border: 0;
+  border-radius: calc(var(--control-radius) - 2px);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
 }
 
-/* The zoom buttons used to be forced to 34 here, which made the two zoom controls
-   a different size from every other icon button on the same screen. They now take
-   the icon tier like the rest. */
+.graph-zoom-step:hover {
+  background: var(--control-fill-hover);
+}
 
 .graph-zoom-value {
-  min-width: 46px;
+  min-width: 52px;
+  min-height: 26px;
+  border: 0;
+  border-radius: calc(var(--control-radius) - 2px);
+  background: transparent;
   color: var(--muted);
+  cursor: pointer;
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
   text-align: center;
+}
+
+.graph-zoom-value:hover {
+  background: var(--control-fill-hover);
+  color: var(--text);
 }
 
 /* Hovering a node dims everything unrelated to it, which is the only way to read
@@ -6464,61 +6526,110 @@ kbd {
 }
 
 /* Canvas options and output, under the drawing they act on. */
+/* One row of controls, one shape: a label and a segmented group, twice, plus the
+   export group on the right. The previous version mixed a bordered group with two
+   loose ghost buttons next to it, at three different heights. */
 .graph-canvas-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 10px 16px;
   margin: 10px 0 4px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: var(--dialog-radius);
   background: var(--surface-subtle);
 }
 
-.graph-size-groups,
-.graph-export {
+.graph-control-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-.graph-size-group {
+.graph-control-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.graph-segment {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
   padding: 2px;
   border: 1px solid var(--border-strong);
   border-radius: var(--control-radius);
   background: var(--surface);
 }
 
-.graph-size-label {
-  padding: 0 6px;
-  color: var(--muted);
-  font-size: 12.5px;
-}
-
-.graph-size-button {
-  min-width: 30px;
-  padding: 3px 8px;
-  border: none;
+/* Every button in the bar is this one: same height, same radius, same type size, so
+   the row lines up whichever groups are present. */
+.graph-segment-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: 26px;
+  padding: 0 9px;
+  border: 0;
   border-radius: calc(var(--control-radius) - 2px);
   background: transparent;
   color: var(--text);
   cursor: pointer;
   font-size: 12.5px;
+  font-weight: 600;
 }
 
-.graph-size-button:hover {
+.graph-segment-button:hover:not(:disabled) {
   background: var(--control-fill-hover);
 }
 
-.graph-size-button.selected {
+.graph-segment-button.selected {
   background: var(--primary);
   color: var(--on-primary);
+}
+
+.graph-segment-button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+/* The toggle reads as a toggle: a pressed state, a count at the end of the label,
+   and no second copy of the label for small screens. */
+.graph-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height-icon);
+  padding: 0 8px 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.graph-toggle:hover {
+  background: var(--control-fill-hover);
+}
+
+.graph-toggle.active {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border-strong));
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.graph-toggle-count {
+  min-width: 22px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .graph-message {
@@ -6553,17 +6664,33 @@ kbd {
 
 .relationship-table th,
 .relationship-table td {
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: middle;
   white-space: nowrap;
 }
 
-.relationship-table th {
+/* Every column lines up between the header row and the rows beneath it: a shared
+   cell height, one padding value, and the action column pinned right so the delete
+   buttons form a single column of their own instead of sitting wherever the name
+   before them happened to end. */
+.relationship-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-inline-1);
+  background: var(--surface);
   color: var(--muted);
-  font-weight: 500;
-  font-size: 0.82rem;
+  font-weight: 600;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+}
+
+/* Scoped to the table on purpose: `.relationship-table td { text-align: left }` is a
+   class plus an element and beat the bare class, so the action column stayed left. */
+.relationship-table .relationship-col-actions {
+  width: 1%;
+  text-align: right;
 }
 
 .relationship-table tbody tr:hover {
@@ -6575,6 +6702,24 @@ kbd {
   max-width: 32ch;
   white-space: normal;
   color: var(--muted);
+}
+
+/* A quiet row action: it is destructive, so it is not dressed as a primary control,
+   but it stays a word rather than an icon — the row is a table, not a toolbar. */
+.relationship-row-action {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+.relationship-row-action:hover {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--danger);
 }
 
 .relationship-kind-chip {
@@ -6993,15 +7138,18 @@ kbd {
     max-height: calc(100dvh - 24px);
   }
 
-  /* Scoped to the toolbar because a later `span { display: grid }` rule was beating
-     a single-class `display: none` here — both labels then rendered, and their
-     combined width pushed the toolbar to four rows. */
-  .workspace-toolbar .graph-toggle-full {
-    display: none;
+  /* The toggle's two-label trick is gone rather than patched again. Its short label
+     was hidden by a single-class `display: none` that a later `span { display: grid }`
+     rule beat on every width — which is why a desktop screenshot showed both
+     「显示全部角色（100）」 and 「全部 100」 at once. One label and a count chip cannot
+     disagree with itself. */
+  .graph-control-group {
+    flex: 1 1 100%;
   }
 
-  .workspace-toolbar .graph-toggle-short {
-    display: inline;
+  .graph-segment {
+    flex: 1 1 auto;
+    justify-content: space-between;
   }
 
   /* The floating cluster is fixed to the corner and was sitting on top of the last
@@ -7010,11 +7158,9 @@ kbd {
     padding-bottom: 84px;
   }
 
-  /* The bar's two halves each take a full row: side by side, the export buttons
-     were pushed to the edge and the size pickers squeezed to their minimum. */
-  .graph-size-groups,
-  .graph-export {
-    flex: 1 1 100%;
+  /* Each group takes its own row on a phone: side by side, the export buttons were
+     pushed to the edge and the size pickers squeezed to their minimum. */
+  .graph-canvas-bar .graph-control-group {
     justify-content: space-between;
   }
 }

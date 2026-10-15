@@ -12,7 +12,21 @@ export type GraphSizeValue = "small" | "medium" | "large";
 export type GraphPrefs = {
   avatarSize: GraphSizeValue;
   nameSize: GraphSizeValue;
+  /**
+   * Export resolution, as a multiple of the canvas on screen. 1 is what you see;
+   * 2 is enough for a slide or a print at A4; 3 is for a large poster, and is the
+   * one that can produce a several-megabyte PNG.
+   */
+  exportScale: GraphExportScale;
 };
+
+export type GraphExportScale = 1 | 2 | 3;
+
+export const EXPORT_SCALES: Array<{ value: GraphExportScale; label: string }> = [
+  { value: 1, label: "1x" },
+  { value: 2, label: "2x" },
+  { value: 3, label: "3x" },
+];
 
 /** Everything the drawing needs, flattened from the two choices. */
 export type GraphMetrics = {
@@ -54,10 +68,15 @@ export const NAME_SIZES: Array<{
 export const defaultGraphPrefs: GraphPrefs = {
   avatarSize: "medium",
   nameSize: "medium",
+  exportScale: 2,
 };
 
 function isSizeValue(value: unknown): value is GraphSizeValue {
   return value === "small" || value === "medium" || value === "large";
+}
+
+function isExportScale(value: unknown): value is GraphExportScale {
+  return value === 1 || value === 2 || value === 3;
 }
 
 // Per-field, so one unknown value in storage cannot take the other one with it.
@@ -70,6 +89,9 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
   return {
     avatarSize: isSizeValue(candidate.avatarSize) ? candidate.avatarSize : defaultGraphPrefs.avatarSize,
     nameSize: isSizeValue(candidate.nameSize) ? candidate.nameSize : defaultGraphPrefs.nameSize,
+    exportScale: isExportScale(candidate.exportScale)
+      ? candidate.exportScale
+      : defaultGraphPrefs.exportScale,
   };
 }
 

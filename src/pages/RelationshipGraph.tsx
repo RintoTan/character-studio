@@ -26,6 +26,7 @@ import {
 } from "../types/relationship";
 import {
   AVATAR_SIZES,
+  EXPORT_SCALES,
   NAME_SIZES,
   graphMetrics,
   loadGraphPrefs,
@@ -361,6 +362,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
   const [exporting, setExporting] = useState(false);
   const { message, show } = useTransientMessage();
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const prefsLoadedRef = useRef(false);
 
   // Written on change rather than inside the setter: a state updater can be called
@@ -478,9 +480,30 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     });
   }
 
-  function handleWheel(event: ReactWheelEvent<SVGSVGElement>) {
-    zoomAround(event.currentTarget, event.clientX, event.clientY, event.deltaY < 0 ? 1.15 : 1 / 1.15);
-  }
+  /**
+   * The wheel zooms the canvas and does not also scroll the page.
+   *
+   * React attaches `onWheel` passively, so `preventDefault()` inside a React handler
+   * is ignored — which is why a wheel over the drawing used to zoom it *and* send the
+   * page off somewhere. A native listener registered with `passive: false` is the
+   * only way to refuse the scroll, and it is re-registered when the view box changes
+   * so it always zooms about the current box.
+   */
+  useEffect(() => {
+    const svg = svgRef.current;
+
+    if (!svg) {
+      return;
+    }
+
+    function onWheel(event: WheelEvent) {
+      event.preventDefault();
+      zoomAround(svg as SVGSVGElement, event.clientX, event.clientY, event.deltaY < 0 ? 1.15 : 1 / 1.15);
+    }
+
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [canvas.viewBox]);
 
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) {
@@ -617,7 +640,11 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     try {
-      const options = { background: surfaceBackground(), label: "关系网画布", scale: 2 };
+      const options = {
+        background: surfaceBackground(),
+        label: "关系网画布",
+        scale: prefs.exportScale,
+      };
       if (format === "pdf") {
         await exportSurfacePdf(frame, "角色关系网", options);
       } else {
@@ -661,36 +688,39 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             {characters.length} 个角色 · {relationships.length} 条关系
           </p>
         </div>
+        {/* Three controls, one style each: a zoom group, one toggle, one primary
+            action. It used to be five of four different shapes — and the toggle
+            rendered both of its responsive labels at once, because the rule that was
+            meant to hide one of them only existed inside the phone breakpoint. */}
         <div className="workspace-toolbar">
-          <button className="ghost-button" onClick={onBack} type="button">
-            返回 Dashboard
-          </button>
           {canLink && (
             <div className="graph-zoom" role="group" aria-label="画布缩放">
-              <button aria-label="缩小画布" className="bare-icon-button" onClick={() => zoomBy(1 / 1.25)} type="button">
-                <Icon name="minus" size={16} />
+              <button aria-label="缩小画布" className="graph-zoom-step" onClick={() => zoomBy(1 / 1.25)} type="button">
+                <Icon name="minus" size={15} />
               </button>
-              <span className="graph-zoom-value">{Math.round(view.k * 100)}%</span>
-              <button aria-label="放大画布" className="bare-icon-button" onClick={() => zoomBy(1.25)} type="button">
-                <Icon name="plus" size={16} />
+              <button
+                aria-label="恢复适配"
+                className="graph-zoom-value"
+                data-tooltip="适配画布"
+                onClick={resetView}
+                type="button"
+              >
+                {Math.round(view.k * 100)}%
               </button>
-              <button className="ghost-button" onClick={resetView} type="button">
-                适配
+              <button aria-label="放大画布" className="graph-zoom-step" onClick={() => zoomBy(1.25)} type="button">
+                <Icon name="plus" size={15} />
               </button>
             </div>
           )}
           {canLink && (
             <button
-              className="ghost-button"
+              aria-pressed={showAll}
+              className={showAll ? "graph-toggle active" : "graph-toggle"}
               onClick={() => setShowAll((current) => !current)}
               type="button"
             >
-              <span className="graph-toggle-full">
-                {showAll ? `只显示有关系（${connectedIds.size}）` : `显示全部角色（${characters.length}）`}
-              </span>
-              <span className="graph-toggle-short">
-                {showAll ? `只显关联 ${connectedIds.size}` : `全部 ${characters.length}`}
-              </span>
+              {showAll ? "显示全部角色" : "只显示有关联的"}
+              <span className="graph-toggle-count">{showAll ? characters.length : connectedIds.size}</span>
             </button>
           )}
           <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
@@ -730,7 +760,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             onPointerDown={beginPan}
             onPointerMove={movePan}
             onPointerUp={endPan}
-            onWheel={handleWheel}
+            ref={svgRef}
             viewBox={canvas.viewBox}
             xmlns="http://www.w3.org/2000/svg"
           >
@@ -825,14 +855,17 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
               toolbar: the toolbar wraps to a fourth row on a phone as it is, and
               these two act on the drawing above them. Both live outside the frame,
               so neither ends up in an export. */}
+          {/* Two groups, one visual language: every control here is a segmented
+              button of the same height and radius, so the row reads as two settings
+              and an output rather than as four unrelated widgets. */}
           <div className="graph-canvas-bar">
-            <div className="graph-size-groups">
-              <div aria-label="节点头像尺寸" className="graph-size-group" role="group">
-                <span className="graph-size-label">头像</span>
+            <div aria-label="节点外观" className="graph-control-group" role="group">
+              <span className="graph-control-label">头像</span>
+              <div className="graph-segment">
                 {AVATAR_SIZES.map((size) => (
                   <button
                     aria-pressed={prefs.avatarSize === size.value}
-                    className={`graph-size-button${prefs.avatarSize === size.value ? " selected" : ""}`}
+                    className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
                     key={size.value}
                     onClick={() => updatePrefs({ avatarSize: size.value })}
                     type="button"
@@ -841,12 +874,12 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                   </button>
                 ))}
               </div>
-              <div aria-label="节点名称尺寸" className="graph-size-group" role="group">
-                <span className="graph-size-label">名称</span>
+              <span className="graph-control-label">名称</span>
+              <div className="graph-segment">
                 {NAME_SIZES.map((size) => (
                   <button
                     aria-pressed={prefs.nameSize === size.value}
-                    className={`graph-size-button${prefs.nameSize === size.value ? " selected" : ""}`}
+                    className={prefs.nameSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
                     key={size.value}
                     onClick={() => updatePrefs({ nameSize: size.value })}
                     type="button"
@@ -856,19 +889,34 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                 ))}
               </div>
             </div>
-            <div aria-label="导出关系网" className="graph-export" role="group">
-              <span className="graph-size-label">导出画布</span>
-              {(["jpg", "png", "pdf"] as const).map((format) => (
-                <button
-                  className="ghost-button"
-                  disabled={exporting}
-                  key={format}
-                  onClick={() => void runExport(format)}
-                  type="button"
-                >
-                  {exporting ? "导出中…" : format.toUpperCase()}
-                </button>
-              ))}
+            <div aria-label="导出关系网" className="graph-control-group" role="group">
+              <span className="graph-control-label">分辨率</span>
+              <div className="graph-segment">
+                {EXPORT_SCALES.map((scale) => (
+                  <button
+                    aria-pressed={prefs.exportScale === scale.value}
+                    className={prefs.exportScale === scale.value ? "graph-segment-button selected" : "graph-segment-button"}
+                    key={scale.value}
+                    onClick={() => updatePrefs({ exportScale: scale.value })}
+                    type="button"
+                  >
+                    {scale.label}
+                  </button>
+                ))}
+              </div>
+              <div className="graph-segment">
+                {(["jpg", "png", "pdf"] as const).map((format) => (
+                  <button
+                    className="graph-segment-button"
+                    disabled={exporting}
+                    key={format}
+                    onClick={() => void runExport(format)}
+                    type="button"
+                  >
+                    {exporting ? "导出中…" : format.toUpperCase()}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -889,7 +937,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                   <th scope="col">角色</th>
                   <th scope="col">另一方</th>
                   <th scope="col">备注</th>
-                  <th scope="col">操作</th>
+                  <th className="relationship-col-actions" scope="col">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -911,10 +959,10 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                         {toName}
                       </td>
                       <td className="relationship-table-note">{relationship.note || "—"}</td>
-                      <td>
+                      <td className="relationship-col-actions">
                         <button
                           aria-label={`删除 ${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
-                          className="ghost-button"
+                          className="relationship-row-action"
                           onClick={() => setPendingDelete(relationship)}
                           type="button"
                         >
