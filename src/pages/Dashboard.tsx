@@ -83,6 +83,10 @@ type DashboardProps = {
   themeMode: ThemeMode;
   onSetThemeMode: (themeMode: ThemeMode) => void;
   searchSignal?: number;
+  // A request from another screen to clear the filters. The dashboard owns the
+  // preferences, so it applies the change and persists it like any other edit.
+  filtersResetSignal?: number;
+  filtersResetFavoriteMode?: "all" | "drafts";
   footerText?: string;
   // Flattened view of the settings this screen needs, plus a patch callback, so
   // the dashboard edits the single settings object instead of its own keys.
@@ -170,6 +174,8 @@ export function Dashboard({
   themeMode,
   onSetThemeMode,
   searchSignal = 0,
+  filtersResetSignal = 0,
+  filtersResetFavoriteMode = "all",
   footerText = `RINTO © ${RELEASE_YEAR}`,
 
   onDashboardSettingsChange,
@@ -913,6 +919,23 @@ export function Dashboard({
       favoriteMode: "all",
     }));
   }
+
+  // Applying another screen's request to clear the filters. Keyed on the signal so
+  // a repeated request (same favourite mode) still applies, and ignores the initial
+  // value so a plain mount never wipes what the author had.
+  useEffect(() => {
+    if (!filtersResetSignal) {
+      return;
+    }
+    setPrefs((current) => ({
+      ...current,
+      searchTerm: "",
+      worldviewFilter: "全部",
+      genderFilter: "全部",
+      visualStyleFilter: "全部",
+      favoriteMode: filtersResetFavoriteMode,
+    }));
+  }, [filtersResetSignal, filtersResetFavoriteMode]);
 
   function updatePrefs(nextPrefs: Partial<DashboardPrefs>) {
     setPrefs((current) => ({ ...current, ...nextPrefs }));

@@ -54,6 +54,9 @@ type CharacterFormProps = {
   onDraftSave: (character: Character) => void;
   onAutoSave?: (character: Character) => void;
   onDelete?: (character: Character) => void;
+  // The dashboard owns its own preferences. Deleting a character asks it to clear
+  // the filters; this screen must not write that key itself.
+  onRequestDashboardFilterReset?: (favoriteMode: "all" | "drafts") => void;
   onCancel: () => void;
 };
 
@@ -82,7 +85,6 @@ type HelperKind = "example" | "inspiration" | "tip";
 
 const DEFAULT_AVATAR_EMOJI = "🙂";
 const RECENT_AVATAR_KEY = "character-studio.recent-avatars";
-const DASHBOARD_PREFS_KEY = "character-studio.dashboard-prefs";
 
 const defaultEditorSettings = {
   expandAllSections: false,
@@ -1284,6 +1286,7 @@ export function CharacterForm({
   onDraftSave,
   onAutoSave,
   onDelete,
+  onRequestDashboardFilterReset,
   onCancel,
 }: CharacterFormProps) {
   const effectiveEditorSettings = {
@@ -2337,28 +2340,11 @@ export function CharacterForm({
 
       onDelete(character);
 
-      // Deleting clears the filters so the author lands back on a full list, but it
-      // should not also discard the layout they picked: the view mode and the sort
-      // order are carried over from whatever is already stored.
-      let storedPrefs: Record<string, unknown> = {};
-      try {
-        storedPrefs = JSON.parse(localStorage.getItem(DASHBOARD_PREFS_KEY) || "{}") as Record<string, unknown>;
-      } catch {
-        storedPrefs = {};
-      }
-
-      localStorage.setItem(
-        DASHBOARD_PREFS_KEY,
-        JSON.stringify({
-          searchTerm: "",
-          worldviewFilter: "全部",
-          genderFilter: "全部",
-          visualStyleFilter: "全部",
-          favoriteMode: character.isDraft ? "drafts" : "all",
-          sortMode: typeof storedPrefs.sortMode === "string" ? storedPrefs.sortMode : "updated-desc",
-          viewMode: storedPrefs.viewMode === "list" ? "list" : "cards",
-        }),
-      );
+      // Deleting clears the filters so the author lands back on a full list. The
+      // dashboard applies that to its own preferences and keeps the layout the author
+      // picked — this screen used to rewrite the whole key from here, which made it a
+      // second writer of a store it does not own.
+      onRequestDashboardFilterReset?.(character.isDraft ? "drafts" : "all");
       setPendingFormAction(null);
       onCancel();
     }

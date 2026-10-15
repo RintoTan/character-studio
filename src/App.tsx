@@ -33,9 +33,7 @@ import {
   exportFullBackupZip,
 } from "./utils/importExport";
 import { Dashboard } from "./pages/Dashboard";
-import { pruneRelationships } from "./storage/relationshipStorage";
-import { pruneTimelineCharacters } from "./storage/timelineStorage";
-import { pruneWorldCharacters } from "./storage/worldStorage";
+import { pruneCharacterReferences } from "./storage/referenceIntegrity";
 import { readWorkspaceDatasets } from "./storage/workspaceBackup";
 import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
 
@@ -103,6 +101,12 @@ function App() {
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [previewExportSignal, setPreviewExportSignal] = useState(0);
   const [dashboardSearchSignal, setDashboardSearchSignal] = useState(0);
+  // A request to clear the dashboard filters, raised by the editor after a delete.
+  // The counter makes each request distinct so a repeat still applies.
+  const [dashboardFiltersReset, setDashboardFiltersReset] = useState<{
+    signal: number;
+    favoriteMode: "all" | "drafts";
+  }>({ signal: 0, favoriteMode: "all" });
   const [developerSettings, setDeveloperSettings] = useState(loadDeveloperSettings);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
     const storedTheme = localStorage.getItem(THEME_KEY);
@@ -610,10 +614,9 @@ function App() {
   }
 
   function handleDelete(character: Character) {
-    setCharacters(deleteCharacter(character.id));
-    pruneRelationships(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
-    pruneTimelineCharacters(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
-    pruneWorldCharacters(characters.filter((entry) => entry.id !== character.id).map((entry) => entry.id));
+    const nextCharacters = deleteCharacter(character.id);
+    setCharacters(nextCharacters);
+    pruneCharacterReferences(nextCharacters.map((entry) => entry.id));
 
     if (selectedCharacter?.id === character.id) {
       setSelectedCharacter(null);
@@ -644,6 +647,10 @@ function App() {
     );
     saveCharacters(nextCharacters);
     setCharacters(nextCharacters);
+    // The single delete path has always pruned the three domains that point at
+    // characters; this path did not, so a bulk delete left references to characters
+    // that no longer exist. Same rule, one helper, both paths.
+    pruneCharacterReferences(nextCharacters.map((character) => character.id));
 
     if (selectedCharacter && characterIds.includes(selectedCharacter.id)) {
       setSelectedCharacter(null);
@@ -819,6 +826,8 @@ function App() {
           themeMode={themeMode}
           onSetThemeMode={setThemeMode}
           searchSignal={dashboardSearchSignal}
+          filtersResetSignal={dashboardFiltersReset.signal}
+          filtersResetFavoriteMode={dashboardFiltersReset.favoriteMode}
           footerText={developerSettings.content.footerText || developerSettings.application.footerText}
         />
       )}
@@ -832,6 +841,9 @@ function App() {
           onDraftSave={handleDraftSave}
           onAutoSave={handleAutoSave}
           onDelete={handleDelete}
+          onRequestDashboardFilterReset={(favoriteMode) =>
+            setDashboardFiltersReset((current) => ({ signal: current.signal + 1, favoriteMode }))
+          }
           onCancel={() => setPage("dashboard")}
         />
       )}
