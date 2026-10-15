@@ -5,6 +5,55 @@
 
 ---
 
+## 2.11.1 —— 部署校验的缺口关掉了：本地重建与线上逐字节一致（Sprint 21.2）
+
+`verify:deploy` 连续两个版本报「entry chunk / 文件字节」失败，我此前记的是「原因未查明」。现在查明并修掉了，
+**问题不在部署，在我的构建工具链**。
+
+### 根因
+
+`src/config/version.ts` 把构建标识读进 bundle：
+
+```ts
+export const APP_COMMIT = import.meta.env.VITE_BUILD_COMMIT || "local";
+export const APP_BUILD_TIME = import.meta.env.VITE_BUILD_TIME || "";
+```
+
+Vite 会把这两个值**内联进 JS**。CI 两个都注入（`.github/workflows/deploy-pages.yml` 里的
+`VITE_BUILD_COMMIT: ${{ github.sha }}` 与 `VITE_BUILD_TIME: ${{ github.event.head_commit.timestamp }}`），
+而我本地只跑 `npm run build:pages`、**一个都没注入**。于是：
+JS 的字节不同 → chunk 内容哈希不同；而 CSS 不引用这个模块 → 保持不变。
+这个「CSS 一致、JS 不一致」的组合正是它看起来像部署故障的原因。
+
+### 修法
+
+- 新增 `scripts/build-identity.mjs`：环境变量优先，缺省时从 git 推导
+  （`rev-parse HEAD` 与提交者日期 `log -1 --format=%cI`），并且**工作树脏时把 commit 标成 `-dirty`** ——
+  一个不可能与部署一致的构建应当自己说出来，而不是看起来可发布。`vite.config.ts` 用 `define` 把同样的值
+  内联进 bundle（配置加载上下文不同，这段推导在此重复了一份，两处都写了注释说明为什么）。
+- 顺带发现：GitHub 的 `head_commit.timestamp` 与 `git log -1 --format=%cI` 对同一提交**完全相等**，
+  所以两边推导出的 `builtAt` 一致（实测同为一个值）。
+
+### 验证
+
+带 CI 身份重建 → 线上 artifact **逐字节一致**（`index--JWc4oVi.js`）。
+随后清空环境变量、从干净树重建并跑校验：
+
+```
+local: 3b1d1e3 (matches HEAD)
+PASS  index.html       200, 1629 bytes
+PASS  entry chunk      index-BUIF08Mi.js
+PASS  stylesheet       index-Bo6sXkCs.css
+PASS  commit stamp     3b1d1e3 @ 2026-10-15T11:35:12+08:00
+PASS  file bytes       17 files identical
+PASS  deep link fallback
+Deployment matches the local build.
+```
+
+也就是说：**从这一版起，本地产物可以逐字节等同于线上产物**，我的本地界面的实测结论与线上跑的是同一份代码。
+
+---
+
 ## 2.11.0 —— 批量编辑：给一批角色同时改字段（Sprint 21.1）
 
 ### 新增
