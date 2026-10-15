@@ -1276,6 +1276,12 @@ export function Dashboard({
               )}
             </span>
           </div>
+          {/* The toolbar and the bulk actions are one right-hand group. Left as two
+              separate children of the header they were spread apart by
+              `space-between` — measured at 1440: the toolbar came to rest at x=863
+              while the header ended at 1267, squeezed narrow enough to wrap onto two
+              rows. */}
+          <div className="list-header-actions">
           {renderListToolbar()}
           {visibleCharacters.length > 0 && (
             <div className="bulk-actions">
@@ -1425,6 +1431,7 @@ export function Dashboard({
 
             </div>
           )}
+          </div>
         </div>
 
         {isLoading ? (

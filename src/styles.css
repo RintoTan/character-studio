@@ -600,11 +600,10 @@ button:disabled {
    roster the controls stay reachable — that is the behaviour the old bar had, moved
    to where the controls now live. */
 .list-toolbar {
-  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   gap: 8px;
   min-width: 0;
@@ -637,20 +636,24 @@ button:disabled {
 }
 
 .list-filter-wrap {
-  position: relative;
   display: flex;
   align-items: center;
 }
 
-/* The filter panel is a popover anchored to its button: as an in-flow panel it
-   pushed the whole list down every time it opened. Its fields, its state and its
-   clear behaviour are the ones it already had. */
+/* The filter panel is a popover: as an in-flow panel it pushed the whole list down
+   every time it opened. Its fields, its state and its clear behaviour are the ones
+   it already had.
+   Anchored to the header rather than to its own button. Measured with the button as
+   the anchor, the panel hung off the left edge of the viewport at 900px (-175) and
+   at 375px (-229): it grows leftwards from the button, and on a narrow screen the
+   button is not far enough right for that. The header is as wide as the panel, so
+   `right: 0` with a width of 100% of it always lands inside. */
 .list-filter-wrap .dashboard-controls-panel {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   z-index: var(--z-inline-5);
-  width: min(560px, calc(100vw - 32px));
+  width: min(560px, 100%);
   border: 1px solid var(--border);
   border-radius: var(--developer-card-radius);
   background: var(--surface);
@@ -663,9 +666,14 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+/* One right-hand group, so the header has two children and `space-between` puts the
+   title at one end and every control at the other. */
 .list-header-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
   gap: 10px;
   min-width: 0;
 }
@@ -5851,6 +5859,22 @@ kbd {
   .card-menu,
   .theme-menu {
     max-width: calc(100vw - 32px);
+  }
+
+  /* Anchored to the viewport rather than to its button. Measured at 375px with the
+     button as the anchor: the menu sat at left -40 (off the left edge) and its bottom
+     at 842 in an 800px viewport, because the 「更多」 button is the last control of a
+     wrapped toolbar and the menu hangs down-left from it. Pinned above the bottom
+     edge and inside the right one, it cannot do either. */
+  .export-menu {
+    position: fixed;
+    top: auto;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    left: auto;
+    width: min(320px, calc(100vw - 24px));
+    max-height: min(72vh, 420px);
+    overflow-y: auto;
   }
 
   .card-menu,
