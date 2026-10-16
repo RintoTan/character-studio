@@ -8340,6 +8340,12 @@ kbd {
    Outside the export root, so an export still holds the character and nothing else.
    Three groups that wrap to two, then to one — the columns are content, not a layout
    the page depends on. */
+/* Reading material, not a cell: inside the preview's two-column card grid it would
+   otherwise become one column of it. */
+.preview-related-holder {
+  grid-column: 1 / -1;
+}
+
 .preview-related {
   display: grid;
   gap: 12px;

@@ -531,7 +531,7 @@ export function CharacterPreview({
           {/* Browsing content, so it renders before the page's footer and is removed
               from the capture: a PDF/JPG/PNG still holds exactly the character. */}
           {related && (
-            <div data-pdf-hidden="true">
+            <div className="preview-related-holder" data-pdf-hidden="true">
               <CharacterRelatedInfo
                 character={character}
                 characters={related.characters}
