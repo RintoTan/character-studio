@@ -181,6 +181,21 @@ export function dataUrlToBlob(dataUrl: string) {
   return new Blob([bytes], { type: mimeType });
 }
 
+/**
+ * The same picture as a data URL.
+ *
+ * The relationship graph draws its nodes inside an `<svg>`, and the export path hands
+ * that SVG to html2canvas, which serialises it and loads it back as an `<img>`. Inside
+ * an SVG loaded that way no `blob:` URL resolves at all — the picture would render on
+ * screen and be missing from every export, with nothing reporting a failure. A data URL
+ * is inlined in the markup, so it survives the round trip.
+ */
+export async function getAvatarAssetDataUrl(id?: string) {
+  const asset = await getAvatarAsset(id);
+
+  return asset ? blobToDataUrl(asset.blob) : "";
+}
+
 export async function saveAvatarBlob(blob: Blob, name = "avatar") {
   const now = new Date().toISOString();
   const record: AvatarAssetRecord = {

@@ -12,6 +12,10 @@ export type GraphSizeValue = "small" | "medium" | "large";
 export type GraphPrefs = {
   avatarSize: GraphSizeValue;
   nameSize: GraphSizeValue;
+  /** Whether nodes draw their avatar at all. */
+  showAvatars: boolean;
+  /** Whether nodes draw their name at all. */
+  showNames: boolean;
   /**
    * Export resolution, as a multiple of the canvas on screen. 1 is what you see;
    * 2 is enough for a slide or a print at A4; 3 is for a large poster, and is the
@@ -68,6 +72,8 @@ export const NAME_SIZES: Array<{
 export const defaultGraphPrefs: GraphPrefs = {
   avatarSize: "medium",
   nameSize: "medium",
+  showAvatars: true,
+  showNames: true,
   exportScale: 2,
 };
 
@@ -77,6 +83,13 @@ function isSizeValue(value: unknown): value is GraphSizeValue {
 
 function isExportScale(value: unknown): value is GraphExportScale {
   return value === 1 || value === 2 || value === 3;
+}
+
+// A stored record from before the two visibility switches existed has neither key,
+// and `undefined` is not a boolean — so an absent field takes its default rather than
+// turning the feature off. Only an explicit boolean is honoured.
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
 }
 
 // Per-field, so one unknown value in storage cannot take the other one with it.
@@ -89,6 +102,8 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
   return {
     avatarSize: isSizeValue(candidate.avatarSize) ? candidate.avatarSize : defaultGraphPrefs.avatarSize,
     nameSize: isSizeValue(candidate.nameSize) ? candidate.nameSize : defaultGraphPrefs.nameSize,
+    showAvatars: isBoolean(candidate.showAvatars) ? candidate.showAvatars : defaultGraphPrefs.showAvatars,
+    showNames: isBoolean(candidate.showNames) ? candidate.showNames : defaultGraphPrefs.showNames,
     exportScale: isExportScale(candidate.exportScale)
       ? candidate.exportScale
       : defaultGraphPrefs.exportScale,
@@ -112,7 +127,8 @@ export function saveGraphPrefs(prefs: GraphPrefs): void {
   }
 }
 
-export function graphMetrics(prefs: GraphPrefs): GraphMetrics {
+/** Only the two size choices: the switches and the export scale change nothing here. */
+export function graphMetrics(prefs: Pick<GraphPrefs, "avatarSize" | "nameSize">): GraphMetrics {
   const avatar = AVATAR_SIZES.find((entry) => entry.value === prefs.avatarSize) ?? AVATAR_SIZES[1];
   const name = NAME_SIZES.find((entry) => entry.value === prefs.nameSize) ?? NAME_SIZES[1];
 

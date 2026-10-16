@@ -6474,6 +6474,180 @@ kbd {
   cursor: grabbing;
 }
 
+/* What acts on the canvas, immediately above it: finding a character, and zooming.
+   The header above holds what the graph contains; these two act on the drawing, and a
+   control that acts on the drawing belongs next to it. */
+.graph-canvas-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.graph-search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+  max-width: 320px;
+}
+
+.graph-search-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height-icon);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 8px 0 10px;
+}
+
+.graph-search-field:focus-within {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.graph-search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  outline: none;
+}
+
+.graph-search-field button {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+/* Results hang under the field rather than pushing the canvas down: the drawing is what
+   the search is for, and moving it on every keystroke is the opposite of useful. */
+.graph-search-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-overlay-2);
+  display: grid;
+  gap: 2px;
+  width: min(320px, 100%);
+  max-height: 264px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--developer-card-radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 6px;
+}
+
+.character-picker-option .graph-search-state {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+/* The character the canvas is focused on, and the one control that leaves the focus. */
+.graph-focus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: var(--control-height-icon);
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border-strong));
+  border-radius: var(--control-radius);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 8px 0 10px;
+}
+
+.graph-focus-chip-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
+/* A searched character who is not drawn: why, and the one way to go and look. */
+.graph-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 10px 0 0;
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  background: var(--surface-subtle);
+  padding: 10px 12px;
+}
+
+.graph-notice p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+.graph-canvas-holder {
+  position: relative;
+}
+
+/* Who this node is, while the pointer is on it. It is anchored under the node rather
+   than at the cursor — a 60px circle is a wide target for a card that slides about —
+   and the horizontal centring is clamped in script so it cannot leave the canvas. */
+.graph-node-card {
+  position: absolute;
+  z-index: var(--z-overlay-1);
+  display: grid;
+  gap: 3px;
+  width: max-content;
+  max-width: 220px;
+  transform: translateX(-50%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--dialog-radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 8px 10px;
+  pointer-events: none;
+}
+
+.graph-node-card-name {
+  font-size: 13.5px;
+}
+
+.graph-node-card-field {
+  display: flex;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.graph-node-card-field em {
+  flex: 0 0 auto;
+  min-width: 36px;
+  color: var(--muted);
+  font-style: normal;
+}
+
+.graph-node-card-hint {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 /* Zoom is one segmented control: −, the current level, +. The level doubles as the
    fit button, which is where the separate 「适配」 control went. */
 .graph-zoom {
@@ -6601,9 +6775,28 @@ kbd {
   dominant-baseline: middle;
 }
 
+/* A picture avatar is drawn through the node's own circle at the node's own size, so
+   it needs no stroke of its own — the circle under it keeps the outline. */
+.relationship-node-image {
+  pointer-events: none;
+}
+
+/* The label is knocked out of whatever crosses it, exactly as the relationship kind
+   labels already are: a name over an edge is the other half of "the node says who it
+   is", and a stroke running through the glyphs is what made it unreadable. */
 .relationship-node-name {
   fill: var(--text);
   text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+}
+
+/* Hover and focus share the highlight ring; the focused node keeps it after the pointer
+   has moved on, so it is drawn a little heavier. */
+.relationship-node.focused circle {
+  stroke-width: 4;
 }
 
 /* Canvas options and output, under the drawing they act on. */
@@ -6628,6 +6821,40 @@ kbd {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* The node's own appearance, folded behind one control. It opens upwards: the bar is
+   the last thing on the page, so a panel below it would either be clipped or grow the
+   page every time it was opened. */
+.graph-display-wrap {
+  position: relative;
+}
+
+.graph-panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: var(--z-inline-5);
+  display: grid;
+  gap: 8px;
+  width: min(320px, calc(100vw - 48px));
+  border: 1px solid var(--border);
+  border-radius: var(--developer-card-radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 10px;
+}
+
+.graph-panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-panel-row .graph-control-label {
+  flex: 0 0 auto;
+  min-width: 36px;
 }
 
 .graph-control-label {
@@ -7373,14 +7600,23 @@ kbd {
     max-height: 52vh;
   }
 
-  /* Three deliberate rows. The first attempt used `flex: 1 1 44%`, which let a lone
-     button grow to the full row and pushed the toolbar from four rows to five
-     (measured 142px -> 192px). `flex-basis: 0` makes the two secondary actions
-     share one row instead. */
+  /* The canvas tools take two rows: the search field on its own, then the zoom. The
+     field first, because finding a character is what a phone user is here for. */
+  .graph-canvas-tools .graph-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
   .graph-zoom {
-    order: -1;
     flex: 1 1 100%;
     justify-content: center;
+  }
+
+  /* A panel anchored to a control that is itself full width: matching that width keeps
+     the results from hanging off the card. */
+  .graph-search-panel,
+  .graph-panel {
+    width: 100%;
   }
 
   .workspace-toolbar > .ghost-button {

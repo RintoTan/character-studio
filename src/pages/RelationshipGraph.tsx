@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -35,9 +36,12 @@ import {
   type GraphPrefs,
 } from "../storage/graphPrefs";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
+import { getAvatarAssetDataUrl } from "../utils/avatarAssets";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { CharacterSelect } from "../components/CharacterPicker";
+import { CharacterRow, characterDisplayName, matchesCharacterQuery } from "../components/CharacterRow";
 
 type RelationshipGraphProps = {
   characters: Character[];
@@ -67,11 +71,25 @@ const DEFAULT_METRICS: GraphMetrics = {
 // on the vertical axis 472 units apart, which is what made a two-character graph
 // look like an empty canvas.
 const PAIR_OFFSET = 150;
-// Breathing room between two neighbouring nodes on the ring.
-const NODE_GAP = 10;
-// Below this zoom the names are hidden: at fit view a hundred of them overlap into
-// a grey smear, which is the state the graph used to be in permanently.
-const LABEL_ZOOM = 1.5;
+// Breathing room between two neighbouring nodes on the ring. The ring formula below
+// treats this as the minimum arc a node is allowed, so raising it spreads the wheel
+// rather than shrinking the nodes.
+const NODE_GAP = 18;
+// Whether a name is drawn is decided by how large it would actually render, not by a
+// zoom factor. A zoom factor is the same number for a two-character graph and a
+// hundred-character one, and those two drawings are scaled very differently: at "fit"
+// the small one is enlarged (its names were hidden anyway, at a zoom nobody had
+// reached) and the large one is shrunk until a name is three pixels tall. These three
+// numbers are what "a name you can read" means here.
+const MIN_LABEL_PX = 9;
+const LABEL_GAP_FACTOR = 2.4;
+const LABEL_GAP_MIN = 12;
+// Where focusing a character stops zooming in. Enough for a big roster's names to
+// become readable; past it the canvas is a close-up of one circle.
+const FOCUS_MAX_ZOOM = 4;
+// Half the hover card's maximum width, so it can be centred on a node without hanging
+// off the canvas. Kept equal to `.graph-node-card`'s max-width.
+const HOVER_CARD_HALF = 110;
 const ZOOM_MIN = 0.25;
 const ZOOM_MAX = 8;
 const MIN_CANVAS_WIDTH = 320;
@@ -144,6 +162,14 @@ function round(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+/**
+ * The clip a picture avatar is drawn through, so a square photograph reads as the
+ * round node every other avatar already is.
+ */
+function avatarClipId(characterId: string) {
+  return `graph-avatar-${characterId}`;
+}
+
 function clampZoom(value: number) {
   return Math.min(Math.max(value, ZOOM_MIN), ZOOM_MAX);
 }
@@ -181,13 +207,147 @@ function surfaceBackground() {
 }
 
 /**
- * How far the author has to zoom before names are drawn. A handful of characters
- * can show their names almost immediately; a hundred of them cannot be shown at
- * once at any zoom, so the threshold scales with the roster instead of being a
- * single number that is either wrong for two characters or wrong for a hundred.
+ * How far apart the closest two nodes stand, in drawing units. A ring is evenly
+ * spaced, so this is the chord between neighbours; a pair is the two of them.
  */
-export function labelZoomThreshold(count: number) {
-  return Math.max(LABEL_ZOOM, count / 40);
+export function minimumNodeSpacing(positions: GraphPoint[]): number {
+  if (positions.length < 2) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  if (positions.length === 2) {
+    return Math.hypot(positions[1].x - positions[0].x, positions[1].y - positions[0].y);
+  }
+
+  let closest = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < positions.length; index += 1) {
+    const current = positions[index];
+    const next = positions[(index + 1) % positions.length];
+    closest = Math.min(closest, Math.hypot(next.x - current.x, next.y - current.y));
+  }
+
+  return closest;
+}
+
+/**
+ * Pixels per drawing unit: what `preserveAspectRatio="xMidYMid meet"` actually does
+ * with a view box on an element of this size. The smaller of the two ratios wins and
+ * the drawing is centred on the other axis.
+ *
+ * Needed because "is this name readable" is a question about the screen, and the same
+ * drawing is enlarged in a wide card and shrunk in a narrow one.
+ */
+export function canvasScreenScale(
+  rect: { width: number; height: number },
+  viewBox: string,
+): number {
+  const [, , boxWidth, boxHeight] = viewBox.split(" ").map(Number);
+
+  if (!rect.width || !rect.height || !boxWidth || !boxHeight) {
+    return 1;
+  }
+
+  return Math.min(rect.width / boxWidth, rect.height / boxHeight);
+}
+
+/**
+ * Whether a name drawn at this zoom would be readable where it sits.
+ *
+ * Two conditions, both about the rendered result: the glyphs are at least MIN_LABEL_PX
+ * tall, and there is room for them — a name is centred under its node, so two names
+ * collide once the nodes are closer together than a couple of name-heights. That is
+ * the whole decluttering rule; there is no roster-size threshold any more.
+ */
+export function labelsReadable(options: {
+  positions: GraphPoint[];
+  nameSize: number;
+  zoom: number;
+  scale: number;
+}): boolean {
+  const rendered = options.nameSize * options.zoom * options.scale;
+
+  if (rendered < MIN_LABEL_PX) {
+    return false;
+  }
+
+  const spacing = minimumNodeSpacing(options.positions) * options.zoom * options.scale;
+
+  return spacing >= rendered * LABEL_GAP_FACTOR + LABEL_GAP_MIN;
+}
+
+/**
+ * The zoom at which a name becomes legible on a canvas of this scale. Focusing a
+ * character zooms to here rather than to a fixed factor, so a hundred-character wheel
+ * gets the zoom it needs and a three-character one is not blown up.
+ */
+export function labelZoomNeeded(nameSize: number, scale: number): number {
+  return MIN_LABEL_PX / Math.max(nameSize * scale, 0.0001);
+}
+
+/**
+ * Where a drawing point lands on the screen, and the scale it lands at.
+ *
+ * The browser draws the label, the zoom and the pan are the app's, so the app has to
+ * do the same arithmetic to know where a node is: pan first, then zoom about the view
+ * box's origin, then fit the box into the element.
+ */
+export function projectToScreen(
+  point: GraphPoint,
+  view: { k: number; x: number; y: number },
+  viewBox: string,
+  rect: { left: number; top: number; width: number; height: number },
+): { x: number; y: number; scale: number } {
+  const [boxX, boxY, boxWidth, boxHeight] = viewBox.split(" ").map(Number);
+  const scale = canvasScreenScale(rect, viewBox);
+  const offsetX = (rect.width - boxWidth * scale) / 2;
+  const offsetY = (rect.height - boxHeight * scale) / 2;
+
+  return {
+    x: rect.left + offsetX + (point.x * view.k + view.x - boxX) * scale,
+    y: rect.top + offsetY + (point.y * view.k + view.y - boxY) * scale,
+    scale,
+  };
+}
+
+/**
+ * The point in the view box under a client coordinate: the inverse of the placement
+ * above, minus the view transform.
+ *
+ * Mapping x and y by their own ratios — which is what this used to do — is only right
+ * when the box and the element have the same proportions. When they do not, the fit
+ * letterboxes one axis, and the difference is exactly a wheel that zooms about the
+ * wrong point and a drag that slides out from under the cursor.
+ */
+export function viewBoxPointAt(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  viewBox: string,
+): GraphPoint {
+  const [boxX, boxY, boxWidth, boxHeight] = viewBox.split(" ").map(Number);
+  const scale = canvasScreenScale(rect, viewBox);
+  const offsetX = (rect.width - boxWidth * scale) / 2;
+  const offsetY = (rect.height - boxHeight * scale) / 2;
+
+  return {
+    x: boxX + (clientX - rect.left - offsetX) / scale,
+    y: boxY + (clientY - rect.top - offsetY) / scale,
+  };
+}
+
+/** The pan that puts a drawing point in the middle of the canvas at this zoom. */
+export function centreOn(
+  point: GraphPoint,
+  zoom: number,
+  viewBox: string,
+): { k: number; x: number; y: number } {
+  const [boxX, boxY, boxWidth, boxHeight] = viewBox.split(" ").map(Number);
+
+  return {
+    k: zoom,
+    x: boxX + boxWidth / 2 - point.x * zoom,
+    y: boxY + boxHeight / 2 - point.y * zoom,
+  };
 }
 
 /**
@@ -355,6 +515,66 @@ export function edgeGeometry(
   };
 }
 
+/**
+ * The picture of every avatar the graph has to draw, keyed by character.
+ *
+ * Only characters that have an uploaded picture ask for one; an emoji node costs
+ * nothing here. A picture that cannot be read is simply absent from the map, and the
+ * node falls back to its emoji — the same picture the node drew before this existed.
+ */
+function useGraphAvatarUrls(characters: Character[]) {
+  const key = useMemo(
+    () => characters.map((character) => `${character.id}:${character.avatarAssetId ?? ""}`).join("|"),
+    [characters],
+  );
+  const [urls, setUrls] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const wanted = key
+      .split("|")
+      .filter(Boolean)
+      .map((entry) => entry.split(":"))
+      .filter(([, assetId]) => assetId);
+
+    if (wanted.length === 0) {
+      setUrls({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      const loaded = await Promise.all(
+        wanted.map(async ([id, assetId]) => {
+          try {
+            return [id, await getAvatarAssetDataUrl(assetId)] as const;
+          } catch {
+            return [id, ""] as const;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const next: Record<string, string> = {};
+      for (const [id, url] of loaded) {
+        if (url) {
+          next[id] = url;
+        }
+      }
+      setUrls(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+
+  return urls;
+}
+
 export function RelationshipGraph({ characters, onBack, onOpenCharacter }: RelationshipGraphProps) {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [draft, setDraft] = useState<{ fromId: string; toId: string; kind: RelationshipKind; note: string } | null>(null);
@@ -365,6 +585,21 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
   const frameRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const prefsLoadedRef = useRef(false);
+  // The character the search is pointing at, and the pan requested by the last
+  // selection. They are separate because focusing a character who is not on the canvas
+  // yet has to wait for the layout to include them.
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [notOnCanvas, setNotOnCanvas] = useState<Character | null>(null);
+  const [isDisplayOpen, setIsDisplayOpen] = useState(false);
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
+  const holderRef = useRef<HTMLDivElement | null>(null);
+  const nodeCardRef = useRef<HTMLDivElement | null>(null);
+  const displayWrapRef = useRef<HTMLDivElement | null>(null);
+  const searchWrapRef = useRef<HTMLDivElement | null>(null);
+  const avatarUrls = useGraphAvatarUrls(characters);
+  const isNarrowScreen = useMediaQuery("(max-width: 720px)");
 
   // Written on change rather than inside the setter: a state updater can be called
   // twice for one interaction, and a preference is not worth persisting twice.
@@ -437,22 +672,92 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
   // was the wrong trade — dragging the graph is the interaction people reach for.
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const pinchRef = useRef<{ distance: number } | null>(null);
+  // The node a press started on, if any: what a tap opens.
+  const pressedNodeRef = useRef<string | null>(null);
+
+  // Hover and focus are the same highlight. Focus wins while it is set, so hovering a
+  // different node does not quietly drop the character the author searched for.
+  const activeId = focusId ?? hoveredId;
 
   const neighbours = useMemo(() => {
     const ids = new Set<string>();
-    if (!hoveredId) {
+    if (!activeId) {
       return ids;
     }
     for (const relationship of relationships) {
-      if (relationship.fromId === hoveredId) ids.add(relationship.toId);
-      if (relationship.toId === hoveredId) ids.add(relationship.fromId);
+      if (relationship.fromId === activeId) ids.add(relationship.toId);
+      if (relationship.toId === activeId) ids.add(relationship.fromId);
     }
     return ids;
-  }, [hoveredId, relationships]);
+  }, [activeId, relationships]);
+
+  // Unmeasured is not the same as scale 1: while the frame's size is unknown a label's
+  // rendered size is unknown too, and guessing generously is how a hundred-character
+  // wheel ends up with a smear of 3px names.
+  const measured = frameSize.width > 0 && frameSize.height > 0;
+  const screenScale = measured ? canvasScreenScale(frameSize, canvas.viewBox) : 0;
+  const labelsFit = labelsReadable({
+    positions,
+    nameSize: metrics.nameSize,
+    zoom: view.k,
+    scale: screenScale,
+  });
 
   // An export is the fitted graph with every name on it, not whatever corner the
-  // canvas happens to be zoomed into.
-  const showLabels = exporting || view.k >= labelZoomThreshold(visibleCharacters.length);
+  // canvas happens to be zoomed into. The author's own switch still wins: names turned
+  // off are off in the picture too.
+  const showLabels = prefs.showNames && (exporting || labelsFit);
+
+  // The canvas only exists once there is something to draw, so this has to re-run when
+  // it appears; measuring nothing on mount and never measuring again would leave the
+  // rendered-size rule permanently unmeasured.
+  const hasCanvas = characters.length >= 2 && relationships.length > 0;
+
+  useEffect(() => {
+    const frame = frameRef.current;
+
+    if (!frame || !hasCanvas) {
+      return;
+    }
+
+    const measure = () => {
+      const rect = frame.getBoundingClientRect();
+      setFrameSize({ width: rect.width, height: rect.height });
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [hasCanvas]);
+
+  // On a phone the same drawing is fitted into a third of the width, so at "fit" a
+  // twelve-character wheel renders its names seven pixels tall. Starting zoomed in
+  // enough to read them — and letting the zoom control fit the whole thing on request —
+  // is the readable version of the same screen. Applied once per mount, so the author's
+  // own zoom and pan are never taken back.
+  const narrowFitAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isNarrowScreen || narrowFitAppliedRef.current || screenScale <= 0) {
+      return;
+    }
+
+    narrowFitAppliedRef.current = true;
+    const zoom = clampZoom(Math.min(labelZoomNeeded(metrics.nameSize, screenScale), FOCUS_MAX_ZOOM));
+
+    if (zoom <= 1) {
+      return;
+    }
+
+    setView(centreOn({ x: VIEW / 2, y: VIEW / 2 }, zoom, canvas.viewBox));
+  }, [isNarrowScreen, screenScale, metrics.nameSize, canvas.viewBox]);
 
   function zoomBy(factor: number) {
     setView((current) => ({ ...current, k: clampZoom(current.k * factor) }));
@@ -464,10 +769,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
 
   /** Zooms about a point given in client coordinates, so the point stays put. */
   function zoomAround(svg: SVGSVGElement, clientX: number, clientY: number, factor: number) {
-    const rect = svg.getBoundingClientRect();
-    const [boxX, boxY, boxW, boxH] = canvas.viewBox.split(" ").map(Number);
-    const pointerX = boxX + ((clientX - rect.left) / rect.width) * boxW;
-    const pointerY = boxY + ((clientY - rect.top) / rect.height) * boxH;
+    const pointer = viewBoxPointAt(clientX, clientY, svg.getBoundingClientRect(), canvas.viewBox);
 
     setView((current) => {
       const k = clampZoom(current.k * factor);
@@ -475,8 +777,8 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
 
       return {
         k,
-        x: pointerX - (pointerX - current.x) * ratio,
-        y: pointerY - (pointerY - current.y) * ratio,
+        x: pointer.x - (pointer.x - current.x) * ratio,
+        y: pointer.y - (pointer.y - current.y) * ratio,
       };
     });
   }
@@ -510,6 +812,18 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
     }
+
+    // Which node this press started on, read before the capture below is set.
+    //
+    // Capturing the pointer on the <svg> retargets the compatibility mouse events to
+    // the capturing element, so the `click` that follows a tap is delivered to the
+    // <svg> and never reaches the node's own handler — which is how "click a node to
+    // open the character" quietly stopped working everywhere except the keyboard. The
+    // gesture is resolved on release instead, from the node the press began on.
+    pressedNodeRef.current =
+      (event.target as Element | null)?.closest?.("[data-character-id]")?.getAttribute("data-character-id") ??
+      null;
+
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -555,10 +869,11 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     if (!pan || pan.pointerId !== event.pointerId) {
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
-    const [, , boxW, boxH] = canvas.viewBox.split(" ").map(Number);
-    const dx = (event.clientX - pan.lastX) * (boxW / rect.width);
-    const dy = (event.clientY - pan.lastY) * (boxH / rect.height);
+    // Panned through the same placement the browser uses, so the point under the
+    // finger stays under the finger on both axes.
+    const scale = canvasScreenScale(event.currentTarget.getBoundingClientRect(), canvas.viewBox);
+    const dx = (event.clientX - pan.lastX) / scale;
+    const dy = (event.clientY - pan.lastY) / scale;
     pan.lastX = event.clientX;
     pan.lastY = event.clientY;
     if (Math.abs(dx) + Math.abs(dy) > 0.6) {
@@ -568,12 +883,24 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
   }
 
   function endPan(event: ReactPointerEvent<SVGSVGElement>) {
+    const pan = panRef.current;
+    // A press that never moved is a tap: that, not a `click`, is what opens the
+    // character. It has to be the pan this gesture started, so lifting one finger of a
+    // pinch is not a tap on whatever it landed on.
+    const tapped = Boolean(pan && pan.pointerId === event.pointerId && !pan.moved && pressedNodeRef.current);
+    const tappedId = pressedNodeRef.current;
+
     pointersRef.current.delete(event.pointerId);
     if (pointersRef.current.size < 2) {
       pinchRef.current = null;
     }
     if (pointersRef.current.size === 0) {
       panRef.current = null;
+      pressedNodeRef.current = null;
+    }
+
+    if (tapped && tappedId) {
+      onOpenCharacter(tappedId);
     }
   }
   const byId = useMemo(
@@ -586,6 +913,137 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
       ),
     [visibleCharacters, positions],
   );
+  const hoveredEntry = hoveredId ? byId.get(hoveredId) : undefined;
+
+  // How many relationships a character is an end of: the fourth field the hover card
+  // shows, counted from the edges rather than stored anywhere.
+  const degreeById = useMemo(() => {
+    const degrees = new Map<string, number>();
+    for (const relationship of relationships) {
+      degrees.set(relationship.fromId, (degrees.get(relationship.fromId) ?? 0) + 1);
+      degrees.set(relationship.toId, (degrees.get(relationship.toId) ?? 0) + 1);
+    }
+    return degrees;
+  }, [relationships]);
+
+  // Every character, not only the ones on the canvas: searching for somebody who is
+  // not drawn has to say so rather than quietly return nothing.
+  const searchResults = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return needle ? characters.filter((character) => matchesCharacterQuery(character, needle)) : [];
+  }, [characters, query]);
+
+  /**
+   * Asks for a character to be centred. The pan itself waits for the layout to include
+   * them: selecting somebody who is not on the canvas first has to draw the whole
+   * roster, and that changes every position on the wheel.
+   */
+  function focusCharacter(character: Character) {
+    setQuery("");
+    setNotOnCanvas(null);
+
+    if (!byId.has(character.id)) {
+      // Not silently: the character exists, the canvas is filtered, and the author is
+      // told which of the two it is.
+      setNotOnCanvas(character);
+      return;
+    }
+
+    setFocusId(character.id);
+    setPendingFocusId(character.id);
+  }
+
+  useEffect(() => {
+    if (!pendingFocusId) {
+      return;
+    }
+
+    const entry = byId.get(pendingFocusId);
+    if (!entry) {
+      return;
+    }
+
+    setPendingFocusId(null);
+    // Zoom only as far as the name needs to become readable. A handful of characters
+    // are already legible at fit and are only re-centred.
+    const needed = Math.min(labelZoomNeeded(metrics.nameSize, screenScale), FOCUS_MAX_ZOOM);
+    setView((current) =>
+      centreOn(entry, clampZoom(Math.max(current.k, labelsFit ? 1 : needed)), canvas.viewBox),
+    );
+  }, [pendingFocusId, byId, metrics.nameSize, screenScale, labelsFit, canvas.viewBox]);
+
+  const focusedCharacter = focusId ? characters.find((character) => character.id === focusId) : undefined;
+
+  // A focus on somebody the canvas no longer draws is worse than no focus: the chip
+  // would name a character that nothing on screen is pointing at, which is what
+  // switching back to "only related" while focused on an unrelated one produces.
+  useEffect(() => {
+    if (focusId && !byId.has(focusId)) {
+      setFocusId(null);
+    }
+  }, [focusId, byId]);
+
+  // Escape leaves the focus, which is the keyboard way out of a highlight that changes
+  // what every other node looks like. Not while a dialog is open: those use Escape to
+  // cancel, and closing the focus behind one would be answering a different question.
+  useEffect(() => {
+    if (!focusId || draft || pendingDelete) {
+      return;
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setFocusId(null);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [focusId, draft, pendingDelete]);
+
+  // The display panel closes on a click anywhere outside it, like every other dropdown
+  // in the app.
+  useEffect(() => {
+    if (!isDisplayOpen) {
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent) {
+      if (!displayWrapRef.current?.contains(event.target as Node)) {
+        setIsDisplayOpen(false);
+      }
+    }
+
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [isDisplayOpen]);
+
+  // Where the hover card sits: under the node it describes, placed from the node's own
+  // projected position rather than from the cursor, so it does not jump while the
+  // pointer moves across a large circle.
+  useLayoutEffect(() => {
+    const card = nodeCardRef.current;
+    const svg = svgRef.current;
+    const holder = holderRef.current;
+    const entry = hoveredId ? byId.get(hoveredId) : undefined;
+
+    if (!card || !svg || !holder || !entry) {
+      return;
+    }
+
+    const svgRect = svg.getBoundingClientRect();
+    const holderRect = holder.getBoundingClientRect();
+    const projected = projectToScreen(entry, view, canvas.viewBox, svgRect);
+    const radius = metrics.radius * view.k * projected.scale;
+    const half = HOVER_CARD_HALF + 8;
+    const localX = projected.x - holderRect.left;
+    // Kept inside the card: the position is a centring, and on a phone a centring on a
+    // node near the edge would hang the card off the canvas.
+    const left = holderRect.width > half * 2 ? Math.min(Math.max(localX, half), holderRect.width - half) : holderRect.width / 2;
+
+    card.style.left = `${left}px`;
+    card.style.top = `${projected.y - holderRect.top + radius + 10}px`;
+  }, [hoveredId, byId, view, canvas.viewBox, metrics]);
 
   function openDraft() {
     setDraft({
@@ -689,30 +1147,12 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             {characters.length} 个角色 · {relationships.length} 条关系
           </p>
         </div>
-        {/* Three controls, one style each: a zoom group, one toggle, one primary
-            action. It used to be five of four different shapes — and the toggle
-            rendered both of its responsive labels at once, because the rule that was
-            meant to hide one of them only existed inside the phone breakpoint. */}
+        {/* Two controls in the header, both about what the graph contains: which
+            characters are drawn, and adding an edge. Everything that acts on the
+            canvas itself sits with the canvas. The toggle used to render both of its
+            responsive labels at once, because the rule meant to hide one of them only
+            existed inside the phone breakpoint. */}
         <div className="workspace-toolbar">
-          {canLink && (
-            <div className="graph-zoom" role="group" aria-label="画布缩放">
-              <button aria-label="缩小画布" className="graph-zoom-step" onClick={() => zoomBy(1 / 1.25)} type="button">
-                <Icon name="minus" size={15} />
-              </button>
-              <button
-                aria-label="恢复适配"
-                className="graph-zoom-value"
-                data-tooltip="适配画布"
-                onClick={resetView}
-                type="button"
-              >
-                {Math.round(view.k * 100)}%
-              </button>
-              <button aria-label="放大画布" className="graph-zoom-step" onClick={() => zoomBy(1.25)} type="button">
-                <Icon name="plus" size={15} />
-              </button>
-            </div>
-          )}
           {canLink && (
             <button
               aria-pressed={showAll}
@@ -748,11 +1188,119 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
               The canvas zooms and pans so a large roster stays navigable instead of
               being flattened into one unreadable ring: names appear only past the
               label zoom, which scales with how many characters there are. */}
+          {/* What acts on the canvas sits with the canvas: finding a character,
+              zooming, and what the nodes show. The header keeps what the graph
+              contains. */}
+          <div className="graph-canvas-tools">
+            <div className="graph-search" ref={searchWrapRef}>
+              <label className="graph-search-field">
+                <Icon name="search" size={15} />
+                <input
+                  aria-label="搜索角色并定位"
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    setNotOnCanvas(null);
+                  }}
+                  placeholder="搜索角色名、职业、世界观"
+                  type="search"
+                  value={query}
+                />
+                {query && (
+                  <button aria-label="清除搜索" onClick={() => setQuery("")} type="button">
+                    <Icon name="close" size={13} />
+                  </button>
+                )}
+              </label>
+              {query.trim() !== "" && (
+                <div aria-label="搜索结果" className="graph-search-panel" role="listbox">
+                  {searchResults.length === 0 ? (
+                    <p className="muted">没有匹配的角色。</p>
+                  ) : (
+                    searchResults.map((character) => (
+                      <button
+                        aria-selected={character.id === focusId}
+                        className="character-picker-option"
+                        key={character.id}
+                        onClick={() => focusCharacter(character)}
+                        role="option"
+                        type="button"
+                      >
+                        <CharacterRow character={character} />
+                        <span className="graph-search-state">
+                          {byId.has(character.id) ? "在画布中" : "不在画布"}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Focus is a state of the whole canvas, so it says so and has one obvious
+                way out — the same control the search set it with. */}
+            {focusedCharacter && (
+              <button
+                aria-label={`退出聚焦 ${characterDisplayName(focusedCharacter)}`}
+                className="graph-focus-chip"
+                onClick={() => setFocusId(null)}
+                type="button"
+              >
+                <span className="graph-focus-chip-dot" />
+                聚焦：{characterDisplayName(focusedCharacter)}
+                <Icon name="close" size={13} />
+              </button>
+            )}
+
+            <div aria-label="画布缩放" className="graph-zoom" role="group">
+              <button aria-label="缩小画布" className="graph-zoom-step" onClick={() => zoomBy(1 / 1.25)} type="button">
+                <Icon name="minus" size={15} />
+              </button>
+              <button
+                aria-label="恢复适配"
+                className="graph-zoom-value"
+                data-tooltip="适配画布"
+                onClick={resetView}
+                type="button"
+              >
+                {Math.round(view.k * 100)}%
+              </button>
+              <button aria-label="放大画布" className="graph-zoom-step" onClick={() => zoomBy(1.25)} type="button">
+                <Icon name="plus" size={15} />
+              </button>
+            </div>
+          </div>
+
+          {notOnCanvas && (
+            <div className="graph-notice" role="status">
+              <p>
+                「{characterDisplayName(notOnCanvas)}」不在画布中：
+                {degreeById.get(notOnCanvas.id)
+                  ? "当前只画出有关联的角色。"
+                  : "这个角色还没有任何关系。"}
+              </p>
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  setShowAll(true);
+                  setFocusId(notOnCanvas.id);
+                  setPendingFocusId(notOnCanvas.id);
+                  setNotOnCanvas(null);
+                }}
+                type="button"
+              >
+                显示全部角色并定位
+              </button>
+            </div>
+          )}
+
           {/* The capture target is this frame, not the <svg> inside it: html2canvas
               clones the document and then looks the element up in the clone, and an
               <svg> handed to it directly is not found there — it throws the bare
               string "Unable to find element in cloned iframe". Its child SVGs render
-              fine, which is why the character sheets always exported. */}
+              fine, which is why the character sheets always exported. The hover card is
+              outside the frame for that reason: a card under the pointer is not part of
+              the drawing. */}
+          <div className="graph-canvas-holder" ref={holderRef}>
           <div className="graph-canvas-frame" ref={frameRef}>
           <svg
             aria-hidden="true"
@@ -765,7 +1313,16 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             viewBox={canvas.viewBox}
             xmlns="http://www.w3.org/2000/svg"
           >
-            <defs />
+            <defs>
+              {prefs.showAvatars &&
+                visibleCharacters.map((character, index) =>
+                  avatarUrls[character.id] ? (
+                    <clipPath id={avatarClipId(character.id)} key={character.id}>
+                      <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius} />
+                    </clipPath>
+                  ) : null,
+                )}
+            </defs>
             <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
             {relationships.map((relationship) => {
               const from = byId.get(relationship.fromId);
@@ -785,8 +1342,8 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                 symmetrical: symmetric,
               });
               const touchesHovered =
-                hoveredId !== null &&
-                (relationship.fromId === hoveredId || relationship.toId === hoveredId);
+                activeId !== null &&
+                (relationship.fromId === activeId || relationship.toId === activeId);
               return (
                 <g
                   className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}`}
@@ -804,16 +1361,25 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             })}
             {visibleCharacters.map((character, index) => {
               const isHovered = hoveredId === character.id;
+              const isFocused = focusId === character.id;
               const isNeighbour = neighbours.has(character.id);
-              const labelled = showLabels || isHovered || isNeighbour;
-              const state = isHovered
-                ? "relationship-node active"
-                : hoveredId && !isNeighbour
-                  ? "relationship-node dimmed"
-                  : "relationship-node";
+              // The focused node and its direct connections keep their labels whatever
+              // the zoom: without that, searching for somebody in a large roster would
+              // highlight circles whose names are not being drawn.
+              const labelled = prefs.showNames && (showLabels || isHovered || isFocused || isNeighbour);
+              const state = isFocused
+                ? "relationship-node active focused"
+                : isHovered
+                  ? "relationship-node active"
+                  : activeId && character.id !== activeId && !isNeighbour
+                    ? "relationship-node dimmed"
+                    : "relationship-node";
+              const avatarUrl = avatarUrls[character.id];
               return (
                 <g
                   className={state}
+                  data-character-id={character.id}
+                  data-character-name={characterDisplayName(character)}
                   key={character.id}
                   onClick={() => {
                     // A drag ends on the node it started on; that is a pan, not a click.
@@ -827,14 +1393,33 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                   role="presentation"
                 >
                   <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius} />
-                  <text
-                    className="relationship-node-emoji"
-                    style={{ fontSize: `${metrics.emojiSize}px` }}
-                    x={positions[index].x}
-                    y={positions[index].y}
-                  >
-                    {character.avatarEmoji || "🙂"}
-                  </text>
+                  {/* An uploaded picture is drawn as the node itself, through the same
+                      circle and at the same size as the emoji it replaces. Before this
+                      the graph only ever drew `avatarEmoji`, so a character with a
+                      photo showed a generic face here and the real one everywhere
+                      else — the picture was not broken, it was never asked for. */}
+                  {prefs.showAvatars && avatarUrl && (
+                    <image
+                      className="relationship-node-image"
+                      clipPath={`url(#${avatarClipId(character.id)})`}
+                      height={metrics.radius * 2}
+                      href={avatarUrl}
+                      preserveAspectRatio="xMidYMid slice"
+                      width={metrics.radius * 2}
+                      x={positions[index].x - metrics.radius}
+                      y={positions[index].y - metrics.radius}
+                    />
+                  )}
+                  {prefs.showAvatars && !avatarUrl && (
+                    <text
+                      className="relationship-node-emoji"
+                      style={{ fontSize: `${metrics.emojiSize}px` }}
+                      x={positions[index].x}
+                      y={positions[index].y}
+                    >
+                      {character.avatarEmoji || "🙂"}
+                    </text>
+                  )}
                   {labelled && (
                     <text
                       className="relationship-node-name"
@@ -842,7 +1427,7 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                       x={positions[index].x}
                       y={positions[index].y + metrics.nameDrop}
                     >
-                      {character.name || "未命名角色"}
+                      {characterDisplayName(character)}
                     </text>
                   )}
                 </g>
@@ -852,43 +1437,122 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
           </svg>
           </div>
 
-          {/* Canvas options and output sit with the canvas rather than in the
-              toolbar: the toolbar wraps to a fourth row on a phone as it is, and
-              these two act on the drawing above them. Both live outside the frame,
-              so neither ends up in an export. */}
-          {/* Two groups, one visual language: every control here is a segmented
-              button of the same height and radius, so the row reads as two settings
-              and an output rather than as four unrelated widgets. */}
+          {/* Who this node is, while the pointer is on it: the four fields a reader
+              checks before deciding to open it — name, occupation, worldview and how
+              many relationships meet there. Positioned from the node rather than the
+              cursor so it does not slide about, and outside the frame so it is not
+              captured. */}
+          {hoveredEntry && (
+            <div className="graph-node-card" ref={nodeCardRef} role="tooltip">
+              <strong className="graph-node-card-name">
+                {characterDisplayName(hoveredEntry.character)}
+              </strong>
+              {hoveredEntry.character.occupation && (
+                <span className="graph-node-card-field">
+                  <em>职业</em>
+                  {hoveredEntry.character.occupation}
+                </span>
+              )}
+              {hoveredEntry.character.worldview && (
+                <span className="graph-node-card-field">
+                  <em>世界观</em>
+                  {hoveredEntry.character.worldview}
+                </span>
+              )}
+              <span className="graph-node-card-field">
+                <em>关系</em>
+                {degreeById.get(hoveredEntry.character.id) ?? 0} 条
+              </span>
+              <span className="graph-node-card-hint">点击打开角色详情</span>
+            </div>
+          )}
+          </div>
+
+          {/* Output, under the drawing it exports. The node's own appearance moved
+              behind 显示设置: four size buttons and two switches were the widest thing
+              on the row, and they are set once rather than used. Everything here is a
+              segmented button of the same height and radius, so the bar still reads as
+              one group and one output. It lives outside the frame, so it never ends up
+              in an export. */}
           <div className="graph-canvas-bar">
-            <div aria-label="节点外观" className="graph-control-group" role="group">
-              <span className="graph-control-label">头像</span>
-              <div className="graph-segment">
-                {AVATAR_SIZES.map((size) => (
-                  <button
-                    aria-pressed={prefs.avatarSize === size.value}
-                    className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
-                    key={size.value}
-                    onClick={() => updatePrefs({ avatarSize: size.value })}
-                    type="button"
-                  >
-                    {size.label}
-                  </button>
-                ))}
-              </div>
-              <span className="graph-control-label">名称</span>
-              <div className="graph-segment">
-                {NAME_SIZES.map((size) => (
-                  <button
-                    aria-pressed={prefs.nameSize === size.value}
-                    className={prefs.nameSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
-                    key={size.value}
-                    onClick={() => updatePrefs({ nameSize: size.value })}
-                    type="button"
-                  >
-                    {size.label}
-                  </button>
-                ))}
-              </div>
+            <div className="graph-display-wrap" ref={displayWrapRef}>
+              <button
+                aria-expanded={isDisplayOpen}
+                className={isDisplayOpen ? "graph-toggle active" : "graph-toggle"}
+                onClick={() => setIsDisplayOpen((current) => !current)}
+                type="button"
+              >
+                <Icon name="eye" size={15} />
+                显示设置
+              </button>
+              {isDisplayOpen && (
+                <div aria-label="显示设置" className="graph-panel" role="dialog">
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">名称</span>
+                    <div className="graph-segment">
+                      {[
+                        { value: true, label: "显示" },
+                        { value: false, label: "隐藏" },
+                      ].map((option) => (
+                        <button
+                          aria-pressed={prefs.showNames === option.value}
+                          className={prefs.showNames === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={option.label}
+                          onClick={() => updatePrefs({ showNames: option.value })}
+                          type="button"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="graph-segment">
+                      {NAME_SIZES.map((size) => (
+                        <button
+                          aria-pressed={prefs.nameSize === size.value}
+                          className={prefs.nameSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={size.value}
+                          onClick={() => updatePrefs({ nameSize: size.value })}
+                          type="button"
+                        >
+                          {size.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">头像</span>
+                    <div className="graph-segment">
+                      {[
+                        { value: true, label: "显示" },
+                        { value: false, label: "隐藏" },
+                      ].map((option) => (
+                        <button
+                          aria-pressed={prefs.showAvatars === option.value}
+                          className={prefs.showAvatars === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={option.label}
+                          onClick={() => updatePrefs({ showAvatars: option.value })}
+                          type="button"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="graph-segment">
+                      {AVATAR_SIZES.map((size) => (
+                        <button
+                          aria-pressed={prefs.avatarSize === size.value}
+                          className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={size.value}
+                          onClick={() => updatePrefs({ avatarSize: size.value })}
+                          type="button"
+                        >
+                          {size.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
             <div aria-label="导出关系网" className="graph-control-group" role="group">
               <span className="graph-control-label">分辨率</span>
