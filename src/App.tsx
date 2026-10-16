@@ -120,6 +120,28 @@ const RESTORABLE_PAGES: readonly Page[] = [
 const isRestorablePage = (value: unknown): value is Page =>
   typeof value === "string" && (RESTORABLE_PAGES as readonly string[]).includes(value);
 
+// What a workspace was opened to show: the graph's character, the timeline's event,
+// the world manager's entry. Only the two facts a screen needs to rebuild itself go
+// into the history entry — never the record they point at, which the workspace reads
+// from storage as it always does.
+type PageTarget =
+  | { kind: "relationships"; id: string }
+  | { kind: "timeline"; id: string }
+  | { kind: "world"; id: string };
+
+const isPageTarget = (value: unknown): value is PageTarget => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const candidate = value as { kind?: unknown; id?: unknown };
+  return (
+    (candidate.kind === "relationships" || candidate.kind === "timeline" || candidate.kind === "world") &&
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0
+  );
+};
+
+
 function PageFallback() {
   return (
     <div className="page-fallback" role="status" aria-live="polite">
@@ -190,9 +212,11 @@ function App() {
   // character the graph should focus, the event the timeline should show, the entry the
   // world manager should open. It is consumed by that screen and cleared, so it never
   // becomes a second source of truth for what is selected.
-  const [pageTarget, setPageTarget] = useState<
-    { kind: "relationships"; id: string } | { kind: "timeline"; id: string } | { kind: "world"; id: string } | null
-  >(null);
+  //
+  // It is also what a history entry carries, which is how Forward can rebuild the
+  // screen Back left: the entry names the page and the target, and returning to it
+  // re-issues the same one-shot request the click did.
+  const [pageTarget, setPageTarget] = useState<PageTarget | null>(null);
   // The preview's related lists, read when the preview opens rather than kept in sync
   // with two workspaces the reader is not looking at.
   const [previewLinks, setPreviewLinks] = useState<{
@@ -207,7 +231,15 @@ function App() {
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const topbarRef = useRef<HTMLElement>(null);
   const appAssetImportInputRef = useRef<HTMLInputElement>(null);
-  const isHistoryNavigationRef = useRef(false);
+  // A navigation that asked for a target hands it over here, so the push effect can
+  // read it without the effect that clears it (the target being consumed) looking like
+  // a second navigation and pushing a duplicate entry.
+  const pendingTargetRef = useRef<PageTarget | null>(null);
+  // Which screen the history entry we are standing on describes. Comparing against
+  // this — rather than against a "was that a popstate?" flag — is what tells a real
+  // navigation apart from a re-render, including Back/Forward between two entries of
+  // the same page.
+  const committedEntryRef = useRef<{ page: Page; target: PageTarget | null } | null>(null);
 
   useEffect(() => {
     setCharacters(loadCharacters());
@@ -575,16 +607,31 @@ function App() {
 
   useEffect(() => {
     const initialPage = isDeveloperPath(window.location.pathname) ? "developer" : "dashboard";
-    window.history.replaceState({ characterStudioPage: initialPage }, "", window.location.href);
+    window.history.replaceState(
+      { characterStudioPage: initialPage, characterStudioTarget: null },
+      "",
+      window.location.href,
+    );
+    committedEntryRef.current = { page: initialPage, target: null };
 
     function handlePopState(event: PopStateEvent) {
-      isHistoryNavigationRef.current = true;
       // This used to name three pages and send every other value to the dashboard.
       // The three workspaces arrived after it was written and were never added, so
       // leaving one and pressing Back showed the dashboard while the history entry
       // still said "relationships" — measured, see KI-15.
       const nextPage = event.state?.characterStudioPage;
-      setPage(isRestorablePage(nextPage) ? nextPage : "dashboard");
+      const landedPage = isRestorablePage(nextPage) ? nextPage : "dashboard";
+      const nextTarget = isPageTarget(event.state?.characterStudioTarget)
+        ? (event.state.characterStudioTarget as PageTarget)
+        : null;
+
+      // The entry we have landed on is the one the effect below must not push again,
+      // and the target it names is what the workspace re-opens on — which is what
+      // makes Forward rebuild the screen instead of showing the workspace with
+      // nothing focused.
+      committedEntryRef.current = { page: landedPage, target: nextTarget };
+      setPage(landedPage);
+      setPageTarget(nextTarget);
       setIsAppAboutOpen(false);
       setIsFirstAboutOpen(false);
       setIsAppSettingsOpen(false);
@@ -596,13 +643,21 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isHistoryNavigationRef.current) {
-      isHistoryNavigationRef.current = false;
+    const target = pendingTargetRef.current;
+    pendingTargetRef.current = null;
+    const committed = committedEntryRef.current;
+
+    // Nothing new to record: the entry we are on already describes this screen. This
+    // covers two things that must not add an entry — a target being consumed by the
+    // workspace that just used it, and a Back/Forward that React re-rendered after the
+    // popstate handler had already synced `committedEntryRef`.
+    if (!target && committed && committed.page === page) {
       return;
     }
 
+    committedEntryRef.current = { page, target };
     window.history.pushState(
-      { characterStudioPage: page },
+      { characterStudioPage: page, characterStudioTarget: target },
       "",
       page === "developer"
         ? DEVELOPER_PATH
@@ -637,7 +692,12 @@ function App() {
   /** Opens a workspace with something to show, pushing one history entry like any
    *  other page change so Back returns to where the reader came from. */
   function openWorkspace(kind: "relationships" | "timeline" | "world", id: string) {
-    setPageTarget({ kind, id });
+    const target: PageTarget = { kind, id };
+    // Handed to the push effect as well as to the workspace: the workspace consumes it
+    // and clears it, but the history entry has to keep its copy so Forward can hand it
+    // over again.
+    pendingTargetRef.current = target;
+    setPageTarget(target);
     setPage(kind);
   }
 

@@ -56,6 +56,8 @@ import {
   type ViewMode,
 } from "../storage/dashboardPrefs";
 import { defaultContent } from "../content/defaultContent";
+import { dashboardGroupRows, summarizeTags } from "./dashboard/dashboardGroups";
+import { planLegacyFavoriteMigration } from "./dashboard/legacyFavorites";
 
 type DashboardProps = {
   characters: Character[];
@@ -342,46 +344,6 @@ export function Dashboard({
       ),
     [characters],
   );
-  const [isGroupedCards, setIsGroupedCards] = useState(true);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-  const groupedCards = isGroupedCards && visibleCharacters.length > LARGE_ROSTER;
-
-  const cardRows = useMemo(() => {
-    type Row =
-      | { kind: "head"; group: string; count: number }
-      | { kind: "card"; character: Character };
-
-    if (!groupedCards) {
-      return visibleCharacters.map((character): Row => ({ kind: "card", character }));
-    }
-
-    const buckets = new Map<string, Character[]>();
-    for (const character of visibleCharacters) {
-      const key = (character.worldview || "").trim() || "未填写世界观";
-      const bucket = buckets.get(key);
-      if (bucket) {
-        bucket.push(character);
-      } else {
-        buckets.set(key, [character]);
-      }
-    }
-
-    // Biggest group first: the group an author is most likely to be working in.
-    const groups = [...buckets.entries()]
-      .map(([group, characters]) => ({ group, characters }))
-      .sort((a, b) => b.characters.length - a.characters.length || a.group.localeCompare(b.group, "zh"));
-
-    const rows: Row[] = [];
-    for (const entry of groups) {
-      rows.push({ kind: "head", group: entry.group, count: entry.characters.length });
-      if (collapsedGroups[entry.group] !== true) {
-        for (const character of entry.characters) {
-          rows.push({ kind: "card", character });
-        }
-      }
-    }
-    return rows;
-  }, [collapsedGroups, groupedCards, visibleCharacters]);
   const hasActiveSearchOrFilter =
     prefs.searchTerm.trim() ||
     prefs.worldviewFilter !== "全部" ||
@@ -394,6 +356,47 @@ export function Dashboard({
     prefs.genderFilter !== "全部" ||
     prefs.visualStyleFilter !== "全部",
   );
+
+  const [isGroupedCards, setIsGroupedCards] = useState(true);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [locatedGroup, setLocatedGroup] = useState("");
+  const groupedCards = isGroupedCards && visibleCharacters.length > LARGE_ROSTER;
+  const groupHeadsRef = useRef<Record<string, HTMLDivElement | null>>({});
+  const locatedGroupTimerRef = useRef<number | null>(null);
+  // A search or a filter is a request to see matches, so while one is active every
+  // group is drawn open: a group the reader collapsed while browsing must not be
+  // able to hide the character they just looked for. The override is derived, so
+  // clearing the search gives them back the state they left behind.
+  const forceExpandGroups = Boolean(hasActiveSearchOrFilter);
+
+  const { rows: cardRows, groups: cardGroups } = useMemo(
+    () =>
+      dashboardGroupRows(visibleCharacters, {
+        grouped: groupedCards,
+        collapsed: collapsedGroups,
+        forceExpand: forceExpandGroups,
+      }),
+    [collapsedGroups, forceExpandGroups, groupedCards, visibleCharacters],
+  );
+  const everyVisibleSelected =
+    visibleCharacters.length > 0 &&
+    visibleCharacters.every((character) => selectedIds.includes(character.id));
+
+  /** One time affordance for both places a card shows it (the footer while
+   *  browsing, the meta corner while selecting), so the two cannot drift. */
+  function renderCardTime(character: Character) {
+    return (
+      <button
+        className="card-time-button preview-hit"
+        onClick={() => onPreview(character)}
+        title={`创建 ${formatDate(character.createdAt)} · 最后编辑 ${formatDate(character.updatedAt)}`}
+        type="button"
+      >
+        <span className="card-time-edited">编辑 {formatStamp(character.updatedAt)}</span>
+        <span className="card-time-created">创建 {formatStamp(character.createdAt)}</span>
+      </button>
+    );
+  }
   const heroCopy = getHeroCopy(prefs.favoriteMode);
   const listTitle = getListTitle(prefs, hasSearchOrFilter);
   const stats = getDashboardStats(characters, flags);
@@ -468,6 +471,15 @@ export function Dashboard({
     };
     // `dismiss` is stable, so this still registers exactly one listener.
   }, [layers.dismiss]);
+
+  useEffect(
+    () => () => {
+      if (locatedGroupTimerRef.current !== null) {
+        window.clearTimeout(locatedGroupTimerRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     function handleKeyboardShortcuts(event: KeyboardEvent) {
@@ -545,21 +557,29 @@ export function Dashboard({
     saveDashboardFlags(flags);
   }, [flags]);
 
+  // Legacy favourites lived in the flags as a list of ids; the flag lives on the
+  // character record now. The plan is computed rather than acted on inline, because
+  // the one rule that matters is a decision about the data: an empty roster is not
+  // evidence that the ids are stale, it is also what this screen is handed on its
+  // first render, before the app has loaded the library. Writing that list back
+  // deleted every character — see `legacyFavorites.ts`.
+  const legacyFavoritePlan = useMemo(
+    () => planLegacyFavoriteMigration(characters, flags.favoriteIds),
+    [characters, flags.favoriteIds],
+  );
+
   useEffect(() => {
-    if (flags.favoriteIds.length === 0) {
+    if (!legacyFavoritePlan) {
       return;
     }
 
-    const legacyFavoriteIds = new Set(flags.favoriteIds);
-    const nextCharacters = characters.map((character) =>
-      legacyFavoriteIds.has(character.id) && !character.isDraft
-        ? { ...character, favorite: true, isFavorite: undefined }
-        : character,
-    );
-
-    onImport(nextCharacters);
+    // Only written when the roster actually changed: a stale id on its own is cleared
+    // from the flags and touches nothing else.
+    if (legacyFavoritePlan.characters !== characters) {
+      onImport(legacyFavoritePlan.characters);
+    }
     setFlags((current) => ({ ...current, favoriteIds: [] }));
-  }, [characters, flags.favoriteIds, onImport]);
+  }, [legacyFavoritePlan, characters, onImport]);
 
   function showToast(
     message: string,
@@ -679,11 +699,34 @@ export function Dashboard({
   }
 
   function toggleSelectAll() {
-    setSelectedIds((current) =>
-      current.length === visibleCharacters.length
-        ? []
-        : visibleCharacters.map((character) => character.id),
-    );
+    setSelectedIds((current) => {
+      // Asked of the visible set rather than of the count: after a filter change a
+      // selection can hold ids that are no longer on screen, and comparing lengths
+      // would then offer "全选" while every visible card was already ticked.
+      const everyVisibleSelected = visibleCharacters.every((character) => current.includes(character.id));
+      return everyVisibleSelected ? [] : visibleCharacters.map((character) => character.id);
+    });
+  }
+
+  /** Brings a group into view: expand it, scroll its head clear of the top bar and
+   *  mark it for a moment so the reader can see where they landed. */
+  function locateGroup(group: string) {
+    setCollapsedGroups((current) => ({ ...current, [group]: false }));
+
+    const head = groupHeadsRef.current[group];
+    if (head) {
+      const topbarBottom = document.querySelector(".topbar")?.getBoundingClientRect().bottom ?? 0;
+      window.scrollTo({
+        top: Math.max(0, window.scrollY + head.getBoundingClientRect().top - topbarBottom - 12),
+        behavior: "smooth",
+      });
+    }
+
+    setLocatedGroup(group);
+    if (locatedGroupTimerRef.current !== null) {
+      window.clearTimeout(locatedGroupTimerRef.current);
+    }
+    locatedGroupTimerRef.current = window.setTimeout(() => setLocatedGroup(""), 1600);
   }
 
   function handleBulkDuplicate() {
@@ -1331,15 +1374,10 @@ export function Dashboard({
         <div className="section-title list-section-title">
           <div>
             <h2>{listTitle}</h2>
-            <span>
-              {visibleCharacters.length} 个角色
-              {selectedIds.length > 0 && (
-                <span className="selected-count-inline">
-                  {" / "}
-                  已选 {selectedIds.length} 个
-                </span>
-              )}
-            </span>
+            {/* How many characters the list holds. How many are *selected* is stated
+                once, on the selection bar beside the actions that use it, rather than
+                twice on the same screen. */}
+            <span>{visibleCharacters.length} 个角色</span>
           </div>
           {/* The toolbar and the bulk actions are one right-hand group. Left as two
               separate children of the header they were spread apart by
@@ -1352,83 +1390,69 @@ export function Dashboard({
             <div className="bulk-actions">
               {isBulkMode ? (
                 <>
-                  <div className="bulk-actions-desktop">
-                    <button
-                      className="ghost-button"
-                      onClick={toggleSelectAll}
-                      type="button"
-                    >
-                      {selectedIds.length === visibleCharacters.length
-                        ? "取消全选"
-                        : "全选"}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      disabled={selectedIds.length === 0}
-                      onClick={() => setIsBulkEditOpen(true)}
-                      type="button"
-                    >
-                      批量编辑
-                    </button>
-                    {!isDraftView && (
-                      <>
-                        {isFavoriteView ? (
-                          <button
-                            className="ghost-button"
-                            disabled={selectedIds.length === 0}
-                            onClick={() => bulkSetFavorite(false)}
-                            type="button"
-                          >
-                            移出收藏
-                          </button>
-                        ) : (
-                          <button
-                            className="ghost-button"
-                            disabled={selectedIds.length === 0}
-                            onClick={() => bulkSetFavorite(true)}
-                            type="button"
-                          >
-                            加入收藏
-                          </button>
-                        )}
-                        <button
-                          className="ghost-button"
-                          disabled={selectedIds.length === 0 || loadingAction !== null}
-                          onClick={() => openCharacterExportDialog("selected")}
-                          type="button"
-                        >
-                          导出
-                        </button>
-                      </>
-                    )}
-                    <button
-                      className="ghost-button"
-                      disabled={selectedIds.length === 0}
-                      onClick={handleBulkDuplicate}
-                      type="button"
-                    >
-                      {isDraftView ? "复制" : "批量复制"}
-                    </button>
-                    <button
-                      className="danger-button"
-                      disabled={selectedIds.length === 0}
-                      onClick={() =>
-                        selectedIds.length > 0
-                          ? setIsBulkDeleteOpen(true)
-                          : showToast("请先选择角色")
-                      }
-                      type="button"
-                    >
-                      {isDraftView ? "删除" : "批量删除"}
-                    </button>
-                    <button
-                      className="ghost-button"
-                      onClick={exitBulkMode}
-                      type="button"
-                    >
-                      取消选择
-                    </button>
-                  </div>
+                   <div className="bulk-actions-desktop">
+                     {/* What the mode is and how much of the list is in it, said before
+                         any of the buttons that act on it. */}
+                     <span className="bulk-selection-count">
+                       已选 <strong>{selectedIds.length}</strong> / {visibleCharacters.length}
+                     </span>
+                     <button
+                       className="ghost-button"
+                       onClick={toggleSelectAll}
+                       type="button"
+                     >
+                       {everyVisibleSelected ? "取消全选" : "全选"}
+                     </button>
+                     <button
+                       className="ghost-button"
+                       disabled={selectedIds.length === 0}
+                       onClick={() => setIsBulkEditOpen(true)}
+                       type="button"
+                     >
+                       批量编辑
+                     </button>
+                     {!isDraftView && (
+                       <button
+                         className="ghost-button"
+                         disabled={selectedIds.length === 0}
+                         onClick={() => bulkSetFavorite(!isFavoriteView)}
+                         type="button"
+                       >
+                         {isFavoriteView ? "移出收藏" : "加入收藏"}
+                       </button>
+                     )}
+                     {/* Export and duplicate are worth having but not worth a button
+                         each while selecting, so they live one level down. */}
+                     <button
+                       className="ghost-button"
+                       onClick={() => setIsBulkMoreOpen(true)}
+                       type="button"
+                     >
+                       更多
+                     </button>
+                     <button
+                       className="ghost-button"
+                       onClick={exitBulkMode}
+                       type="button"
+                     >
+                       取消选择
+                     </button>
+                     {/* The only destructive control in the bar, set apart from the
+                         buttons beside it and never next to the one that leaves the
+                         mode, so a mis-aimed click cannot become a deletion. */}
+                     <button
+                       className="danger-button bulk-delete-button"
+                       disabled={selectedIds.length === 0}
+                       onClick={() =>
+                         selectedIds.length > 0
+                           ? setIsBulkDeleteOpen(true)
+                           : showToast("请先选择角色")
+                       }
+                       type="button"
+                     >
+                       {isDraftView ? "删除" : "批量删除"}
+                     </button>
+                   </div>
                   <div className="mobile-bulk-toolbar">
                     <div className="mobile-bulk-summary">
                       <span>已选择 {selectedIds.length} 个角色</span>
@@ -1461,21 +1485,12 @@ export function Dashboard({
                            {isFavoriteView ? "移出" : "收藏"}
                         </button>
                       )}
-                      {!isDraftView && (
-                        <button
-                          className="ghost-button"
-                          disabled={selectedIds.length === 0 || loadingAction !== null}
-                          onClick={() => openCharacterExportDialog("selected")}
-                          type="button"
-                        >
-                           <Icon name="download" size={15} />
-                           导出
-                         </button>
-                      )}
-                       <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
-                         <Icon name="more" size={15} />
-                         更多
-                       </button>
+                        {/* 导出 lives in 更多 with the rest of the occasional actions:
+                            one copy of it, in the dialog, on both layouts. */}
+                        <button className="ghost-button" onClick={() => setIsBulkMoreOpen(true)} type="button">
+                          <Icon name="more" size={15} />
+                          更多
+                        </button>
                     </div>
                   </div>
                 </>
@@ -1688,6 +1703,19 @@ export function Dashboard({
                                     {isFavorite ? "移出收藏" : "加入收藏"}
                                   </button>
                                 )}
+                                {/* The card view's menu has always offered 置顶; without
+                                    it here the same character could be pinned from one
+                                    view and not from the other. */}
+                                <button
+                                  onClick={() => {
+                                    togglePinned(character.id);
+                                    setOpenCardMenuId(null);
+                                  }}
+                                  type="button"
+                                >
+                                  <Icon name="pin" size={16} />
+                                  {isPinned ? "取消置顶" : "置顶"}
+                                </button>
                                 <button
                                   onClick={() => {
                                     onDuplicate(character);
@@ -1732,18 +1760,57 @@ export function Dashboard({
             </div>
           </div>
           ) : (
+          <>
+            {/* Jump straight to a group instead of scrolling the roster. Only worth
+                showing when there is more than one group to choose between. */}
+            {cardGroups.length > 1 && (
+              <div className="card-group-index" role="group" aria-label="分组定位">
+                <span className="card-group-index-label">分组定位</span>
+                <div className="card-group-index-chips">
+                  {cardGroups.map((entry) => (
+                    <button
+                      className={
+                        locatedGroup === entry.group ? "card-group-chip located" : "card-group-chip"
+                      }
+                      key={`chip-${entry.group}`}
+                      onClick={() => locateGroup(entry.group)}
+                      type="button"
+                    >
+                      <span>{entry.group}</span>
+                      <em>{entry.count}</em>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           <div className={visibleCharacters.length === 1 ? "card-list single-card-list" : "card-list"}>
             {cardRows.map((row) => {
               if (row.kind === "head") {
-                const isCollapsed = collapsedGroups[row.group] === true;
+                const isCollapsed = !forceExpandGroups && collapsedGroups[row.group] === true;
                 return (
-                  <div className="character-group-head" key={`head-${row.group}`}>
+                  <div
+                    className={
+                      locatedGroup === row.group
+                        ? "character-group-head located"
+                        : "character-group-head"
+                    }
+                    key={`head-${row.group}`}
+                    ref={(node) => {
+                      groupHeadsRef.current[row.group] = node;
+                    }}
+                  >
                     <button
                       aria-expanded={!isCollapsed}
                       className={isCollapsed ? "character-group-toggle collapsed" : "character-group-toggle"}
+                      // While a search or a filter is narrowing the list the group is
+                      // drawn open regardless, so the toggle has nothing to do until
+                      // it is cleared — a click that silently did nothing would only
+                      // look broken.
+                      disabled={forceExpandGroups}
                       onClick={() =>
                         setCollapsedGroups((current) => ({ ...current, [row.group]: !current[row.group] }))
                       }
+                      title={forceExpandGroups ? "搜索或筛选时分组保持展开" : undefined}
                       type="button"
                     >
                       <Icon name="chevronDown" size={15} />
@@ -1756,10 +1823,20 @@ export function Dashboard({
 
               const character = row.character;
               const tags = getPersonalityTags(character);
-              const visibleTags = tags.slice(0, cardTagLimit);
               const isFavorite = isCharacterFavorite(character, new Set(flags.favoriteIds));
               const isPinned = flags.pinnedIds.includes(character.id);
               const isDraft = character.isDraft === true;
+              // Chips and status badges share one wrapping row, so the badges are
+              // counted against the same limit: otherwise the card could show a
+              // "+2" that is only reporting the room a badge took.
+              const statusBadgeCount = isDraft ? 1 : (isPinned ? 1 : 0) + (isFavorite ? 1 : 0);
+              // The phone's row fits four chips, so the same number decides what is
+              // drawn and what the "+N" reports: a count that disagreed with the row
+              // would be worse than no count at all.
+              const tagRoom = isNarrowScreen ? 4 : cardTagLimit;
+              const tagSummary = summarizeTags(tags, Math.max(0, tagRoom - statusBadgeCount));
+              const hasTagRow =
+                isDraft || isPinned || isFavorite || tagSummary.visible.length > 0 || tagSummary.hidden > 0;
 
               return (
               <article
@@ -1804,20 +1881,28 @@ export function Dashboard({
                     />
                   </button>
                   <div className="card-copy">
+                    {/* The name is the card's focal point: two lines of it rather than
+                        one truncated line, because the name is the one value a reader
+                        cannot infer from the rest of the card. */}
                     <button
                       className="card-title-button preview-hit"
                       onClick={() => onPreview(character)}
+                      title={character.name || "未命名角色"}
                       type="button"
                     >
                       {character.name || "未命名角色"}
                     </button>
+                    {/* 职业 and 世界观 are what a reader compares cards by, so they carry
+                        the same weight; 年龄 is a detail and is set lighter than either. */}
                     <button
                       className="card-subtitle-button preview-hit"
                       onClick={() => onPreview(character)}
                       type="button"
                     >
-                      {character.occupation || "暂无职业"} ｜{" "}
-                      {character.worldview || "暂无世界观"}
+                      <span className="card-subtitle-primary">
+                        {character.occupation || "暂无职业"} ｜{" "}
+                        {character.worldview || "暂无世界观"}
+                      </span>
                       <span className="card-age-fragment">
                         {" ｜ "}
                         {character.age || "年龄未知"}
@@ -1825,11 +1910,15 @@ export function Dashboard({
                     </button>
                   </div>
                 </div>
-                {(isDraft || isPinned || tags.length > 0) && (
+                {hasTagRow && (
                   <div className="card-tags" onClick={(event) => event.stopPropagation()}>
+                    {/* A card's state is readable at a glance, and the same badges the
+                        list view's 状态 column uses, so one view cannot describe a
+                        character differently from the other. */}
                     {isDraft && <span className="status-badge draft">草稿</span>}
                     {!isDraft && isPinned && <span className="status-badge pinned">置顶</span>}
-                    {!isDraft && visibleTags.map((tag) => (
+                    {!isDraft && isFavorite && <span className="status-badge favorite">收藏</span>}
+                    {!isDraft && tagSummary.visible.map((tag) => (
                       <button
                         className={`tag-tone-${getTagTone(tag)} preview-hit`}
                         key={tag}
@@ -1839,6 +1928,11 @@ export function Dashboard({
                         {tag}
                       </button>
                     ))}
+                    {!isDraft && tagSummary.hidden > 0 && (
+                      <span className="status-badge card-tag-more" title={tags.join("、")}>
+                        +{tagSummary.hidden}
+                      </span>
+                    )}
                   </div>
                 )}
                 {!isBulkMode && !isDraft && (
@@ -1942,16 +2036,7 @@ export function Dashboard({
                       >
                          <Icon filled={isFavorite} name="heart" size={16} />
                        </button>
-                      {showUpdatedTime && (
-                        <button
-                          className="card-time-button preview-hit"
-                          onClick={() => onPreview(character)}
-                          title={`创建 ${formatDate(character.createdAt)} · 最后编辑 ${formatDate(character.updatedAt)}`}
-                          type="button"
-                        >
-                          创建 {formatStamp(character.createdAt)} · 编辑 {formatStamp(character.updatedAt)}
-                        </button>
-                      )}
+                      {showUpdatedTime && renderCardTime(character)}
                     </div>
                   </>
                 )}
@@ -1981,29 +2066,19 @@ export function Dashboard({
                   </div>
                 )}
                 {(isBulkMode || isDraft) && (
-                  <div className="card-meta">
-                    {showUpdatedTime && (
-                      <button
-                        className="card-time-button preview-hit"
-                        onClick={() => onPreview(character)}
-                        title={`创建 ${formatDate(character.createdAt)} · 最后编辑 ${formatDate(character.updatedAt)}`}
-                        type="button"
-                      >
-                        创建 {formatStamp(character.createdAt)} · 编辑 {formatStamp(character.updatedAt)}
-                      </button>
-                    )}
-                  </div>
+                  <div className="card-meta">{showUpdatedTime && renderCardTime(character)}</div>
                 )}
-              </article>
-              );
-            })}
-          </div>
-          )}
-          </>
-        )}
-      </div>
-    );
-  }
+               </article>
+               );
+             })}
+           </div>
+           </>
+           )}
+           </>
+         )}
+       </div>
+     );
+   }
 
 
   function renderSearchControls() {
@@ -2243,10 +2318,16 @@ export function Dashboard({
         >
           <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
         </button>
-        <button className="primary-button list-create-button" onClick={onCreate} type="button">
-          <Icon name="plus" size={16} />
-          新建角色
-        </button>
+        {/* While a selection is being made, the two controls that leave the list
+            behind — creating a character and the import/export menu — are what made
+            the header say two things at once. They come back with the selection. */}
+        {!isBulkMode && (
+          <button className="primary-button list-create-button" onClick={onCreate} type="button">
+            <Icon name="plus" size={16} />
+            新建角色
+          </button>
+        )}
+        {!isBulkMode && (
         <div className="dashboard-actions" ref={moreMenuRef}>
           <input
             accept="application/json,.json,application/zip,.zip,.csv,text/csv"
@@ -2324,6 +2405,7 @@ export function Dashboard({
             </div>
           )}
         </div>
+        )}
       </div>
     );
   }
@@ -2796,6 +2878,18 @@ export function Dashboard({
               </button>
             </div>
             <div className="export-dialog-list">
+              {!isDraftView && (
+                <button
+                  disabled={selectedIds.length === 0 || loadingAction !== null}
+                  onClick={() => {
+                    setIsBulkMoreOpen(false);
+                    openCharacterExportDialog("selected");
+                  }}
+                  type="button"
+                >
+                  导出所选（{selectedIds.length} 个）
+                </button>
+              )}
               <button
                 disabled={selectedIds.length === 0}
                 onClick={() => {

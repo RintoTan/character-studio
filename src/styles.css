@@ -702,6 +702,10 @@ button:disabled {
   position: sticky;
   top: calc(var(--topbar-height, 46px) + 8px);
   z-index: var(--z-dropdown);
+  /* The panel's own name is not where width gets saved. With a search field open and a
+     selection bar beside it, the controls ran the title out of room and 角色列表 broke
+     across two lines — so the controls wrap among themselves instead. */
+  flex-wrap: wrap;
   align-items: center;
   padding: 10px 12px;
   margin: -10px -12px 16px;
@@ -712,6 +716,11 @@ button:disabled {
      through the bar — the first row of the list appeared cut in half, which reads as
      a broken layout rather than as content passing under a header. */
   background: var(--surface);
+}
+
+.section-title.list-section-title > div:first-child {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 /* Icon buttons, back in the original filled language: a soft block of surface
@@ -1014,8 +1023,29 @@ h2 {
 .bulk-actions-desktop {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* What the mode is, stated before the buttons that act on it. */
+.bulk-selection-count {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bulk-selection-count strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+/* Held away from its neighbours: the distance is the mis-click margin. */
+.bulk-delete-button {
+  margin-left: 10px;
 }
 
 .mobile-bulk-toolbar {
@@ -2061,6 +2091,67 @@ h2 {
   opacity: 0.45;
 }
 
+/* Jump-to-group: one chip per group, with the same count the group head shows. It
+   scrolls sideways rather than wrapping to three rows when a roster has a lot of
+   worldviews. */
+.card-group-index {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.card-group-index-label {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.card-group-index-chips {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.card-group-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  min-height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: var(--text-soft);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.card-group-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.card-group-chip em {
+  color: var(--muted);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-group-chip.located {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--text);
+}
+
 .character-group-head {
   grid-column: 1 / -1;
   position: sticky;
@@ -2111,6 +2202,27 @@ h2 {
 
 .character-group-toggle.collapsed .ui-icon {
   transform: rotate(-90deg);
+}
+
+/* While a search is narrowing the list the group is drawn open by rule, so the
+   toggle is inert — it has to look like information, not like a dead control. */
+.character-group-toggle:disabled {
+  opacity: 1;
+  cursor: default;
+  color: var(--text-soft);
+}
+
+.character-group-toggle:disabled:hover {
+  background: var(--control-fill);
+  color: var(--text-soft);
+}
+
+/* The group the reader just jumped to, marked for a moment so the jump has a
+   visible destination. */
+.character-group-head.located .character-group-toggle {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--control-fill));
+  color: var(--text);
 }
 
 /* The phone's one filter disclosure: full width, and the chevron turns over when
@@ -2456,8 +2568,13 @@ h2 {
   min-width: 0;
 }
 
+/* The name is the card's focal point and gets two lines rather than one truncated
+   line: a roster is browsed by name, and a name is the one value a reader cannot
+   infer from anything else on the card. */
 .card-title-button {
-  display: block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   width: 100%;
   min-width: 0;
   border: 0;
@@ -2465,20 +2582,22 @@ h2 {
   color: var(--text);
   font-size: 19px;
   font-weight: 850;
+  line-height: 1.22;
   padding: 0;
   text-align: left;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
+/* 职业 and 世界观 are what a roster is compared by, so they carry the row's weight;
+   年龄 is a detail and is set lighter, one step down rather than beside them. */
 .card-subtitle-button {
   display: block;
   width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;
-  color: var(--muted);
+  color: var(--text-soft);
   font-size: 13px;
   font-weight: 650;
   padding: 0;
@@ -2486,6 +2605,15 @@ h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.card-subtitle-primary {
+  color: var(--text-soft);
+}
+
+.card-subtitle-button .card-age-fragment {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .card-meta {
@@ -2699,18 +2827,39 @@ h2 {
   white-space: nowrap;
 }
 
+/* Both facts stay readable, but only one of them is ever the reason a reader is
+   looking: 最后编辑 is what changed, 创建 is background. Two weights, one button,
+   and the exact stamps are still in the tooltip and on the preview page. */
 .card-time-button {
+  display: grid;
+  gap: 1px;
   border: 0;
   background: transparent;
-  color: var(--muted);
   padding: 0;
   text-align: right;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.card-time-edited {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.card-time-created {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* The remainder of a long tag list: a count, not a truncated row. */
+.card-tag-more {
+  border-color: var(--border-strong);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-footer {
@@ -6063,9 +6212,8 @@ kbd {
     z-index: var(--z-overlay-4);
   }
 
-  .card-tags button:nth-of-type(n + 5) {
-    display: none;
-  }
+  /* How many tag chips a phone shows is decided in the component, which is also
+     what the card's "+N" counts — a CSS cap here would make the two disagree. */
 
   .card-title-button {
     font-size: 16px;
@@ -6144,8 +6292,19 @@ kbd {
     padding-bottom: 0;
   }
 
-  .selected-count-inline {
-    display: none;
+  /* The jump-to-group row keeps its chips and drops to one scrolling line. */
+  .card-group-index {
+    margin-bottom: 10px;
+  }
+
+  .card-group-index-label {
+    font-size: 11px;
+  }
+
+  .card-group-chip {
+    min-height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
   }
 
   .bulk-actions-desktop {

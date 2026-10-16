@@ -1902,6 +1902,408 @@ const READ_STICKY_GAP = `
   })()
 `;
 
+// Installed before any app script runs, so a runtime error during boot is recorded
+// rather than lost: the page it would be reported on is the one being reloaded.
+const ERROR_COLLECTOR = `
+  window.__csErrors = [];
+  window.addEventListener("error", (event) => {
+    window.__csErrors.push(String(event.message || event.error || "error"));
+  });
+  window.addEventListener("unhandledrejection", (event) => {
+    window.__csErrors.push("rejection: " + String(event.reason));
+  });
+`;
+
+// A roster built for the dashboard's own cards: 36 characters in three worldviews
+// (18 / 12 / 6), so the grouping view is on and its counts differ from each other.
+// One name is long enough to need a second line, one sits in the biggest group so a
+// search can be aimed at a group that is collapsed, and the flags name one pinned and
+// one favourite character so a card's state can be read from the card.
+const dashboardSeed = ({ flags = true, dropPrefs = true } = {}) => `
+  (() => {
+    const now = (day) => new Date(Date.UTC(2026, 0, 1) - day * 86400000).toISOString();
+    const worlds = [["北境", 18], ["云海", 12], ["雾隐", 6]];
+    const characters = [];
+    let index = 0;
+
+    for (const [worldview, count] of worlds) {
+      for (let i = 0; i < count; i += 1) {
+        index += 1;
+        characters.push({
+          id: "dash-" + index,
+          name: "第" + String(index).padStart(2, "0") + "位" + worldview + "人",
+          occupation: ["调查员", "魔法师", "工匠"][index % 3],
+          worldview,
+          age: String(20 + (index % 30)),
+          avatarEmoji: "🙂",
+          personalityTags: ["冷静", "寡言", "夜行", "记仇", "爱笑", "怕黑"],
+          createdAt: now(index),
+          updatedAt: now(index),
+        });
+      }
+    }
+
+    // The search target: the first card of the biggest group.
+    characters[0] = {
+      ...characters[0],
+      id: "dash-target",
+      name: "沈青梧",
+      occupation: "调查员",
+      updatedAt: now(0),
+      createdAt: now(400),
+    };
+    // A name that cannot fit on one line of a card.
+    characters[1] = { ...characters[1], id: "dash-long", name: "名字很长的守夜人第二席代理记录官" };
+
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.world", JSON.stringify([]));
+    ${flags ? `localStorage.setItem(
+      "character-studio.dashboard-flags",
+      JSON.stringify({ favoriteIds: ["dash-4"], pinnedIds: ["dash-3"] }),
+    );` : ""}
+    ${dropPrefs ? `localStorage.removeItem("character-studio.dashboard-prefs");` : ""}
+    localStorage.setItem("character-studio.about-seen", "true");
+    return true;
+  })()
+`;
+
+const SEED_DASHBOARD = dashboardSeed();
+
+// What a card actually says and how it says it: the name as the focal point, 职业 and
+// 世界观 together, 年龄 lighter, the state badges, the tag remainder, and the two
+// timestamps at two different weights.
+const READ_DASHBOARD_CARDS = `
+  (() => {
+    const cards = [...document.querySelectorAll(".character-card")];
+    const byName = (name) =>
+      cards.find((card) => (card.querySelector(".card-title-button") || {}).textContent === name);
+    const fontSize = (node) => (node ? parseFloat(getComputedStyle(node).fontSize) : null);
+    const weight = (node) => (node ? getComputedStyle(node).fontWeight : "");
+    const lines = (node) => {
+      if (!node) return null;
+      return Math.round(node.getBoundingClientRect().height / (parseFloat(getComputedStyle(node).lineHeight) || 1));
+    };
+
+    const target = byName("沈青梧");
+    const longName = byName("名字很长的守夜人第二席代理记录官");
+    // The flags name ids, and the migration moves them onto the records, so the card
+    // that carries 收藏 is the one whose id was listed: dash-4, 第04位北境人.
+    const favourite = cards.find((card) => card.querySelector(".card-title-button")?.textContent === "第04位北境人");
+    const pinned = cards.find((card) => card.querySelector(".card-title-button")?.textContent === "第03位北境人");
+    const first = cards[0];
+
+    return {
+      count: cards.length,
+      groupIndex: [...document.querySelectorAll(".card-group-chip")].map((chip) => ({
+        name: chip.querySelector("span")?.textContent.trim() || "",
+        count: chip.querySelector("em")?.textContent.trim() || "",
+      })),
+      heads: [...document.querySelectorAll(".character-group-toggle")].map((head) => ({
+        name: head.querySelector("span")?.textContent.trim() || "",
+        count: head.querySelector("em")?.textContent.trim() || "",
+        expanded: head.getAttribute("aria-expanded"),
+        disabled: head.disabled,
+      })),
+      // Name vs the two secondary lines vs the age fragment.
+      nameSize: fontSize(first?.querySelector(".card-title-button")),
+      nameWeight: weight(first?.querySelector(".card-title-button")),
+      subtitleSize: fontSize(first?.querySelector(".card-subtitle-primary")),
+      subtitleWeight: weight(first?.querySelector(".card-subtitle-primary")),
+      ageSize: fontSize(first?.querySelector(".card-age-fragment")),
+      ageWeight: weight(first?.querySelector(".card-age-fragment")),
+      longNameLines: lines(longName?.querySelector(".card-title-button")),
+      // The name is deliberately allowed two lines, so what the check can ask is that
+      // it uses the second one rather than being cut to a single line, and that the
+      // whole name is still readable without leaving the card.
+      longNameTitle: longName?.querySelector(".card-title-button")?.title || "",
+      subtitle: (first?.querySelector(".card-subtitle-button")?.textContent || "").replace(/\\s+/g, " ").trim(),
+      chips: [...(target?.querySelectorAll(".card-tags > *") || [])].map((chip) => chip.textContent.trim()),
+      moreTitle: (target?.querySelector(".card-tag-more") || {}).title || "",
+      favouriteBadge: Boolean(favourite?.querySelector(".status-badge.favorite")),
+      pinnedBadge: Boolean(pinned?.querySelector(".status-badge.pinned")),
+      editedSize: fontSize(first?.querySelector(".card-time-edited")),
+      createdSize: fontSize(first?.querySelector(".card-time-created")),
+      editedWeight: weight(first?.querySelector(".card-time-edited")),
+      createdWeight: weight(first?.querySelector(".card-time-created")),
+      timeTitle: (first?.querySelector(".card-time-button") || {}).title || "",
+      cardHeights: [...new Set(cards.slice(0, 8).map((card) => Math.round(card.getBoundingClientRect().height)))],
+    };
+  })()
+`;
+
+// Jump-to-group: the chip has to expand its group, land the head clear of the top bar
+// and mark it, and the counts on the chip and on the head have to agree.
+const LOCATE_DASHBOARD_GROUP = (group) => `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const chip = [...document.querySelectorAll(".card-group-chip")].find(
+      (node) => (node.querySelector("span") || {}).textContent.trim() === ${JSON.stringify(group)},
+    );
+    if (!chip) throw new Error("找不到分组按钮：" + ${JSON.stringify(group)});
+    const chipCount = (chip.querySelector("em") || {}).textContent.trim();
+    chip.click();
+    await sleep(1400);
+
+    const head = [...document.querySelectorAll(".character-group-head")].find(
+      (node) => (node.querySelector(".character-group-toggle span") || {}).textContent.trim() === ${JSON.stringify(group)},
+    );
+    const rect = head ? head.getBoundingClientRect() : null;
+    const topbarBottom = document.querySelector(".topbar").getBoundingClientRect().bottom;
+    return {
+      chipCount,
+      marked: Boolean(head && head.className.includes("located")),
+      headCount: (head?.querySelector(".character-group-toggle em") || {}).textContent.trim() || "",
+      expanded: head?.querySelector(".character-group-toggle").getAttribute("aria-expanded") || "",
+      headTop: rect ? Math.round(rect.top) : null,
+      topbarBottom: Math.round(topbarBottom),
+      belowTopbar: Boolean(rect && rect.top >= topbarBottom - 2),
+      inViewport: Boolean(rect && rect.top < window.innerHeight && rect.bottom > 0),
+    };
+  })()
+`;
+
+// Collapse a group, then search for a character that lives in it: a match must not be
+// hidden by a group the reader collapsed while browsing, and clearing the search has to
+// give them back the state they left.
+const SEARCH_INSIDE_COLLAPSED_GROUP = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const toCards = document.querySelector('button[aria-label="切换卡片视图"]');
+    if (toCards) { toCards.click(); await sleep(500); }
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const cards = () => [...document.querySelectorAll(".character-card")];
+    const has = (name) => cards().some((card) => card.querySelector(".card-title-button")?.textContent === name);
+    // How many characters the search found, as the list itself reports it — the count
+    // drawn has to agree with the count claimed, not with a number written here.
+    const matches = () =>
+      Number((document.querySelector(".list-section-title span")?.textContent || "").replace(/[^0-9]/g, "")) || 0;
+    const headOf = (group) =>
+      [...document.querySelectorAll(".character-group-head")].find(
+        (node) => (node.querySelector(".character-group-toggle span") || {}).textContent.trim() === group,
+      );
+    const headState = (group) => {
+      const head = headOf(group);
+      const toggle = head ? head.querySelector(".character-group-toggle") : null;
+      const count = toggle ? toggle.querySelector("em") : null;
+      return {
+        found: Boolean(toggle),
+        expanded: toggle ? toggle.getAttribute("aria-expanded") || "" : "missing",
+        disabled: Boolean(toggle && toggle.disabled),
+        count: count ? count.textContent.trim() : "",
+      };
+    };
+
+    const toggle = headOf("北境").querySelector(".character-group-toggle");
+    if (!toggle) throw new Error("北境分组头没有渲染出来");
+    const beforeCards = cards().length;
+    toggle.click();
+    await sleep(400);
+    const collapsed = { ...headState("北境"), cards: cards().length, targetVisible: has("第05位北境人") };
+
+    document.querySelector('button[aria-label="搜索"]').click();
+    await sleep(400);
+    // A needle every character matches: it keeps the list over the grouping threshold,
+    // which is what makes the question meaningful — a group narrowed to a handful of
+    // characters stops being grouped at all, and then nothing could hide the match.
+    setValue(document.querySelector(".list-search-input"), "人");
+    await sleep(700);
+    const searching = { ...headState("北境"), cards: cards().length, matches: matches(), targetVisible: has("第05位北境人"), groups: document.querySelectorAll(".character-group-head").length };
+
+    setValue(document.querySelector(".list-search-input"), "");
+    await sleep(700);
+    const cleared = { ...headState("北境"), cards: cards().length, targetVisible: has("第05位北境人") };
+    return { beforeCards, collapsed, searching, cleared };
+  })()
+`;
+
+// The selection bar: what it says, which of the crowded controls stand down while it is
+// showing, and that leaving the mode really ends it.
+const READ_BULK_BAR = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const byLabel = (label) => [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === label);
+    const byText = (label) => [...document.querySelectorAll("button")].find((button) => button.textContent.includes(label));
+
+    byLabel("批量选择").click();
+    await sleep(400);
+    const entered = {
+      count: (document.querySelector(".bulk-selection-count") || {}).textContent.replace(/\\s+/g, " ").trim() || "",
+      controls: [...document.querySelectorAll(".bulk-actions-desktop button")].map((button) => button.textContent.trim()),
+      moreDialog: false,
+      danger: Boolean(document.querySelector(".bulk-delete-button")),
+      createButton: Boolean(document.querySelector(".list-create-button")),
+      moreMenu: Boolean(document.querySelector(".dashboard-actions")),
+      circles: document.querySelectorAll(".character-card .select-circle").length,
+    };
+
+    document.querySelector('button[aria-label="选择 沈青梧"]').click();
+    await sleep(400);
+    const one = {
+      count: (document.querySelector(".bulk-selection-count") || {}).textContent.replace(/\\s+/g, " ").trim() || "",
+      selectedCards: document.querySelectorAll(".character-card.selected").length,
+      deleteDisabled: document.querySelector(".bulk-delete-button").disabled,
+    };
+
+    byLabel("更多").click();
+    await sleep(400);
+    const moreDialog = [...document.querySelectorAll(".export-dialog-list button")].map((button) => button.textContent.trim());
+    byLabel("关闭").click();
+    await sleep(300);
+
+    byLabel("取消选择").click();
+    await sleep(400);
+    const exited = {
+      bulkBar: Boolean(document.querySelector(".bulk-selection-count")),
+      bulkButton: Boolean(byLabel("批量选择")),
+      createButton: Boolean(document.querySelector(".list-create-button")),
+      selectedCards: document.querySelectorAll(".character-card.selected").length,
+      circles: document.querySelectorAll(".character-card .select-circle").length,
+    };
+    return { entered, one, moreDialog, exited };
+  })()
+`;
+
+// The same filters, read in both views: the set of characters, the order, and the state
+// badges may not disagree just because the layout changed.
+const READ_TWO_VIEWS = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const listNames = () => [...document.querySelectorAll(".character-table-row strong")].map((node) => node.textContent);
+    const cardNames = () => [...document.querySelectorAll(".character-card .card-title-button")].map((node) => node.textContent);
+    // Only the states both views claim to show are compared: 正式 is the list's way of
+    // saying "not a draft" and the card says nothing, while "+N" is a tag count rather
+    // than a state. Comparing raw badge lists would compare two different vocabularies.
+    const sharedStates = new Set(["草稿", "置顶", "收藏"]);
+    const shared = (labels) => labels.filter((label) => sharedStates.has(label)).sort().join("/");
+    const tableStatus = (name) => {
+      const row = [...document.querySelectorAll(".character-table-row")].find(
+        (node) => node.querySelector("strong")?.textContent === name,
+      );
+      return row ? shared([...row.querySelectorAll(".table-status .status-badge")].map((badge) => badge.textContent.trim())) : "";
+    };
+    const cardStatus = (name) => {
+      const card = [...document.querySelectorAll(".character-card")].find(
+        (node) => node.querySelector(".card-title-button")?.textContent === name,
+      );
+      return card
+        ? shared(
+            [...card.querySelectorAll(".card-tags > *")]
+              .filter((chip) => !chip.classList.contains("card-tag-more"))
+              .filter((chip) => chip.classList.contains("status-badge"))
+              .map((chip) => chip.textContent.trim()),
+          )
+        : "";
+    };
+
+    document.querySelector('button[aria-label="搜索"]').click();
+    await sleep(300);
+    setValue(document.querySelector(".list-search-input"), "北境");
+    await sleep(600);
+
+    const cardsOrder = cardNames();
+    const cardsCount = (document.querySelector(".section-title.list-section-title span") || {}).textContent.trim() || "";
+    const cardsStates = { pinned: cardStatus("第03位北境人"), favourite: cardStatus("第04位北境人") };
+
+    document.querySelector('button[aria-label="切换列表视图"]').click();
+    await sleep(600);
+    const listOrder = listNames();
+    const listCount = (document.querySelector(".section-title.list-section-title span") || {}).textContent.trim() || "";
+    const listStates = { pinned: tableStatus("第03位北境人"), favourite: tableStatus("第04位北境人") };
+    const keptQuery = document.querySelector(".list-search-input")?.value ?? "";
+
+    document.querySelector('button[aria-label="切换卡片视图"]').click();
+    await sleep(500);
+    return {
+      cardsOrder,
+      listOrder,
+      cardsCount,
+      listCount,
+      cardsStates,
+      listStates,
+      keptQuery,
+      cardsAfterRoundTrip: cardNames().length,
+    };
+  })()
+`;
+
+// Forward after Back has to rebuild the screen the entry describes, not just the page:
+// the same character focused in the graph, the same event located in the timeline.
+const FORWARD_RESTORES_TARGET = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const relatedGroup = (index) => document.querySelectorAll(".related-group")[index];
+    // The preview reads its related lists in an effect when it opens, so a fixed sleep
+    // after Back is a race. Wait for the screen the check is about to use.
+    const waitFor = async (predicate, label, timeout = 8000) => {
+      const started = Date.now();
+      while (Date.now() - started < timeout) {
+        if (predicate()) return true;
+        await sleep(100);
+      }
+      throw new Error("等不到：" + label);
+    };
+    const previewSettled = () =>
+      document.querySelectorAll(".related-group").length === 3 &&
+      document.querySelectorAll(".related-group")[1].querySelectorAll(".related-item").length > 0;
+    const graphSettled = () => document.querySelectorAll(".relationship-node").length > 0;
+    const readGraph = () => ({
+      page: ${PAGE_IDS},
+      chip: (document.querySelector(".graph-focus-chip") || {}).textContent.replace(/\\s+/g, " ").trim() || "",
+      focused: document.querySelectorAll(".relationship-node.focused").length,
+    });
+    const readTimeline = () => ({
+      page: ${PAGE_IDS},
+      highlighted: (document.querySelector(".timeline-item.highlighted .timeline-card-title") || {}).textContent || "",
+      highlightedCount: document.querySelectorAll(".timeline-item.highlighted").length,
+    });
+
+    // Preview → graph, focused on the character whose preview this is.
+    await waitFor(previewSettled, "预览页关联信息");
+    relatedGroup(0).querySelector(".related-group-action").click();
+    await waitFor(graphSettled, "关系网画布");
+    await sleep(900);
+    const graphArrived = readGraph();
+    window.history.back();
+    await waitFor(() => document.querySelectorAll(".related-group").length === 3, "预览页");
+    await sleep(600);
+    const backToPreview = { page: ${PAGE_IDS}, related: document.querySelectorAll(".related-group").length };
+    window.history.forward();
+    await waitFor(graphSettled, "关系网画布");
+    await sleep(1200);
+    const graphForward = readGraph();
+
+    // Preview → timeline event. The title is read from the row that was clicked, so
+    // the expectation comes from the fixture rather than from a name typed here.
+    window.history.back();
+    await waitFor(previewSettled, "预览页");
+    const eventItem = relatedGroup(1).querySelectorAll(".related-item")[0];
+    const clickedTitle = (eventItem.querySelector(".related-item-title") || {}).textContent || "";
+    eventItem.click();
+    await waitFor(() => document.querySelectorAll(".timeline-item").length > 0, "时间线事件");
+    await sleep(600);
+    const timelineArrived = readTimeline();
+    window.history.back();
+    await waitFor(previewSettled, "预览页");
+    window.history.forward();
+    await waitFor(() => document.querySelectorAll(".timeline-item").length > 0, "时间线事件");
+    await sleep(800);
+    const timelineForward = readTimeline();
+
+    return { graphArrived, backToPreview, graphForward, clickedTitle, timelineArrived, timelineForward };
+  })()
+`;
+
 // Expand whatever the collapse memory left closed, so all six sections can be read
 // at once. Only heads whose body is missing are clicked, so nothing is collapsed.
 const EXPAND_EDITOR_SECTIONS = `
@@ -2049,6 +2451,8 @@ async function main() {
   const base = `http://127.0.0.1:${port}${BASE_PATH}/`;
   const debugPort = 9000 + Math.floor(Math.random() * 900);
   const results = [];
+  // How many checks an ONLY= run left out. Declared here so the summary can report it.
+  const skipped = [];
 
   const browser = spawn(
     chrome,
@@ -2107,7 +2511,19 @@ async function main() {
     await cdp.send("Page.enable");
     await cdp.send("Runtime.enable");
 
+    // ONLY=<substring> runs just the checks whose name contains it: the full suite
+    // drives a browser through every screen and takes minutes, and while one group of
+    // checks is being diagnosed the other forty prove nothing new. A skipped check is
+    // never counted as a pass — the summary says how many were left out, so a filtered
+    // run cannot be mistaken for a green one.
+    const only = (process.env.ONLY ?? "").trim();
+
     const check = async (name, run) => {
+      if (only && !name.includes(only)) {
+        skipped.push(name);
+        return;
+      }
+
       try {
         const detail = await run();
         results.push({ name, pass: detail.pass, detail: detail.detail });
@@ -2898,6 +3314,346 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return {
         pass,
         detail: `跳转：${state.jumped.page}、选中「${state.jumped.selected}」详情「${state.jumped.detailName}」路径「${state.jumped.path}」祖先已展开 ${state.jumped.ancestorsDrawn}（${state.jumped.rows} 行）在视口内 ${state.jumped.inViewport}；Back → ${state.back.page}（关联组 ${state.back.relatedGroups}、显示当前角色 ${state.back.character}）；Forward → ${state.forward.page}；再 Back → ${state.backAgain.page}`,
+      };
+    });
+
+    // The legacy favourites migration, on the boot path it actually runs on: the flags
+    // arrive from storage before the library does, and the screen used to write that
+    // empty list straight back — measured wiping all 36 characters.
+    await check("遗留收藏：启动时的迁移不清空角色库，并落到角色上（数据保护）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: ERROR_COLLECTOR });
+
+      const read = () =>
+        cdp.value(`(() => {
+          const characters = JSON.parse(localStorage.getItem("character-studio.characters") || "[]");
+          const flags = JSON.parse(localStorage.getItem("character-studio.dashboard-flags") || "null");
+          const marked = characters.filter((character) => character.favorite === true).map((character) => character.id);
+          return {
+            stored: characters.length,
+            marked,
+            legacyIds: Array.isArray(flags?.favoriteIds) ? flags.favoriteIds : null,
+            pinned: Array.isArray(flags?.pinnedIds) ? flags.pinnedIds : null,
+            cards: document.querySelectorAll(".character-card").length,
+            empty: document.querySelector(".empty-state") ? "空状态" : "有列表",
+            errors: window.__csErrors || null,
+          };
+        })()`);
+
+      // A live id: the migration has something real to move.
+      await cdp.goto(base);
+      await cdp.value(dashboardSeed({ dropPrefs: false }));
+      await cdp.goto(base);
+      const live = await read();
+
+      // A stale id, which is what the dashboard used to turn into an empty roster.
+      await cdp.value(dashboardSeed({ dropPrefs: false }).replace('["dash-4"]', '["dash-2"]'));
+      await cdp.goto(base);
+      const stale = await read();
+
+      const conditions = {
+        liveKept: live.stored === 36 && live.cards === 36,
+        liveMigrated: live.marked.join("/") === "dash-4" && live.legacyIds !== null && live.legacyIds.length === 0,
+        pinnedKept: live.pinned.join("/") === "dash-3",
+        staleKept: stale.stored === 36 && stale.cards === 36 && stale.empty === "有列表",
+        staleCleared: stale.marked.length === 0 && stale.legacyIds !== null && stale.legacyIds.length === 0,
+        noErrors: [live, stale].every((state) => (state.errors || []).length === 0),
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `可用 id「dash-4」：存储 ${live.stored} 个角色、卡片 ${live.cards}、标记收藏 ${JSON.stringify(live.marked)}、遗留 id 清除后 ${JSON.stringify(live.legacyIds)}、置顶保留 ${JSON.stringify(live.pinned)}`
+          + `；失效 id「dash-2」：存储 ${stale.stored} 个角色、卡片 ${stale.cards}（${stale.empty}）、标记收藏 ${JSON.stringify(stale.marked)}`
+          + `；页面错误 ${JSON.stringify([...(live.errors || []), ...(stale.errors || [])])}`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
+    await check("主页卡片：名称是主焦点、状态与标签剩余数量可读（任务 A）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      // The roster loads in an effect, so the panel is on screen with "0 个角色" before
+      // the characters arrive. Reading then would measure the loading state, not the
+      // cards — the view mode is a persisted preference, so it is set, not assumed.
+      await cdp.waitFor(`!!document.querySelector(".list-section-title")`, 10000);
+      await cdp.waitFor(
+        `document.querySelectorAll(".character-card").length > 0 || !!document.querySelector(".character-table-row")`,
+        10000,
+      );
+      await cdp.value(`(async () => {
+        const toCards = document.querySelector('button[aria-label="切换卡片视图"]');
+        if (toCards) { toCards.click(); await new Promise((r) => setTimeout(r, 600)); }
+        return true;
+      })()`);
+      if (!(await cdp.waitFor(`document.querySelectorAll(".character-card").length === 36`, 10000))) {
+        throw new Error("角色库没有渲染出来：期望 36 张卡片（waitFor 返回 false 不再被忽略）");
+      }
+      const state = await cdp.value(READ_DASHBOARD_CARDS);
+
+      const chips = state.chips;
+      const visibleTags = chips.filter((chip) => !chip.startsWith("+")).length;
+      const hiddenTags = Number((chips.find((chip) => chip.startsWith("+")) || "+0").slice(1));
+      const totalTags = 6;
+      const heightSpread = state.cardHeights.length
+        ? Math.max(...state.cardHeights) - Math.min(...state.cardHeights)
+        : null;
+
+      const conditions = {
+        cards: state.count === 36,
+        nameIsFocal:
+          state.nameSize > state.subtitleSize &&
+          state.nameSize > state.ageSize &&
+          Number(state.nameWeight) > Number(state.subtitleWeight),
+        // 职业 and 世界观 share a weight; 年龄 is one step lighter than both.
+        ageIsLighter:
+          Number(state.ageWeight) < Number(state.subtitleWeight) && state.ageSize <= state.subtitleSize,
+        subtitle: state.subtitle.includes("调查员") && state.subtitle.includes("北境"),
+        // A long name gets its second line instead of being cut to one, and the whole
+        // name stays readable from the card.
+        longNameTwoLines: state.longNameLines >= 2 && state.longNameTitle === "名字很长的守夜人第二席代理记录官",
+        tagsCounted: visibleTags >= 1 && visibleTags + hiddenTags === totalTags && state.moreTitle.split("、").length === totalTags,
+        favourites: state.favouriteBadge && state.pinnedBadge,
+        editedLeads:
+          state.editedSize > state.createdSize &&
+          Number(state.editedWeight) > Number(state.createdWeight) &&
+          state.timeTitle.includes("创建") &&
+          state.timeTitle.includes("最后编辑"),
+        sameHeight: heightSpread !== null && heightSpread <= 2,
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `${state.count} 张卡片；名称 ${state.nameSize}px/${state.nameWeight}、职业世界观 ${state.subtitleSize}px/${state.subtitleWeight}、年龄 ${state.ageSize}px/${state.ageWeight}`
+          + `；长名称占 ${state.longNameLines} 行、完整名称可读 ${state.longNameTitle.length > 0}；标签显示 ${visibleTags} 个 + 剩余 ${hiddenTags}（悬停列出 ${state.moreTitle.split("、").length} 个）`
+          + `；收藏徽章 ${state.favouriteBadge}、置顶徽章 ${state.pinnedBadge}；编辑 ${state.editedSize}px/${state.editedWeight} > 创建 ${state.createdSize}px/${state.createdWeight}`
+          + `；卡片高度差 ${heightSpread}px`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
+    await check("主页分组：跳转定位、展开与计数一致（任务 C）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      if (!(await cdp.waitFor(`document.querySelectorAll(".card-group-chip").length === 3`, 10000))) {
+        throw new Error("分组定位没有出现：期望 3 个分组按钮");
+      }
+      const index = await cdp.value(READ_DASHBOARD_CARDS);
+      const state = await cdp.value(LOCATE_DASHBOARD_GROUP("雾隐"));
+
+      const indexCounts = index.groupIndex.map((entry) => `${entry.name}:${entry.count}`).join("/");
+      const conditions = {
+        index: indexCounts === "北境:18/云海:12/雾隐:6",
+        // The chip and the head must not be able to disagree about the group's size.
+        countsAgree: state.chipCount === state.headCount && state.headCount === "6",
+        expanded: state.expanded === "true",
+        marked: state.marked,
+        // The top bar floats over the list, so "into view" means below it.
+        clearOfTopbar: state.belowTopbar && state.inViewport,
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `分组索引 ${indexCounts}；跳到「雾隐」：chip ${state.chipCount} / 组头 ${state.headCount}、展开 ${state.expanded}、标记 ${state.marked}`
+          + `、组头 top ${state.headTop}px / 顶栏 bottom ${state.topbarBottom}px（未被遮挡 ${state.belowTopbar}）`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
+    await check("主页分组：搜索命中不被折叠隐藏，清空后恢复（任务 C）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      if (!(await cdp.waitFor(`document.querySelectorAll(".character-group-head").length === 3`, 10000))) {
+        throw new Error("分组浏览没有出现：期望 3 个分组头");
+      }
+      const state = await cdp.value(SEARCH_INSIDE_COLLAPSED_GROUP);
+
+      const collapsedCards = Number(state.collapsed.count);
+      const conditions = {
+        collapsedHidesWhileBrowsing:
+          state.collapsed.expanded === "false" &&
+          state.collapsed.targetVisible === false &&
+          state.collapsed.cards === state.beforeCards - collapsedCards,
+        // The search is a request to see the match: the group is drawn open by rule, so
+        // the finding cannot be hidden behind a collapse the reader set earlier. All 36
+        // cards are drawn again, which is the difference the override makes.
+        searchShowsMatch:
+          state.searching.targetVisible === true &&
+          state.searching.matches > 0 &&
+          state.searching.cards === state.searching.matches &&
+          state.searching.groups === 3,
+        searchToggleInert: state.searching.disabled === true && state.searching.expanded === "true",
+        // The override is derived, not written: clearing the search gives back exactly
+        // the collapsed state the reader left behind.
+        clearedRestores:
+          state.cleared.expanded === "false" &&
+          state.cleared.targetVisible === false &&
+          state.cleared.cards === state.beforeCards - collapsedCards,
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `浏览时 ${state.beforeCards} 张卡片；折叠「北境」后 ${state.collapsed.cards} 张、命中角色可见 ${state.collapsed.targetVisible}`
+          + `；搜「人」→ 展开 ${state.searching.expanded}、按钮停用 ${state.searching.disabled}、命中 ${state.searching.matches} 个/画出 ${state.searching.cards} 张、命中可见 ${state.searching.targetVisible}`
+          + `；清空搜索后 ${state.cleared.cards} 张卡片、展开 ${state.cleared.expanded}、命中可见 ${state.cleared.targetVisible}`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
+    await check("主页批量：选择状态、控件让位与安全退出（任务 B）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      const bulkReady = await cdp.waitFor(
+        `[...document.querySelectorAll("button")].some((button) => button.textContent.trim() === "批量选择")`,
+        10000,
+      );
+      if (!bulkReady) {
+        throw new Error("批量选择入口没有出现：角色列表可能为空");
+      }
+      const state = await cdp.value(READ_BULK_BAR);
+
+      const wanted = ["全选", "批量编辑", "加入收藏", "更多", "取消选择", "批量删除"];
+      const conditions = {
+        enteredCount: /已选 0 \/ 36/.test(state.entered.count),
+        // What the mode is, said before the buttons that act on it.
+        controls: wanted.every((label) => state.entered.controls.includes(label)),
+        // The two controls that leave the list behind stand down while selecting.
+        stoodDown: state.entered.createButton === false && state.entered.moreMenu === false,
+        circles: state.entered.circles === 36,
+        oneSelected:
+          /已选 1 \/ 36/.test(state.one.count) &&
+          state.one.selectedCards === 1 &&
+          state.one.deleteDisabled === false,
+        // Occasional actions live one level down; the destructive one is named there too.
+        moreDialog:
+          state.moreDialog.includes("导出所选（1 个）") &&
+          state.moreDialog.includes("批量复制") &&
+          state.moreDialog.includes("批量删除"),
+        exited:
+          state.exited.bulkBar === false &&
+          state.exited.bulkButton === true &&
+          state.exited.createButton === true &&
+          state.exited.selectedCards === 0 &&
+          state.exited.circles === 0,
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `进入：${state.entered.count}、控件 ${state.entered.controls.join("/")}、新建按钮 ${state.entered.createButton}、更多菜单 ${state.entered.moreMenu}、选择圈 ${state.entered.circles}`
+          + `；选中一个：${state.one.count}、选中卡片 ${state.one.selectedCards}`
+          + `；更多菜单 ${state.moreDialog.join("/")}`
+          + `；退出：选择栏 ${state.exited.bulkBar}、批量选择按钮 ${state.exited.bulkButton}、新建按钮 ${state.exited.createButton}、选中卡片 ${state.exited.selectedCards}`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
+    await check("主页双视图：同一筛选得到同一集合、顺序与状态（任务 D）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      const toolbarReady =
+        (await cdp.waitFor(`!!document.querySelector('button[aria-label="搜索"]')`, 10000)) &&
+        (await cdp.waitFor(`document.querySelectorAll(".character-card").length === 36`, 10000));
+      if (!toolbarReady) {
+        throw new Error("工具栏或卡片没有渲染出来");
+      }
+      const state = await cdp.value(READ_TWO_VIEWS);
+
+      const derived = /^(\d+) 个角色$/.exec(state.cardsCount.trim());
+      const derivedList = /^(\d+) 个角色$/.exec(state.listCount.trim());
+      const conditions = {
+        sameSet: state.cardsOrder.length > 0 && state.cardsOrder.length === state.listOrder.length,
+        // Order, not just membership: the two views read one ordering rule.
+        sameOrder: state.cardsOrder.join("/") === state.listOrder.join("/"),
+        countMatchesRows:
+          derived !== null &&
+          derivedList !== null &&
+          Number(derived[1]) === state.cardsOrder.length &&
+          Number(derivedList[1]) === state.listOrder.length,
+        noCollapsedCard: state.cardsAfterRoundTrip === state.cardsOrder.length,
+        statusesAgree:
+          state.cardsStates.pinned === state.listStates.pinned &&
+          state.cardsStates.favourite === state.listStates.favourite &&
+          state.listStates.pinned === "置顶" &&
+          state.listStates.favourite === "收藏",
+        keptQuery: state.keptQuery === "北境",
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `搜「北境」：卡片 ${state.cardsOrder.length} 个（标题「${state.cardsCount}」）/ 列表 ${state.listOrder.length} 个（标题「${state.listCount}」）`
+          + `；顺序一致 ${state.cardsOrder.join("/") === state.listOrder.join("/")}；切换回卡片仍为同一搜索词「${state.keptQuery}」`
+          + `；置顶徽章 卡片 ${JSON.stringify(state.cardsStates.pinned)} / 列表 ${JSON.stringify(state.listStates.pinned)}`
+          + `；收藏徽章 卡片 ${JSON.stringify(state.cardsStates.favourite)} / 列表 ${JSON.stringify(state.listStates.favourite)}`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
+    await check("跨工作区：Back 后 Forward 恢复原目标并重新聚焦（任务 E）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_LINKS);
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("沈青梧"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const state = await cdp.value(FORWARD_RESTORES_TARGET);
+
+      const conditions = {
+        graphArrived: state.graphArrived.page === "relationships" && state.graphArrived.focused === 1 && state.graphArrived.chip.includes("沈青梧"),
+        backToPreview: state.backToPreview.page === "preview" && state.backToPreview.related === 3,
+        // The one the fix is for: the entry names the target, so Forward rebuilds the
+        // focused screen instead of an unfocused workspace.
+        graphForward:
+          state.graphForward.page === "relationships" &&
+          state.graphForward.focused === 1 &&
+          state.graphForward.chip.includes("沈青梧"),
+        timelineArrived:
+          state.timelineArrived.page === "timeline" &&
+          state.timelineArrived.highlighted === state.clickedTitle &&
+          state.clickedTitle.length > 0,
+        timelineForward:
+          state.timelineForward.page === "timeline" &&
+          state.timelineForward.highlighted === state.clickedTitle &&
+          state.timelineForward.highlightedCount === 1,
+      };
+      const failing = Object.entries(conditions)
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `关系网：到达 ${state.graphArrived.page}（聚焦 ${state.graphArrived.chip.replace(/\s+/g, " ")}、节点 ${state.graphArrived.focused} 个）`
+          + `；Back → ${state.backToPreview.page}（关联组 ${state.backToPreview.related}）`
+          + `；Forward → ${state.graphForward.page}（聚焦 ${state.graphForward.chip.replace(/\s+/g, " ")}、节点 ${state.graphForward.focused} 个）`
+          + `；时间线：到达 ${state.timelineArrived.page}（定位「${state.timelineArrived.highlighted}」，点击的是「${state.clickedTitle}」）`
+          + `；Forward → ${state.timelineForward.page}（定位「${state.timelineForward.highlighted}」、高亮 ${state.timelineForward.highlightedCount} 个）`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
       };
     });
 
@@ -3797,8 +4553,11 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
   }
 
   const failed = results.filter((result) => !result.pass).length;
-  console.log(`\n${results.length - failed}/${results.length} 通过`);
-  process.exit(failed === 0 ? 0 : 1);
+  console.log(
+    `\n${results.length - failed}/${results.length} 通过`
+      + (skipped.length ? `（ONLY=${process.env.ONLY}：跳过 ${skipped.length} 项，不计为通过）` : ""),
+  );
+  process.exit(failed === 0 && skipped.length === 0 ? 0 : 1);
 }
 
 main().catch((error) => {
