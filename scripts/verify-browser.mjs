@@ -177,11 +177,147 @@ const SEED = `
     const make = (index, name) => ({ id: "seed-" + index, name, createdAt: now, updatedAt: now, gender: "女", worldview: "北境" });
     localStorage.setItem("character-studio.characters", JSON.stringify([make(1, "沈青梧"), make(2, "陆停云")]));
     localStorage.setItem("character-studio.relationships", JSON.stringify([{ id: "rel-1", fromId: "seed-1", toId: "seed-2", kind: "friend", createdAt: now, updatedAt: now }]));
-    localStorage.setItem("character-studio.timeline", JSON.stringify([{ id: "tl-1", title: "初次相遇", date: "2026-01-01", kind: "origin", characterIds: ["seed-1"], createdAt: now, updatedAt: now }]));
-    localStorage.setItem("character-studio.world", JSON.stringify([{ id: "w-1", name: "雾海纪", category: "location", createdAt: now, updatedAt: now }]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([{ id: "tl-1", title: "初次相遇", date: "2026-01-01", kind: "origin", characterIds: ["seed-1", "seed-2"], createdAt: now, updatedAt: now }]));
+    localStorage.setItem("character-studio.world", JSON.stringify([{ id: "w-1", name: "雾海纪", category: "location", characterIds: ["seed-1", "seed-2"], createdAt: now, updatedAt: now }]));
     return true;
   })()
 `;
+
+// Both seeded characters are referenced by every domain, so a delete of either one
+// leaves one participant behind and the checks below stay independent of which card
+// the dashboard happens to put first.
+const CARD_MENU_ACTION = (label) => `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const more = document.querySelector('button[aria-label="更多"]');
+    if (!more) throw new Error("card menu trigger missing");
+    more.click();
+    await sleep(250);
+    const item = [...document.querySelectorAll(".card-menu button")].find((button) => button.textContent.trim() === ${JSON.stringify(label)});
+    if (!item) throw new Error("card menu item missing: " + ${JSON.stringify(label)});
+    item.click();
+    await sleep(500);
+    return true;
+  })()
+`;
+
+// The editor's 删除角色 sits in its own overflow menu, which is the route a user takes.
+const EDITOR_MORE_DELETE = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const trigger = document.querySelector(".editor-more-wrap > button");
+    if (!trigger) throw new Error("editor menu trigger missing");
+    trigger.click();
+    await sleep(250);
+    const item = [...document.querySelectorAll(".editor-more-menu button")].find((button) => button.textContent.trim() === "删除角色");
+    if (!item) throw new Error("editor delete item missing");
+    item.click();
+    await sleep(300);
+    return true;
+  })()
+`;
+
+const BULK_DELETE = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const byLabel = (label) => [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === label);
+    const enter = byLabel("批量选择");
+    if (!enter) throw new Error("bulk mode button missing");
+    enter.click();
+    await sleep(300);
+    const all = byLabel("全选");
+    if (!all) throw new Error("select-all button missing");
+    all.click();
+    await sleep(300);
+    const remove = byLabel("批量删除");
+    if (!remove) throw new Error("bulk delete button missing");
+    remove.click();
+    await sleep(300);
+    return true;
+  })()
+`;
+
+const CONFIRM_DIALOG = (label) => `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const dialog = document.querySelector(".confirm-dialog");
+    if (!dialog) throw new Error("confirm dialog missing");
+    const confirm = [...dialog.querySelectorAll("button")].find((button) => button.textContent.trim() === ${JSON.stringify(label)});
+    if (!confirm) throw new Error("confirm button missing: " + ${JSON.stringify(label)});
+    confirm.click();
+    await sleep(600);
+    return true;
+  })()
+`;
+
+const UNDO_DELETE = `
+  (async () => {
+    const button = document.querySelector("[data-undo-delete='true']");
+    if (!button) throw new Error("undo button missing");
+    button.click();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return true;
+  })()
+`;
+
+// Any key the delete touches, so a check can see the whole effect of one press. The
+// two expectations live here rather than in the checks so that all four delete checks
+// read the same state the same way: one character fewer with one participant left in
+// each domain, and the shared edge gone.
+const READ_DELETE_STATE = `
+  (() => {
+    const read = (key) => JSON.parse(localStorage.getItem(key) || "[]");
+    const state = {
+      characters: read("character-studio.characters").map((item) => item.id),
+      relationships: read("character-studio.relationships").map((item) => item.id),
+      timelineParticipants: (read("character-studio.timeline")[0] || {}).characterIds || [],
+      worldParticipants: (read("character-studio.world")[0] || {}).characterIds || [],
+      recovery: JSON.parse(localStorage.getItem("character-studio.delete-recovery") || "null"),
+      undo: Boolean(document.querySelector("[data-undo-delete='true']")),
+      toast: (document.querySelector(".toast") || {}).textContent || "",
+    };
+    state.deletedOk =
+      state.characters.length === 1 &&
+      state.relationships.length === 0 &&
+      state.timelineParticipants.length === 1 &&
+      state.worldParticipants.length === 1 &&
+      state.recovery !== null &&
+      state.undo;
+    state.restoredOk =
+      state.characters.length === 2 &&
+      state.relationships.length === 1 &&
+      state.timelineParticipants.length === 2 &&
+      state.worldParticipants.length === 2 &&
+      state.recovery === null;
+    state.detail =
+      state.characters.length + " 个角色 / " +
+      state.relationships.length + " 条关系 / 时间线 " +
+      state.timelineParticipants.length + " 人 / 世界观 " +
+      state.worldParticipants.length + " 人 / 恢复记录 " +
+      (state.recovery ? "在" : "已清除") + " / 撤销入口 " +
+      (state.undo ? "有" : "无");
+    return state;
+  })()
+`;
+
+// The delete-recovery copy is refused on its own key, so the refusal is the one the
+// decision depends on rather than a blanket storage failure.
+const REFUSE_RECOVERY_WRITES = `
+  (() => {
+    const original = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+      if (String(key) === "character-studio.delete-recovery") {
+        const error = new Error("quota");
+        error.name = "QuotaExceededError";
+        throw error;
+      }
+      return original.call(this, key, value);
+    };
+    return true;
+  })()
+`;
+
+
 
 const clickWorkspace = (label) => `
   (async () => {
@@ -379,6 +515,85 @@ async function main() {
       await cdp.goto(`${base}developer`);
       const page = await cdp.value(PAGE_IDS);
       return { pass: page === "developer", detail: `直接打开 /developer → ${page}` };
+    });
+
+    await check("删除：主页单删后撤销，角色与被清理的关联一起恢复（KI-17）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(CARD_MENU_ACTION("删除"));
+      await cdp.value(CONFIRM_DIALOG("确认删除"));
+
+      const deleted = await cdp.value(READ_DELETE_STATE);
+      await cdp.value(UNDO_DELETE);
+      const restored = await cdp.value(READ_DELETE_STATE);
+
+      return {
+        pass: deleted.deletedOk && restored.restoredOk,
+        detail: `删除后 ${deleted.detail}；撤销后 ${restored.detail}；提示「${restored.toast.trim()}」`,
+      };
+    });
+
+    await check("删除：恢复记录写不进去时拒绝删除，数据一点没动（KI-17）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(REFUSE_RECOVERY_WRITES);
+      await cdp.value(CARD_MENU_ACTION("删除"));
+      await cdp.value(CONFIRM_DIALOG("确认删除"));
+
+      const state = await cdp.value(READ_DELETE_STATE);
+      const told = state.toast.includes("删除已取消");
+
+      return {
+        pass: state.characters.length === 2 && state.relationships.length === 1 && !state.undo && told,
+        detail: `角色 ${state.characters.length} 个（期望 2）、关系 ${state.relationships.length} 条（期望 1）、撤销入口 ${state.undo ? "有" : "无"}、提示「${state.toast.trim()}」`,
+      };
+    });
+
+    await check("删除：编辑器里删除后回到主页，撤销同样恢复关联（KI-17）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(CARD_MENU_ACTION("编辑"));
+      const editorOpen = await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
+      await cdp.value(EDITOR_MORE_DELETE);
+      await cdp.value(CONFIRM_DIALOG("确认删除"));
+      const backOnDashboard = await cdp.waitFor(`${PAGE_IDS} === "dashboard"`, 8000);
+
+      const deleted = await cdp.value(READ_DELETE_STATE);
+      await cdp.value(UNDO_DELETE);
+      const restored = await cdp.value(READ_DELETE_STATE);
+
+      return {
+        pass: editorOpen && backOnDashboard && deleted.deletedOk && restored.restoredOk,
+        detail: `编辑器${editorOpen ? "已打开" : "没打开"}、删除后回到${backOnDashboard ? "主页" : "别处"}；删除后 ${deleted.detail}；撤销后 ${restored.detail}`,
+      };
+    });
+
+    await check("删除：批量删除后撤销，全部选中角色与关联一起恢复（KI-17）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(BULK_DELETE);
+      await cdp.value(CONFIRM_DIALOG("确认删除"));
+
+      const deleted = await cdp.value(READ_DELETE_STATE);
+      const bothGone =
+        deleted.characters.length === 0 &&
+        deleted.relationships.length === 0 &&
+        deleted.timelineParticipants.length === 0 &&
+        deleted.worldParticipants.length === 0 &&
+        deleted.recovery !== null &&
+        deleted.undo;
+
+      await cdp.value(UNDO_DELETE);
+      const restored = await cdp.value(READ_DELETE_STATE);
+
+      return {
+        pass: bothGone && restored.restoredOk,
+        detail: `删除后 ${deleted.characters.length} 个角色 / ${deleted.relationships.length} 条关系 / 时间线 ${deleted.timelineParticipants.length} 人 / 撤销入口 ${deleted.undo ? "有" : "无"}；撤销后 ${restored.detail}`,
+      };
     });
 
     await check("清空：快照写入失败时不清空数据并要求用户处理（DEC-38-01）", async () => {
