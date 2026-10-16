@@ -951,6 +951,275 @@ const SET_THEME_BY_MENU = (label) => `
   })()
 `;
 
+// A hundred world entries: a five-level chain under 雾海纪 (the branch whose parent can
+// be collapsed), one child under it from the flat set, six categories, tags and
+// characters at every other entry.
+const SEED_WORLD = `
+  (() => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const characters = [
+      { id: "wc-1", name: "沈青梧", occupation: "调查员", worldview: "北境", avatarEmoji: "🙂", createdAt: now, updatedAt: now },
+      { id: "wc-2", name: "陆停云", occupation: "魔法师", worldview: "云海", avatarEmoji: "🌙", createdAt: now, updatedAt: now },
+      { id: "wc-3", name: "白露", occupation: "医者", worldview: "北境", avatarEmoji: "🜂", createdAt: now, updatedAt: now },
+    ];
+    const entries = [];
+    const chain = ["雾海纪", "北境城", "白塔区", "旧灯塔", "灯室"];
+    chain.forEach((name, index) => entries.push({
+      id: "deep-" + index,
+      name,
+      category: "location",
+      parentId: index ? "deep-" + (index - 1) : undefined,
+      summary: name + "的简介",
+      details: name + "的详细设定。".repeat(8),
+      tags: ["深度" + index],
+      characterIds: index % 2 ? ["wc-1"] : [],
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const categories = ["location", "faction", "species", "item", "concept", "other"];
+    const labels = { location: "地点", faction: "势力", species: "种族", item: "物品", concept: "概念", other: "其他" };
+    for (let index = 0; index < 95; index += 1) {
+      const category = categories[index % categories.length];
+      entries.push({
+        id: "w-" + index,
+        name: labels[category] + String(index).padStart(3, "0"),
+        category,
+        parentId: index % 7 === 0 ? "deep-0" : undefined,
+        summary: index % 3 === 0 ? "简述 " + index : "",
+        details: index % 4 === 0 ? "详细设定。".repeat(20) : "",
+        tags: index % 5 === 0 ? ["标签" + index] : [],
+        characterIds: index % 6 === 0 ? ["wc-1", "wc-2"] : index % 6 === 3 ? ["wc-3"] : [],
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.world", JSON.stringify(entries));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    return entries.length;
+  })()
+`;
+
+// One entry and nothing else: the only case where an entry may take no parent at all.
+const SEED_WORLD_SINGLE = `
+  (() => {
+    const now = "2026-01-01T00:00:00.000Z";
+    localStorage.setItem("character-studio.characters", JSON.stringify([
+      { id: "wc-1", name: "沈青梧", occupation: "调查员", worldview: "北境", avatarEmoji: "🙂", createdAt: now, updatedAt: now },
+    ]));
+    localStorage.setItem("character-studio.world", JSON.stringify([
+      { id: "only", name: "唯一的条目", category: "location", tags: [], characterIds: [], createdAt: now, updatedAt: now },
+    ]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    return true;
+  })()
+`;
+
+const READ_WORLD = `
+  (() => {
+    const rows = [...document.querySelectorAll(".world-row")];
+    return {
+      rows: rows.length,
+      names: rows.map((row) => (row.querySelector(".world-row-name")?.textContent || "").trim()),
+      viaPath: rows.filter((row) => row.classList.contains("via-path")).length,
+      selected: [...document.querySelectorAll(".world-row.selected .world-row-name")].map((node) => node.textContent.trim()),
+      nav: [...document.querySelectorAll(".world-category")].map((button) => ({
+        label: button.textContent.trim(),
+        current: button.getAttribute("aria-current") === "true",
+        disabled: button.disabled,
+      })),
+      count: (document.querySelector(".world-count")?.textContent || "").trim(),
+      empty: (document.querySelector(".empty-state")?.textContent || "").replace(/\s+/g, " ").trim(),
+      detail: (document.querySelector(".world-detail")?.textContent || "").replace(/\s+/g, " ").trim().slice(0, 400),
+      detailSections: [...document.querySelectorAll(".world-detail-section h4")].map((node) => node.textContent.trim()),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  })()
+`;
+
+const WORLD_SET_VALUE = `
+    const setInput = (selector, value) => {
+      const input = document.querySelector(selector);
+      if (!input) throw new Error("找不到输入框：" + selector);
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const setSelect = (selector, value) => {
+      const select = document.querySelector(selector);
+      if (!select) throw new Error("找不到下拉：" + selector);
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+      setter.call(select, value);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const stored = () => JSON.parse(localStorage.getItem("character-studio.world") || "[]");
+`;
+
+// Category navigation and its counts, against the stored entries.
+const WORLD_CATEGORY_NAV = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    ${WORLD_SET_VALUE}
+    const rows = () => [...document.querySelectorAll(".world-row")];
+    const chip = (label) => [...document.querySelectorAll(".world-category")].find((button) => button.textContent.trim().startsWith(label));
+
+    const before = { rows: rows().length, stored: stored().length, storage: JSON.stringify(stored()) };
+    const expected = (category) => stored().filter((entry) => entry.category === category).length;
+
+    const location = { live: stored().filter((entry) => entry.category === "location").length, fromStorage: expected("location") };
+    chip("地点").click();
+    await sleep(400);
+    const afterLocation = {
+      rows: rows().length,
+      results: rows().filter((row) => !row.classList.contains("via-path")).length,
+      expected: expected("location"),
+      current: [...document.querySelectorAll(".world-category")].find((button) => button.getAttribute("aria-current") === "true")?.textContent.trim() || "",
+      count: (document.querySelector(".world-count")?.textContent || "").trim(),
+      storage: JSON.stringify(stored()),
+    };
+
+    chip("物品").click();
+    await sleep(400);
+    const afterItem = { results: rows().filter((row) => !row.classList.contains("via-path")).length, expected: expected("item") };
+
+    chip("全部分类").click();
+    await sleep(400);
+    const afterAll = { results: rows().filter((row) => !row.classList.contains("via-path")).length, expected: stored().length, nav: [...document.querySelectorAll(".world-category")].map((button) => button.textContent.trim()) };
+
+    return { before, afterLocation, afterItem, afterAll, location };
+  })()
+`;
+
+// Search, its combination with the structural filters, and a match that sits under a
+// collapsed parent.
+const WORLD_SEARCH = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    ${WORLD_SET_VALUE}
+    const rows = () => [...document.querySelectorAll(".world-row")];
+    const names = () => rows().map((row) => (row.querySelector(".world-row-name")?.textContent || "").trim());
+    const results = () => rows().filter((row) => !row.classList.contains("via-path")).length;
+
+    // Shut every branch first: the point of the next assertion is that a match two
+    // levels down is still reachable.
+    [...document.querySelectorAll(".world-row-toggle")].forEach((button) => {
+      if (button.getAttribute("aria-expanded") === "true") button.click();
+    });
+    await sleep(400);
+    const collapsedRows = rows().length;
+    const deepHidden = !names().includes("白塔区");
+
+    setInput(".world-search input", "白塔区");
+    await sleep(400);
+    const searched = {
+      names: names(),
+      results: results(),
+      hasMatch: names().includes("白塔区"),
+      pathRows: rows().filter((row) => row.classList.contains("via-path")).length,
+      count: (document.querySelector(".world-count")?.textContent || "").trim(),
+    };
+    document.querySelector(".world-toolbar .ghost-button").click();
+    await sleep(400);
+    const cleared = { rows: rows().length, hasDeep: names().includes("白塔区"), matchesCollapsed: rows().length === collapsedRows };
+
+    // Combinations: category + level + characters, each against the stored data.
+    const expected = (predicate) => stored().filter(predicate).length;
+    setSelect('[aria-label="按层级筛选"]', "child");
+    await sleep(400);
+    const childOnly = { results: results(), expected: expected((entry) => entry.parentId) };
+    setSelect('[aria-label="按关联角色筛选"]', "with");
+    await sleep(400);
+    const childWithCharacters = { results: results(), expected: expected((entry) => entry.parentId && entry.characterIds.length > 0) };
+    setSelect('[aria-label="按层级筛选"]', "any");
+    await sleep(400);
+    const withCharacters = { results: results(), expected: expected((entry) => entry.characterIds.length > 0) };
+
+    setInput(".world-search input", "沈青梧");
+    await sleep(400);
+    const byCharacter = { results: results(), expected: expected((entry) => entry.characterIds.includes("wc-1")) };
+    setInput(".world-search input", "wc-1");
+    await sleep(400);
+    const byId = { results: results() };
+
+    setInput(".world-search input", "不存在的条目");
+    await sleep(400);
+    const none = { rows: rows().length, empty: (document.querySelector(".world-empty, .empty-state")?.textContent || "").replace(/\s+/g, " ").trim() };
+
+    return { collapsedRows, deepHidden, searched, cleared, childOnly, childWithCharacters, withCharacters, byCharacter, byId, none };
+  })()
+`;
+
+// Hierarchy, the detail pane, and the size the screen is meant to hold.
+const WORLD_HIERARCHY = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const rows = () => [...document.querySelectorAll(".world-row")];
+    const rowFor = (name) => rows().find((row) => (row.querySelector(".world-row-name")?.textContent || "").trim() === name);
+    const names = () => rows().map((row) => (row.querySelector(".world-row-name")?.textContent || "").trim());
+
+    const withToggle = rows().filter((row) => row.querySelector(".world-row-toggle")).length;
+    const withoutToggle = rows().filter((row) => !row.querySelector(".world-row-toggle")).length;
+    const leafHasToggle = Boolean(rowFor("灯室")?.querySelector(".world-row-toggle"));
+    const indents = ["雾海纪", "北境城", "白塔区", "旧灯塔", "灯室"].map((name) => {
+      const row = rowFor(name);
+      return row ? Math.round(parseFloat(getComputedStyle(row).paddingLeft)) : -1;
+    });
+
+    rowFor("北境城").querySelector(".world-row-toggle").click();
+    await sleep(400);
+    const collapsed = { hasChild: names().includes("白塔区"), names: names().slice(0, 5) };
+    rowFor("北境城").querySelector(".world-row-toggle").click();
+    await sleep(400);
+    const expanded = { hasChild: names().includes("白塔区") };
+
+    // Selecting an entry reads it in the second pane.
+    rowFor("旧灯塔").querySelector(".world-row-main").click();
+    await sleep(400);
+    const detail = {
+      text: (document.querySelector(".world-detail")?.textContent || "").replace(/\s+/g, " ").trim(),
+      sections: [...document.querySelectorAll(".world-detail-section h4")].map((node) => node.textContent.trim()),
+      path: (document.querySelector(".world-detail-path")?.textContent || "").trim(),
+      characters: document.querySelectorAll(".world-detail .related-chip, .world-detail .character-row").length,
+      childButtons: [...document.querySelectorAll(".world-detail-children button")].map((button) => button.textContent.trim()),
+      actions: [...document.querySelectorAll(".world-detail-actions button")].map((button) => button.textContent.trim()),
+      selected: [...document.querySelectorAll(".world-row.selected .world-row-name")].map((node) => node.textContent.trim()),
+      listStillDrawn: rows().length > 0,
+    };
+    // A child listed in the detail pane is a way in, not a decoration.
+    document.querySelector(".world-detail-children button").click();
+    await sleep(400);
+    const afterChildClick = (document.querySelector(".world-detail-path")?.textContent || "").trim();
+
+    return {
+      withToggle,
+      withoutToggle,
+      leafHasToggle,
+      indents,
+      collapsed,
+      expanded,
+      detail,
+      afterChildClick,
+      rows: rows().length,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      widest: (() => {
+        const limit = document.documentElement.clientWidth;
+        let worst = null;
+        document.querySelectorAll('*').forEach((node) => {
+          const rect = node.getBoundingClientRect();
+          if (rect.right > limit + 1 && (!worst || rect.right > worst.right)) {
+            worst = { right: Math.round(rect.right), tag: node.tagName + '.' + (node.className || '') };
+          }
+        });
+        return worst;
+      })(),
+    };
+  })()
+`;
+
 const READ_GRAPH_CANVAS = `
   (() => {
     const nodes = [...document.querySelectorAll(".relationship-node")];
@@ -1425,9 +1694,19 @@ const READ_CROWDED_CARD = `
 
 // The same display on a world entry, and what it does on a phone.
 const READ_WORLD_CROWDED = `
-  (() => {
-    const card = [...document.querySelectorAll("article")].find((article) => article.querySelector(".related-characters"));
-    const chips = card ? [...card.querySelectorAll(".related-chip")] : [];
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    // The related characters of an entry now live in the reading pane, so the row has
+    // to be selected first: the list itself shows a count.
+    const row = [...document.querySelectorAll(".world-row")].find(
+      (candidate) => (candidate.querySelector(".world-row-stats")?.textContent || "").includes("位角色"),
+    );
+    if (row) {
+      row.querySelector(".world-row-main").click();
+      await sleep(400);
+    }
+    const pane = document.querySelector(".world-detail");
+    const chips = pane ? [...pane.querySelectorAll(".related-chip")] : [];
     return {
       chips: chips.map((chip) => chip.querySelector(".character-row-name")?.textContent || chip.textContent.trim()),
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -2129,6 +2408,268 @@ async function main() {
       return {
         pass: Boolean(fits && dark),
         detail: `主题 ${state.theme || "(未设置)"}、弹窗底色 ${state.dialogBackground}；375px 下弹窗 ${state.dialogWidth}px、弹窗溢出 ${state.dialogOverflow}px、页面溢出 ${state.pageOverflow}px`,
+      };
+    });
+
+    await check("世界观：分类导航的计数、切换与选中状态（任务 A）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-category")`, 8000);
+      const shell = await cdp.value(READ_WORLD);
+      const state = await cdp.value(WORLD_CATEGORY_NAV);
+
+      const pass =
+        shell.rows === 100 &&
+        // 全部 + six categories, each with the count the stored entries imply
+        shell.nav.length === 7 &&
+        shell.nav[0].label.startsWith("全部分类") &&
+        state.afterLocation.results === state.afterLocation.expected &&
+        state.afterLocation.expected > 0 &&
+        state.afterLocation.current.startsWith("地点") &&
+        state.afterLocation.count.includes(`匹配 ${state.afterLocation.expected} / 100`) &&
+        state.afterItem.results === state.afterItem.expected &&
+        state.afterItem.expected > 0 &&
+        state.afterAll.results === state.afterAll.expected &&
+        state.afterAll.expected === 100 &&
+        // switching a category is a view change: nothing in storage moves
+        state.afterLocation.storage === state.before.storage;
+
+      return {
+        pass,
+        detail: `导航 ${state.afterAll.nav.join(" / ")}；点「地点」后结果 ${state.afterLocation.results} 条（数据 ${state.afterLocation.expected}）当前项「${state.afterLocation.current}」「${state.afterLocation.count}」；点「物品」${state.afterItem.results}（${state.afterItem.expected}）；回到全部 ${state.afterAll.results}（${state.afterAll.expected}）；切换前后存储一致 ${state.afterLocation.storage === state.before.storage}`,
+      };
+    });
+
+    await check("世界观：搜索与组合筛选，子条目在父级折叠下仍可找到（任务 C）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-category")`, 8000);
+      const state = await cdp.value(WORLD_SEARCH);
+
+      const pass =
+        // folded away first, so the search result is what proves reachability
+        state.deepHidden &&
+        state.searched.hasMatch &&
+        state.searched.results === 1 &&
+        state.searched.pathRows === 2 &&
+        state.searched.names.join("/") === "雾海纪/北境城/白塔区" &&
+        // clearing restores the collapsed browsing state rather than forcing it open
+        state.cleared.matchesCollapsed &&
+        !state.cleared.hasDeep &&
+        state.childOnly.results === state.childOnly.expected &&
+        state.childWithCharacters.results === state.childWithCharacters.expected &&
+        state.childWithCharacters.expected > 0 &&
+        state.withCharacters.results === state.withCharacters.expected &&
+        state.byCharacter.results === state.byCharacter.expected &&
+        state.byCharacter.expected > 0 &&
+        state.byId.results === 0 &&
+        state.none.rows === 0 &&
+        state.none.empty.includes("没有匹配的条目");
+
+      return {
+        pass,
+        detail: `折叠后可见 ${state.collapsedRows} 行、白塔区隐藏 ${state.deepHidden}；搜索「白塔区」→ ${state.searched.results} 条结果 + ${state.searched.pathRows} 行上级路径（${state.searched.names.join(" / ")}）「${state.searched.count}」；清空后 ${state.cleared.rows} 行、恢复折叠 ${state.cleared.matchesCollapsed}；仅有上级 ${state.childOnly.results}（${state.childOnly.expected}）、再加有关联角色 ${state.childWithCharacters.results}（${state.childWithCharacters.expected}）、仅有关联角色 ${state.withCharacters.results}（${state.withCharacters.expected}）；按角色名 ${state.byCharacter.results}（${state.byCharacter.expected}）、按 id ${state.byId.results}；无结果 ${state.none.rows} 行「${state.none.empty.slice(0, 30)}」`,
+      };
+    });
+
+    await check("世界观：层级展开折叠、条目详情与 100 个条目（任务 B/D）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-row")`, 8000);
+      const state = await cdp.value(WORLD_HIERARCHY);
+
+      const pass =
+        state.rows === 100 &&
+        state.withToggle > 0 &&
+        state.withoutToggle > 0 &&
+        // a leaf gets no disclosure control at all
+        !state.leafHasToggle &&
+        // indentation grows per level and then stops, so a deep branch keeps its width
+        state.indents.join(",") === "0,16,32,48,64" &&
+        state.collapsed.hasChild === false &&
+        state.expanded.hasChild === true &&
+        state.detail.path === "层级：雾海纪 › 北境城 › 白塔区 › 旧灯塔" &&
+        state.detail.sections.join("/") === "简介/详细设定/标签/关联角色/子条目 · 1" &&
+        state.detail.actions.join("/") === "编辑/删除" &&
+        // The button carries the child's name and its category chip.
+        state.detail.childButtons.length === 1 &&
+        state.detail.childButtons[0].startsWith("灯室") &&
+        state.detail.selected.join("/") === "旧灯塔" &&
+        state.detail.listStillDrawn &&
+        state.afterChildClick === "层级：雾海纪 › 北境城 › 白塔区 › 旧灯塔 › 灯室" &&
+        state.pageOverflow <= 1;
+
+      return {
+        pass,
+        detail: `溢出 ${state.pageOverflow}px（最宽 ${state.widest ? state.widest.tag + " → " + state.widest.right : "无"}）；100 行；有下级 ${state.withToggle} 行 / 无下级 ${state.withoutToggle} 行；叶子「灯室」有展开按钮 ${state.leafHasToggle}；缩进 ${state.indents.join("px / ")}px；折叠后白塔区可见 ${state.collapsed.hasChild} → 展开后 ${state.expanded.hasChild}；详情路径「${state.detail.path}」、分节 ${state.detail.sections.join(" / ")}、操作 ${state.detail.actions.join(" / ")}、选中「${state.detail.selected.join("/")}」、子条目按钮「${state.detail.childButtons.join("/")}」、列表仍在 ${state.detail.listStillDrawn}；点子条目后路径「${state.afterChildClick}」`,
+      };
+    });
+
+    await check("世界观：弹窗分组、上级排除自身与后代、375px 与深色（任务 E/F）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-row")`, 8000);
+      const dialog = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const stored = () => JSON.parse(localStorage.getItem("character-studio.world") || "[]");
+        const rowFor = (name) => [...document.querySelectorAll(".world-row")].find(
+          (row) => (row.querySelector(".world-row-name")?.textContent || "").trim() === name,
+        );
+        rowFor("北境城").querySelector(".world-row-main").click();
+        await sleep(300);
+        [...document.querySelectorAll(".world-detail-actions button")].find((button) => button.textContent.trim() === "编辑").click();
+        await sleep(600);
+
+        const node = document.querySelector(".world-dialog");
+        const rect = node.getBoundingClientRect();
+        const actions = document.querySelector(".world-dialog-actions").getBoundingClientRect();
+        const parent = document.querySelector('[aria-label="上级条目"]');
+        const options = [...parent.options].map((option) => option.value);
+        const descendants = stored().filter((entry) => entry.id === "deep-2" || entry.id === "deep-3" || entry.id === "deep-4").map((entry) => entry.id);
+        const sections = [...document.querySelectorAll(".world-dialog legend")].map((item) => item.textContent.trim());
+        const hint = (document.querySelector(".world-dialog .field-hint")?.textContent || "").replace(/\s+/g, " ").trim();
+        const inside = rect.left >= -1 && rect.right <= window.innerWidth + 1;
+        const pinned = actions.bottom <= rect.bottom + 1 && actions.top >= rect.top - 1;
+        const selectedParent = parent.value;
+
+        [...document.querySelectorAll(".world-dialog button")].find((button) => button.textContent.trim() === "取消").click();
+        await sleep(300);
+        return {
+          sections, hint, inside, pinned,
+          selfExcluded: !options.includes("deep-1"),
+          descendantsExcluded: descendants.every((id) => !options.includes(id)),
+          ancestorOffered: options.includes("deep-0"),
+          optionCount: options.length,
+          storedCount: stored().length,
+          selectedParent,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      })()`);
+
+      // The one case where an entry may take no parent at all: it is the only entry.
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD_SINGLE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-row")`, 8000);
+      const single = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        [...document.querySelectorAll(".world-detail-actions button")].find((button) => button.textContent.trim() === "编辑").click();
+        await sleep(600);
+        const parent = document.querySelector('[aria-label="上级条目"]');
+        const state = {
+          disabled: parent.disabled,
+          options: [...parent.options].map((option) => option.value),
+          hint: (document.querySelector(".world-dialog .field-hint")?.textContent || "").replace(/\s+/g, " ").trim(),
+        };
+        [...document.querySelectorAll(".world-dialog button")].find((button) => button.textContent.trim() === "取消").click();
+        await sleep(300);
+        return state;
+      })()`);
+
+      // On a phone the dialog must fit, and the panes must become one at a time.
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-row")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const narrowList = await cdp.value(READ_WORLD);
+      const phone = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const nav = document.querySelector(".world-category-nav");
+        const rows = new Set([...nav.querySelectorAll("button")].map((button) => Math.round(button.getBoundingClientRect().top)));
+        const detailHiddenOnList = getComputedStyle(document.querySelector(".world-detail")).display === "none";
+        const rowFor = (name) => [...document.querySelectorAll(".world-row")].find(
+          (row) => (row.querySelector(".world-row-name")?.textContent || "").trim() === name,
+        );
+        const row = rowFor("北境城");
+        row.querySelector(".world-row-main").click();
+        await sleep(500);
+        const afterSelect = {
+          sidebarHidden: getComputedStyle(document.querySelector(".world-sidebar")).display === "none",
+          detailShown: getComputedStyle(document.querySelector(".world-detail")).display !== "none",
+          backVisible: Boolean(document.querySelector(".world-detail-back")),
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+        document.querySelector(".world-detail-back").click();
+        await sleep(400);
+        const afterBack = {
+          sidebarShown: getComputedStyle(document.querySelector(".world-sidebar")).display !== "none",
+          detailHidden: getComputedStyle(document.querySelector(".world-detail")).display === "none",
+        };
+        [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建条目").click();
+        await sleep(600);
+        const node = document.querySelector(".world-dialog");
+        const rect = node.getBoundingClientRect();
+        const actions = document.querySelector(".world-dialog-actions").getBoundingClientRect();
+        const dialog = {
+          inside: rect.left >= -1 && rect.right <= window.innerWidth + 1,
+          scrollable: node.scrollHeight > node.clientHeight,
+          actionsInside: actions.right <= window.innerWidth + 1 && actions.left >= -1,
+          sections: [...document.querySelectorAll(".world-dialog legend")].map((item) => item.textContent.trim()),
+        };
+        [...document.querySelectorAll(".world-dialog button")].find((button) => button.textContent.trim() === "取消").click();
+        await sleep(400);
+        return { navRows: rows.size, navInside: nav.getBoundingClientRect().right <= window.innerWidth + 1, detailHiddenOnList, afterSelect, afterBack, dialog };
+      })()`);
+
+      const theme = await cdp.value(SET_THEME_BY_MENU("深色"));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const dark = await cdp.value(READ_WORLD);
+      const darkStyle = await cdp.value(`(() => {
+        const tree = document.querySelector(".world-tree");
+        const detail = document.querySelector(".world-detail");
+        return { theme: document.documentElement.dataset.theme || "", tree: getComputedStyle(tree).backgroundColor, detail: getComputedStyle(detail).backgroundColor };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const pass =
+        dialog.sections.join("/") === "条目/层级/内容/关联角色" &&
+        dialog.inside &&
+        dialog.pinned &&
+        dialog.selfExcluded &&
+        dialog.descendantsExcluded &&
+        dialog.ancestorOffered &&
+        dialog.hint.includes("不会形成循环层级") &&
+        single.disabled &&
+        single.options.length === 1 &&
+        single.hint.includes("当前没有可选的上级条目") &&
+        narrowList.rows === 100 &&
+        narrowList.pageOverflow <= 1 &&
+        phone.navRows === 1 &&
+        phone.navInside &&
+        phone.detailHiddenOnList &&
+        phone.afterSelect.sidebarHidden &&
+        phone.afterSelect.detailShown &&
+        phone.afterSelect.backVisible &&
+        phone.afterSelect.overflow <= 1 &&
+        phone.afterBack.sidebarShown &&
+        phone.afterBack.detailHidden &&
+        phone.dialog.inside &&
+        phone.dialog.scrollable &&
+        phone.dialog.actionsInside &&
+        phone.dialog.sections.join("/") === "条目/层级/内容/关联角色" &&
+        theme === "dark" &&
+        darkStyle.theme === "dark" &&
+        dark.rows === 100;
+
+      return {
+        pass,
+        detail: `弹窗分节 ${dialog.sections.join("/")}、在视口内 ${dialog.inside}、操作栏固定 ${dialog.pinned}；上级选项 ${dialog.optionCount} 个（自身排除 ${dialog.selfExcluded}、后代排除 ${dialog.descendantsExcluded}、祖先可选 ${dialog.ancestorOffered}）；单条目时下拉禁用 ${single.disabled}（选项 ${single.options.join("/")}）提示「${single.hint.slice(0, 20)}…」；375px 列表 ${narrowList.rows} 行、导航单行 ${phone.navRows === 1}、选中后列表隐藏 ${phone.afterSelect.sidebarHidden} 详情显示 ${phone.afterSelect.detailShown}、返回后恢复 ${phone.afterBack.sidebarShown}/${phone.afterBack.detailHidden}、弹窗在视口内 ${phone.dialog.inside} 可滚动 ${phone.dialog.scrollable} 操作栏在视口内 ${phone.dialog.actionsInside}、页面溢出 ${phone.afterSelect.overflow}px；深色 data-theme=${darkStyle.theme}`,
       };
     });
 
