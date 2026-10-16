@@ -124,6 +124,11 @@ export function Timeline({
   const grouped = useMemo(() => groupTimelineByYear(visibleEvents), [visibleEvents]);
   const storedYears = useMemo(() => timelineYears(events), [events]);
   const isFiltered = isTimelineFilterActive(filter);
+  // What the 筛选 entry counts on a phone. The query has its own visible field, so this
+  // is the two selects the toolbar folds away.
+  const activeFilterCount =
+    (filter.year === EVERY_YEAR ? 0 : 1) + (filter.kind === EVERY_KIND ? 0 : 1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Which year is being read, for the navigation's own feedback. Measured on scroll
   // rather than stored: the year heading is the only authority on where a year starts.
@@ -283,43 +288,57 @@ export function Timeline({
             </button>
           )}
         </label>
-        <label className="timeline-filter">
-          <span className="timeline-filter-label">年份</span>
-          <select
-            aria-label="按年份筛选"
-            onChange={(changeEvent) => setFilter({ ...filter, year: changeEvent.target.value })}
-            value={filter.year}
-          >
-            <option value={EVERY_YEAR}>{EVERY_YEAR}</option>
-            {storedYears.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="timeline-filter">
-          <span className="timeline-filter-label">类型</span>
-          <select
-            aria-label="按类型筛选"
-            onChange={(changeEvent) =>
-              setFilter({ ...filter, kind: changeEvent.target.value as TimelineFilter["kind"] })
-            }
-            value={filter.kind}
-          >
-            <option value={EVERY_KIND}>{EVERY_KIND}</option>
-            {TIMELINE_EVENT_KINDS.map((kind) => (
-              <option key={kind.value} value={kind.value}>
-                {kind.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {isFiltered && (
-          <button className="ghost-button timeline-clear" onClick={() => setFilter(emptyTimelineFilter)} type="button">
-            清空筛选
-          </button>
-        )}
+        {/* One entry that opens, instead of two selects and a clear button filling the
+            first screen on a phone. On a desktop the row is always open and this
+            control is not drawn at all. */}
+        <button
+          aria-expanded={filtersOpen}
+          className="timeline-filter-toggle"
+          onClick={() => setFiltersOpen((current) => !current)}
+          type="button"
+        >
+          <Icon name="filter" size={15} />
+          筛选{activeFilterCount > 0 ? `（${activeFilterCount}）` : ""}
+        </button>
+        <div className={filtersOpen ? "timeline-filter-row open" : "timeline-filter-row"}>
+          <label className="timeline-filter">
+            <span className="timeline-filter-label">年份</span>
+            <select
+              aria-label="按年份筛选"
+              onChange={(changeEvent) => setFilter({ ...filter, year: changeEvent.target.value })}
+              value={filter.year}
+            >
+              <option value={EVERY_YEAR}>{EVERY_YEAR}</option>
+              {storedYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="timeline-filter">
+            <span className="timeline-filter-label">类型</span>
+            <select
+              aria-label="按类型筛选"
+              onChange={(changeEvent) =>
+                setFilter({ ...filter, kind: changeEvent.target.value as TimelineFilter["kind"] })
+              }
+              value={filter.kind}
+            >
+              <option value={EVERY_KIND}>{EVERY_KIND}</option>
+              {TIMELINE_EVENT_KINDS.map((kind) => (
+                <option key={kind.value} value={kind.value}>
+                  {kind.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isFiltered && (
+            <button className="ghost-button timeline-clear" onClick={() => setFilter(emptyTimelineFilter)} type="button">
+              清空筛选
+            </button>
+          )}
+        </div>
         <span aria-live="polite" className="timeline-count">
           {isFiltered ? `匹配 ${visibleEvents.length} / ${events.length} 个事件` : `共 ${events.length} 个事件`}
         </span>

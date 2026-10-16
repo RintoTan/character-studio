@@ -3136,7 +3136,7 @@ export function Dashboard({
           <div className="settings-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Settings</p>
+                <p className="eyebrow">本地设置</p>
                 <h2>设置</h2>
               </div>
               <button className="ghost-button" onClick={() => setIsSettingsOpen(false)} type="button">
@@ -3145,7 +3145,7 @@ export function Dashboard({
             </div>
             <div className="settings-grid">
               <article>
-                <h3>Appearance</h3>
+                <h3>主题外观</h3>
                 <div className="segmented-row">
                   {(["system", "light", "dark"] as const).map((mode) => (
                     <button
@@ -3154,32 +3154,32 @@ export function Dashboard({
                       onClick={() => onSetThemeMode(mode)}
                       type="button"
                     >
-                      {mode === "system" ? "Follow System" : mode === "light" ? "Light" : "Dark"}
+                      {mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色"}
                     </button>
                   ))}
                 </div>
               </article>
               <article>
-                <h3>Default View</h3>
+                <h3>默认视图</h3>
                 <div className="segmented-row">
                   <button
                     className={prefs.viewMode === "cards" ? "active" : ""}
                     onClick={() => updatePrefs({ viewMode: "cards" })}
                     type="button"
                   >
-                    Card
+                    卡片
                   </button>
                   <button
                     className={prefs.viewMode === "list" ? "active" : ""}
                     onClick={() => updatePrefs({ viewMode: "list" })}
                     type="button"
                   >
-                    List
+                    列表
                   </button>
                 </div>
               </article>
               <article>
-                <h3>Mobile</h3>
+                <h3>移动端</h3>
                 <label className="settings-check">
                   <input
                     type="checkbox"
@@ -3194,7 +3194,7 @@ export function Dashboard({
                 </label>
               </article>
               <article>
-                <h3>Export</h3>
+                <h3>导出</h3>
                 <label>
                   JPG 导出质量
                   <input
@@ -3221,11 +3221,11 @@ export function Dashboard({
                     }
                     type="checkbox"
                   />
-                  <span>PDF Light Mode</span>
+                  <span>PDF 浅色模式</span>
                 </label>
               </article>
               <article>
-                <h3>Data</h3>
+                <h3>数据</h3>
                 <div className="settings-actions">
                   <button className="ghost-button" onClick={() => openCharacterExportDialog("all")} type="button">
                     导出角色 JSON/ZIP
@@ -3281,7 +3281,7 @@ export function Dashboard({
               </article>
               )}
               <article>
-                <h3>About Data</h3>
+                <h3>关于数据</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步，清除浏览器缓存可能导致数据丢失。</p>
               </article>
               {aiSettingsEnabled && (

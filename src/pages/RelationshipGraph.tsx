@@ -91,6 +91,10 @@ const LABEL_GAP_MIN = 12;
 // Where focusing a character stops zooming in. Enough for a big roster's names to
 // become readable; past it the canvas is a close-up of one circle.
 const FOCUS_MAX_ZOOM = 4;
+// The fit view: a tenth of the frame left as margin, and never more than this much
+// magnification, so a two-node graph is not drawn as two plates.
+const FIT_MARGIN = 0.1;
+const FIT_MAX_ZOOM = 1.6;
 // Half the hover card's maximum width, so it can be centred on a node without hanging
 // off the canvas. Kept equal to `.graph-node-card`'s max-width.
 const HOVER_CARD_HALF = 110;
@@ -355,6 +359,78 @@ export function centreOn(
 }
 
 /**
+ * How much of the drawing's own coordinates the nodes and their labels actually take.
+ *
+ * `canvasBox` grows a view box around this; the fit zoom needs the same extent to
+ * work out how large the drawing is inside that roomier box, so both read it here
+ * rather than each computing it their own way.
+ */
+export function contentBounds(
+  positions: GraphPoint[],
+  metrics: GraphMetrics = DEFAULT_METRICS,
+  labelHalfWidth = 0,
+): { width: number; height: number } {
+  if (positions.length === 0) {
+    return { width: 0, height: 0 };
+  }
+
+  const xs = positions.map((point) => point.x);
+  const ys = positions.map((point) => point.y);
+  // Sideways the widest name, not just the widest node, has to fit: the outer
+  // nodes of a wheel are exactly where a centred label overhangs the edge.
+  const halfWidth = metrics.radius + CANVAS_PADDING + labelHalfWidth;
+
+  return {
+    width: Math.max(...xs) - Math.min(...xs) + halfWidth * 2,
+    height:
+      Math.max(...ys) -
+      Math.min(...ys) +
+      metrics.radius +
+      CANVAS_PADDING +
+      metrics.nameDrop +
+      metrics.nameSpace,
+  };
+}
+
+/**
+ * The zoom that makes the drawing use the canvas it has, keeping a margin.
+ *
+ * The view box is deliberately roomier than the drawing — it reserves the widest
+ * label's overhang and floors the size so a lone node is not a stamp — and the result
+ * was a five-character graph drawn at a third of the canvas with names nobody could
+ * read. This is the same fit applied to the nodes instead of to the box: it never
+ * zooms out past the box's fit (the names would shrink) and stops short of filling the
+ * frame mechanically, which is what would turn a two-character graph into two circles
+ * the size of plates.
+ */
+export function fitZoom(
+  content: { width: number; height: number },
+  frame: { width: number; height: number },
+  screenScale: number,
+  options: { margin?: number; max?: number } = {},
+): number {
+  const margin = options.margin ?? FIT_MARGIN;
+  const max = options.max ?? FIT_MAX_ZOOM;
+
+  if (
+    content.width <= 0 ||
+    content.height <= 0 ||
+    frame.width <= 0 ||
+    frame.height <= 0 ||
+    screenScale <= 0
+  ) {
+    return 1;
+  }
+
+  const allowance = Math.min(
+    (frame.width * (1 - margin)) / (content.width * screenScale),
+    (frame.height * (1 - margin)) / (content.height * screenScale),
+  );
+
+  return clampZoom(Math.max(1, Math.min(allowance, max)));
+}
+
+/**
  * Fits the canvas to what is actually drawn, so a small graph stops reserving a
  * mostly empty 640-square. The floor keeps a lone node from rendering as a stamp,
  * and the caller pins rendered width to the returned width, which holds the
@@ -371,17 +447,12 @@ export function canvasBox(
 
   const xs = positions.map((point) => point.x);
   const ys = positions.map((point) => point.y);
-  // Sideways the widest name, not just the widest node, has to fit: the outer
-  // nodes of a wheel are exactly where a centred label overhangs the edge.
   const halfWidth = metrics.radius + CANVAS_PADDING + labelHalfWidth;
-  const drawnWidth = Math.max(...xs) - Math.min(...xs) + halfWidth * 2;
-  const drawnHeight =
-    Math.max(...ys) -
-    Math.min(...ys) +
-    metrics.radius +
-    CANVAS_PADDING +
-    metrics.nameDrop +
-    metrics.nameSpace;
+  const { width: drawnWidth, height: drawnHeight } = contentBounds(
+    positions,
+    metrics,
+    labelHalfWidth,
+  );
   const width = Math.max(drawnWidth, MIN_CANVAS_WIDTH);
   const height = Math.max(drawnHeight, MIN_CANVAS_HEIGHT);
   // Grow the box around the drawing's centre so the content stays where it was.
@@ -603,10 +674,14 @@ export function RelationshipGraph({
   const [query, setQuery] = useState("");
   const [notOnCanvas, setNotOnCanvas] = useState<Character | null>(null);
   const [isDisplayOpen, setIsDisplayOpen] = useState(false);
+  // Output is set once and used rarely, so it lives behind its own toggle: the bar
+  // keeps 显示设置 and 导出 at one height instead of five controls in a row.
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
   const holderRef = useRef<HTMLDivElement | null>(null);
   const nodeCardRef = useRef<HTMLDivElement | null>(null);
   const displayWrapRef = useRef<HTMLDivElement | null>(null);
+  const exportWrapRef = useRef<HTMLDivElement | null>(null);
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const avatarUrls = useGraphAvatarUrls(characters);
   const isNarrowScreen = useMediaQuery("(max-width: 720px)");
@@ -752,6 +827,20 @@ export function RelationshipGraph({
     return () => observer.disconnect();
   }, [hasCanvas]);
 
+  // The canvas fits the nodes it has, not the box that was reserved for them. Once per
+  // mount, for the same reason the phone's fit below is once: the author's own zoom and
+  // pan are never taken back.
+  const contentFitAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (contentFitAppliedRef.current || screenScale <= 0 || positions.length === 0) {
+      return;
+    }
+
+    contentFitAppliedRef.current = true;
+    applyFitView();
+  }, [screenScale, positions, metrics, labelHalfWidth, frameSize, canvas.viewBox]);
+
   // On a phone the same drawing is fitted into a third of the width, so at "fit" a
   // twelve-character wheel renders its names seven pixels tall. Starting zoomed in
   // enough to read them — and letting the zoom control fit the whole thing on request —
@@ -778,8 +867,21 @@ export function RelationshipGraph({
     setView((current) => ({ ...current, k: clampZoom(current.k * factor) }));
   }
 
+  /**
+   * 适配画布 in both senses: the box the drawing was given, and the zoom that makes the
+   * drawing use it. The box's centre is the drawing's centre — `canvasBox` grows the box
+   * around it — so centring on the box keeps the graph where it was.
+   */
+  function applyFitView() {
+    const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
+    const zoom = fitZoom(contentBounds(positions, metrics, labelHalfWidth), frameSize, screenScale);
+
+    setView(centreOn({ x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 }, zoom, canvas.viewBox));
+  }
+
+  /** What the 适配画布 control and the export both mean by "fit". */
   function resetView() {
-    setView({ k: 1, x: 0, y: 0 });
+    applyFitView();
   }
 
   /** Zooms about a point given in client coordinates, so the point stays put. */
@@ -1032,22 +1134,26 @@ export function RelationshipGraph({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [focusId, draft, pendingDelete]);
 
-  // The display panel closes on a click anywhere outside it, like every other dropdown
+  // The bar's panels close on a click anywhere outside them, like every other dropdown
   // in the app.
   useEffect(() => {
-    if (!isDisplayOpen) {
+    if (!isDisplayOpen && !isExportOpen) {
       return;
     }
 
     function onPointerDown(event: MouseEvent) {
-      if (!displayWrapRef.current?.contains(event.target as Node)) {
+      if (isDisplayOpen && !displayWrapRef.current?.contains(event.target as Node)) {
         setIsDisplayOpen(false);
+      }
+
+      if (isExportOpen && !exportWrapRef.current?.contains(event.target as Node)) {
+        setIsExportOpen(false);
       }
     }
 
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
-  }, [isDisplayOpen]);
+  }, [isDisplayOpen, isExportOpen]);
 
   // Where the hover card sits: under the node it describes, placed from the node's own
   // projected position rather than from the cursor, so it does not jump while the
@@ -1586,37 +1692,79 @@ export function RelationshipGraph({
                       ))}
                     </div>
                   </div>
+                  {/* What the strokes mean. It belongs with the display switches — it is
+                      the same question ("what am I looking at") — and it is read once,
+                      so it does not get a permanent corner of the drawing. */}
+                  <div className="graph-panel-row graph-legend">
+                    <span className="graph-control-label">线型</span>
+                    <ul className="graph-legend-list">
+                      <li>
+                        <span aria-hidden="true" className="graph-legend-line legend-primary" />
+                        亲属、情感
+                      </li>
+                      <li>
+                        <span aria-hidden="true" className="graph-legend-line legend-danger" />
+                        敌对、对手
+                      </li>
+                      <li>
+                        <span aria-hidden="true" className="graph-legend-line legend-plain" />
+                        师承、友人、同僚、其他
+                      </li>
+                    </ul>
+                    <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
+                  </div>
                 </div>
               )}
             </div>
-            <div aria-label="导出关系网" className="graph-control-group" role="group">
-              <span className="graph-control-label">分辨率</span>
-              <div className="graph-segment">
-                {EXPORT_SCALES.map((scale) => (
-                  <button
-                    aria-pressed={prefs.exportScale === scale.value}
-                    className={prefs.exportScale === scale.value ? "graph-segment-button selected" : "graph-segment-button"}
-                    key={scale.value}
-                    onClick={() => updatePrefs({ exportScale: scale.value })}
-                    type="button"
-                  >
-                    {scale.label}
-                  </button>
-                ))}
-              </div>
-              <div className="graph-segment">
-                {(["jpg", "png", "pdf"] as const).map((format) => (
-                  <button
-                    className="graph-segment-button"
-                    disabled={exporting}
-                    key={format}
-                    onClick={() => void runExport(format)}
-                    type="button"
-                  >
-                    {exporting ? "导出中…" : format.toUpperCase()}
-                  </button>
-                ))}
-              </div>
+            {/* Output is set once and used rarely, so it is one toggle wide instead of
+                five controls in a row. The choices are one click from the canvas, and
+                the formats stay where they were. */}
+            <div className="graph-display-wrap graph-export-wrap" ref={exportWrapRef}>
+              <button
+                aria-expanded={isExportOpen}
+                className={isExportOpen ? "graph-toggle active" : "graph-toggle"}
+                onClick={() => setIsExportOpen((current) => !current)}
+                type="button"
+              >
+                <Icon name="download" size={15} />
+                导出
+              </button>
+              {isExportOpen && (
+                <div aria-label="导出关系网" className="graph-panel" role="group">
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">分辨率</span>
+                    <div className="graph-segment">
+                      {EXPORT_SCALES.map((scale) => (
+                        <button
+                          aria-pressed={prefs.exportScale === scale.value}
+                          className={prefs.exportScale === scale.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={scale.value}
+                          onClick={() => updatePrefs({ exportScale: scale.value })}
+                          type="button"
+                        >
+                          {scale.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">格式</span>
+                    <div className="graph-segment">
+                      {(["jpg", "png", "pdf"] as const).map((format) => (
+                        <button
+                          className="graph-segment-button"
+                          disabled={exporting}
+                          key={format}
+                          onClick={() => void runExport(format)}
+                          type="button"
+                        >
+                          {exporting ? "导出中…" : format.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

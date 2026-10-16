@@ -1265,102 +1265,48 @@ function App() {
       )}
       </Suspense>
 
-      <div className="floating-actions" aria-label="快捷操作">
-        {showQuickBackToTop && (
-          <button
-            aria-label="回到顶部"
-            className="floating-action"
-            data-tooltip="回到顶部"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            type="button"
-          >
-            <Icon name="arrowUp" />
-          </button>
-        )}
-        {showQuickToBottom && (
-          <button
-            aria-label="滑到底部"
-            className="floating-action"
-            data-tooltip="滑到底部"
-            onClick={() =>
-              window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
-            }
-            type="button"
-          >
-            <Icon name="arrowDown" />
-          </button>
-        )}
-        {isAppOverlayOpen && (
-          <button
-            aria-label="返回"
-            className="floating-action"
-            data-tooltip="返回"
-            onClick={closeAppOverlays}
-            type="button"
-          >
-            <Icon name="arrowLeft" />
-          </button>
-        )}
-        {isAppOverlayOpen && (
-          <button
-            aria-label="回到主页"
-            className="floating-action"
-            data-tooltip="回到主页"
-            onClick={() => goDashboard()}
-            type="button"
-          >
-            <Icon name="home" />
-          </button>
-        )}
-        {!isAppOverlayOpen && page === "dashboard" && showQuickBackToTop && (
-          <button
-            aria-label="新建角色"
-            className="floating-action"
-            data-tooltip="新建角色"
-            onClick={handleCreate}
-            type="button"
-          >
-            <Icon name="plus" />
-          </button>
-        )}
-        {!isAppOverlayOpen && page === "dashboard" && showQuickBackToTop && (
-          <button
-            aria-label="搜索 / 筛选"
-            className="floating-action"
-            data-tooltip="搜索 / 筛选"
-            onClick={() => setDashboardSearchSignal((current) => current + 1)}
-            type="button"
-          >
-            <Icon name="search" />
-          </button>
-        )}
-        {!isAppOverlayOpen && page !== "dashboard" && (
-          <button
-            aria-label="回到主页"
-            className="floating-action"
-            data-tooltip="回到主页"
-            onClick={() => goDashboard()}
-            type="button"
-          >
-            <Icon name="home" />
-          </button>
-        )}
-        {!isAppOverlayOpen && page === "preview" && selectedCharacter && (
-          <button
-            aria-label="编辑角色"
-            className="floating-action"
-            data-tooltip="编辑角色"
-            onClick={() => handleEdit(selectedCharacter)}
-            type="button"
-          >
-            <Icon name="pencil" />
-          </button>
-        )}
-        {/* The floating export button went with the preview page's own export menu —
-            it existed only to open that dialog. Character exports live in the
-            dashboard, where the scope (one character, the selection, or everything)
-            and the format are chosen in one place. */}
-      </div>
+      {/* Two scroll affordances and nothing else.
+          The bar also carried 新建角色, 搜索/筛选, 回到主页 and 编辑角色 — each a second
+          copy of a control that already exists where the work happens (the dashboard's
+          own toolbar, the workspace headers, the preview's actions) — and on a phone it
+          sat on top of the very form it acted on. What is left only ever moves the page,
+          appears only once there is a screenful to move, and stays clear of the home
+          indicator. While a modal is open nothing floats over it at all. */}
+      {!isAppOverlayOpen && (
+        <div className="floating-actions" aria-label="快捷操作">
+          {showQuickBackToTop && (
+            <button
+              aria-label="回到顶部"
+              className="floating-action"
+              data-tooltip="回到顶部"
+              onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              type="button"
+            >
+              <Icon name="arrowUp" />
+            </button>
+          )}
+          {showQuickToBottom && (
+            <button
+              aria-label="滑到底部"
+              className="floating-action"
+              data-tooltip="滑到底部"
+              onClick={() =>
+                window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" })
+              }
+              type="button"
+            >
+              <Icon name="arrowDown" />
+            </button>
+          )}
+          {/* The floating export button went with the preview page's own export menu —
+              it existed only to open that dialog. Character exports live in the
+              dashboard, where the scope (one character, the selection, or everything)
+              and the format are chosen in one place. The same reasoning retired the
+              rest of the bar's shortcuts: 新建角色 and 搜索/筛选 (both in the dashboard
+              toolbar), 回到主页 (in every workspace header) and 编辑角色 (in the
+              preview's own actions). */}
+        </div>
+      )}
 
       {page !== "dashboard" && (
         <footer className="dashboard-footer app-footer">

@@ -8880,27 +8880,15 @@ kbd {
   font-size: var(--text-meta);
 }
 
-/* A toolbar row holds groups, not a run of buttons: search and filter together,
-   then display, then the primary action, then management. The gap inside a group
-   is 8px and between groups 20px, so the grouping is legible without a border or
-   a divider between every pair of controls. */
-.toolbar-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 20px;
-}
-
+/* A toolbar row holds groups, not a run of buttons: search and filter together, then
+   display, then the primary action, then management. The gap inside a group is 8px, so
+   the grouping is legible without a border or a divider between every pair of
+   controls; each page states the gap between its groups itself. */
 .toolbar-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--btn-gap);
-}
-
-.toolbar-row > .toolbar-group + .toolbar-group {
-  padding-left: 20px;
-  border-left: 1px solid var(--border);
 }
 
 .workspace-header-actions {
@@ -8910,86 +8898,12 @@ kbd {
   flex-wrap: wrap;
 }
 
-/* A section inside a surface: a title, a rule, and air. It used to be another white
-   card with a full border, so a page, its sections and its fields all read as the
-   same container at the same depth. */
-.section-block {
-  display: grid;
-  gap: 12px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-}
-
-.section-block:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.section-block > .section-block-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px 16px;
-}
-
-.section-block > .section-block-head h3 {
-  margin: 0;
-  font-size: var(--text-section-title);
-}
-
-.section-block-note {
-  color: var(--muted);
-  font-size: var(--text-meta);
-}
-
-/* Long-form dialogs: a fixed head, a scrolling body, a fixed action row. The body
-   is the only thing that scrolls, so the actions cannot end up below the fold and
-   the last field cannot be hidden behind the buttons. */
-.dialog--form {
-  display: flex;
-  flex-direction: column;
-  max-height: min(86vh, 860px);
-  padding: 0;
-  overflow: hidden;
-}
-
-.dialog--form > .dialog-form-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 18px var(--pad-surface) 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.dialog--form > .dialog-form-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--pad-surface);
-  display: grid;
-  gap: 16px;
-}
-
-.dialog--form > .dialog-form-foot {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 14px var(--pad-surface);
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
-
-/* The scroll cue: the body keeps a little of the next field visible under the action
-   row, so it is legible that there is more to read. */
-.dialog--form > .dialog-form-foot::before {
-  content: "";
-  position: absolute;
-}
+/* A section inside a surface, and the long-form dialog's frame, are stated by the pages
+   that have them: the editor's sections (`.workspace-main .workspace-card`), the world
+   detail's (`.world-detail-section`) and the settings dialogs' (`.settings-body` under a
+   fixed head). The general-purpose versions of those two ideas — `.section-block` and
+   `.dialog--form` — were written here in stage one and never adopted; keeping unused
+   vocabulary in the stylesheet makes the next reader think it means something. */
 
 @media (max-width: 720px) {
   .workspace-header {
@@ -9055,7 +8969,10 @@ kbd {
     "main main"
     "foot foot";
   align-content: normal;
-  gap: 0;
+  /* No row gap: the rows carry their own padding. The column gap is the gutter that
+     keeps a full row of tags from running into the card's own controls. */
+  row-gap: 0;
+  column-gap: 10px;
   aspect-ratio: auto;
   min-height: 152px;
   padding: 12px 14px;
@@ -9664,5 +9581,250 @@ kbd {
     grid-auto-flow: column;
     right: 12px;
     gap: 2px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Visual system, stage three — the bar, the phone layouts, and the last of the
+   theme's flat spots.
+
+   Stage two settled the page structures. What is left is where a page is used on a
+   phone rather than looked at on a desktop, plus the parts of the palette that were
+   still doing two jobs with one value:
+
+   1. A control that floats over the content has to say why it is there. The bar now
+      only moves the page, so it can stay small, appear late and sit inside the safe
+      area — and the page reserves room for it, so nothing ends up underneath it.
+   2. A phone's first screen belongs to the content. Toolbars that were three controls
+      and a count become one search field and one 筛选 entry that opens.
+   3. A disabled field has to look like a field that is not in force, not like a field
+      someone forgot to fill in.
+   --------------------------------------------------------------------------- */
+
+/* --- The floating bar: scroll affordances only -------------------------------- */
+
+.floating-actions {
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(18px + env(safe-area-inset-bottom));
+}
+
+/* A modal owns the screen, whichever dialog opened it — the app's own overlays and the
+   pages' local ones alike. A scroll affordance over a scrim is one more thing to decide
+   about while the only decision is inside the dialog. */
+body:has(.modal-backdrop) .floating-actions {
+  display: none;
+}
+
+/* --- Timeline and world: content first on a phone ----------------------------- */
+
+/* Both 筛选 entries are phone controls: on a desktop the row is simply open. */
+.timeline-filter-toggle,
+.world-filter-toggle {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.timeline-filter-row,
+.world-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* --- Relationship graph: what the strokes mean -------------------------------- */
+
+/* The bar's panels anchor left by default, which is right for a trigger at the left end
+   of the row. The output trigger is at the right end, so its panel opens leftwards
+   instead of running past the edge of the viewport. */
+.graph-export-wrap .graph-panel {
+  left: auto;
+  right: 0;
+}
+
+.graph-legend {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-legend-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-legend-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-soft);
+  font-size: 13px;
+}
+
+/* Drawn the way the canvas draws them: solid for the pair kinds, dashed for the two
+   the drawing also colours as a warning. */
+.graph-legend-line {
+  flex: 0 0 28px;
+  height: 0;
+  border-top: 2px solid var(--border-strong);
+}
+
+.graph-legend-line.legend-primary {
+  border-top-color: var(--primary);
+}
+
+.graph-legend-line.legend-danger {
+  border-top-color: var(--danger);
+  border-top-style: dashed;
+}
+
+.graph-legend-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* --- Fields and disabled fields ----------------------------------------------- */
+
+/* In the dark theme a field sat at exactly the card's own value, so a form read as
+   one surface. The field is a step above the card now, in both directions. */
+:root[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select {
+  background: #232833;
+}
+
+/* Out of force rather than empty: dashed, transparent, and not something to type in. */
+input:disabled,
+textarea:disabled,
+select:disabled {
+  border-style: dashed;
+  background: transparent;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Related groups are content-sized: three groups of different lengths used to be
+   stretched to one height, which is where the empty half-columns came from. */
+.preview-related-grid {
+  align-items: start;
+}
+
+/* --- Phone ------------------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  /* Room for the bar at the end of the page, so the last control is never behind it. */
+  .app-shell {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  .floating-actions {
+    right: calc(12px + env(safe-area-inset-right));
+    bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  /* One search field, then one 筛选 that opens, then the count. */
+  .timeline-toolbar,
+  .world-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .timeline-search,
+  .world-search {
+    grid-column: 1 / -1;
+  }
+
+  .timeline-filter-toggle,
+  .world-filter-toggle {
+    display: inline-flex;
+    grid-column: 1;
+    justify-self: start;
+    min-height: var(--control-height-compact);
+  }
+
+  .timeline-count,
+  .world-count {
+    grid-column: 2;
+    justify-self: end;
+  }
+
+  .timeline-filter-row,
+  .world-filter-row {
+    display: none;
+    grid-column: 1 / -1;
+  }
+
+  .timeline-filter-row.open,
+  .world-filter-row.open {
+    display: flex;
+  }
+
+  /* The years are a rail the thumb scrolls, not four rows of chips. */
+  .timeline-year-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .timeline-year-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Categories stay — they are how a world is navigated — but as one scrolling row. */
+  .world-category-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .world-category-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* The tree names the entries. The summary, the counts and the parent path were two
+     more lines per row on a screen with room for one. */
+  .world-row-summary,
+  .world-row-stats {
+    display: none;
+  }
+
+  .world-row-name {
+    font-size: 0.95rem;
+    font-weight: 750;
+  }
+
+  /* The detail pane says how to leave it, and keeps saying it while the entry's text
+     scrolls: the way back to the list is the one control a two-screen mode cannot
+     afford to scroll away. */
+  .world-detail-back {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    justify-content: flex-start;
+    background: var(--surface);
+  }
+
+  /* The canvas keeps its own tools rather than the page's. */
+  .graph-canvas-tools {
+    margin-top: 10px;
+  }
+
+  .graph-canvas-bar {
+    gap: 8px;
   }
 }

@@ -108,6 +108,11 @@ export function WorldManager({
   );
 
   const isFiltered = isWorldFilterActive(filter);
+  // What the 筛选 entry counts: the two structural filters. The keyword has its own
+  // visible field and the category has its own row.
+  const structuralFilterCount =
+    (filter.parent === "any" ? 0 : 1) + (filter.characters === "any" ? 0 : 1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const counts = useMemo(() => worldCategoryCounts(entries), [entries]);
   const rows = useMemo(
     () => worldTreeRows(entries, { filter, nameOf, collapsed, isFilterActive: isFiltered }),
@@ -308,41 +313,56 @@ export function WorldManager({
             </button>
           )}
         </label>
-        <label className="world-filter">
-          <span className="world-filter-label">层级</span>
-          <select
-            aria-label="按层级筛选"
-            onChange={(changeEvent) => setFilter({ ...filter, parent: changeEvent.target.value as WorldFilter["parent"] })}
-            value={filter.parent}
-          >
-            {PARENT_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="world-filter">
-          <span className="world-filter-label">角色</span>
-          <select
-            aria-label="按关联角色筛选"
-            onChange={(changeEvent) =>
-              setFilter({ ...filter, characters: changeEvent.target.value as WorldFilter["characters"] })
-            }
-            value={filter.characters}
-          >
-            {CHARACTER_FILTERS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {isFiltered && (
-          <button className="ghost-button" onClick={() => setFilter(emptyWorldFilter)} type="button">
-            清空筛选
-          </button>
-        )}
+        {/* The two structural filters live behind one entry on a phone: search plus the
+            category row is what the first screen is for, and three controls plus the
+            result count were pushing the tree off it. On desktop the row is always open
+            and this control is not drawn. */}
+        <button
+          aria-expanded={filtersOpen}
+          className="world-filter-toggle"
+          onClick={() => setFiltersOpen((current) => !current)}
+          type="button"
+        >
+          <Icon name="filter" size={15} />
+          筛选{structuralFilterCount > 0 ? `（${structuralFilterCount}）` : ""}
+        </button>
+        <div className={filtersOpen ? "world-filter-row open" : "world-filter-row"}>
+          <label className="world-filter">
+            <span className="world-filter-label">层级</span>
+            <select
+              aria-label="按层级筛选"
+              onChange={(changeEvent) => setFilter({ ...filter, parent: changeEvent.target.value as WorldFilter["parent"] })}
+              value={filter.parent}
+            >
+              {PARENT_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="world-filter">
+            <span className="world-filter-label">角色</span>
+            <select
+              aria-label="按关联角色筛选"
+              onChange={(changeEvent) =>
+                setFilter({ ...filter, characters: changeEvent.target.value as WorldFilter["characters"] })
+              }
+              value={filter.characters}
+            >
+              {CHARACTER_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {isFiltered && (
+            <button className="ghost-button" onClick={() => setFilter(emptyWorldFilter)} type="button">
+              清空筛选
+            </button>
+          )}
+        </div>
         <span aria-live="polite" className="world-count">
           {isFiltered ? `匹配 ${visibleCount} / ${entries.length} 个条目` : `共 ${entries.length} 个条目`}
         </span>
