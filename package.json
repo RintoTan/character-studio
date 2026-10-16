@@ -1,7 +1,7 @@
 {
   "name": "character-studio",
   "private": true,
-  "version": "2.33.0",
+  "version": "2.34.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,8 +10,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "verify:deploy": "node scripts/verify-deploy.mjs",
-  "verify:version": "node scripts/verify-version.mjs",
-  "verify:browser": "node scripts/verify-browser.mjs",
+    "verify:version": "node scripts/verify-version.mjs",
+    "verify:browser": "node scripts/verify-browser.mjs",
     "test": "vitest run"
   },
   "dependencies": {
