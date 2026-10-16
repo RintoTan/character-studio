@@ -10,6 +10,7 @@ import {
 } from "../storage/worldStorage";
 import type { Character } from "../types/character";
 import { CharacterPicker } from "../components/CharacterPicker";
+import { RelatedCharacters } from "../components/RelatedCharacters";
 import { Icon } from "../components/Icon";
 import {
   WORLD_CATEGORIES,
@@ -71,8 +72,8 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
     setEntries(pruneWorldCharacters(characters.map((character) => character.id)));
   }, [characters]);
 
-  const nameOf = useMemo(
-    () => new Map(characters.map((character) => [character.id, character.name || "未命名角色"])),
+  const characterById = useMemo(
+    () => new Map(characters.map((character) => [character.id, character])),
     [characters],
   );
 
@@ -202,17 +203,13 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
               ))}
             </ul>
           )}
-          {entry.characterIds.length > 0 && (
-            <ul className="timeline-characters">
-              {entry.characterIds.map((id) => (
-                <li key={id}>
-                  <button className="ghost-button" onClick={() => onOpenCharacter(id)} type="button">
-                    {nameOf.get(id) ?? "未知角色"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <RelatedCharacters
+            characters={entry.characterIds.flatMap((id) => {
+              const character = characterById.get(id);
+              return character ? [character] : [];
+            })}
+            onOpenCharacter={onOpenCharacter}
+          />
         </article>
         {children.length > 0 && !isCollapsed && depth < MAX_DEPTH && (
           <ul className="world-children">

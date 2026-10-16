@@ -566,6 +566,108 @@ const READ_PICKER_OVERLAP = `
   })()
 `;
 
+
+// A workspace where one event and one entry each carry forty characters - the case
+// that used to fill a card with chips.
+const SEED_CROWDED = `
+  (() => {
+    const now = new Date().toISOString();
+    const characters = Array.from({ length: 40 }, (_, index) => ({
+      id: "crowd-" + (index + 1),
+      name: "角色" + String(index + 1).padStart(2, "0"),
+      occupation: ["调查员", "魔法师", "工匠"][index % 3],
+      worldview: "北境",
+      avatarEmoji: "🙂",
+      createdAt: now,
+      updatedAt: now,
+    }));
+    const ids = characters.map((character) => character.id);
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([{
+      id: "tl-crowd",
+      title: "四十人会盟",
+      date: "2026-03-03",
+      era: "",
+      kind: "origin",
+      characterIds: ids,
+      description: "一次性到场的四十人。",
+      location: "北境",
+      createdAt: now,
+      updatedAt: now,
+    }]));
+    localStorage.setItem("character-studio.world", JSON.stringify([{
+      id: "w-crowd",
+      name: "雾海纪",
+      category: "location",
+      parentId: "",
+      summary: "关联角色很多的地点。",
+      details: "",
+      tags: [],
+      characterIds: ids,
+      createdAt: now,
+      updatedAt: now,
+    }]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    return true;
+  })()
+`;
+
+// What the event card shows before and after asking for the full list.
+const READ_CROWDED_CARD = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const names = (scope) => [...scope.querySelectorAll(".character-row-name")].map((node) => node.textContent);
+    const chips = [...document.querySelectorAll(".related-characters .related-chip")];
+    const before = chips.map((chip) => chip.querySelector(".character-row-name")?.textContent || chip.textContent.trim());
+
+    chips[chips.length - 1].click();
+    await sleep(350);
+
+    const list = document.querySelector(".related-characters-list");
+    const opened = { rows: list ? list.querySelectorAll(".character-picker-option").length : 0, first: list ? names(list)[0] : "", last: list ? names(list).at(-1) : "" };
+    const header = (document.querySelector(".related-characters-head .character-picker-count") || {}).textContent || "";
+
+    const input = document.querySelector(".character-picker-search input");
+    setValue(input, "角色1");
+    await sleep(250);
+    const filtered = document.querySelectorAll(".related-characters-list .character-picker-option").length;
+    setValue(input, "");
+    await sleep(250);
+    const restored = document.querySelectorAll(".related-characters-list .character-picker-option").length;
+
+    // An eighth row: 角色08. This is the existing detail entry point.
+    document.querySelectorAll(".related-characters-list .character-picker-option")[7].click();
+    await sleep(500);
+
+    return {
+      before,
+      opened,
+      header: header.replace(/\s+/g, " ").trim(),
+      filtered,
+      restored,
+      previewOpen: Boolean(document.querySelector("section.preview-page")),
+      previewText: (document.querySelector("section.preview-page") || document.body).textContent.includes("角色08"),
+    };
+  })()
+`;
+
+// The same display on a world entry, and what it does on a phone.
+const READ_WORLD_CROWDED = `
+  (() => {
+    const card = [...document.querySelectorAll("article")].find((article) => article.querySelector(".related-characters"));
+    const chips = card ? [...card.querySelectorAll(".related-chip")] : [];
+    return {
+      chips: chips.map((chip) => chip.querySelector(".character-row-name")?.textContent || chip.textContent.trim()),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  })()
+`;
+
 // Expand whatever the collapse memory left closed, so all six sections can be read
 // at once. Only heads whose body is missing are clicked, so nothing is collapsed.
 const EXPAND_EDITOR_SECTIONS = `
@@ -988,6 +1090,50 @@ async function main() {
       };
     });
 
+    await check("时间线事件：四十个关联角色折成四个 + 计数，展开可搜索（任务 B）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_CROWDED);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观时间线"));
+      const state = await cdp.value(READ_CROWDED_CARD);
+
+      const folded = state.before.length === 5 && state.before[4] === "+36 位角色";
+      const firstFour = state.before.slice(0, 4).join("/") === "角色01/角色02/角色03/角色04";
+      const expanded = state.opened.rows === 40 && state.opened.first === "角色01" && state.opened.last === "角色40";
+      const searched = state.filtered === 10 && state.restored === 40;
+      const openedDetail = state.previewOpen && state.previewText;
+
+      return {
+        pass: Boolean(folded && firstFour && expanded && searched && openedDetail),
+        detail: `折叠时 ${state.before.join(" / ")}；展开后 ${state.opened.rows} 行（${state.opened.first}…${state.opened.last}）、表头「${state.header}」`
+          + `；搜「角色1」${state.filtered} 行、清空后 ${state.restored} 行`
+          + `；点第 8 行 → 预览页${state.previewOpen ? "已打开" : "未打开"}${state.previewText ? "且显示角色08" : "但未见角色08"}`,
+      };
+    });
+
+    await check("世界观条目：同一套折叠展示，375px 无横向溢出（任务 B）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_CROWDED);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      const desktop = await cdp.value(READ_WORLD_CROWDED);
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      const mobile = await cdp.value(READ_WORLD_CROWDED);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const folded = (state) => state.chips.length === 5 && state.chips[4] === "+36 位角色";
+      const fits = desktop.pageOverflow <= 1 && mobile.pageOverflow <= 1;
+
+      return {
+        pass: Boolean(folded(desktop) && folded(mobile) && fits),
+        detail: `条目卡片：1440px ${desktop.chips.join(" / ")}（溢出 ${desktop.pageOverflow}px）；375px ${mobile.chips.join(" / ")}（溢出 ${mobile.pageOverflow}px）`,
+      };
+    });
+
     await check("编辑器：六节共用一套节头、间距与动作行（KI-02）", async () => {
       await cdp.goto(base);
       await cdp.value(SEED);
@@ -1136,6 +1282,24 @@ async function main() {
         await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
         await cdp.value(EXPAND_EDITOR_SECTIONS);
         files.push(await capture("editor-desktop"));
+
+        // The compact related-character display, collapsed and open.
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 760, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED_CROWDED);
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace("世界观时间线"));
+        files.push(await capture("related-collapsed"));
+        await cdp.value(`
+          (async () => {
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const chips = [...document.querySelectorAll(".related-characters .related-chip")];
+            chips[chips.length - 1].click();
+            await sleep(400);
+            return true;
+          })()
+        `);
+        files.push(await capture("related-expanded"));
 
         // The two new pickers at the size they were built for.
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });

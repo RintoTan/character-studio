@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { CharacterPicker } from "../components/CharacterPicker";
+import { RelatedCharacters } from "../components/RelatedCharacters";
 import {
   createTimelineEvent,
   deleteTimelineEvent,
@@ -66,8 +67,8 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
     setEvents(pruneTimelineCharacters(characters.map((character) => character.id)));
   }, [characters]);
 
-  const nameOf = useMemo(
-    () => new Map(characters.map((character) => [character.id, character.name || "未命名角色"])),
+  const characterById = useMemo(
+    () => new Map(characters.map((character) => [character.id, character])),
     [characters],
   );
 
@@ -181,17 +182,13 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
                       <h4>{event.title}</h4>
                       {event.location && <p className="timeline-meta">地点：{event.location}</p>}
                       {event.description && <p className="timeline-description">{event.description}</p>}
-                      {event.characterIds.length > 0 && (
-                        <ul className="timeline-characters">
-                          {event.characterIds.map((id) => (
-                            <li key={id}>
-                              <button className="ghost-button" onClick={() => onOpenCharacter(id)} type="button">
-                                {nameOf.get(id) ?? "未知角色"}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      <RelatedCharacters
+                        characters={event.characterIds.flatMap((id) => {
+                          const character = characterById.get(id);
+                          return character ? [character] : [];
+                        })}
+                        onOpenCharacter={onOpenCharacter}
+                      />
                     </article>
                   </li>
                 ))}
