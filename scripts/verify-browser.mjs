@@ -1220,6 +1220,116 @@ const WORLD_HIERARCHY = `
   })()
 `;
 
+// Links that cross all three workspaces: one character connected to four others (one of
+// them an uneven 师承 pointing the other way), four events, a world entry three levels
+// down, a same-name pair that must not be confused, and a character with no links.
+const SEED_LINKS = `
+  (() => {
+    const now = (day) => new Date(Date.UTC(2026, 0, 1) - day * 86400000).toISOString();
+    const character = (id, name, day, extra = {}) => ({
+      id, name, occupation: "调查员", worldview: "北境", avatarEmoji: "🙂",
+      createdAt: now(day), updatedAt: now(day), ...extra,
+    });
+    const characters = [
+      character("c-rich", "沈青梧", 0),
+      character("c-peer1", "陆停云", 1, { avatarEmoji: "🌙" }),
+      character("c-peer2", "顾行之", 2, { avatarEmoji: "🜂" }),
+      character("c-peer3", "白露", 3, { avatarEmoji: "🦊" }),
+      character("c-peer4", "青芜", 4, { avatarEmoji: "🐉" }),
+      character("same-a", "同名角色", 5),
+      character("same-b", "同名角色", 6),
+      character("c-lonely", "孤立角色", 7),
+    ];
+    const edge = (id, fromId, toId, kind, note = "") => ({
+      id, fromId, toId, kind, note, createdAt: now(8), updatedAt: now(8),
+    });
+    const relationships = [
+      edge("rel-1", "c-rich", "c-peer1", "friend", "同门，在第七场雪之后重逢"),
+      edge("rel-2", "c-peer2", "c-rich", "mentor"),
+      edge("rel-3", "c-rich", "c-peer3", "family"),
+      edge("rel-4", "c-rich", "c-peer4", "rival"),
+      edge("rel-5", "c-peer1", "c-peer3", "friend"),
+    ];
+    const event = (id, title, date, kind, characterIds) => ({
+      id, title, date, kind, description: title + "的经过", location: "北境",
+      era: "", characterIds, createdAt: now(9), updatedAt: now(9),
+    });
+    const events = [
+      event("ev-1", "灯塔的第一夜", "2024-03-01", "origin", ["c-rich"]),
+      event("ev-2", "红藻记录", "2024-11-19", "turning", ["c-rich", "c-peer1"]),
+      event("ev-3", "四十人会盟", "2025-06-14", "bond", ["c-rich", "c-peer2", "c-peer3"]),
+      event("ev-4", "旧灯塔熄灯", "2026-02-27", "loss", ["c-rich"]),
+      event("ev-5", "别人的事", "2025-01-05", "other", ["c-peer4"]),
+      event("ev-6", "同名角色的事件", "2025-02-06", "turning", ["same-a"]),
+    ];
+    const entry = (id, name, category, extra = {}) => ({
+      id, name, category, tags: [], characterIds: [],
+      createdAt: now(10), updatedAt: now(10), ...extra,
+    });
+    const world = [
+      entry("w-a", "雾海纪", "location", { summary: "年代与海域" }),
+      entry("w-b", "北境城", "location", { parentId: "w-a", summary: "最北的聚居地" }),
+      entry("w-c", "白塔区", "location", { parentId: "w-b", summary: "旧灯塔所在的一区", characterIds: ["c-rich"] }),
+      entry("w-d", "星轨会", "faction", { summary: "以观测为名的组织", characterIds: ["c-rich", "c-peer2"] }),
+      entry("w-e", "无关条目", "concept"),
+    ];
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.relationships", JSON.stringify(relationships));
+    localStorage.setItem("character-studio.timeline", JSON.stringify(events));
+    localStorage.setItem("character-studio.world", JSON.stringify(world));
+    localStorage.setItem("character-studio.about-seen", "true");
+    localStorage.removeItem("character-studio.graph-prefs");
+    return true;
+  })()
+`;
+
+// Opens the preview of a named character through its own card menu.
+const OPEN_PREVIEW = (name, index = 0) => `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const card = [...document.querySelectorAll(".character-card")].filter(
+      (node) => node.textContent.includes(${JSON.stringify(name)}),
+    )[${index}];
+    if (!card) throw new Error("找不到卡片：" + ${JSON.stringify(name)});
+    card.querySelector('button[aria-label="更多"]').click();
+    await sleep(300);
+    const preview = [...document.querySelectorAll(".card-menu button")].find(
+      (button) => button.textContent.trim() === "预览",
+    );
+    if (!preview) throw new Error("菜单里没有预览");
+    preview.click();
+    await sleep(900);
+    return true;
+  })()
+`;
+
+const READ_RELATED = `
+  (() => {
+    const groups = [...document.querySelectorAll(".related-group")].map((group) => ({
+      title: group.querySelector("h4")?.textContent.replace(/\\s+/g, " ").trim() || "",
+      count: group.querySelector(".related-count")?.textContent.trim() || "",
+      rows: group.querySelectorAll(".related-row").length,
+      empty: group.querySelector(".related-empty")?.textContent.trim() || "",
+      more: group.querySelector(".related-more")?.textContent.trim() || "",
+      peers: [...group.querySelectorAll(".related-peer-name")].map((node) => node.textContent.trim()),
+      avatars: group.querySelectorAll(".related-peer-avatar").length,
+      kinds: [...group.querySelectorAll(".related-kind")].map((node) => node.textContent.trim()),
+      notes: [...group.querySelectorAll(".related-note")].map((node) => node.textContent.trim()),
+      titles: [...group.querySelectorAll(".related-item-title")].map((node) => node.textContent.trim()),
+      paths: [...group.querySelectorAll(".related-item-path")].map((node) => node.textContent.trim()),
+      chrome: [...group.querySelectorAll(".related-group-action")].map((node) => node.textContent.trim()),
+    }));
+    return {
+      present: Boolean(document.querySelector(".preview-related")),
+      head: (document.querySelector(".preview-related-head")?.textContent || "").replace(/\s+/g, " ").trim(),
+      groups,
+      insideExportRoot: Boolean(document.querySelector('[data-pdf-export-root] .preview-related')),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      characterName: (document.querySelector(".preview-card-title, .preview-identity")?.textContent || "").trim().slice(0, 30),
+    };
+  })()
+`;
+
 const READ_GRAPH_CANVAS = `
   (() => {
     const nodes = [...document.querySelectorAll(".relationship-node")];
@@ -2411,7 +2521,387 @@ async function main() {
       };
     });
 
-    await check("世界观：分类导航的计数、切换与选中状态（任务 A）", async () => {
+await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await check("关联信息：三类关联、计数、方向与空状态（任务 A/B/C/D）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_LINKS);
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("沈青梧"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const state = await cdp.value(READ_RELATED);
+
+      // Expanding is a request for the rest, and collapsing puts the short list back.
+      const expanded = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const group = document.querySelectorAll(".related-group")[0];
+        group.querySelector(".related-more").click();
+        await sleep(300);
+        const open = { rows: group.querySelectorAll(".related-row").length, more: group.querySelector(".related-more").textContent.trim(), peers: [...group.querySelectorAll(".related-peer-name")].map((node) => node.textContent.trim()) };
+        group.querySelector(".related-more").click();
+        await sleep(300);
+        return { open, collapsed: { rows: group.querySelectorAll(".related-row").length, more: group.querySelector(".related-more").textContent.trim() } };
+      })()`);
+
+      // A character with nothing attached says so instead of showing empty frames.
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("孤立角色"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const lonely = await cdp.value(READ_RELATED);
+
+      // Two characters share a name. Each preview must show that character's own
+      // records: match on the id, never on the name.
+      // The same section on a phone and in dark: one column, inside the width, and
+      // painted with the dark surface rather than the light one.
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("沈青梧"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const narrowRelated = await cdp.value(`(() => {
+        const section = document.querySelector(".preview-related");
+        const groups = [...document.querySelectorAll(".related-group")];
+        const rects = groups.map((group) => group.getBoundingClientRect());
+        const row = document.querySelector(".related-row").getBoundingClientRect();
+        return {
+          columns: new Set(rects.map((rect) => Math.round(rect.top))).size,
+          inside: rects.every((rect) => rect.left >= -1 && rect.right <= window.innerWidth + 1),
+          rowInside: row.left >= -1 && row.right <= window.innerWidth + 1,
+          sectionInside: section.getBoundingClientRect().right <= window.innerWidth + 1,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          page: ${PAGE_IDS},
+        };
+      })()`);
+      const darkTheme = await cdp.value(SET_THEME_BY_MENU("深色"));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const darkRelated = await cdp.value(`(() => {
+        const group = document.querySelector(".related-group");
+        return { theme: document.documentElement.dataset.theme || "", background: getComputedStyle(group).backgroundColor, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+      await cdp.goto(base);
+
+      const sameNamePair = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const cardsOf = () => [...document.querySelectorAll(".character-card")].filter(
+          (card) => card.textContent.includes("同名角色"),
+        );
+        try {
+        const read = () => {
+          const group = document.querySelectorAll(".related-group")[1];
+          return {
+            head: (document.querySelector(".preview-related-head")?.textContent || "").replace(/\s+/g, " ").trim(),
+            events: [...group.querySelectorAll(".related-item-title")].map((node) => node.textContent.trim()),
+            rows: group.querySelectorAll(".related-row").length,
+          };
+        };
+        const open = async (index) => {
+          // Re-queried every time: going Back rebuilds the dashboard's DOM, and a node
+          // captured before that is detached — clicking it navigates nowhere.
+          cardsOf()[index].querySelector('button[aria-label="更多"]').click();
+          await sleep(300);
+          [...document.querySelectorAll(".card-menu button")].find((button) => button.textContent.trim() === "预览").click();
+          await sleep(900);
+          return read();
+        };
+        // Counted before opening: the preview has no cards to count.
+        const total = cardsOf().length;
+        const first = await open(0);
+        return { cards: total, first };
+        } catch (error) {
+          return { error: String(error && error.message || error), cards: cardsOf().length, page: ${PAGE_IDS}, names: [...document.querySelectorAll(".character-card .character-row-name, .character-card h3")].map((node) => node.textContent.trim()).slice(0, 10) };
+        }
+      })()`);
+
+      // The other same-name character, opened from a fresh dashboard: it must show its
+      // own (empty) records rather than its namesake's event.
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("同名角色", 1));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const sameNameSecond = await cdp.value(`(() => {
+        const group = document.querySelectorAll(".related-group")[1];
+        return {
+          head: (document.querySelector(".preview-related-head")?.textContent || "").replace(/\s+/g, " ").trim(),
+          events: [...group.querySelectorAll(".related-item-title")].map((node) => node.textContent.trim()),
+        };
+      })()`);
+
+      const relations = state.groups[0] || { rows: 0 };
+      const events = state.groups[1] || { rows: 0 };
+      const entries = state.groups[2] || { rows: 0 };
+      const conditions = {
+        present: state.present,
+        outsideExportRoot: !state.insideExportRoot,
+        headCounts:
+          state.head.includes("4 条关系") &&
+          state.head.includes("4 个事件") &&
+          state.head.includes("2 个条目"),
+        relationRows: relations.count === "4" && relations.rows === 3 && relations.avatars === 3,
+        relationPeers: relations.peers.includes("陆停云") && relations.peers.includes("顾行之"),
+        relationKinds:
+          relations.kinds.includes("亲属") && relations.kinds.includes("师承 · 对方为师承方"),
+        relationNote: relations.notes.some((note) => note.includes("同门")),
+        graphEntry: relations.chrome.some((label) => label.includes("在关系网中查看")),
+        relationMore: relations.more === "查看全部 4 条关系",
+        eventRows: events.count === "4" && events.rows === 3 && events.more === "查看全部 4 个事件",
+        eventFields: events.titles.includes("灯塔的第一夜") && events.kinds.includes("起源"),
+        entryRows:
+          entries.count === "2" &&
+          entries.rows === 2 &&
+          entries.more === "" &&
+          entries.titles.includes("白塔区") &&
+          entries.paths.includes("雾海纪 › 北境城"),
+        expanded:
+          expanded.open.rows === 4 &&
+          expanded.open.more === "收起" &&
+          expanded.open.peers.includes("青芜") &&
+          expanded.collapsed.rows === 3 &&
+          expanded.collapsed.more === "查看全部 4 条关系",
+        lonely:
+          lonely.head.includes("0 条关系") &&
+          lonely.groups.every((group) => group.empty !== "" && group.rows === 0) &&
+          lonely.groups[0].empty.includes("还没有与其他角色的关系"),
+        sameName:
+          !sameNamePair.error &&
+          sameNamePair.cards === 2 &&
+          sameNamePair.first.events.join("/") === "同名角色的事件" &&
+          sameNameSecond.events.length === 0 &&
+          sameNameSecond.head.includes("0 个事件"),
+        noOverflow: state.pageOverflow <= 1,
+        narrow:
+          narrowRelated.page === "preview" &&
+          narrowRelated.columns === 3 &&
+          narrowRelated.inside &&
+          narrowRelated.rowInside &&
+          narrowRelated.sectionInside &&
+          narrowRelated.overflow <= 1,
+        dark:
+          darkTheme === "dark" &&
+          darkRelated.theme === "dark" &&
+          darkRelated.background !== "rgb(255, 255, 255)" &&
+          darkRelated.pageOverflow <= 1,
+      };
+      const failing = Object.entries(conditions).filter(([, ok]) => !ok).map(([name]) => name);
+      const pass = failing.length === 0;
+      const legacyPass =
+        state.present &&
+        // the reading material sits outside what an export captures
+        !state.insideExportRoot &&
+        state.head.includes("4 条关系") &&
+        state.head.includes("4 个事件") &&
+        state.head.includes("2 个条目") &&
+        relations.count === "4" &&
+        relations.rows === 3 &&
+        relations.more === "查看全部 4 条关系" &&
+        relations.avatars === 3 &&
+        relations.peers.includes("陆停云") &&
+        relations.peers.includes("顾行之") &&
+        relations.kinds.includes("亲属") &&
+        relations.kinds.includes("师承 · 对方为师承方") &&
+        relations.kinds.includes("对手") &&
+        relations.notes.some((note) => note.includes("同门")) &&
+        relations.chrome.some((label) => label.includes("在关系网中查看")) &&
+        events.count === "4" &&
+        events.rows === 3 &&
+        events.more === "查看全部 4 个事件" &&
+        events.titles.includes("灯塔的第一夜") &&
+        events.kinds.includes("起源") &&
+        entries.count === "2" &&
+        entries.rows === 2 &&
+        entries.more === "" &&
+        entries.titles.includes("白塔区") &&
+        entries.paths.includes("雾海纪 › 北境城") &&
+        expanded.open.rows === 4 &&
+        expanded.open.more === "收起" &&
+        expanded.open.peers.includes("青芜") &&
+        expanded.collapsed.rows === 3 &&
+        expanded.collapsed.more === "查看全部 4 条关系" &&
+        lonely.head.includes("0 条关系") &&
+        lonely.groups.every((group) => group.empty !== "" && group.rows === 0) &&
+        lonely.groups[0].empty.includes("还没有与其他角色的关系") &&
+        // Neither same-name character sees the other's event, and one of them has none.
+        !sameNamePair.error &&
+        sameNamePair.cards === 2 &&
+        sameNamePair.first.events.join("/") === "同名角色的事件" &&
+        sameNameSecond.events.length === 0 &&
+        sameNameSecond.head.includes("0 个事件") &&
+        state.pageOverflow <= 1;
+
+      return {
+        pass,
+        detail: `失败项 ${failing.join("/") || "无"}；沈青梧：${state.head}；关系组 ${relations.count} 条 → 显示 ${relations.rows} 行（${relations.peers.join("/")}，头像 ${relations.avatars}）方向 ${relations.kinds.join("/")} 备注「${relations.notes.join("/")}」入口「${relations.chrome.join("/")}」；展开后 ${expanded.open.rows} 行「${expanded.open.more}」→ 收起 ${expanded.collapsed.rows} 行；事件组 ${events.count} 个 → ${events.rows} 行「${events.more}」${events.titles.join("/")}；条目组 ${entries.count} 个 → ${entries.rows} 行 ${entries.titles.join("/")} 路径「${entries.paths.join("/")}」；孤立角色 ${lonely.head}；同名角色（两张卡片）第一张事件「${sameNamePair.first ? sameNamePair.first.events.join("/") : ""}」第二张「${sameNamePair.second ? sameNamePair.second.events.join("/") || "无" : ""}」${sameNamePair.error ? "错误：" + sameNamePair.error + " 卡片：" + (sameNamePair.names || []).join("/") + " 页面：" + sameNamePair.page : sameNameSecond.head}；关联区在导出根之外 ${!state.insideExportRoot}；溢出 ${state.pageOverflow}px；375px 三组各自成行 ${narrowRelated.columns === 3}、在视口内 ${narrowRelated.inside}、行不溢出 ${narrowRelated.rowInside}、页面溢出 ${narrowRelated.overflow}px；深色 data-theme=${darkRelated.theme}（组底色 ${darkRelated.background}）、溢出 ${darkRelated.pageOverflow}px`,
+      };
+    });
+
+    await check("关联信息：跳转关系网并聚焦当前角色（任务 B/E）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_LINKS);
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("沈青梧"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const state = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const before = window.history.length;
+        [...document.querySelectorAll(".related-group-action")][0].click();
+        await sleep(1200);
+        return {
+          page: ${PAGE_IDS},
+          focusChip: (document.querySelector(".graph-focus-chip")?.textContent || "").replace(/\s+/g, " ").trim(),
+          focused: (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "",
+          focusedCount: document.querySelectorAll(".relationship-node.focused").length,
+          activeEdges: document.querySelectorAll(".relationship-edge.active").length,
+          dimmed: document.querySelectorAll(".relationship-node.dimmed").length,
+          nodes: document.querySelectorAll(".relationship-node").length,
+          searchEmpty: (document.querySelector(".graph-search-field input") || {}).value ?? "n/a",
+          historyGrowth: window.history.length - before,
+        };
+      })()`);
+
+      const pass =
+        state.page === "relationships" &&
+        state.focused.trim() === "沈青梧" &&
+        state.focusedCount === 1 &&
+        state.focusChip.includes("沈青梧") &&
+        state.activeEdges === 4 &&
+        // Only the connected characters are drawn, and all five of them are this
+        // character's connections, so there is nothing left to dim.
+        state.nodes === 5 &&
+        state.dimmed === 0 &&
+        state.searchEmpty === "" &&
+        state.historyGrowth <= 1;
+
+      return {
+        pass,
+        detail: `进入 ${state.page}；聚焦节点「${state.focused.trim()}」（${state.focusedCount} 个）、聚焦标「${state.focusChip}」、高亮关系线 ${state.activeEdges} 条、变暗 ${state.dimmed} 个 / 画布节点 ${state.nodes}；搜索框已清空「${state.searchEmpty}」；history 增长 ${state.historyGrowth}`,
+      };
+    });
+
+    await check("关联信息：跳转时间线事件并定位（任务 C/E）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_LINKS);
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("沈青梧"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const direct = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const row = document.querySelectorAll(".related-group")[1].querySelector(".related-item");
+        row.click();
+        await sleep(1600);
+        const card = document.querySelector('[data-event-id="ev-1"]');
+        const rect = card ? card.getBoundingClientRect() : null;
+        return {
+          page: ${PAGE_IDS},
+          title: (card?.querySelector(".timeline-card-title")?.textContent || "").trim(),
+          highlighted: Boolean(card?.classList.contains("highlighted")),
+          inViewport: Boolean(rect && rect.top < window.innerHeight && rect.bottom > 0),
+          filter: (document.querySelector('[aria-label="按年份筛选"]') || {}).value ?? "",
+          items: document.querySelectorAll(".timeline-item").length,
+        };
+      })()`);
+
+      // And when a filter would have hidden it: the jump clears what stands in the way.
+      const filtered = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const select = document.querySelector('[aria-label="按年份筛选"]');
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+        setter.call(select, "2026");
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        await sleep(500);
+        const before = { items: document.querySelectorAll(".timeline-item").length, hasTarget: Boolean(document.querySelector('[data-event-id="ev-1"]')) };
+        window.history.back();
+        await sleep(900);
+        const onPreview = document.querySelectorAll(".related-group").length;
+        document.querySelectorAll(".related-group")[1].querySelector(".related-item").click();
+        await sleep(1600);
+        const card = document.querySelector('[data-event-id="ev-1"]');
+        const rect = card ? card.getBoundingClientRect() : null;
+        // A fresh query: the select captured before the round trip is a detached node.
+        const currentSelect = document.querySelector('[aria-label="按年份筛选"]');
+        return {
+          before,
+          onPreview,
+          filter: currentSelect ? currentSelect.value : "(missing)",
+          hasTarget: Boolean(card),
+          inViewport: Boolean(rect && rect.top < window.innerHeight && rect.bottom > 0),
+          items: document.querySelectorAll(".timeline-item").length,
+        };
+      })()`);
+
+      const pass =
+        direct.page === "timeline" &&
+        direct.title === "灯塔的第一夜" &&
+        direct.highlighted &&
+        direct.inViewport &&
+        direct.filter === "全部年份" &&
+        filtered.before.items === 1 &&
+        !filtered.before.hasTarget &&
+        filtered.onPreview === 3 &&
+        filtered.hasTarget &&
+        filtered.inViewport &&
+        filtered.filter === "全部年份" &&
+        filtered.items === 6;
+
+      return {
+        pass,
+        detail: `直接跳转：${direct.page}、定位「${direct.title}」在高亮 ${direct.highlighted} 且可见 ${direct.inViewport}、筛选 ${direct.filter}、列表 ${direct.items} 条；先筛到 2026（${filtered.before.items} 条、目标不在列表 ${!filtered.before.hasTarget}）→ 返回预览（关联组 ${filtered.onPreview}）→ 再跳转 → 目标可见 ${filtered.hasTarget}/${filtered.inViewport}、筛选被清空为 ${filtered.filter}、列表回到 ${filtered.items} 条`,
+      };
+    });
+
+    await check("关联信息：跳转世界观深层条目并定位，返回与前进正常（任务 D/E）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_LINKS);
+      await cdp.goto(base);
+      await cdp.value(OPEN_PREVIEW("沈青梧"));
+      await cdp.waitFor(`!!document.querySelector(".preview-related")`, 8000);
+      const state = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const entriesGroup = document.querySelectorAll(".related-group")[2];
+        entriesGroup.querySelectorAll(".related-item")[0].click();
+        await sleep(1600);
+        const row = document.querySelector('[data-entry-id="w-c"]');
+        const rect = row ? row.getBoundingClientRect() : null;
+        const read = () => ({
+          page: ${PAGE_IDS},
+          selected: (document.querySelector(".world-row.selected .world-row-name") || {}).textContent || "",
+          detailName: (document.querySelector(".world-detail h3") || {}).textContent || "",
+          path: (document.querySelector(".world-detail-path") || {}).textContent || "",
+          ancestorsDrawn: ["雾海纪", "北境城"].every((name) => [...document.querySelectorAll(".world-row-name")].some((node) => node.textContent.trim() === name)),
+          inViewport: Boolean(rect && rect.top < window.innerHeight && rect.bottom > 0),
+          rows: document.querySelectorAll(".world-row").length,
+        });
+        const jumped = read();
+        window.history.back();
+        await sleep(900);
+        const back = { page: ${PAGE_IDS}, relatedGroups: document.querySelectorAll(".related-group").length, character: document.body.textContent.includes("沈青梧") };
+        window.history.forward();
+        await sleep(1200);
+        const forward = { page: ${PAGE_IDS} };
+        window.history.back();
+        await sleep(900);
+        const backAgain = { page: ${PAGE_IDS} };
+        return { jumped, back, forward, backAgain };
+      })()`);
+
+      const pass =
+        state.jumped.page === "world" &&
+        state.jumped.selected === "白塔区" &&
+        state.jumped.detailName === "白塔区" &&
+        state.jumped.path.includes("雾海纪 › 北境城 › 白塔区") &&
+        state.jumped.ancestorsDrawn &&
+        state.jumped.inViewport &&
+        state.jumped.rows === 5 &&
+        state.back.page === "preview" &&
+        state.back.relatedGroups === 3 &&
+        state.back.character === true &&
+        // Back and Forward land on the right screen every time, with no extra entries.
+        state.forward.page === "world" &&
+        state.backAgain.page === "preview";
+
+      return {
+        pass,
+        detail: `跳转：${state.jumped.page}、选中「${state.jumped.selected}」详情「${state.jumped.detailName}」路径「${state.jumped.path}」祖先已展开 ${state.jumped.ancestorsDrawn}（${state.jumped.rows} 行）在视口内 ${state.jumped.inViewport}；Back → ${state.back.page}（关联组 ${state.back.relatedGroups}、显示当前角色 ${state.back.character}）；Forward → ${state.forward.page}；再 Back → ${state.backAgain.page}`,
+      };
+    });
+
+        await check("世界观：分类导航的计数、切换与选中状态（任务 A）", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_WORLD);

@@ -47,6 +47,9 @@ type RelationshipGraphProps = {
   characters: Character[];
   onBack: () => void;
   onOpenCharacter: (characterId: string) => void;
+  /** Asked for by another screen — the preview's 在关系网中查看 — and consumed once. */
+  focusCharacterId?: string | null;
+  onFocusHandled?: () => void;
 };
 
 const VIEW = 640;
@@ -575,7 +578,13 @@ function useGraphAvatarUrls(characters: Character[]) {
   return urls;
 }
 
-export function RelationshipGraph({ characters, onBack, onOpenCharacter }: RelationshipGraphProps) {
+export function RelationshipGraph({
+  characters,
+  onBack,
+  onOpenCharacter,
+  focusCharacterId = null,
+  onFocusHandled,
+}: RelationshipGraphProps) {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [draft, setDraft] = useState<{ fromId: string; toId: string; kind: RelationshipKind; note: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Relationship | null>(null);
@@ -611,10 +620,15 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
     saveGraphPrefs(prefs);
   }, [prefs]);
 
+  const [relationshipsLoaded, setRelationshipsLoaded] = useState(false);
+
   useEffect(() => {
     // Prune on entry so the graph never draws an edge to a character that was
     // deleted while this screen was closed.
     setRelationships(pruneRelationships(characters.map((character) => character.id)));
+    // Only now is "this character is not on the canvas" a statement about the data
+    // rather than about a store that has not been read yet.
+    setRelationshipsLoaded(true);
   }, [characters]);
 
   const [showAll, setShowAll] = useState(false);
@@ -973,6 +987,22 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
   }, [pendingFocusId, byId, metrics.nameSize, screenScale, labelsFit, canvas.viewBox]);
 
   const focusedCharacter = focusId ? characters.find((character) => character.id === focusId) : undefined;
+
+  // A character arriving from another screen is focused exactly as if the reader had
+  // searched for them, including the notice when they are not on the canvas.
+  useEffect(() => {
+    // The edges are read in an effect above, so an arrival has to wait for them: acting
+    // on an empty store would report every character as having no relationships.
+    if (!focusCharacterId || !relationshipsLoaded) {
+      return;
+    }
+
+    const character = characters.find((entry) => entry.id === focusCharacterId);
+    if (character) {
+      focusCharacter(character);
+    }
+    onFocusHandled?.();
+  }, [focusCharacterId, relationshipsLoaded, characters, onFocusHandled]);
 
   // A focus on somebody the canvas no longer draws is worse than no focus: the chip
   // would name a character that nothing on screen is pointing at, which is what

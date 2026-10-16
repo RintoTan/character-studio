@@ -48,6 +48,9 @@ import {
   type RestoreDeleteResult,
 } from "./storage/deleteRecovery";
 import { readWorkspaceDatasets } from "./storage/workspaceBackup";
+import { loadRelationships } from "./storage/relationshipStorage";
+import { loadTimeline } from "./storage/timelineStorage";
+import { loadWorldEntries } from "./storage/worldStorage";
 import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
 import { importWithRecovery } from "./utils/lazyImport";
 
@@ -183,6 +186,20 @@ function App() {
       ? storedTheme
       : "system";
   });
+  // A one-shot request for another workspace to open on something specific: the
+  // character the graph should focus, the event the timeline should show, the entry the
+  // world manager should open. It is consumed by that screen and cleared, so it never
+  // becomes a second source of truth for what is selected.
+  const [pageTarget, setPageTarget] = useState<
+    { kind: "relationships"; id: string } | { kind: "timeline"; id: string } | { kind: "world"; id: string } | null
+  >(null);
+  // The preview's related lists, read when the preview opens rather than kept in sync
+  // with two workspaces the reader is not looking at.
+  const [previewLinks, setPreviewLinks] = useState<{
+    relationships: ReturnType<typeof loadRelationships>;
+    events: ReturnType<typeof loadTimeline>;
+    entries: ReturnType<typeof loadWorldEntries>;
+  }>({ relationships: [], events: [], entries: [] });
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(
     null,
   );
@@ -600,10 +617,33 @@ function App() {
       return;
     }
 
+    setPreviewLinks({
+      relationships: loadRelationships(),
+      events: loadTimeline(),
+      entries: loadWorldEntries(),
+    });
+  }, [page, selectedCharacter?.id]);
+
+  useEffect(() => {
+    if (page !== "preview") {
+      return;
+    }
+
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     });
   }, [page, selectedCharacter?.id]);
+
+  /** Opens a workspace with something to show, pushing one history entry like any
+   *  other page change so Back returns to where the reader came from. */
+  function openWorkspace(kind: "relationships" | "timeline" | "world", id: string) {
+    setPageTarget({ kind, id });
+    setPage(kind);
+  }
+
+  function handlePageTargetHandled() {
+    setPageTarget(null);
+  }
 
   function goBack() {
     if (window.history.state?.characterStudioPage && window.history.length > 1) {
@@ -1079,14 +1119,32 @@ function App() {
           }}
           onBack={() => setPage("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
+          onOpenEntry={(entryId) => openWorkspace("world", entryId)}
+          onOpenEvent={(eventId) => openWorkspace("timeline", eventId)}
+          onOpenGraph={() => openWorkspace("relationships", selectedCharacter.id)}
+          onOpenRelatedCharacter={(characterId) => {
+            const target = characters.find((entry) => entry.id === characterId);
+            if (target) {
+              setSelectedCharacter(target);
+              setPage("preview");
+            }
+          }}
           onToggleFavorite={() => handleToggleFavorite(selectedCharacter)}
+          related={{
+            characters,
+            relationships: previewLinks.relationships,
+            events: previewLinks.events,
+            entries: previewLinks.entries,
+          }}
         />
       )}
 
       {page === "world" && (
         <WorldManager
           characters={characters}
+          focusEntryId={pageTarget?.kind === "world" ? pageTarget.id : null}
           onBack={() => setPage("dashboard")}
+          onFocusHandled={handlePageTargetHandled}
           onOpenCharacter={(characterId) => {
             const target = characters.find((entry) => entry.id === characterId);
             if (target) {
@@ -1099,7 +1157,9 @@ function App() {
       {page === "timeline" && (
         <Timeline
           characters={characters}
+          focusEventId={pageTarget?.kind === "timeline" ? pageTarget.id : null}
           onBack={() => setPage("dashboard")}
+          onFocusHandled={handlePageTargetHandled}
           onOpenCharacter={(characterId) => {
             const target = characters.find((entry) => entry.id === characterId);
             if (target) {
@@ -1111,6 +1171,8 @@ function App() {
       )}
       {page === "relationships" && (
         <RelationshipGraph
+          focusCharacterId={pageTarget?.kind === "relationships" ? pageTarget.id : null}
+          onFocusHandled={handlePageTargetHandled}
           characters={characters}
           onBack={() => setPage("dashboard")}
           onOpenCharacter={(characterId) => {

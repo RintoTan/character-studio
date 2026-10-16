@@ -36,6 +36,9 @@ type WorldManagerProps = {
   characters: Character[];
   onBack: () => void;
   onOpenCharacter: (characterId: string) => void;
+  /** The entry another screen asked to open, consumed once. */
+  focusEntryId?: string | null;
+  onFocusHandled?: () => void;
 };
 
 type Draft = {
@@ -59,7 +62,13 @@ const emptyDraft = (): Draft => ({
   characterIds: [],
 });
 
-export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManagerProps) {
+export function WorldManager({
+  characters,
+  onBack,
+  onOpenCharacter,
+  focusEntryId = null,
+  onFocusHandled,
+}: WorldManagerProps) {
   const [entries, setEntries] = useState<WorldEntry[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pendingDelete, setPendingDelete] = useState<WorldEntry | null>(null);
@@ -80,9 +89,12 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
     onConfirm: confirmDelete,
   });
 
+  const [entriesLoaded, setEntriesLoaded] = useState(false);
+
   useEffect(() => {
     // A deleted character is removed from the entries it was linked to.
     setEntries(pruneWorldCharacters(characters.map((character) => character.id)));
+    setEntriesLoaded(true);
   }, [characters]);
 
   const characterById = useMemo(
@@ -184,6 +196,52 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
     setPendingDelete(null);
     setSelectedId(null);
   }
+
+  // Arriving from a character's preview with an entry in hand: clear any filter that
+  // would hide it, open the branch it lives in, select it and bring it into view. A
+  // deep entry is reachable because its ancestors are opened rather than assumed.
+  useEffect(() => {
+    if (!focusEntryId || !entriesLoaded) {
+      return;
+    }
+
+    const target = entries.find((entry) => entry.id === focusEntryId);
+    if (!target) {
+      onFocusHandled?.();
+      return;
+    }
+
+    if (!rows.some((row) => row.entry.id === focusEntryId)) {
+      setFilter(emptyWorldFilter);
+      setCollapsed((current) => {
+        const next = new Set(current);
+        for (const ancestor of worldPathOf(entries, focusEntryId)) {
+          next.delete(ancestor.id);
+        }
+        return next;
+      });
+    } else {
+      setCollapsed((current) => {
+        const next = new Set(current);
+        for (const ancestor of worldPathOf(entries, focusEntryId)) {
+          next.delete(ancestor.id);
+        }
+        return next;
+      });
+    }
+
+    setSelectedId(focusEntryId);
+    setPhonePane("detail");
+    onFocusHandled?.();
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-entry-id="${focusEntryId}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusEntryId, entriesLoaded, entries, rows, onFocusHandled]);
 
   function toggleCollapsed(id: string) {
     setCollapsed((current) => {
@@ -321,6 +379,7 @@ export function WorldManager({ characters, onBack, onOpenCharacter }: WorldManag
                 {rows.map((row) => (
                   <li key={row.entry.id}>
                     <div
+                      data-entry-id={row.entry.id}
                       className={
                         "world-row" +
                         (row.entry.id === selectedId ? " selected" : "") +

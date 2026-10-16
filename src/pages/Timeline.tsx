@@ -15,6 +15,7 @@ import {
   TIMELINE_EVENT_KINDS,
   formatTimelineDate,
   timelineEventKindLabel,
+  timelineYear,
   type TimelineEvent,
   type TimelineEventKind,
 } from "../types/timeline";
@@ -34,6 +35,9 @@ type TimelineProps = {
   characters: Character[];
   onBack: () => void;
   onOpenCharacter: (characterId: string) => void;
+  /** The event another screen asked to see, consumed once. */
+  focusEventId?: string | null;
+  onFocusHandled?: () => void;
 };
 
 type Draft = {
@@ -62,7 +66,13 @@ const emptyDraft = (): Draft => ({
 // being read is the one just under it rather than the one already scrolled past.
 const YEAR_READ_OFFSET = 150;
 
-export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps) {
+export function Timeline({
+  characters,
+  onBack,
+  onOpenCharacter,
+  focusEventId = null,
+  onFocusHandled,
+}: TimelineProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TimelineEvent | null>(null);
@@ -71,6 +81,8 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
   // what a reader opened to read is not a property of the event.
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [activeYear, setActiveYear] = useState("");
+  // The event another screen asked to see, lit up until it is looked at.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
   const yearRefs = useRef(new Map<string, HTMLLIElement>());
   // Both dialogs take the keyboard: Escape cancels, Enter saves, focus moves in.
   const draftDialogRef = useDialogKeyboard({
@@ -84,9 +96,12 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
     onConfirm: confirmDelete,
   });
 
+  const [eventsLoaded, setEventsLoaded] = useState(false);
+
   useEffect(() => {
     // Losing a character does not un-happen an event, but the link to it goes.
     setEvents(pruneTimelineCharacters(characters.map((character) => character.id)));
+    setEventsLoaded(true);
   }, [characters]);
 
   const characterById = useMemo(
@@ -132,6 +147,40 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
     window.addEventListener("scroll", readActiveYear, { passive: true });
     return () => window.removeEventListener("scroll", readActiveYear);
   }, [grouped]);
+
+  // Arriving from a character's preview with an event in hand: any filter that would
+  // hide it is cleared first, because a jump that lands on a screen where the event is
+  // not drawn is worse than no jump at all.
+  useEffect(() => {
+    if (!focusEventId || !eventsLoaded) {
+      return;
+    }
+
+    const target = events.find((event) => event.id === focusEventId);
+    if (!target) {
+      onFocusHandled?.();
+      return;
+    }
+
+    if (!visibleEvents.some((event) => event.id === focusEventId)) {
+      setFilter(emptyTimelineFilter);
+    }
+    setActiveYear(timelineYear(target.date));
+    setHighlightId(focusEventId);
+    onFocusHandled?.();
+
+    const frame = window.requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-event-id="${focusEventId}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    const timer = window.setTimeout(() => setHighlightId(null), 2600);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [focusEventId, eventsLoaded, events, visibleEvents, onFocusHandled]);
 
   function jumpToYear(year: string) {
     setActiveYear(year);
@@ -332,7 +381,14 @@ export function Timeline({ characters, onBack, onOpenCharacter }: TimelineProps)
                   const isExpanded = expandedIds.includes(event.id);
 
                   return (
-                    <li className="timeline-item" data-kind={event.kind} key={event.id}>
+                    <li
+                      className={
+                        highlightId === event.id ? "timeline-item highlighted" : "timeline-item"
+                      }
+                      data-event-id={event.id}
+                      data-kind={event.kind}
+                      key={event.id}
+                    >
                       <article className="timeline-card">
                         {/* Identity first: what kind of moment this was and when. The
                             actions sit on the same row but read as text, so the row is

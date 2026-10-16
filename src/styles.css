@@ -8146,6 +8146,238 @@ kbd {
   background: var(--control-fill-hover);
 }
 
+/* Related information on the character preview: relationships, events and world
+   entries, read from the records that already name the character.
+
+   Outside the export root, so an export still holds the character and nothing else.
+   Three groups that wrap to two, then to one — the columns are content, not a layout
+   the page depends on. */
+.preview-related {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--developer-card-radius);
+  background: var(--surface);
+  padding: var(--pad-surface);
+}
+
+.preview-related-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.preview-related-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.preview-related-head p {
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.preview-related-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.related-group {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  background: var(--surface-subtle);
+  padding: 12px;
+}
+
+.related-group-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.related-group-head h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.related-count {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0 7px;
+}
+
+.related-group-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 2px 0;
+}
+
+.related-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* A short list by default; the whole list on request, and then it scrolls rather than
+   growing the page — a character in forty events must not push the footer away. */
+.related-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.related-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.related-peer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.86rem;
+  padding: 3px 6px 3px 3px;
+}
+
+.related-peer:hover,
+.related-item:hover {
+  background: var(--control-fill-hover);
+}
+
+.related-peer-avatar {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  overflow: hidden;
+  border-radius: 50%;
+  font-size: 13px;
+}
+
+.related-peer-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.related-peer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.related-kind {
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  padding: 0 7px;
+  white-space: nowrap;
+}
+
+.related-note {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.related-item {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.related-item-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.related-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.related-item-path,
+.related-item-summary {
+  color: var(--muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.related-item-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.related-more {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.78rem;
+  padding: 0;
+}
+
+/* The event another screen jumped to, lit up long enough to be found. */
+.timeline-item.highlighted .timeline-card {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
 .world-tags {
   list-style: none;
   margin: 0;
@@ -8226,6 +8458,20 @@ kbd {
 
   .workspace-toolbar > .primary-button {
     flex: 1 1 100%;
+  }
+
+  /* Related information on a phone: one column, and a shorter scroll area so the
+     character's own cards stay within reach. */
+  .preview-related {
+    padding: 12px;
+  }
+
+  .preview-related-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .related-list {
+    max-height: 260px;
   }
 
   /* World manager on a phone: the two panes become one at a time. The list is what you

@@ -5,6 +5,10 @@ import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
 import { getContentCopy } from "../config/developerSettings";
+import { CharacterRelatedInfo } from "../components/CharacterRelatedInfo";
+import type { Relationship } from "../types/relationship";
+import type { TimelineEvent } from "../types/timeline";
+import type { WorldEntry } from "../types/world";
 
 /**
  * One screen, two jobs, decided by who opened it.
@@ -35,6 +39,18 @@ type CharacterPreviewProps = {
     includeTimeInfo: boolean;
     footerText?: string;
   };
+  // What this character is connected to. Supplied by the app shell rather than read
+  // here, so the preview never loads a second copy of the workspaces.
+  related?: {
+    characters: Character[];
+    relationships: Relationship[];
+    events: TimelineEvent[];
+    entries: WorldEntry[];
+  };
+  onOpenGraph?: () => void;
+  onOpenEvent?: (eventId: string) => void;
+  onOpenEntry?: (entryId: string) => void;
+  onOpenRelatedCharacter?: (characterId: string) => void;
 };
 
 const basicFields: Array<[keyof Character, string]> = [
@@ -55,6 +71,11 @@ export function CharacterPreview({
   onEdit,
   onToggleFavorite,
   mode = "browse",
+  related,
+  onOpenGraph,
+  onOpenEvent,
+  onOpenEntry,
+  onOpenRelatedCharacter,
   onSave,
   onSaveDraft,
   onDelete,
@@ -512,6 +533,22 @@ export function CharacterPreview({
           </div>
         </div>
       </div>
+
+      {/* Outside the capture root above, so a PDF/JPG/PNG export still holds exactly the
+          character and nothing that was added for browsing. */}
+      {related && (
+        <CharacterRelatedInfo
+          character={character}
+          characters={related.characters}
+          entries={related.entries}
+          events={related.events}
+          onOpenCharacter={onOpenRelatedCharacter ?? (() => {})}
+          onOpenEntry={onOpenEntry ?? (() => {})}
+          onOpenEvent={onOpenEvent ?? (() => {})}
+          onOpenGraph={onOpenGraph ?? (() => {})}
+          relationships={related.relationships}
+        />
+      )}
     </section>
   );
 }

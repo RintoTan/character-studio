@@ -1,5 +1,5 @@
-export const APP_VERSION = "2.32.0";
-export const APP_SPRINT = "43.1";
+export const APP_VERSION = "2.33.0";
+export const APP_SPRINT = "44.1";
 export const APP_BUILD = "2026";
 export const RELEASE_YEAR = "2026";
 export const APP_RELEASE_LABEL = `Version ${APP_VERSION} · Sprint ${APP_SPRINT} · Build ${APP_BUILD}`;
