@@ -2048,6 +2048,18 @@ const READ_DASHBOARD_CARDS = `
       createdWeight: weight(first?.querySelector(".card-time-created")),
       timeTitle: (first?.querySelector(".card-time-button") || {}).title || "",
       cardHeights: [...new Set(cards.slice(0, 8).map((card) => Math.round(card.getBoundingClientRect().height)))],
+      // The same eight cards, grouped by the row they sit in, so "the row agrees with
+      // itself" can be asked separately from "every row is the same height".
+      cardRowHeights: (() => {
+        const rows = new Map();
+        cards.slice(0, 8).forEach((card) => {
+          const rect = card.getBoundingClientRect();
+          const key = Math.round(rect.top);
+          if (!rows.has(key)) rows.set(key, []);
+          rows.get(key).push(Math.round(rect.height));
+        });
+        return [...rows.values()].map((heights) => [...new Set(heights)]);
+      })(),
     };
   })()
 `;
@@ -2406,24 +2418,46 @@ const READ_SETTINGS_DIALOG = `
     const dialog = document.querySelector(".settings-dialog:not(.asset-library-dialog)");
     if (!dialog) return { open: false };
     const texts = (scope) => [...scope.querySelectorAll(".settings-grid h3")].map((node) => node.textContent.trim());
-    const pending = dialog.querySelector(".settings-group-pending");
-    const live = dialog.querySelector(".settings-group:not(.settings-group-pending)");
+    // The unreleased settings are a disclosure now: a named row that is closed by
+    // default, so the dialog leads with what works. Its fields are still in the
+    // document — nothing about the feature changed — but they are not on screen.
+    const pending = dialog.querySelector(".settings-pending");
+    const live = dialog.querySelector(".settings-group:not(.settings-pending)");
     const liveCard = live && live.querySelector(".settings-grid article");
-    const pendingCard = pending && pending.querySelector(".settings-grid article");
     const background = (node) => (node ? getComputedStyle(node).backgroundColor : "");
+    const border = (node) => (node ? parseFloat(getComputedStyle(node).borderTopWidth) : null);
+    const visible = (scope) =>
+      scope
+        ? [...scope.querySelectorAll("input, select, textarea")].filter(
+            (field) => field.getBoundingClientRect().height > 0,
+          ).length
+        : 0;
     return {
       open: true,
       labels: [...dialog.querySelectorAll(".settings-group-label")].map((node) => node.textContent.trim()),
       liveCards: live ? texts(live) : [],
       pendingCards: pending ? texts(pending) : [],
+      pendingSummary: pending ? (pending.querySelector("summary") || {}).textContent || "" : "",
+      pendingOpen: pending ? Boolean(pending.open) : null,
+      pendingVisibleFields: visible(pending),
+      // A closed disclosure is one row tall; the fields are in the document but not
+      // rendered, which is what this height tells apart.
+      pendingHeight: pending ? Math.round(pending.getBoundingClientRect().height) : null,
       englishLeft: /Appearance|About Data|Coming Soon|Connection Test|Follow System/.test(dialog.textContent),
       dialogOverflow: dialog.scrollWidth - dialog.clientWidth,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       dialogWidth: Math.round(dialog.getBoundingClientRect().width),
       viewportWidth: window.innerWidth,
       liveCardBackground: background(liveCard),
-      pendingCardBackground: background(pendingCard),
+      liveCardBorder: border(liveCard),
+      pendingBorder: border(pending),
       dialogBackground: background(dialog),
+      scrollBody: (() => {
+        const body = dialog.querySelector(".settings-body");
+        if (!body) return null;
+        const style = getComputedStyle(body);
+        return { overflowY: style.overflowY, scrolls: body.scrollHeight - body.clientHeight > 1 };
+      })(),
       theme: document.documentElement.dataset.theme || "",
     };
   })()
@@ -2913,6 +2947,25 @@ async function main() {
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.value(OPEN_SETTINGS_DIALOG);
       const state = await cdp.value(READ_SETTINGS_DIALOG);
+      // Collapsed is not the same as removed: opening the disclosure has to bring the
+      // fields and their values back.
+      const opened = await cdp.value(`(() => {
+        const pending = document.querySelector(".settings-dialog .settings-pending");
+        if (!pending) return { open: false, fields: 0, values: 0, before: 0, after: 0 };
+        const summary = pending.querySelector("summary");
+        const before = Math.round(pending.getBoundingClientRect().height);
+        if (summary) summary.click();
+        const fields = [...pending.querySelectorAll("input, select, textarea")].filter(
+          (field) => field.getBoundingClientRect().height > 0,
+        );
+        return {
+          open: pending.open,
+          before,
+          after: Math.round(pending.getBoundingClientRect().height),
+          fields: fields.length,
+          values: fields.filter((field) => String(field.value || "").length > 0).length,
+        };
+      })()`);
 
       const liveOk =
         state.open &&
@@ -2920,16 +2973,36 @@ async function main() {
         state.liveCards.includes("主题外观") &&
         state.liveCards.includes("数据与存储") &&
         !state.englishLeft;
+      // The unreleased block is named, closed on arrival, and contributes nothing to
+      // the visible surface — which is a stronger statement than "kept apart in the
+      // markup", and it still holds the fields and their values for when it opens.
       const pendingOk =
-        state.labels.includes("未发布功能") &&
+        state.pendingSummary.includes("未发布功能") &&
         state.pendingCards.includes("AI 设置") &&
-        !state.liveCards.includes("AI 设置");
-      // Kept apart visually as well, not only in the markup.
-      const layered = state.liveCardBackground !== state.pendingCardBackground;
+        !state.liveCards.includes("AI 设置") &&
+        state.pendingOpen === false &&
+        // One row tall while closed: the fields are in the document but not rendered.
+        state.pendingHeight !== null &&
+        state.pendingHeight <= 72;
+      // Live settings are groups inside one dialog, told apart by rules rather than by
+      // a second border inside the first; the pending block owns its own rule.
+      const layered = state.liveCardBorder === 0 && state.pendingBorder > 0;
+      // One scrolling region, and it is the body: the head with 关闭 stays put.
+      const scrollsInOnePlace = Boolean(state.scrollBody) && state.scrollBody.overflowY === "auto";
 
       return {
-        pass: Boolean(liveOk && pendingOk && layered && state.dialogOverflow <= 1 && state.pageOverflow <= 1),
-        detail: `分组 ${state.labels.join(" / ")}；可用卡片 ${state.liveCards.join(" / ")}；未发布卡片 ${state.pendingCards.join(" / ") || "（开关关闭）"}；英文残留 ${state.englishLeft ? "有" : "无"}；弹窗 ${state.dialogWidth}px（视口 ${state.viewportWidth}px）溢出 ${state.dialogOverflow}px，页面溢出 ${state.pageOverflow}px；可用卡底 ${state.liveCardBackground} vs 未发布卡底 ${state.pendingCardBackground}`,
+        pass: Boolean(
+          liveOk &&
+            pendingOk &&
+            layered &&
+            opened.open &&
+            opened.fields > 0 &&
+            opened.after > opened.before &&
+            scrollsInOnePlace &&
+            state.dialogOverflow <= 1 &&
+            state.pageOverflow <= 1,
+        ),
+        detail: `分组 ${state.labels.join(" / ")}；可用卡片 ${state.liveCards.join(" / ")}；未发布 ${state.pendingSummary.trim() || "（开关关闭）"}（展开 ${state.pendingOpen}、可见字段 ${state.pendingVisibleFields}、卡片 ${state.pendingCards.join("/") || "无"}）；英文残留 ${state.englishLeft ? "有" : "无"}；弹窗 ${state.dialogWidth}px（视口 ${state.viewportWidth}px）溢出 ${state.dialogOverflow}px，页面溢出 ${state.pageOverflow}px；未发布块高 ${state.pendingHeight}px → 展开后 ${opened.after}px、字段 ${opened.fields} 个（有值 ${opened.values}）；可用卡描边 ${state.liveCardBorder}px vs 未发布分隔 ${state.pendingBorder}px；滚动区 ${state.scrollBody ? state.scrollBody.overflowY : "无"}；弹窗底色 ${state.dialogBackground}，可用卡底 ${state.liveCardBackground}`,
       };
     });
 
@@ -3429,6 +3502,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const heightSpread = state.cardHeights.length
         ? Math.max(...state.cardHeights) - Math.min(...state.cardHeights)
         : null;
+      // Cards in one grid row fill that row together; a row is a set of cards sharing
+      // a top edge, and each such set must have exactly one height.
+      const rowsShareHeight = state.cardRowHeights.length > 0 &&
+        state.cardRowHeights.every((row) => row.length === 1);
 
       const conditions = {
         cards: state.count === 36,
@@ -3450,7 +3527,12 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
           Number(state.editedWeight) > Number(state.createdWeight) &&
           state.timeTitle.includes("创建") &&
           state.timeTitle.includes("最后编辑"),
-        sameHeight: heightSpread !== null && heightSpread <= 2,
+        // A card's height comes from its content now, so two rows may differ. What the
+        // card must not do is disagree with its neighbours: within a row every card is
+        // the same height, and across rows the difference stays inside the one line a
+        // longer name or a second tag row takes.
+        sameHeight:
+          rowsShareHeight && heightSpread !== null && heightSpread <= 24,
       };
       const failing = Object.entries(conditions)
         .filter(([, ok]) => !ok)
@@ -3461,7 +3543,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         detail: `${state.count} 张卡片；名称 ${state.nameSize}px/${state.nameWeight}、职业世界观 ${state.subtitleSize}px/${state.subtitleWeight}、年龄 ${state.ageSize}px/${state.ageWeight}`
           + `；长名称占 ${state.longNameLines} 行、完整名称可读 ${state.longNameTitle.length > 0}；标签显示 ${visibleTags} 个 + 剩余 ${hiddenTags}（悬停列出 ${state.moreTitle.split("、").length} 个）`
           + `；收藏徽章 ${state.favouriteBadge}、置顶徽章 ${state.pinnedBadge}；编辑 ${state.editedSize}px/${state.editedWeight} > 创建 ${state.createdSize}px/${state.createdWeight}`
-          + `；卡片高度差 ${heightSpread}px`
+          + `；卡片高度差 ${heightSpread}px（各行 ${state.cardRowHeights.map((row) => row.join("=")).join(" / ")}）`
           + (failing.length ? `；未通过：${failing.join("/")}` : ""),
       };
     });
