@@ -389,6 +389,183 @@ const READ_CLEAR_OUTCOME = `
   })
 `;
 
+
+// A workspace at the size the pickers have to cope with: a hundred characters, with
+// two of them distinctive enough to search for by name.
+const SEED_MANY = `
+  (() => {
+    const now = new Date().toISOString();
+    const jobs = ["调查员", "魔法师", "工匠"];
+    const worlds = ["北境", "云海", "雾隐"];
+    const characters = Array.from({ length: 100 }, (_, index) => ({
+      id: "bulk-" + (index + 1),
+      name: "角色" + String(index + 1).padStart(3, "0"),
+      occupation: jobs[index % 3],
+      worldview: worlds[index % 3],
+      avatarEmoji: "🙂",
+      createdAt: now,
+      updatedAt: now,
+    }));
+    characters[0] = { ...characters[0], name: "陆停云", occupation: "魔法师", worldview: "云海" };
+    characters[87] = { ...characters[87], name: "沈青梧", occupation: "调查员", worldview: "北境" };
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.world", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    return true;
+  })()
+`;
+
+// Drives the two pickers in 新建关系 the way a writer would: open, type, take the
+// match with the keyboard, then read what actually landed in storage.
+const CREATE_RELATION_BY_SEARCH = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const pressEnter = (element) => element.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+    const open = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建关系");
+    if (!open) throw new Error("新建关系 missing");
+    open.click();
+    await sleep(400);
+
+    const nativeSelects = [...document.querySelectorAll(".confirm-dialog select")].map((node) => node.getAttribute("aria-label") || node.previousSibling?.textContent || "?");
+    const steps = [];
+
+    for (const [index, needle] of [[0, "沈青梧"], [1, "陆停云"]]) {
+      const trigger = document.querySelectorAll(".character-select-trigger")[index];
+      if (!trigger) throw new Error("picker " + index + " missing");
+      trigger.click();
+      await sleep(250);
+
+      const input = document.querySelector(".character-select-panel input");
+      setValue(input, needle);
+      await sleep(250);
+      const matched = document.querySelectorAll(".character-select-panel .character-picker-option").length;
+      pressEnter(input);
+      await sleep(250);
+
+      const chosen = (document.querySelectorAll(".character-select-trigger")[index] || {}).textContent || "";
+      steps.push({ needle, matched, chosen: chosen.trim(), stillOpen: Boolean(document.querySelector(".character-select-panel")) });
+    }
+
+    const save = [...document.querySelectorAll(".confirm-dialog button")].find((button) => button.textContent.trim() === "保存关系");
+    const saveDisabled = save ? save.disabled : true;
+    if (save && !save.disabled) { save.click(); await sleep(400); }
+
+    const stored = JSON.parse(localStorage.getItem("character-studio.relationships") || "[]");
+    return {
+      nativeSelects,
+      steps,
+      saveDisabled,
+      stored: stored.map((item) => item.fromId + "->" + item.toId),
+      dialogStillOpen: Boolean(document.querySelector(".confirm-dialog")),
+    };
+  })()
+`;
+
+// The multi-select on a hundred characters: search narrows, the count follows the
+// choices, and the search term survives choosing.
+const READ_WORLD_MULTI_PICKER = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const click = (node) => node && node.click();
+
+    click([...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建条目"));
+    await sleep(400);
+
+    const named = [...document.querySelectorAll(".confirm-dialog label.field")].find((label) =>
+      label.textContent.trim().startsWith("名称"),
+    );
+    const nameInput = named && named.querySelector("input");
+    if (!nameInput) throw new Error("name field missing");
+    setValue(nameInput, "雾海纪");
+    await sleep(150);
+
+    const names = () => [...document.querySelectorAll(".character-picker-list .character-row-name")].map((node) => node.textContent);
+    const input = document.querySelector(".character-picker-search input");
+
+    setValue(input, "工匠");
+    await sleep(250);
+    const matched = names().length;
+    const orderBefore = names();
+
+    const boxes = [...document.querySelectorAll(".character-picker-list input[type='checkbox']")];
+    click(boxes[0]);
+    await sleep(200);
+    click(document.querySelectorAll(".character-picker-list input[type='checkbox']")[1]);
+    await sleep(200);
+    const afterTwo = document.querySelector(".character-picker-count").textContent.replace(/\s+/g, " ").trim();
+    // The order the list had before anything was ticked, read after two ticks.
+    const orderAfterChoosing = names();
+    const checkedCount = document.querySelectorAll(".character-picker-list input[type='checkbox']:checked").length;
+    const keptQuery = input.value;
+
+    setValue(input, "陆停云");
+    await sleep(250);
+    const narrowed = names().length;
+
+    const save = [...document.querySelectorAll(".confirm-dialog button")].find((button) => button.textContent.trim() === "保存条目");
+    const saveDisabled = save ? save.disabled : true;
+    if (save && !save.disabled) { save.click(); await sleep(400); }
+    const world = JSON.parse(localStorage.getItem("character-studio.world") || "[]");
+
+    return {
+      matched,
+      orderBefore,
+      orderAfterChoosing,
+      checkedCount,
+      afterTwo,
+      narrowed,
+      keptQuery,
+      saveDisabled,
+      saved: world.map((entry) => (entry.characterIds || []).length),
+    };
+  })()
+`;
+
+
+// Requirement: the opened list must not cover the dialog's own buttons on a phone.
+// The panel opens in the flow instead of on top of it, so this measures the two
+// rectangles rather than trusting the intent.
+const READ_PICKER_OVERLAP = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const open = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建关系");
+    open.click();
+    await sleep(400);
+    document.querySelectorAll(".character-select-trigger")[0].click();
+    await sleep(400);
+
+    const panel = document.querySelector(".character-select-panel");
+    const save = [...document.querySelectorAll(".confirm-dialog button")].find((button) => button.textContent.trim() === "保存关系");
+    const dialog = document.querySelector(".confirm-dialog");
+    const panelRect = panel.getBoundingClientRect();
+    const saveRect = save.getBoundingClientRect();
+
+    return {
+      panelBottom: Math.round(panelRect.bottom),
+      saveTop: Math.round(saveRect.top),
+      overlaps: panelRect.bottom > saveRect.top && panelRect.top < saveRect.bottom,
+      saveVisibleInDialog: Math.round(saveRect.top) < Math.round(dialog.getBoundingClientRect().bottom),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      dialogOverflow: dialog.scrollWidth - dialog.clientWidth,
+      panelWidth: Math.round(panelRect.width),
+      viewportWidth: window.innerWidth,
+    };
+  })()
+`;
+
 // Expand whatever the collapse memory left closed, so all six sections can be read
 // at once. Only heads whose body is missing are clicked, so nothing is collapsed.
 const EXPAND_EDITOR_SECTIONS = `
@@ -748,6 +925,69 @@ async function main() {
       };
     });
 
+    await check("新建关系：在 100 个角色里搜到并保存（KI / 任务 A）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_MANY);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      const state = await cdp.value(CREATE_RELATION_BY_SEARCH);
+
+      const searched = state.steps.every((step) => step.matched === 1);
+      const showed = state.steps[0].chosen.includes("沈青梧") && state.steps[1].chosen.includes("陆停云");
+      const collapsed = state.steps.every((step) => !step.stillOpen);
+      const saved = state.stored.length === 1 && state.stored[0] === "bulk-88->bulk-1";
+      const nativeGone = state.nativeSelects.length === 1;
+
+      return {
+        pass: Boolean(searched && showed && collapsed && saved && nativeGone && !state.saveDisabled),
+        detail: state.steps.map((step) => `搜「${step.needle}」命中 ${step.matched} → 选中「${step.chosen}」${step.stillOpen ? "（列表仍开着）" : ""}`).join("；")
+          + `；原生下拉剩 ${state.nativeSelects.length} 个（应为 1，仅关系类型）`
+          + `；保存后存储 ${JSON.stringify(state.stored)}（应为 bulk-88->bulk-1）`,
+      };
+    });
+
+    await check("世界观：100 个角色下多选搜索、计数与顺序稳定（任务 A）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_MANY);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      const state = await cdp.value(READ_WORLD_MULTI_PICKER);
+
+      // 33 matches, two of them ticked: the list must read exactly as it did before.
+      const orderStable = state.orderAfterChoosing.length > 1
+        && state.orderAfterChoosing.join("/") === state.orderBefore.join("/");
+      const countOk = /已选 2 \/ 100/.test(state.afterTwo);
+      const narrowedExact = state.narrowed === 1;
+      const savedTwo = state.saved.length === 1 && state.saved[0] === 2;
+
+      return {
+        pass: Boolean(state.matched > 10 && countOk && orderStable && narrowedExact
+          && state.keptQuery === "工匠" && !state.saveDisabled && savedTwo),
+        detail: `搜「工匠」命中 ${state.matched}；勾选两个后「${state.afterTwo}」（勾选态 ${state.checkedCount}）`
+          + `；勾选前后列表顺序${orderStable ? "一致" : `不一致（前 ${state.orderBefore[0]} / 后 ${state.orderAfterChoosing[0]}）`}`
+          + `；勾选后搜索词仍为「${state.keptQuery}」；改搜「陆停云」命中 ${state.narrowed}`
+          + `；保存按钮${state.saveDisabled ? "仍禁用" : "可用"}，保存条目关联数 ${JSON.stringify(state.saved)}（应为 [2]）`,
+      };
+    });
+
+    await check("窄屏（375）：角色选择列表不遮挡对话框操作按钮（任务 A）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_MANY);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      const state = await cdp.value(READ_PICKER_OVERLAP);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const clear = !state.overlaps && state.saveVisibleInDialog;
+      const fits = state.pageOverflow <= 1 && state.dialogOverflow <= 1 && state.panelWidth <= state.viewportWidth;
+
+      return {
+        pass: Boolean(clear && fits),
+        detail: `375px 下列表底边 ${state.panelBottom}px、保存按钮顶边 ${state.saveTop}px → ${state.overlaps ? "遮挡" : "不遮挡"}；保存按钮在对话框可视区内${state.saveVisibleInDialog ? "" : "（否）"}；列表宽 ${state.panelWidth}px（视口 ${state.viewportWidth}px）；页面溢出 ${state.pageOverflow}px、对话框溢出 ${state.dialogOverflow}px`,
+      };
+    });
+
     await check("编辑器：六节共用一套节头、间距与动作行（KI-02）", async () => {
       await cdp.goto(base);
       await cdp.value(SEED);
@@ -896,6 +1136,48 @@ async function main() {
         await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
         await cdp.value(EXPAND_EDITOR_SECTIONS);
         files.push(await capture("editor-desktop"));
+
+        // The two new pickers at the size they were built for.
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED_MANY);
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace("角色关系网"));
+        await cdp.value(`
+          (async () => {
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const open = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建关系");
+            open.click();
+            await sleep(400);
+            document.querySelectorAll(".character-select-trigger")[0].click();
+            await sleep(400);
+            return true;
+          })()
+        `);
+        files.push(await capture("relation-picker"));
+
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace("世界观管理"));
+        await cdp.value(`
+          (async () => {
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const setValue = (input, value) => {
+              const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+              setter.call(input, value);
+              input.dispatchEvent(new Event("input", { bubbles: true }));
+            };
+            [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建条目").click();
+            await sleep(400);
+            setValue(document.querySelector(".character-picker-search input"), "工匠");
+            await sleep(400);
+            document.querySelectorAll(".character-picker-list input[type='checkbox']")[0].click();
+            await sleep(250);
+            document.querySelectorAll(".character-picker-list input[type='checkbox']")[1].click();
+            await sleep(350);
+            return true;
+          })()
+        `);
+        files.push(await capture("world-multi-picker"));
 
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
         await cdp.goto(base);

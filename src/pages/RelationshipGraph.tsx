@@ -37,6 +37,7 @@ import {
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
+import { CharacterSelect } from "../components/CharacterPicker";
 
 type RelationshipGraphProps = {
   characters: Character[];
@@ -994,18 +995,16 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
             aria-label="新建关系"
           >
             <h2>新建关系</h2>
-            {/* The three selects are labelled for the kind chosen: a symmetric
-                relationship has two equal sides, a 师承 edge has a direction. */}
-            <label className="field">
-              <span>{draftSymmetric ? "角色 A" : "师承方"}</span>
-              <select onChange={(event) => setDraft({ ...draft, fromId: event.target.value })} value={draft.fromId}>
-                {characters.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name || "未命名角色"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {/* The ends and the kind are labelled for the kind chosen: a symmetric
+                relationship has two equal sides, a 师承 edge has a direction. The two
+                ends are pickers rather than dropdowns, because a hundred names in a
+                native option list is not something anyone can search. */}
+            <CharacterSelect
+              characters={characters}
+              legend={draftSymmetric ? "角色 A" : "师承方"}
+              onChange={(fromId) => setDraft({ ...draft, fromId })}
+              value={draft.fromId}
+            />
             <label className="field">
               <span>关系</span>
               <select
@@ -1019,16 +1018,12 @@ export function RelationshipGraph({ characters, onBack, onOpenCharacter }: Relat
                 ))}
               </select>
             </label>
-            <label className="field">
-              <span>{draftSymmetric ? "角色 B" : "学习方"}</span>
-              <select onChange={(event) => setDraft({ ...draft, toId: event.target.value })} value={draft.toId}>
-                {characters.map((character) => (
-                  <option key={character.id} value={character.id}>
-                    {character.name || "未命名角色"}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <CharacterSelect
+              characters={characters}
+              legend={draftSymmetric ? "角色 B" : "学习方"}
+              onChange={(toId) => setDraft({ ...draft, toId })}
+              value={draft.toId}
+            />
             <label className="field">
               <span>备注</span>
               <input

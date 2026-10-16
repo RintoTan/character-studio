@@ -7046,11 +7046,119 @@ kbd {
   background: var(--control-fill);
 }
 
-.character-picker-meta {
+/* One row for every list that shows characters - the multi-select picker, the
+   single-select, and the related-character list - so all three read the same way:
+   face, name, and the line that tells two similar names apart. */
+.character-row {
+  gap: 8px;
+}
+
+.character-row.active {
+  background: var(--control-fill);
+}
+
+.character-row-avatar {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 14px;
+}
+
+.character-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-row-meta {
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
+  white-space: nowrap;
+}
+
+/* Single-select: one row until the list is asked for. A dialog holding two of these
+   still fits its own buttons, and the panel opens in the flow rather than on top of
+   it - which is what keeps the list off those buttons on a phone. */
+.character-select {
+  display: grid;
+  gap: 8px;
+}
+
+.character-select-label {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.character-select-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 10px;
+  text-align: left;
+}
+
+.character-select-trigger:hover {
+  border-color: var(--border-strong);
+}
+
+.character-select-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface-subtle);
+  padding: 8px;
+}
+
+.character-select-trigger > svg:last-of-type,
+.character-picker-option > svg:last-of-type {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.character-picker-option {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.character-picker-option:hover,
+.character-picker-option.active {
+  background: var(--control-fill);
+}
+
+.character-picker-option[aria-selected="true"] {
+  border-color: var(--border-strong);
+  font-weight: 700;
+}
+
+.chip-toggle {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.chip-toggle.active {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
 }
 
 .character-picker-actions {
