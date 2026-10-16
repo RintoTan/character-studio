@@ -687,6 +687,270 @@ const READ_ROW_AVATARS = `
   })()
 `;
 
+// A hundred events across three years, with long titles, long descriptions, locations
+// and kind-typed entries: the size the toolbar has to stay usable at.
+const SEED_TIMELINE = `
+  (() => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const characters = [
+      { id: "tl-c1", name: "沈青梧", occupation: "调查员", worldview: "北境", avatarEmoji: "🙂", createdAt: now, updatedAt: now },
+      { id: "tl-c2", name: "陆停云", occupation: "魔法师", worldview: "云海", avatarEmoji: "🌙", createdAt: now, updatedAt: now },
+      { id: "tl-c3", name: "白露", occupation: "医者", worldview: "北境", avatarEmoji: "🜂", createdAt: now, updatedAt: now },
+    ];
+    const kinds = ["origin", "turning", "bond", "conflict", "loss", "other"];
+    const long = "雾海纪的冬天很长，长到人们用第几场雪来记日子。她出生在第七场雪之后，父亲是守塔人。".repeat(6);
+    const events = Array.from({ length: 100 }, (_, index) => {
+      const year = 2023 + (index % 3);
+      return {
+        id: "ev-" + index,
+        title: index % 10 === 0 ? "长标题事件：" + "会在会上被反复提起的一段往事".repeat(2) : "事件 " + String(index + 1).padStart(3, "0"),
+        date: year + "-" + String((index % 12) + 1).padStart(2, "0") + "-" + String((index % 27) + 1).padStart(2, "0"),
+        era: index % 7 === 0 ? "光历 " + (310 + index) + " 年" : "",
+        kind: kinds[index % kinds.length],
+        location: index % 5 === 0 ? "北境" : index % 5 === 1 ? "雾隐" : "",
+        description: index % 4 === 0 ? long : index % 3 === 0 ? "会呼吸的红藻第一次被记录。" : "简短记录。",
+        characterIds: index % 2 === 0 ? ["tl-c1", "tl-c2"] : ["tl-c3"],
+        createdAt: now,
+        updatedAt: now,
+      };
+    });
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.timeline", JSON.stringify(events));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+    localStorage.setItem("character-studio.world", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    localStorage.removeItem("character-studio.graph-prefs");
+    return events.length;
+  })()
+`;
+
+const READ_TIMELINE = `
+  (() => ({
+    items: document.querySelectorAll(".timeline-item").length,
+    years: [...document.querySelectorAll(".timeline-year")].map((node) => node.textContent.trim()).slice(0, 6),
+    nav: [...document.querySelectorAll(".timeline-year-nav button")].map((button) => button.textContent.trim()),
+    count: (document.querySelector(".timeline-count")?.textContent || "").trim(),
+    empty: (document.querySelector(".empty-state")?.textContent || "").replace(/\s+/g, " ").trim(),
+    firstTitle: (document.querySelector(".timeline-card-title")?.textContent || "").trim(),
+    hasFilterToolbar: Boolean(document.querySelector(".timeline-toolbar")),
+    pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  }))()
+`;
+
+const TIMELINE_SET_VALUE = `
+    const setInput = (selector, value) => {
+      const input = document.querySelector(selector);
+      if (!input) throw new Error("找不到输入框：" + selector);
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const setArea = (selector, value) => {
+      const area = document.querySelector(selector);
+      if (!area) throw new Error("找不到文本域：" + selector);
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set;
+      setter.call(area, value);
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const setSelect = (selector, value) => {
+      const select = document.querySelector(selector);
+      if (!select) throw new Error("找不到下拉：" + selector);
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+      setter.call(select, value);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+`;
+
+// Filtering: every combination against the count the stored data implies, not against a
+// number typed into the test.
+const TIMELINE_FILTERS = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    ${TIMELINE_SET_VALUE}
+    const rows = () => document.querySelectorAll(".timeline-item").length;
+    const countText = () => (document.querySelector(".timeline-count")?.textContent || "").trim();
+    const stored = () => JSON.parse(localStorage.getItem("character-studio.timeline") || "[]");
+    const expected = (predicate) => stored().filter(predicate).length;
+    const has = (event) => (event.description || "").includes("红藻");
+
+    const start = { rows: rows(), count: countText(), toolbar: Boolean(document.querySelector(".timeline-toolbar")) };
+    setInput(".timeline-search input", "  红藻  ");
+    await sleep(400);
+    const search = { rows: rows(), count: countText(), expected: expected(has) };
+    setSelect('[aria-label="按年份筛选"]', "2024");
+    await sleep(400);
+    const withYear = { rows: rows(), count: countText(), expected: expected((event) => has(event) && event.date.startsWith("2024")) };
+    setSelect('[aria-label="按类型筛选"]', "origin");
+    await sleep(400);
+    const withKind = { rows: rows(), count: countText(), expected: expected((event) => has(event) && event.date.startsWith("2024") && event.kind === "origin") };
+    document.querySelector(".timeline-clear").click();
+    await sleep(400);
+    const cleared = { rows: rows(), count: countText(), clear: Boolean(document.querySelector(".timeline-clear")), year: document.querySelector('[aria-label="按年份筛选"]').value, kind: document.querySelector('[aria-label="按类型筛选"]').value };
+
+    setInput(".timeline-search input", "不存在的关键词");
+    await sleep(400);
+    const none = { rows: rows(), count: countText(), empty: (document.querySelector(".empty-state")?.textContent || "").replace(/\s+/g, " ").trim(), clear: Boolean(document.querySelector(".timeline-clear")) };
+    document.querySelector(".timeline-clear").click();
+    await sleep(400);
+
+    // A character name is a search term, and it must not be the id.
+    setInput(".timeline-search input", "白露");
+    await sleep(400);
+    const byCharacter = { rows: rows(), expected: expected((event) => event.characterIds.includes("tl-c3")) };
+    setInput(".timeline-search input", "tl-c3");
+    await sleep(400);
+    const byId = { rows: rows() };
+    document.querySelector(".timeline-clear").click();
+    await sleep(400);
+    return { start, search, withYear, withKind, cleared, none, byCharacter, byId };
+  })()
+`;
+
+// The year navigation: where it lands, what it highlights, and that it only offers what
+// is on screen.
+const TIMELINE_YEAR_NAV = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    ${TIMELINE_SET_VALUE}
+    const buttons = () => [...document.querySelectorAll(".timeline-year-nav button")];
+    const labels = buttons().map((button) => button.textContent.trim());
+    const target = buttons()[1];
+    const year = target.textContent.trim().slice(0, 4);
+    target.click();
+    await sleep(1400);
+
+    const group = [...document.querySelectorAll(".timeline-year-group")].find(
+      (node) => (node.querySelector(".timeline-year")?.textContent || "").includes(year),
+    );
+    const groupRect = group.getBoundingClientRect();
+    const topbar = document.querySelector(".topbar")?.getBoundingClientRect();
+    const current = buttons().find((button) => button.getAttribute("aria-current") === "true");
+    const rail = document.querySelector(".timeline-rail");
+    const line = getComputedStyle(rail, "::before");
+    const node = getComputedStyle(document.querySelector(".timeline-item"), "::before");
+    const yearNode = getComputedStyle(document.querySelector(".timeline-year-node"));
+    const before = { ...{}, groupTop: Math.round(groupRect.top), topbarBottom: Math.round(topbar.bottom), viewportHeight: window.innerHeight, current: current ? current.textContent.trim() : "" };
+    const railLine = { width: parseFloat(line.width) || 0, height: parseFloat(line.height) || 0, left: line.left, nodeRadius: node.borderRadius, nodeSize: parseFloat(node.width) || 0, yearNodeSize: parseFloat(yearNode.width) || 0 };
+
+    // Filter to a year: the navigation must follow what is drawn.
+    setSelect('[aria-label="按年份筛选"]', year);
+    await sleep(500);
+    const afterFilter = { nav: buttons().map((button) => button.textContent.trim()), years: document.querySelectorAll(".timeline-year-group").length };
+    document.querySelector(".timeline-clear").click();
+    await sleep(400);
+    return { labels, year, before, railLine, afterFilter, groups: document.querySelectorAll(".timeline-year-group").length };
+  })()
+`;
+
+// Reading a long card, then creating, editing and deleting through the dialog.
+const TIMELINE_CARD_AND_CRUD = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    ${TIMELINE_SET_VALUE}
+    const stored = () => JSON.parse(localStorage.getItem("character-studio.timeline") || "[]");
+
+    const longEvent = stored().find((event) => (event.description || "").length > 200);
+    const card = [...document.querySelectorAll(".timeline-item")].find(
+      (node) => (node.querySelector(".timeline-card-title")?.textContent || "").trim() === longEvent.title,
+    );
+    if (!card) throw new Error("找不到长描述卡片");
+    card.scrollIntoView({ block: "center" });
+    await sleep(300);
+
+    const toggle = card.querySelector(".timeline-description-toggle");
+    const collapsed = {
+      length: card.querySelector(".timeline-description").textContent.length,
+      full: longEvent.description.length,
+      toggle: toggle ? toggle.textContent.trim() : "",
+      expanded: toggle ? toggle.getAttribute("aria-expanded") : "",
+    };
+    toggle.click();
+    await sleep(300);
+    const expanded = {
+      length: card.querySelector(".timeline-description").textContent.length,
+      toggle: card.querySelector(".timeline-description-toggle").textContent.trim(),
+      expanded: card.querySelector(".timeline-description-toggle").getAttribute("aria-expanded"),
+    };
+    card.querySelector(".timeline-description-toggle").click();
+    await sleep(300);
+    const collapsedAgain = card.querySelector(".timeline-description").textContent.length;
+
+    // Create. The action row is pinned, so it is on screen without scrolling the form.
+    [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建事件").click();
+    await sleep(600);
+    const dialog = document.querySelector(".timeline-dialog");
+    const actions = document.querySelector(".timeline-dialog-actions");
+    const dialogRect = dialog.getBoundingClientRect();
+    const actionsRect = actions.getBoundingClientRect();
+    const pinned = actionsRect.bottom <= dialogRect.bottom + 1 && actionsRect.top >= dialogRect.top - 1;
+    const sections = [...document.querySelectorAll(".timeline-dialog legend")].map((node) => node.textContent.trim());
+    const pickerOptions = document.querySelectorAll(".character-picker-option").length;
+    const pickerBoxes = document.querySelectorAll(".character-picker input[type=checkbox]").length;
+
+    setInput('.timeline-dialog input[type="text"]', "新建的事件标题");
+    setInput('.timeline-dialog input[type="date"]', "2025-08-08");
+    setArea(".timeline-dialog textarea", "这是一段新建事件的描述。");
+    // The picker's rows are labels around a checkbox; the checkbox is what a click has
+    // to reach for the choice to register.
+    const pickerBox = document.querySelector(".character-picker input[type=checkbox]");
+    if (!pickerBox) throw new Error("角色选择器没有可勾选项");
+    pickerBox.click();
+    await sleep(250);
+    [...document.querySelectorAll(".timeline-dialog button")].find((button) => button.textContent.trim() === "保存事件").click();
+    await sleep(700);
+    const createdEvent = stored().find((event) => event.title === "新建的事件标题");
+    const afterCreate = {
+      count: stored().length,
+      date: createdEvent?.date ?? "",
+      characters: createdEvent?.characterIds.length ?? 0,
+      drawn: [...document.querySelectorAll(".timeline-card-title")].some((node) => node.textContent.trim() === "新建的事件标题"),
+      dialogClosed: !document.querySelector(".timeline-dialog"),
+      sections,
+      pinned,
+      pickerOptions,
+      pickerBoxes,
+    };
+
+    // Edit.
+    const created = [...document.querySelectorAll(".timeline-item")].find(
+      (node) => (node.querySelector(".timeline-card-title")?.textContent || "").trim() === "新建的事件标题",
+    );
+    [...created.querySelectorAll(".timeline-action")].find((button) => button.textContent.trim() === "编辑").click();
+    await sleep(600);
+    setInput('.timeline-dialog input[type="text"]', "改过标题的事件");
+    [...document.querySelectorAll(".timeline-dialog button")].find((button) => button.textContent.trim() === "保存事件").click();
+    await sleep(700);
+    const afterEdit = { count: stored().length, saved: stored().some((event) => event.title === "改过标题的事件"), keptId: stored().find((event) => event.title === "改过标题的事件")?.date ?? "" };
+
+    // Delete.
+    const edited = [...document.querySelectorAll(".timeline-item")].find(
+      (node) => (node.querySelector(".timeline-card-title")?.textContent || "").trim() === "改过标题的事件",
+    );
+    [...edited.querySelectorAll(".timeline-action")].find((button) => button.textContent.trim() === "删除").click();
+    await sleep(500);
+    [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "确认删除").click();
+    await sleep(600);
+    const afterDelete = { count: stored().length, drawn: [...document.querySelectorAll(".timeline-card-title")].some((node) => node.textContent.trim() === "改过标题的事件") };
+
+    return { collapsed, expanded, collapsedAgain, afterCreate, afterEdit, afterDelete, pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+  })()
+`;
+
+// The app's own theme menu, usable from any page: the settings dialog is not always
+// open, and the OS preference must not be what decides.
+const SET_THEME_BY_MENU = (label) => `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    document.querySelector(".theme-combo-arrow").click();
+    await sleep(250);
+    const item = [...document.querySelectorAll(".theme-menu button")].find((button) => button.textContent.trim() === ${JSON.stringify(label)});
+    if (!item) throw new Error("找不到主题项：" + ${JSON.stringify(label)});
+    item.click();
+    await sleep(400);
+    return document.documentElement.dataset.theme || "";
+  })()
+`;
+
 const READ_GRAPH_CANVAS = `
   (() => {
     const nodes = [...document.querySelectorAll(".relationship-node")];
@@ -1865,6 +2129,202 @@ async function main() {
       return {
         pass: Boolean(fits && dark),
         detail: `主题 ${state.theme || "(未设置)"}、弹窗底色 ${state.dialogBackground}；375px 下弹窗 ${state.dialogWidth}px、弹窗溢出 ${state.dialogOverflow}px、页面溢出 ${state.pageOverflow}px`,
+      };
+    });
+
+    await check("时间线：搜索、年份、类型筛选可组合，清空与空状态（任务 C）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_TIMELINE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观时间线"));
+      await cdp.waitFor(`!!document.querySelector(".timeline-toolbar")`, 8000);
+      const start = await cdp.value(READ_TIMELINE);
+      const state = await cdp.value(TIMELINE_FILTERS);
+
+      // Every count is compared with the number the stored events imply, so a toolbar
+      // that reports a plausible number it did not compute cannot pass.
+      const pass =
+        start.items === 100 &&
+        state.start.toolbar &&
+        state.search.rows === state.search.expected &&
+        state.search.rows > 0 &&
+        state.search.count.includes(`匹配 ${state.search.expected} / 100`) &&
+        state.withYear.rows === state.withYear.expected &&
+        state.withKind.rows === state.withKind.expected &&
+        state.withKind.rows <= state.withYear.rows &&
+        state.cleared.rows === 100 &&
+        !state.cleared.clear &&
+        state.cleared.year === "全部年份" &&
+        state.cleared.kind === "全部类型" &&
+        state.none.rows === 0 &&
+        state.none.empty.includes("没有匹配的事件") &&
+        state.none.clear &&
+        state.byCharacter.rows === state.byCharacter.expected &&
+        state.byCharacter.rows > 0 &&
+        state.byId.rows === 0;
+
+      return {
+        pass,
+        detail: `100 个事件；搜索「红藻」→ ${state.search.rows} 条（数据应为 ${state.search.expected}）「${state.search.count}」；加 2024 → ${state.withYear.rows}（${state.withYear.expected}）；再加 起源 → ${state.withKind.rows}（${state.withKind.expected}）；清空 → ${state.cleared.rows} 条且筛选归零（${state.cleared.year}/${state.cleared.kind}）；无结果 → ${state.none.rows} 条「${state.none.empty.slice(0, 40)}」；按角色名 白露 → ${state.byCharacter.rows}（${state.byCharacter.expected}）、按 id → ${state.byId.rows}`,
+      };
+    });
+
+    await check("时间线：年份导航定位到年份且不被吸顶栏遮挡（任务 D）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_TIMELINE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观时间线"));
+      await cdp.waitFor(`!!document.querySelector(".timeline-year-nav")`, 8000);
+      const state = await cdp.value(TIMELINE_YEAR_NAV);
+
+      const pass =
+        state.labels.length === 3 &&
+        state.labels.every((label) => /^\d{4}/.test(label)) &&
+        state.groups === 3 &&
+        state.before.current.includes(state.year) &&
+        state.before.groupTop >= state.before.topbarBottom - 2 &&
+        state.before.groupTop < state.before.viewportHeight &&
+        // one continuous line, and a node per event and per year, drawn on it
+        state.railLine.width === 2 &&
+        state.railLine.height > 200 &&
+        state.railLine.nodeRadius.includes("50%") &&
+        state.railLine.yearNodeSize === 10 &&
+        // the navigation follows the filter rather than the stored years
+        // The navigation never offers a year that is not drawn: after filtering to one
+        // year it either lists only that year or steps out of the way.
+        state.afterFilter.nav.every((label) => label.startsWith(state.year)) &&
+        state.afterFilter.years === 1;
+
+      return {
+        pass,
+        detail: `导航 ${state.labels.join("/")}；点击 ${state.year} 后该年份组 top ${state.before.groupTop}px / 顶栏 bottom ${state.before.topbarBottom}px（未被遮挡 ${state.before.groupTop >= state.before.topbarBottom - 2}）、当前年标记「${state.before.current}」；轴线 ${state.railLine.width}×${Math.round(state.railLine.height)}px、事件节点 ${state.railLine.nodeSize}px ${state.railLine.nodeRadius}、年份节点 ${state.railLine.yearNodeSize}px；筛选 ${state.year} 后导航变为 ${state.afterFilter.nav.join("/")}、年份组 ${state.afterFilter.years} 个`,
+      };
+    });
+
+    await check("时间线：长描述展开收起，新建/编辑/删除与固定操作栏（任务 B/E）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_TIMELINE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观时间线"));
+      await cdp.waitFor(`!!document.querySelector(".timeline-item")`, 8000);
+      const state = await cdp.value(TIMELINE_CARD_AND_CRUD);
+
+      const pass =
+        // reading: summary by default, the whole text on request, and back
+        state.collapsed.length <= 121 &&
+        state.collapsed.toggle === "展开完整描述" &&
+        state.collapsed.expanded === "false" &&
+        state.expanded.length === state.collapsed.full &&
+        state.expanded.toggle === "收起描述" &&
+        state.expanded.expanded === "true" &&
+        state.collapsedAgain <= 121 &&
+        // the dialog groups the fields and keeps saving on screen
+        state.afterCreate.sections.slice(0, 3).join("/") === "事件/时间/描述" &&
+        state.afterCreate.sections.includes("涉及角色") &&
+        state.afterCreate.pinned &&
+        // create, edit, delete — through the real dialog, against storage
+        state.afterCreate.count === 101 &&
+        state.afterCreate.date === "2025-08-08" &&
+        state.afterCreate.characters >= 1 &&
+        state.afterCreate.drawn &&
+        state.afterCreate.dialogClosed &&
+        state.afterEdit.count === 101 &&
+        state.afterEdit.saved &&
+        state.afterEdit.keptId === "2025-08-08" &&
+        state.afterDelete.count === 100 &&
+        !state.afterDelete.drawn;
+
+      return {
+        pass,
+        detail: `长描述 ${state.collapsed.full} 字 → 折叠 ${state.collapsed.length} 字「${state.collapsed.toggle}」→ 展开 ${state.expanded.length} 字「${state.expanded.toggle}」→ 收起 ${state.collapsedAgain} 字；弹窗分节 ${state.afterCreate.sections.join("/")}（可选角色 ${state.afterCreate.pickerOptions} / 勾选框 ${state.afterCreate.pickerBoxes}）、操作栏固定在弹窗内 ${state.afterCreate.pinned}；新建后 ${state.afterCreate.count} 条（日期 ${state.afterCreate.date}、关联 ${state.afterCreate.characters} 人、已出现在列表 ${state.afterCreate.drawn}、弹窗已关 ${state.afterCreate.dialogClosed}）→ 编辑后 ${state.afterEdit.count} 条（标题已改 ${state.afterEdit.saved}、日期保留 ${state.afterEdit.keptId}）→ 删除后 ${state.afterDelete.count} 条（列表中已消失 ${!state.afterDelete.drawn}）`,
+      };
+    });
+
+    await check("时间线：375px 与深色主题下工具栏、年份导航与弹窗不溢出（任务 F）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_TIMELINE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观时间线"));
+      await cdp.waitFor(`!!document.querySelector(".timeline-toolbar")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const narrow = await cdp.value(READ_TIMELINE);
+      const layout = await cdp.value(`(() => {
+        const nav = document.querySelector(".timeline-year-nav");
+        const navRect = nav.getBoundingClientRect();
+        const buttons = [...nav.querySelectorAll("button")];
+        const rows = new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)));
+        const search = document.querySelector(".timeline-search").getBoundingClientRect();
+        const item = document.querySelector(".timeline-item").getBoundingClientRect();
+        const card = document.querySelector(".timeline-card").getBoundingClientRect();
+        return {
+          navScrolls: nav.scrollWidth > nav.clientWidth,
+          navInside: navRect.left >= -1 && navRect.right <= window.innerWidth + 1,
+          navRows: rows.size,
+          searchFullWidth: search.width > 300,
+          cardInside: card.right <= window.innerWidth + 1 && card.left >= -1,
+          itemInside: item.left >= -1,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      })()`);
+
+      // The event dialog on a phone, with the keyboard-driven fields and a long
+      // description inside it.
+      await cdp.value(`(() => { [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建事件").click(); return true; })()`);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const dialog = await cdp.value(`(() => {
+        const node = document.querySelector(".timeline-dialog");
+        const rect = node.getBoundingClientRect();
+        const actions = document.querySelector(".timeline-dialog-actions").getBoundingClientRect();
+        const area = document.querySelector(".timeline-dialog textarea");
+        return {
+          inside: rect.left >= -1 && rect.right <= window.innerWidth + 1,
+          scrollable: node.scrollHeight > node.clientHeight,
+          actionsInside: actions.right <= window.innerWidth + 1 && actions.left >= -1,
+          descriptionRows: area ? area.rows : 0,
+          textareaInside: area ? area.getBoundingClientRect().right <= window.innerWidth + 1 : false,
+        };
+      })()`);
+      await cdp.value(`(() => { const button = [...document.querySelectorAll(".timeline-dialog button")].find((item) => item.textContent.trim() === "取消"); if (button) button.click(); return true; })()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // Dark, switched through the app's own theme menu.
+      const theme = await cdp.value(SET_THEME_BY_MENU("深色"));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const dark = await cdp.value(READ_TIMELINE);
+      const darkStyle = await cdp.value(`(() => {
+        const card = document.querySelector(".timeline-card");
+        const node = document.querySelector(".timeline-item");
+        return {
+          theme: document.documentElement.dataset.theme || "",
+          cardBackground: getComputedStyle(card).backgroundColor,
+          nodeBorder: getComputedStyle(node, "::before").borderColor,
+        };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const pass =
+        narrow.items === 100 &&
+        // One row inside the viewport; it scrolls sideways when a timeline has more
+        // years than fit, and never widens the page.
+        layout.navRows === 1 &&
+        layout.navInside &&
+        layout.cardInside &&
+        layout.itemInside &&
+        layout.overflow <= 1 &&
+        dialog.inside &&
+        dialog.scrollable &&
+        dialog.actionsInside &&
+        dialog.descriptionRows === 6 &&
+        dialog.textareaInside &&
+        theme === "dark" &&
+        darkStyle.theme === "dark" &&
+        dark.items === 100 &&
+        dark.pageOverflow <= 1;
+
+      return {
+        pass,
+        detail: `375px：事件 ${narrow.items} 个、页面溢出 ${layout.overflow}px；年份导航单行 ${layout.navRows === 1}、在视口内 ${layout.navInside}（横向可滚动 ${layout.navScrolls}）；搜索框占满一行 ${layout.searchFullWidth}；卡片在视口内 ${layout.cardInside}；弹窗在视口内 ${dialog.inside}、可滚动 ${dialog.scrollable}、操作栏在视口内 ${dialog.actionsInside}、描述 ${dialog.descriptionRows} 行；深色切换「${theme}」→ data-theme=${darkStyle.theme}、卡片底色 ${darkStyle.cardBackground}、事件节点边框 ${darkStyle.nodeBorder}、深色下溢出 ${dark.pageOverflow}px`,
       };
     });
 
