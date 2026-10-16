@@ -166,7 +166,9 @@ const PAGE_IDS = `
     if (document.querySelector("section.workspace-shell")) return "form";
     if (document.querySelector("section.preview-page")) return "preview";
     if (document.querySelector("section.developer-page")) return "developer";
-    if (document.querySelector(".intro-panel")) return "dashboard";
+    // By id, not by the class of whatever the page happens to open with: this marker
+    // survived the dashboard's hero being replaced by the shared header.
+    if (document.querySelector("#page-dashboard")) return "dashboard";
     return "unknown";
   })()
 `;
@@ -1323,7 +1325,24 @@ const READ_RELATED = `
       present: Boolean(document.querySelector(".preview-related")),
       head: (document.querySelector(".preview-related-head")?.textContent || "").replace(/\s+/g, " ").trim(),
       groups,
-      insideExportRoot: Boolean(document.querySelector('[data-pdf-export-root] .preview-related')),
+      // What matters is that the reading material never reaches an export, and that the
+      // page keeps one footer at the end. It used to sit outside the capture root; it now
+      // sits inside it, ahead of the export footer, and is excluded by the capture's own
+      // contract: data-pdf-hidden is set to display:none in the cloned document.
+      excludedFromExport: Boolean(
+        document.querySelector('[data-pdf-hidden="true"] .preview-related') ||
+          document.querySelector('.preview-related[data-pdf-hidden="true"]'),
+      ),
+      relatedBeforeExportFooter: (() => {
+        const related = document.querySelector(".preview-related");
+        const footer = document.querySelector(".preview-export-footer");
+        if (!related || !footer) return false;
+        return Boolean(related.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING);
+      })(),
+      exportFooterHiddenOnScreen: (() => {
+        const footer = document.querySelector(".preview-export-footer");
+        return footer ? getComputedStyle(footer).display === "none" : false;
+      })(),
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       characterName: (document.querySelector(".preview-card-title, .preview-identity")?.textContent || "").trim().slice(0, 30),
     };
@@ -2518,8 +2537,13 @@ async function main() {
     // run cannot be mistaken for a green one.
     const only = (process.env.ONLY ?? "").trim();
 
+    // Section tokens ("04") select whole blocks and are read by `wanted`; anything else
+    // is matched against the check's name, which is what a single failing check needs.
+    const onlyTokens = only ? only.split(",").map((token) => token.trim()).filter(Boolean) : [];
+    const nameOnly = onlyTokens.length > 0 && onlyTokens.every((token) => !/^\d/.test(token));
+
     const check = async (name, run) => {
-      if (only && !name.includes(only)) {
+      if (nameOnly && !onlyTokens.some((token) => name.includes(token))) {
         skipped.push(name);
         return;
       }
@@ -3045,7 +3069,8 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const entries = state.groups[2] || { rows: 0 };
       const conditions = {
         present: state.present,
-        outsideExportRoot: !state.insideExportRoot,
+        exportUnchanged:
+          state.excludedFromExport && state.relatedBeforeExportFooter && state.exportFooterHiddenOnScreen,
         headCounts:
           state.head.includes("4 条关系") &&
           state.head.includes("4 个事件") &&
@@ -3099,8 +3124,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const pass = failing.length === 0;
       const legacyPass =
         state.present &&
-        // the reading material sits outside what an export captures
-        !state.insideExportRoot &&
+        // the reading material is excluded from what an export captures, and the page
+        // keeps a single footer after it
+        state.excludedFromExport &&
+        state.relatedBeforeExportFooter &&
         state.head.includes("4 条关系") &&
         state.head.includes("4 个事件") &&
         state.head.includes("2 个条目") &&
@@ -3143,7 +3170,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass,
-        detail: `失败项 ${failing.join("/") || "无"}；沈青梧：${state.head}；关系组 ${relations.count} 条 → 显示 ${relations.rows} 行（${relations.peers.join("/")}，头像 ${relations.avatars}）方向 ${relations.kinds.join("/")} 备注「${relations.notes.join("/")}」入口「${relations.chrome.join("/")}」；展开后 ${expanded.open.rows} 行「${expanded.open.more}」→ 收起 ${expanded.collapsed.rows} 行；事件组 ${events.count} 个 → ${events.rows} 行「${events.more}」${events.titles.join("/")}；条目组 ${entries.count} 个 → ${entries.rows} 行 ${entries.titles.join("/")} 路径「${entries.paths.join("/")}」；孤立角色 ${lonely.head}；同名角色（两张卡片）第一张事件「${sameNamePair.first ? sameNamePair.first.events.join("/") : ""}」第二张「${sameNamePair.second ? sameNamePair.second.events.join("/") || "无" : ""}」${sameNamePair.error ? "错误：" + sameNamePair.error + " 卡片：" + (sameNamePair.names || []).join("/") + " 页面：" + sameNamePair.page : sameNameSecond.head}；关联区在导出根之外 ${!state.insideExportRoot}；溢出 ${state.pageOverflow}px；375px 三组各自成行 ${narrowRelated.columns === 3}、在视口内 ${narrowRelated.inside}、行不溢出 ${narrowRelated.rowInside}、页面溢出 ${narrowRelated.overflow}px；深色 data-theme=${darkRelated.theme}（组底色 ${darkRelated.background}）、溢出 ${darkRelated.pageOverflow}px`,
+        detail: `失败项 ${failing.join("/") || "无"}；沈青梧：${state.head}；关系组 ${relations.count} 条 → 显示 ${relations.rows} 行（${relations.peers.join("/")}，头像 ${relations.avatars}）方向 ${relations.kinds.join("/")} 备注「${relations.notes.join("/")}」入口「${relations.chrome.join("/")}」；展开后 ${expanded.open.rows} 行「${expanded.open.more}」→ 收起 ${expanded.collapsed.rows} 行；事件组 ${events.count} 个 → ${events.rows} 行「${events.more}」${events.titles.join("/")}；条目组 ${entries.count} 个 → ${entries.rows} 行 ${entries.titles.join("/")} 路径「${entries.paths.join("/")}」；孤立角色 ${lonely.head}；同名角色（两张卡片）第一张事件「${sameNamePair.first ? sameNamePair.first.events.join("/") : ""}」第二张「${sameNamePair.second ? sameNamePair.second.events.join("/") || "无" : ""}」${sameNamePair.error ? "错误：" + sameNamePair.error + " 卡片：" + (sameNamePair.names || []).join("/") + " 页面：" + sameNamePair.page : sameNameSecond.head}；关联区不进导出 ${state.excludedFromExport}、位于导出页脚之前 ${state.relatedBeforeExportFooter}、导出页脚屏幕隐藏 ${state.exportFooterHiddenOnScreen}；溢出 ${state.pageOverflow}px；375px 三组各自成行 ${narrowRelated.columns === 3}、在视口内 ${narrowRelated.inside}、行不溢出 ${narrowRelated.rowInside}、页面溢出 ${narrowRelated.overflow}px；深色 data-theme=${darkRelated.theme}（组底色 ${darkRelated.background}）、溢出 ${darkRelated.pageOverflow}px`,
       };
     });
 

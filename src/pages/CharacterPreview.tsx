@@ -528,27 +528,32 @@ export function CharacterPreview({
             </div>
           </article>
 
+          {/* Browsing content, so it renders before the page's footer and is removed
+              from the capture: a PDF/JPG/PNG still holds exactly the character. */}
+          {related && (
+            <div data-pdf-hidden="true">
+              <CharacterRelatedInfo
+                character={character}
+                characters={related.characters}
+                entries={related.entries}
+                events={related.events}
+                onOpenCharacter={onOpenRelatedCharacter ?? (() => {})}
+                onOpenEntry={onOpenEntry ?? (() => {})}
+                onOpenEvent={onOpenEvent ?? (() => {})}
+                onOpenGraph={onOpenGraph ?? (() => {})}
+                relationships={related.relationships}
+              />
+            </div>
+          )}
+
+          {/* Kept in the capture root for the export, and out of the page on screen: the
+              app has one footer, at the end of everything. */}
           <div className="preview-export-footer">
             Character Studio · {getContentCopy("footerText")}
           </div>
         </div>
       </div>
 
-      {/* Outside the capture root above, so a PDF/JPG/PNG export still holds exactly the
-          character and nothing that was added for browsing. */}
-      {related && (
-        <CharacterRelatedInfo
-          character={character}
-          characters={related.characters}
-          entries={related.entries}
-          events={related.events}
-          onOpenCharacter={onOpenRelatedCharacter ?? (() => {})}
-          onOpenEntry={onOpenEntry ?? (() => {})}
-          onOpenEvent={onOpenEvent ?? (() => {})}
-          onOpenGraph={onOpenGraph ?? (() => {})}
-          relationships={related.relationships}
-        />
-      )}
     </section>
   );
 }
