@@ -11,6 +11,7 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import { DEFAULT_AVATAR_EMOJI, avatarCategories } from "../data/avatarCategories";
+import type { DeleteRequestResult } from "../storage/deleteRecovery";
 import { defaultCollapseState, type EditorSectionId } from "../storage/editorUiState";
 import type { Character, CharacterDraft } from "../types/character";
 import { useAvatarEditing } from "../hooks/useAvatarEditing";
@@ -40,7 +41,10 @@ type CharacterFormProps = {
   onSave: (character: Character) => void;
   onDraftSave: (character: Character) => void;
   onAutoSave?: (character: Character) => void;
-  onDelete?: (character: Character) => void;
+  // Returns whether the delete was allowed to run: the app shell refuses it when the
+  // recovery copy cannot be written, and this screen must not walk away from a
+  // character that is still there.
+  onDelete?: (character: Character) => DeleteRequestResult;
   // The dashboard owns its own preferences. Deleting a character asks it to clear
   // the filters; this screen must not write that key itself.
   onRequestDashboardFilterReset?: (favoriteMode: "all" | "drafts") => void;
@@ -1688,7 +1692,14 @@ export function CharacterForm({
         return;
       }
 
-      onDelete(character);
+      const outcome = onDelete(character);
+      if (!outcome.ok) {
+        // Nothing was deleted, so the screen stays where it is: leaving now would
+        // look like the delete happened.
+        showToast(`删除已取消：${outcome.reason}`);
+        setPendingFormAction(null);
+        return;
+      }
 
       // Deleting clears the filters so the author lands back on a full list. The
       // dashboard applies that to its own preferences and keeps the layout the author
@@ -1755,7 +1766,7 @@ export function CharacterForm({
             {pendingFormAction === "clear"
               ? "确定要清空当前编辑页的全部内容吗？此操作不会删除角色。"
               : character
-                ? `确定要删除「${character.name || "未命名角色"}」吗？此操作不可撤销。`
+                ? `确定要删除「${character.name || "未命名角色"}」吗？删除后会保留一份恢复记录，回到主页的 10 秒内可以撤销一次，撤销会把角色及其关联一起恢复。`
                 : "当前角色尚未保存，删除会清空当前内容。"}
           </p>
           <div className="form-actions">

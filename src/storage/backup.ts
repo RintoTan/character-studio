@@ -51,7 +51,9 @@ export function attemptSnapshot(reason: string, characters: Character[]): Snapsh
   return { status: "created", snapshot };
 }
 
-function describeSnapshotFailure(error: unknown): string {
+// One wording for one cause, shared with the delete recovery so a refused write is
+// explained the same way wherever it stops an operation.
+export function describeSnapshotFailure(error: unknown): string {
   const name = (error as { name?: string } | null)?.name;
   if (name === "QuotaExceededError" || name === "NS_ERROR_DOM_QUOTA_REACHED") {
     return "浏览器存储空间不足";

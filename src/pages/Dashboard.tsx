@@ -29,6 +29,10 @@ import {
 } from "../utils/avatarAssets";
 import { createSnapshot, readSnapshot, type LocalSnapshot } from "../storage/backup";
 import { clearLocalDataPreservingSnapshot } from "../storage/localDataReset";
+import type {
+  DeleteRequestResult,
+  RestoreDeleteResult,
+} from "../storage/deleteRecovery";
 import { readWorkspaceDatasets } from "../storage/workspaceBackup";
 import {
   applyBulkPatch,
@@ -84,9 +88,15 @@ type DashboardProps = {
   onCreate: () => void;
   onEdit: (character: Character) => void;
   onPreview: (character: Character) => void;
-  onDelete: (character: Character) => void;
+  onDelete: (character: Character) => DeleteRequestResult;
   onDuplicate: (character: Character) => void;
-  onBulkDelete: (characterIds: string[]) => void;
+  onBulkDelete: (characterIds: string[]) => DeleteRequestResult;
+  // Restoring, and the request to offer it. Both the delete and its undo are owned by
+  // the app shell, so a delete started in the editor arrives here as the same card the
+  // dashboard's own delete produces.
+  onRestoreDeleted: (characterIds: string[]) => RestoreDeleteResult;
+  deleteUndo: { characterIds: string[]; message: string } | null;
+  onDeleteUndoShown: () => void;
   onBulkDuplicate: (characters: Character[]) => void;
   onImport: (characters: Character[]) => void;
   onPromoteDraft: (character: Character) => void;
@@ -142,6 +152,9 @@ export function Dashboard({
   onDelete,
   onDuplicate,
   onBulkDelete,
+  onRestoreDeleted,
+  deleteUndo,
+  onDeleteUndoShown,
   onBulkDuplicate,
   onImport,
   onPromoteDraft,
@@ -218,7 +231,7 @@ export function Dashboard({
     resetFavoriteMode: filtersResetFavoriteMode,
   });
   const [flags, setFlags] = useState<DashboardFlags>(loadDashboardFlags);
-  const [undoCharacter, setUndoCharacter] = useState<Character | null>(null);
+  const [undoIds, setUndoIds] = useState<string[] | null>(null);
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<
     "success" | "warning" | "error" | "loading"
@@ -557,16 +570,20 @@ export function Dashboard({
     window.setTimeout(() => setToastMessage(""), 2200);
   }
 
-  function showUndoToast(character: Character) {
+  // The delete itself is done by the app shell, which also decides whether it may run
+  // at all. This screen only offers the undo, for however many characters it covered:
+  // one card for a single delete and for a bulk delete, because the recovery is the
+  // same operation and the author should not have to learn two.
+  function showUndoToast(characterIds: string[], message: string) {
     if (undoTimerRef.current) {
       window.clearTimeout(undoTimerRef.current);
     }
 
-    setUndoCharacter(character);
-    setToastMessage("角色已删除。");
+    setUndoIds(characterIds);
+    setToastMessage(message);
     undoTimerRef.current = window.setTimeout(() => {
       setToastMessage("");
-      setUndoCharacter(null);
+      setUndoIds(null);
       undoTimerRef.current = null;
     }, 10000);
     window.setTimeout(() => {
@@ -577,16 +594,46 @@ export function Dashboard({
     }, 0);
   }
 
-  function restoreDeletedCharacter(character: Character) {
-    onImport([character, ...characters]);
+  // A delete made in the editor lands here too: the editor returns to this screen, so
+  // the offer is made where the author arrives rather than where they left.
+  useEffect(() => {
+    if (!deleteUndo) {
+      return;
+    }
+
+    showUndoToast(deleteUndo.characterIds, deleteUndo.message);
+    onDeleteUndoShown();
+    // showUndoToast is recreated every render and reading it here would re-fire this
+    // effect on every render; the request itself is the signal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deleteUndo, onDeleteUndoShown]);
+
+  function restoreDeleted(characterIds: string[]) {
+    const result = onRestoreDeleted(characterIds);
 
     if (undoTimerRef.current) {
       window.clearTimeout(undoTimerRef.current);
       undoTimerRef.current = null;
     }
 
-    showToast("角色已恢复");
-    setUndoCharacter(null);
+    if (result.status === "restored") {
+      // The recovery merged rather than replaced, so the counts are what came back -
+      // not what was there before.
+      const { characters: restored, relationships, timeline, world } = result.counts;
+      const references = relationships + timeline + world;
+      showToast(
+        references > 0
+          ? `已恢复 ${restored} 个角色及其 ${references} 处关联`
+          : `已恢复 ${restored} 个角色`,
+      );
+      setUndoIds(null);
+      return;
+    }
+
+    // Partial and failed both keep the offer on screen, because both are retryable:
+    // the copy that could not be written is still there to be read again.
+    setToastType(result.status === "partial" ? "warning" : "error");
+    showUndoToast(characterIds, `恢复未完成：${result.reason}`);
   }
 
   function confirmDelete() {
@@ -595,12 +642,19 @@ export function Dashboard({
     }
 
     const deletedCharacter = pendingDelete;
-    onDelete(deletedCharacter);
+    const outcome = onDelete(deletedCharacter);
+    setPendingDelete(null);
+
+    if (!outcome.ok) {
+      // No copy, no delete - and saying so is the whole point. The alternative was
+      // deleting anyway and letting the associations go silently.
+      showToast(`删除已取消：${outcome.reason}`, "error");
+      return;
+    }
+
     setSelectedIds((current) =>
       current.filter((id) => id !== deletedCharacter.id),
     );
-    setPendingDelete(null);
-    showUndoToast(deletedCharacter);
   }
 
   function selectedCharacters() {
@@ -697,11 +751,16 @@ export function Dashboard({
       return;
     }
 
-    onBulkDelete(selectedIds);
-    showToast(`已删除 ${selectedIds.length} 个角色`, "warning");
+    const outcome = onBulkDelete(selectedIds);
+    setIsBulkDeleteOpen(false);
+
+    if (!outcome.ok) {
+      showToast(`删除已取消：${outcome.reason}`, "error");
+      return;
+    }
+
     setSelectedIds([]);
     setIsBulkMode(false);
-    setIsBulkDeleteOpen(false);
   }
 
   function handleExportSelectedJson() {
@@ -2400,10 +2459,10 @@ export function Dashboard({
       {toastMessage && (
         <div className={`toast ${toastType}`}>
           {toastMessage}
-          {undoCharacter && (
+          {undoIds && undoIds.length > 0 && (
             <button
               data-undo-delete="true"
-              onClick={() => restoreDeletedCharacter(undoCharacter)}
+              onClick={() => restoreDeleted(undoIds)}
               type="button"
             >
               撤销
@@ -2417,8 +2476,8 @@ export function Dashboard({
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>删除角色</h2>
             <p>
-              确定要删除这个角色吗？删除后可以撤销一次；但它在关系网、时间线和世界观里的关联会
-              立即清除，撤销不会把它们找回。
+              确定要删除这个角色吗？删除后会保留一份恢复记录，10 秒内可以撤销一次；撤销会把角色
+              连同它在关系网、时间线和世界观里的关联一起恢复。
             </p>
             <div className="form-actions">
               <button
@@ -2574,8 +2633,8 @@ export function Dashboard({
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>批量删除</h2>
             <p>
-              确定要删除选中的 {selectedIds.length} 个角色吗？这些角色在关系网、时间线和世界观里的
-              关联会一并清除，且无法恢复 —— 批量删除没有撤销入口，也不写自动备份。
+              确定要删除选中的 {selectedIds.length} 个角色吗？删除后会保留一份恢复记录，10 秒内可以
+              撤销一次；撤销会把这些角色连同它们在关系网、时间线和世界观里的关联一起恢复。
             </p>
             <div className="form-actions">
               <button

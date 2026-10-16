@@ -41,6 +41,12 @@ import {
   saveDashboardPrefs,
 } from "./storage/dashboardPrefs";
 import { pruneCharacterReferences } from "./storage/referenceIntegrity";
+import {
+  captureDeleteRecovery,
+  restoreDeleteRecovery,
+  type DeleteRequestResult,
+  type RestoreDeleteResult,
+} from "./storage/deleteRecovery";
 import { readWorkspaceDatasets } from "./storage/workspaceBackup";
 import { APP_BUILD, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "./config/version";
 import { importWithRecovery } from "./utils/lazyImport";
@@ -135,6 +141,13 @@ function App() {
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
   const [isAppClearDataOpen, setIsAppClearDataOpen] = useState(false);
   const [clearDataError, setClearDataError] = useState<string | null>(null);
+  // A delete can start anywhere - the dashboard, the editor, the preview - but the
+  // undo affordance lives on the dashboard, and the editor leaves this screen before
+  // an undo could be offered there. So the request is handed to the dashboard rather
+  // than duplicated: one delete, one card that can call it back.
+  const [deleteUndo, setDeleteUndo] = useState<{ characterIds: string[]; message: string } | null>(
+    null,
+  );
   const [isDeveloperResetOpen, setIsDeveloperResetOpen] = useState(false);
   const [pendingAppAssetDelete, setPendingAppAssetDelete] = useState<AvatarAssetRecord | null>(null);
   const [pendingAppAssetBatchDeleteIds, setPendingAppAssetBatchDeleteIds] = useState<string[]>([]);
@@ -687,7 +700,17 @@ function App() {
     setPage("preview");
   }
 
-  function handleDelete(character: Character) {
+  // The three delete entry points (dashboard single, dashboard bulk, editor) all run
+  // through here, so the rule is stated once: take a recovery copy first, and if that
+  // copy cannot be written, do not delete. The prune below is what removes the
+  // character from the three domains, and this record is the only description of what
+  // it removed (DEC-38-01, KI-17).
+  function handleDelete(character: Character): DeleteRequestResult {
+    const capture = captureDeleteRecovery("删除角色", [character]);
+    if (capture.status === "failed") {
+      return { ok: false, reason: capture.reason };
+    }
+
     const nextCharacters = deleteCharacter(character.id);
     setCharacters(nextCharacters);
     pruneCharacterReferences(nextCharacters.map((entry) => entry.id));
@@ -695,6 +718,9 @@ function App() {
     if (selectedCharacter?.id === character.id) {
       setSelectedCharacter(null);
     }
+
+    setDeleteUndo({ characterIds: [character.id], message: "角色已删除。" });
+    return { ok: true };
   }
 
   function handleDuplicate(character: Character) {
@@ -715,7 +741,13 @@ function App() {
     }
   }
 
-  function handleBulkDelete(characterIds: string[]) {
+  function handleBulkDelete(characterIds: string[]): DeleteRequestResult {
+    const doomed = characters.filter((character) => characterIds.includes(character.id));
+    const capture = captureDeleteRecovery("批量删除角色", doomed);
+    if (capture.status === "failed") {
+      return { ok: false, reason: capture.reason };
+    }
+
     const nextCharacters = characters.filter(
       (character) => !characterIds.includes(character.id),
     );
@@ -729,6 +761,22 @@ function App() {
     if (selectedCharacter && characterIds.includes(selectedCharacter.id)) {
       setSelectedCharacter(null);
     }
+
+    setDeleteUndo({
+      characterIds,
+      message: `已删除 ${doomed.length} 个角色。`,
+    });
+    return { ok: true };
+  }
+
+  // The undo, in one place, for whichever delete asked for it. It restores the
+  // characters and the references that delete removed, or it says which part it could
+  // not do - a partial recovery is never reported as a complete one.
+  function handleRestoreDeleted(characterIds: string[]): RestoreDeleteResult {
+    const result = restoreDeleteRecovery(characterIds);
+    setCharacters(result.characters);
+    setDeleteUndo(null);
+    return result;
   }
 
   function handleBulkDuplicate(charactersToDuplicate: Character[]) {
@@ -988,6 +1036,9 @@ function App() {
           onDelete={handleDelete}
           onDuplicate={handleDuplicate}
           onBulkDelete={handleBulkDelete}
+          onRestoreDeleted={handleRestoreDeleted}
+          deleteUndo={deleteUndo}
+          onDeleteUndoShown={() => setDeleteUndo(null)}
           onBulkDuplicate={handleBulkDuplicate}
           onImport={handleImport}
           onPromoteDraft={handlePromoteDraft}
