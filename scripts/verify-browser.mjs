@@ -589,6 +589,104 @@ const SEED_GRAPH_LARGE = `
   })()
 `;
 
+// Two uploaded avatars and one emoji: a wide 1200x400 picture (the shape that used to
+// paint over the form), a square one at the size avatars are stored at, and a character
+// with no picture at all.
+const SEED_AVATAR_SIZES = `
+  (async () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const store = async (id, width, height) => {
+      const source = document.createElement("canvas");
+      source.width = width;
+      source.height = height;
+      const context = source.getContext("2d");
+      context.fillStyle = "#ff0000";
+      context.fillRect(0, 0, width, height);
+      context.fillStyle = "#0000ff";
+      context.fillRect(0, 0, width, 8);
+      const blob = await new Promise((resolve) => source.toBlob(resolve, "image/png"));
+      await new Promise((resolve, reject) => {
+        const request = indexedDB.open("character-studio-assets", 1);
+        request.onupgradeneeded = () => {
+          if (!request.result.objectStoreNames.contains("avatar-assets")) {
+            request.result.createObjectStore("avatar-assets", { keyPath: "id" });
+          }
+        };
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction("avatar-assets", "readwrite");
+          transaction.objectStore("avatar-assets").put({
+            id, type: "avatar", name: id + ".png", mimeType: "image/png", blob, size: blob.size,
+            width, height, createdAt: now, updatedAt: now,
+          });
+          transaction.oncomplete = () => { db.close(); resolve(true); };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      });
+    };
+    await store("asset-wide", 1200, 400);
+    await store("asset-square", 512, 512);
+    localStorage.setItem("character-studio.characters", JSON.stringify([
+      { id: "av-1", name: "沈青梧", occupation: "调查员", worldview: "北境", avatarAssetId: "asset-wide", createdAt: now, updatedAt: now },
+      { id: "av-2", name: "陆停云", occupation: "魔法师", worldview: "云海", avatarAssetId: "asset-square", createdAt: now, updatedAt: now },
+      { id: "av-3", name: "白露", occupation: "医者", worldview: "北境", avatarEmoji: "🌙", createdAt: now, updatedAt: now },
+    ]));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.world", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    return true;
+  })()
+`;
+
+// Every row avatar in whatever dialog is open, measured against its own box. `escaped`
+// is how far the picture paints outside the circle, which is the whole complaint: an
+// image at its natural size inside a 26px container.
+const READ_ROW_AVATARS = `
+  (() => {
+    const rows = [...document.querySelectorAll(".character-row-avatar")];
+    const dialog = document.querySelector(".confirm-dialog");
+    const save = dialog
+      ? [...dialog.querySelectorAll("button")].find((button) => /^保存/.test(button.textContent.trim()))
+      : null;
+    const saveRect = save ? save.getBoundingClientRect() : null;
+    const hit = saveRect
+      ? document.elementFromPoint(saveRect.left + saveRect.width / 2, saveRect.top + saveRect.height / 2)
+      : null;
+
+    const measured = rows.map((row) => {
+      const rect = row.getBoundingClientRect();
+      const image = row.querySelector("img");
+      const imageRect = image ? image.getBoundingClientRect() : null;
+      return {
+        box: [Math.round(rect.width), Math.round(rect.height)],
+        image: imageRect ? [Math.round(imageRect.width), Math.round(imageRect.height)] : null,
+        natural: image ? [image.naturalWidth, image.naturalHeight] : null,
+        escaped: imageRect
+          ? Math.round(
+              Math.max(0, rect.left - imageRect.left) + Math.max(0, imageRect.right - rect.right) +
+              Math.max(0, rect.top - imageRect.top) + Math.max(0, imageRect.bottom - rect.bottom),
+            )
+          : 0,
+        emoji: image ? "" : row.textContent.trim(),
+        clipped: getComputedStyle(row).overflow,
+      };
+    });
+
+    return {
+      count: rows.length,
+      rows: measured,
+      escaped: measured.reduce((total, row) => total + row.escaped, 0),
+      clippedEverywhere: measured.every((row) => row.clipped === "hidden"),
+      pictures: measured.filter((row) => row.image).length,
+      widest: measured.reduce((widest, row) => Math.max(widest, row.natural ? row.natural[0] : 0), 0),
+      saveHit: hit ? (hit.closest("button") ? "button" : hit.tagName + "." + (hit.getAttribute("class") || "")) : "(no save button)",
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  })()
+`;
+
 const READ_GRAPH_CANVAS = `
   (() => {
     const nodes = [...document.querySelectorAll(".relationship-node")];
@@ -1767,6 +1865,66 @@ async function main() {
       return {
         pass: Boolean(fits && dark),
         detail: `主题 ${state.theme || "(未设置)"}、弹窗底色 ${state.dialogBackground}；375px 下弹窗 ${state.dialogWidth}px、弹窗溢出 ${state.dialogOverflow}px、页面溢出 ${state.pageOverflow}px`,
+      };
+    });
+
+    await check("头像：图片不溢出容器，三个入口都不遮挡表单（P1）", async () => {
+      const openDialog = async (workspace, openLabel) => {
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace(workspace));
+        await cdp.value(`(() => {
+          const button = [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === ${JSON.stringify("PLACEHOLDER")});
+          button.click();
+          return true;
+        })()`.replace(JSON.stringify("PLACEHOLDER"), JSON.stringify(openLabel)));
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      };
+      const read = () => cdp.value(READ_ROW_AVATARS);
+
+      await cdp.goto(base);
+      await cdp.value(SEED_AVATAR_SIZES);
+      await cdp.goto(base);
+
+      // 新建关系: the two single-select pickers, opened one at a time.
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.value(`(() => { [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === "新建关系").click(); return true; })()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await cdp.value(`(() => { document.querySelector(".character-select-trigger").click(); return true; })()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const relation = await read();
+
+      // 新建事件 and 新建条目: the multi-select list, rendered in the dialog.
+      await openDialog("世界观时间线", "新建事件");
+      const timeline = await read();
+      await openDialog("世界观管理", "新建条目");
+      const world = await read();
+
+      // The same dialog on a phone, where a picture painting outside its circle would
+      // reach past the card.
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.value(`(() => { [...document.querySelectorAll("button")].find((item) => item.textContent.trim() === "新建关系").click(); return true; })()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      await cdp.value(`(() => { document.querySelector(".character-select-trigger").click(); return true; })()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const narrow = await read();
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const contained = (state) =>
+        state.count > 0 &&
+        state.escaped === 0 &&
+        state.clippedEverywhere &&
+        state.rows.every((row) => !row.image || (Math.abs(row.image[0] - row.box[0]) <= 1 && Math.abs(row.image[1] - row.box[1]) <= 1)) &&
+        state.saveHit === "button" &&
+        state.pageOverflow <= 1;
+      // A wide picture was actually loaded, so "contained" is not the trivial case of
+      // no picture being drawn at all.
+      const loaded = [relation, timeline, world, narrow].every((state) => state.pictures > 0 && state.widest === 1200);
+      const emojiKept = [relation, timeline, world].some((state) => state.rows.some((row) => row.emoji === "🌙"));
+
+      return {
+        pass: Boolean([relation, timeline, world, narrow].every(contained) && loaded && emojiKept),
+        detail: `新建关系 ${relation.count} 行 / 溢出 ${relation.escaped}px / 图片 ${relation.pictures} 个（最宽源 ${relation.widest}px）/ 保存按钮命中 ${relation.saveHit}；时间线 ${timeline.count} 行 / 溢出 ${timeline.escaped}px / 命中 ${timeline.saveHit}；世界观 ${world.count} 行 / 溢出 ${world.escaped}px / 命中 ${world.saveHit}；375px ${narrow.count} 行 / 溢出 ${narrow.escaped}px / 页面溢出 ${narrow.pageOverflow}px；头像框 ${relation.rows[0] && relation.rows[0].box.join("x")}、图片 ${relation.rows[0] && (relation.rows[0].image || []).join("x")}（源 ${relation.rows[0] && relation.rows[0].natural && relation.rows[0].natural.join("x")}）、clip ${relation.rows[0] && relation.rows[0].clipped}；emoji 行 ${emojiKept ? "保留" : "丢失"}`,
       };
     });
 
