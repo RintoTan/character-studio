@@ -158,7 +158,8 @@ main.tsx
 | `character-studio.theme` | `App.tsx` | `system` / `light` / `dark` |
 | `character-studio.about-seen` | `App.tsx` | 是否已看首次 About |
 | `character-studio.recent-avatars` | `storage/recentAvatars.ts` | 最近使用的 emoji（封顶 12） |
-| `character-studio.backup` | `storage/backup.ts` | 自动快照 |
+| `character-studio.backup` | `storage/backup.ts` | 自动快照（只含角色） |
+| `character-studio.delete-recovery` | `storage/deleteRecovery.ts` | 删除恢复记录（被删角色 + 被清理的关系边 + 受影响条目的原有参与角色；单槽位） |
 | `character-studio.chunk-reload` | `utils/lazyImport.ts` | 「只刷一次」的闸（`sessionStorage`） |
 | `character-studio-developer-settings` | `config/developerSettings.ts` | 统一设置对象（见 4.4） |
 | `character-studio.ai.provider` | `storage/aiSettings.ts` | AI 设置（7 个键） |
@@ -169,7 +170,7 @@ main.tsx
 | `character-studio.ai.max-tokens` | 同上 | |
 | `character-studio.ai.streaming` | 同上 | |
 
-（后 7 个为 AI 设置的键集合；实际键总数为 **21**：上表前 14 个 + AI 的 7 个。）
+（后 7 个为 AI 设置的键集合；实际键总数为 **22**：上表前 15 个 + AI 的 7 个。）
 
 **历史扁平键（仅作一次性迁移输入，不再写入）**：
 `character-studio.settings.compact-mobile`、`.jpg-quality`、`.png-scale`、`.pdf-light`、`.export-footer`、`.export-prompt`、`.export-time`、`character-studio.prompt.external-library`、`.random-missing-fields`、`.complexity`、`.repeat-control`、`.custom-library`。
@@ -268,6 +269,8 @@ assets/avatar/*      # 头像图片
    > 设计语言本身**不因此降级**：降级只发生在截图的克隆副本里。
 
 **自动快照**：清空全部数据与导入文件都会替换整份列表，两者都先写 `character-studio.backup`，设置页在有快照时提供「恢复上次自动备份」入口（没有恢复入口的快照就是又一个「看似可用、实际无效」的控件）。
+
+**删除恢复记录**（`storage/deleteRecovery.ts`，与自动快照是两个不同的东西）：删除角色会同时清掉它在关系网 / 时间线 / 世界观里的引用，所以删除前先写 `character-studio.delete-recovery`，撤销时**按 id 合并**回写（只补缺失项、不替换数据集，因此不覆盖删除之后的新数据）。三个删除入口共用它；记录写不进去就不执行删除，恢复时某一步没落地则保留记录并如实报告为部分恢复。快照覆盖的是「角色列表」，这份记录覆盖的是「这一次删除动了什么」。
 
 ---
 

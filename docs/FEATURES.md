@@ -93,7 +93,7 @@
 | 批量选择 / 全选 | 已实现 | `selectedIds` | 卡片与表格都能逐项选择 | 无 | — | 历史实测 | — |
 | 批量编辑 | 已实现 | `utils/bulkEdit.ts` | 5 个字段各自勾选后批量写入 | `characters` | — | 已测试（11 例）+ 历史实测（3 改 / 111 未动） | — |
 | 批量收藏 / 复制 / 删除 | 已实现 | 各 handler | 批量操作，删除走确认 | `characters` | — | 已测试（引用清理）+ 历史实测 | — |
-| 删除撤销 | 已实现 | `undoCharacter` + Toast | 删除后 Toast 提供 `撤销` | `characters` | — | 历史实测 | — |
+| 删除撤销 | 已实现 | `App.deleteUndo` 触发、主页 `undoIds` + Toast | 删除后 Toast 提供 `撤销`（10 秒） | `characters` + `relationships` / `timeline` / `world` + `delete-recovery` | 删除前先写恢复记录，写不进去则不删除；撤销按 id 合并回写角色**与被清理的关联** | 已测试（16 例）+ 真实浏览器（4 项） | — |
 | 命令面板 | 已实现 | `command-palette` | Cmd/Ctrl+K 打开，7 个动作 | 无 | — | 历史实测（外部点击关闭） | — |
 | 快捷键 | 已实现 | `Dashboard.tsx` L458 | `N` 新建、`/` 搜索、`Esc` 关闭、`Enter` 打开首个搜索结果 | 无 | — | 仅静态检查 | 补一次键盘实测 |
 | 导入 | 已实现 | `prepareCharacterImport` / `commitCharacterImport` | 解析 → 预览 → 确认 → 写入；先写自动快照 | `characters` + 三个工作区域 | — | 已测试 + 历史实测（JSON 与 CSV 端到端） | — |
@@ -143,7 +143,7 @@
 | 未保存离开提示 | 已实现 | `beforeunload` | 有改动才提示 | 无 | — | 已测试 | — |
 | Cmd / Ctrl + S | 已实现 | L1448 | 触发保存 | — | — | 未验证（键盘实测） | 补实测 |
 | 清空内容 | 已实现 | `resetEditableForm` + 确认弹窗 | 清空表单字段（不改存储） | 无 | — | 已测试 | — |
-| 删除角色 | 已实现 | `confirmFormAction` | 确认后删除，并请求主页清除筛选 | `characters` + 三个工作区域 | — | 已测试 + 历史实测 | — |
+| 删除角色 | 已实现 | `confirmFormAction` | 确认后删除，并请求主页清除筛选；删除前先写恢复记录 | `characters` + 三个工作区域 + `delete-recovery` | 恢复记录写失败时不删除，留在编辑页并提示原因；删除后回到主页 Navbar 提供 10 秒撤销 | 已测试 + 真实浏览器 + 历史实测 | — |
 | 随机生成角色 | 已实现 | `handleRandomCharacter` | 用本地词库填字段，按钮进入 450ms 生成态 | `data/avatarCategories.ts` + 词库 txt | — | 仅静态检查 | 补实测 |
 | 中文关键词生成 | 已实现 | `handleGenerateKeywords` | 本地规则拼装，写入可编辑字段 | `external-inspiration-library.txt`（37 KB，懒加载） | 灵感抽选跨字段重复未处理（历史台账 P1-10） | 仅静态检查 | 可优化去重 |
 | 英文 Prompt 生成 | 已实现 | `handleGenerateImagePrompt` | 预设值有英文映射；自由文本保留中文并在输出加一行语言说明 | 同上 | 自由文本翻译策略未定（需用户决策） | 历史实测（note 行存在） | 待用户定策略 |
