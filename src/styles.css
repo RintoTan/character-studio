@@ -4733,21 +4733,76 @@ kbd {
   gap: 12px;
 }
 
+/* The settings dialog holds more than one group of cards now, so it gets a little
+   more room than the other dialogs it used to share a width with. Scoped to desktop
+   on purpose: the narrow-screen rule further down still owns the small viewport, and
+   the asset library keeps the width it sets for itself. */
+@media (min-width: 721px) {
+  .settings-dialog:not(.asset-library-dialog) {
+    width: min(760px, 100%);
+    /* Taller than the other dialogs: two groups of cards, and the second one should
+       not start below the fold on a normal screen. */
+    max-height: min(820px, calc(100vh - 48px));
+  }
+}
+
+.settings-body,
+.settings-group {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-body {
+  gap: 18px;
+}
+
+.settings-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* What is not released yet is kept apart from what works: dashed, muted, and named,
+   so it cannot be read as a peer of the settings above it. */
+.settings-group-pending {
+  border: 1px dashed var(--border);
+  border-radius: var(--developer-card-radius);
+  background: var(--surface-subtle);
+  padding: 12px;
+}
+
+.settings-group-pending .settings-grid article {
+  background: var(--surface);
+}
+
 .settings-grid {
   display: grid;
   gap: 12px;
 }
 
 .settings-grid article {
+  display: grid;
+  align-content: start;
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: var(--developer-card-radius);
   background: var(--surface-subtle);
   padding: 14px;
+  /* The card body is a stack, so the rhythm is one gap instead of a margin every
+     element has to remember to carry. */
+  gap: 10px;
+}
+
+.settings-grid article > * {
+  margin: 0;
 }
 
 .settings-grid h3 {
-  margin-bottom: 10px;
   font-size: 15px;
 }
 

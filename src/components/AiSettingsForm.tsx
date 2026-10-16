@@ -35,15 +35,15 @@ export function AiSettingsForm() {
   return (
     <article className="ai-settings-card">
       <div className="settings-card-head">
-        <h3>AI 设置 / AI Settings</h3>
-        <span className="status-badge">🚧 Coming Soon</span>
+        <h3>AI 设置</h3>
+        <span className="status-badge draft">开发中</span>
       </div>
       <p className="muted">
         面向所有用户，开发中。当前不会调用 AI，也不会上传任何用户数据；未来可填写自己的 API Key。
       </p>
       <div className="settings-form-grid">
         <label>
-          Provider
+          服务商
           <select defaultValue={settings.provider} onChange={handle("provider")}>
             {AI_PROVIDERS.map((provider) => (
               <option key={provider} value={provider}>
@@ -57,7 +57,7 @@ export function AiSettingsForm() {
           <input disabled placeholder="功能未启用，暂不可填写" type="password" />
         </label>
         <label>
-          Base URL
+          接口地址
           <input
             placeholder="https://api.example.com/v1"
             defaultValue={settings.baseUrl}
@@ -65,11 +65,11 @@ export function AiSettingsForm() {
           />
         </label>
         <label>
-          Model
+          模型
           <input placeholder="model-name" defaultValue={settings.model} onChange={handle("model")} />
         </label>
         <label>
-          Temperature
+          温度
           <input
             type="number"
             min="0"
@@ -91,7 +91,7 @@ export function AiSettingsForm() {
           />
         </label>
         <label>
-          Max Tokens
+          最大 Token
           <input
             type="number"
             min="1"
@@ -102,11 +102,11 @@ export function AiSettingsForm() {
         </label>
         <label className="settings-check">
           <input type="checkbox" defaultChecked={settings.streaming} onChange={handle("streaming")} />
-          <span>Streaming</span>
+          <span>流式输出</span>
         </label>
       </div>
       <button className="ghost-button" disabled type="button">
-        连接测试 / Connection Test
+        连接测试（未启用）
       </button>
     </article>
   );

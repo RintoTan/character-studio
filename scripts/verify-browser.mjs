@@ -17,7 +17,7 @@
 // CHROME_PATH overrides the browser, CHROME_BIN works too. It is not part of CI:
 // the workflow has no browser step, and adding one is a separate decision.
 import { spawn } from "node:child_process";
-import { createReadStream, existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
@@ -389,6 +389,61 @@ const READ_CLEAR_OUTCOME = `
   })
 `;
 
+// The settings dialog is opened the way a reader opens it: from the footer, which
+// only the non-dashboard screens show.
+const OPEN_SETTINGS_DIALOG = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const settings = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+    if (!settings) throw new Error("footer settings button missing");
+    settings.click();
+    await sleep(400);
+    return true;
+  })()
+`;
+
+// Reads the dialog rather than trusting it: which groups exist, which cards sit in
+// each, whether any English heading survived, and whether anything overflows the
+// dialog or the page.
+const READ_SETTINGS_DIALOG = `
+  (() => {
+    const dialog = document.querySelector(".settings-dialog:not(.asset-library-dialog)");
+    if (!dialog) return { open: false };
+    const texts = (scope) => [...scope.querySelectorAll(".settings-grid h3")].map((node) => node.textContent.trim());
+    const pending = dialog.querySelector(".settings-group-pending");
+    const live = dialog.querySelector(".settings-group:not(.settings-group-pending)");
+    const liveCard = live && live.querySelector(".settings-grid article");
+    const pendingCard = pending && pending.querySelector(".settings-grid article");
+    const background = (node) => (node ? getComputedStyle(node).backgroundColor : "");
+    return {
+      open: true,
+      labels: [...dialog.querySelectorAll(".settings-group-label")].map((node) => node.textContent.trim()),
+      liveCards: live ? texts(live) : [],
+      pendingCards: pending ? texts(pending) : [],
+      englishLeft: /Appearance|About Data|Coming Soon|Connection Test|Follow System/.test(dialog.textContent),
+      dialogOverflow: dialog.scrollWidth - dialog.clientWidth,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      dialogWidth: Math.round(dialog.getBoundingClientRect().width),
+      viewportWidth: window.innerWidth,
+      liveCardBackground: background(liveCard),
+      pendingCardBackground: background(pendingCard),
+      dialogBackground: background(dialog),
+      theme: document.documentElement.dataset.theme || "",
+    };
+  })()
+`;
+
+const PICK_THEME = (label) => `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const button = [...document.querySelectorAll('.settings-dialog .segmented-row button')].find((item) => item.textContent.trim() === ${JSON.stringify(label)});
+    if (!button) throw new Error("theme button missing: " + ${JSON.stringify(label)});
+    button.click();
+    await sleep(300);
+    return true;
+  })()
+`;
+
 const goBack = (expected) => `
   (async () => {
     history.back();
@@ -630,6 +685,100 @@ async function main() {
         detail: `角色清空后 ${outcome.characters} 个、快照保留 ${outcome.snapshot?.characterCount ?? 0} 个角色`,
       };
     });
+
+    await check("设置弹窗：分组、中文标题、未发布功能不与可用设置同级（KI-01）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.value(OPEN_SETTINGS_DIALOG);
+      const state = await cdp.value(READ_SETTINGS_DIALOG);
+
+      const liveOk =
+        state.open &&
+        state.labels.includes("可用设置") &&
+        state.liveCards.includes("主题外观") &&
+        state.liveCards.includes("数据与存储") &&
+        !state.englishLeft;
+      const pendingOk =
+        state.labels.includes("未发布功能") &&
+        state.pendingCards.includes("AI 设置") &&
+        !state.liveCards.includes("AI 设置");
+      // Kept apart visually as well, not only in the markup.
+      const layered = state.liveCardBackground !== state.pendingCardBackground;
+
+      return {
+        pass: Boolean(liveOk && pendingOk && layered && state.dialogOverflow <= 1 && state.pageOverflow <= 1),
+        detail: `分组 ${state.labels.join(" / ")}；可用卡片 ${state.liveCards.join(" / ")}；未发布卡片 ${state.pendingCards.join(" / ") || "（开关关闭）"}；英文残留 ${state.englishLeft ? "有" : "无"}；弹窗 ${state.dialogWidth}px（视口 ${state.viewportWidth}px）溢出 ${state.dialogOverflow}px，页面溢出 ${state.pageOverflow}px；可用卡底 ${state.liveCardBackground} vs 未发布卡底 ${state.pendingCardBackground}`,
+      };
+    });
+
+    await check("设置弹窗：375px 无横向溢出，深色主题生效（KI-01）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 375,
+        height: 800,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.value(OPEN_SETTINGS_DIALOG);
+      await cdp.value(PICK_THEME("深色"));
+      const state = await cdp.value(READ_SETTINGS_DIALOG);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const fits =
+        state.open &&
+        state.dialogOverflow <= 1 &&
+        state.pageOverflow <= 1 &&
+        state.dialogWidth <= state.viewportWidth;
+      // #171a21 is the dark surface token; the light one is #ffffff.
+      const dark = state.theme === "dark" && state.dialogBackground === "rgb(23, 26, 33)";
+
+      return {
+        pass: Boolean(fits && dark),
+        detail: `主题 ${state.theme || "(未设置)"}、弹窗底色 ${state.dialogBackground}；375px 下弹窗 ${state.dialogWidth}px、弹窗溢出 ${state.dialogOverflow}px、页面溢出 ${state.pageOverflow}px`,
+      };
+    });
+
+    // Not a check: an opt-in capture, so the result of a visual change can be looked
+    // at rather than only asserted. Runs only with SHOTS=1 so CI writes no files.
+    if (process.env.SHOTS) {
+      await check("截图（SHOTS=<目录>）：设置弹窗 桌面浅色 / 桌面深色 / 375 深色", async () => {
+        const dir = process.env.SHOTS;
+        mkdirSync(dir, { recursive: true });
+        const capture = async (name) => {
+          const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
+          const file = join(dir, `settings-${name}.png`);
+          writeFileSync(file, Buffer.from(data, "base64"));
+          return file;
+        };
+        const openDialog = async () => {
+          await cdp.goto(base);
+          await cdp.value(clickWorkspace("角色关系网"));
+          await cdp.value(OPEN_SETTINGS_DIALOG);
+        };
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED);
+        // Forced rather than inherited: this browser's own preference is dark, so a
+        // "light" shot that just opens the dialog would be a second dark one.
+        await openDialog();
+        await cdp.value(PICK_THEME("浅色"));
+        const files = [await capture("desktop-light")];
+        await cdp.value(PICK_THEME("深色"));
+        files.push(await capture("desktop-dark"));
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+        await openDialog();
+        await cdp.value(PICK_THEME("深色"));
+        files.push(await capture("mobile-dark"));
+        await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+        return { pass: true, detail: files.join("  ") };
+      });
+    }
 
     await check("窄屏（375）：后退同样恢复工作区页面", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", {

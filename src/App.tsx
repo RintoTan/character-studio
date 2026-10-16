@@ -1491,59 +1491,81 @@ function App() {
           <div className="settings-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Settings</p>
+                <p className="eyebrow">本地设置</p>
                 <h2>设置</h2>
               </div>
               <button className="ghost-button" onClick={() => setIsAppSettingsOpen(false)} type="button">
                 关闭
               </button>
             </div>
-            <div className="settings-grid">
-              <article>
-                <h3>Appearance</h3>
-                <div className="segmented-row">
-                  {(["system", "light", "dark"] as const).map((mode) => (
-                    <button
-                      className={themeMode === mode ? "active" : ""}
-                      key={mode}
-                      onClick={() => setThemeMode(mode)}
-                      type="button"
-                    >
-                      {mode === "system" ? "Follow System" : mode === "light" ? "Light" : "Dark"}
-                    </button>
-                  ))}
+            {/* Two groups, in the order they are worth reading: what works, then what
+                does not exist yet. Unreleased settings used to sit between the live
+                ones at the same level, which made the dialog read as if AI were a
+                feature that might be broken rather than one that is not here yet. */}
+            <div className="settings-body">
+              <div className="settings-group">
+                <p className="settings-group-label">可用设置</p>
+                <div className="settings-grid">
+                  <article>
+                    <h3>主题外观</h3>
+                    <p className="muted">跟随系统，或固定在浅色 / 深色。只影响这台设备上的显示。</p>
+                    <div className="segmented-row">
+                      {(["system", "light", "dark"] as const).map((mode) => (
+                        <button
+                          className={themeMode === mode ? "active" : ""}
+                          key={mode}
+                          onClick={() => setThemeMode(mode)}
+                          type="button"
+                        >
+                          {mode === "system" ? "跟随系统" : mode === "light" ? "浅色" : "深色"}
+                        </button>
+                      ))}
+                    </div>
+                  </article>
+                  <article>
+                    <h3>数据与存储</h3>
+                    <p className="muted">
+                      角色数据保存在这台浏览器的 localStorage，不上传，也不会自动跨设备同步。
+                    </p>
+                    <div className="settings-actions">
+                      <button className="danger-button" onClick={() => setIsAppClearDataOpen(true)} type="button">
+                        清空本地数据
+                      </button>
+                    </div>
+                  </article>
+                  {developerSettings.featureFlags.assetLibrary && (
+                    <article>
+                      <h3>头像素材库</h3>
+                      <p className="muted">
+                        本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。
+                        图片只保存在这台浏览器的 IndexedDB，不会自动跨设备同步；导出的轻量 JSON 不包含图片二进制。
+                      </p>
+                      <div className="settings-actions">
+                        <button
+                          className="ghost-button"
+                          onClick={() => {
+                            setIsAppSettingsOpen(false);
+                            setIsAppAssetLibraryOpen(true);
+                          }}
+                          type="button"
+                        >
+                          打开头像素材库
+                        </button>
+                      </div>
+                    </article>
+                  )}
                 </div>
-              </article>
-              {developerSettings.featureFlags.aiSettings && <AiSettingsForm />}
-              <article>
-                <h3>About Data</h3>
-                <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步。</p>
-                <div className="settings-actions">
-                  <button className="danger-button" onClick={() => setIsAppClearDataOpen(true)} type="button">
-                    清空本地数据
-                  </button>
+              </div>
+              {developerSettings.featureFlags.aiSettings && (
+                <div className="settings-group settings-group-pending">
+                  <p className="settings-group-label">未发布功能</p>
+                  <p className="muted">
+                    下面的设置现在不会生效，填写也不会改变任何行为 —— 它们只是提前展示这个功能将来的样子。
+                  </p>
+                  <div className="settings-grid">
+                    <AiSettingsForm />
+                  </div>
                 </div>
-              </article>
-              {developerSettings.featureFlags.assetLibrary && (
-              <article>
-                <h3>头像素材库</h3>
-                <p className="muted">
-                  本地头像素材 {avatarAssetStats.count} 个，占用约 {formatAssetSize(avatarAssetStats.size)}。轻量 JSON 不包含头像图片二进制。
-                </p>
-                <p className="muted">图片只保存在当前浏览器 IndexedDB，换设备不会自动同步。</p>
-                <div className="settings-actions">
-                  <button
-                    className="ghost-button"
-                    onClick={() => {
-                      setIsAppSettingsOpen(false);
-                      setIsAppAssetLibraryOpen(true);
-                    }}
-                    type="button"
-                  >
-                    打开头像素材库
-                  </button>
-                </div>
-              </article>
               )}
             </div>
           </div>
