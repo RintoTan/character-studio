@@ -3070,7 +3070,9 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .tag-fieldset {
   display: grid;
-  gap: 10px;
+  /* A fieldset is one field here (legend plus its control), so it carries the
+     field gap rather than a number of its own. */
+  gap: var(--editor-field-gap);
   border: 0;
   margin: 0;
   padding: 0;
@@ -3176,6 +3178,14 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .form-actions {
   justify-content: flex-end;
+}
+
+/* Inside a section body, an action row belongs to the field above it, so it starts
+   at that field's left edge. The prompt section's row used to sit at the right edge
+   while the other five started left, which is what made it read as a different
+   screen. Its buttons already share the compact size with the other rows. */
+.workspace-card-body .inline-actions {
+  justify-content: flex-start;
 }
 
 .workspace-shell {
@@ -3556,12 +3566,24 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .workspace-card {
+  /* One rhythm for the whole editor, named once instead of chosen per section.
+     Before this, six sections between them used 8, 10, 12 and 16 for the same two
+     relationships, so moving between sections felt like moving between screens:
+     --editor-field-gap   between a field's label and its control
+     --editor-block-gap   between two blocks inside one section body */
+  --editor-field-gap: 8px;
+  --editor-block-gap: 16px;
+
   scroll-margin-top: 20px;
   border: 1px solid var(--border);
   border-radius: var(--developer-card-radius);
   background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.workspace-card label {
+  gap: var(--editor-field-gap);
 }
 
 .workspace-card-head {
@@ -3600,7 +3622,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .workspace-card-body {
   display: grid;
-  gap: 16px;
+  gap: var(--editor-block-gap);
   border-top: 1px solid var(--border);
   padding: var(--pad-card);
 }

@@ -389,6 +389,68 @@ const READ_CLEAR_OUTCOME = `
   })
 `;
 
+// Expand whatever the collapse memory left closed, so all six sections can be read
+// at once. Only heads whose body is missing are clicked, so nothing is collapsed.
+const EXPAND_EDITOR_SECTIONS = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    for (const card of document.querySelectorAll("section.workspace-card")) {
+      const head = card.querySelector(".workspace-card-head");
+      if (head && head.tagName === "BUTTON" && !card.querySelector(".workspace-card-body")) {
+        head.click();
+        await sleep(150);
+      }
+    }
+    return true;
+  })()
+`;
+
+// Measures the six sections instead of describing them: if the design language is
+// shared, the numbers that carry it are the same in all six.
+const READ_EDITOR_SECTIONS = `
+  (() => {
+    const cards = [...document.querySelectorAll("section.workspace-card")].filter((card) => card.id !== "workspace-preferences");
+    const rows = cards.map((card) => {
+      const head = card.querySelector(".workspace-card-head");
+      const title = head && head.querySelector("strong");
+      const body = card.querySelector(".workspace-card-body");
+      const label = body && (body.querySelector("label") || body.querySelector(".tag-fieldset"));
+      const actionRow = body && body.querySelector(".helper-row, .inline-actions");
+      const bodyLeft = body
+        ? Math.round(body.getBoundingClientRect().left + parseFloat(getComputedStyle(body).paddingLeft))
+        : null;
+      return {
+        id: card.id,
+        titleSize: title ? getComputedStyle(title).fontSize : "",
+        headPadding: head ? getComputedStyle(head).padding : "",
+        bodyGap: body ? getComputedStyle(body).rowGap : "",
+        labelGap: label ? getComputedStyle(label).gap : "",
+        hasActionRow: Boolean(actionRow),
+        rowAligned: actionRow && bodyLeft !== null
+          ? Math.abs(Math.round(actionRow.getBoundingClientRect().left) - bodyLeft) <= 1
+          : null,
+      };
+    });
+    const same = (key) => {
+      const values = [...new Set(rows.map((row) => row[key]))];
+      return { value: values.length === 1 ? values[0] : values.join(" | "), uniform: values.length === 1 };
+    };
+    const rowsWithActions = rows.filter((row) => row.hasActionRow);
+    return {
+      count: rows.length,
+      expanded: rows.filter((row) => row.bodyGap).length,
+      titleSize: same("titleSize"),
+      headPadding: same("headPadding"),
+      bodyGap: same("bodyGap"),
+      labelGap: same("labelGap"),
+      actionRows: rowsWithActions.length,
+      actionRowsAligned: rowsWithActions.filter((row) => row.rowAligned).length,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ids: rows.map((row) => row.id.replace("workspace-", "")).join("/"),
+    };
+  })()
+`;
+
 // The settings dialog is opened the way a reader opens it: from the footer, which
 // only the non-dashboard screens show.
 const OPEN_SETTINGS_DIALOG = `
@@ -686,6 +748,57 @@ async function main() {
       };
     });
 
+    await check("编辑器：六节共用一套节头、间距与动作行（KI-02）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(CARD_MENU_ACTION("编辑"));
+      await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
+      await cdp.value(EXPAND_EDITOR_SECTIONS);
+      const state = await cdp.value(READ_EDITOR_SECTIONS);
+
+      const uniform =
+        state.count === 6 &&
+        state.expanded === 6 &&
+        state.titleSize.uniform &&
+        state.headPadding.uniform &&
+        state.bodyGap.uniform &&
+        state.labelGap.uniform;
+      // Every section that has an action row has it on the field's left edge.
+      const aligned = state.actionRows >= 4 && state.actionRows === state.actionRowsAligned;
+
+      return {
+        pass: Boolean(uniform && aligned && state.pageOverflow <= 1),
+        detail: `六节 ${state.ids}；节头字号 ${state.titleSize.value}（${state.titleSize.uniform ? "一致" : "不一致"}）、节头内距 ${state.headPadding.value}、块间距 ${state.bodyGap.value}、标签间距 ${state.labelGap.value}；动作行 ${state.actionRowsAligned}/${state.actionRows} 与字段左缘对齐；页面溢出 ${state.pageOverflow}px`,
+      };
+    });
+
+    await check("编辑器：900px 与 375px 下六节仍一致且无横向溢出（KI-02）", async () => {
+      const readAt = async (width, height) => {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: width < 720 });
+        await cdp.goto(base);
+        await cdp.value(CARD_MENU_ACTION("编辑"));
+        await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
+        await cdp.value(EXPAND_EDITOR_SECTIONS);
+        return cdp.value(READ_EDITOR_SECTIONS);
+      };
+
+      const narrow = await readAt(900, 900);
+      const mobile = await readAt(375, 812);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const ok = (state) =>
+        state.count === 6 &&
+        state.titleSize.uniform &&
+        state.bodyGap.uniform &&
+        state.pageOverflow <= 1;
+
+      return {
+        pass: Boolean(ok(narrow) && ok(mobile)),
+        detail: `900px：六节 ${narrow.count}、节头字号 ${narrow.titleSize.value}、块间距 ${narrow.bodyGap.value}、溢出 ${narrow.pageOverflow}px；375px：六节 ${mobile.count}、节头字号 ${mobile.titleSize.value}、块间距 ${mobile.bodyGap.value}、溢出 ${mobile.pageOverflow}px`,
+      };
+    });
+
     await check("设置弹窗：分组、中文标题、未发布功能不与可用设置同级（KI-01）", async () => {
       await cdp.goto(base);
       await cdp.value(SEED);
@@ -774,6 +887,22 @@ async function main() {
         await openDialog();
         await cdp.value(PICK_THEME("深色"));
         files.push(await capture("mobile-dark"));
+        await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+        // The editor too: six sections is the other half of this change.
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(CARD_MENU_ACTION("编辑"));
+        await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
+        await cdp.value(EXPAND_EDITOR_SECTIONS);
+        files.push(await capture("editor-desktop"));
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+        await cdp.goto(base);
+        await cdp.value(CARD_MENU_ACTION("编辑"));
+        await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
+        await cdp.value(EXPAND_EDITOR_SECTIONS);
+        files.push(await capture("editor-mobile"));
         await cdp.send("Emulation.clearDeviceMetricsOverride");
 
         return { pass: true, detail: files.join("  ") };

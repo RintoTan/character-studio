@@ -1716,14 +1716,18 @@ export function CharacterForm({
     void saveCurrentCharacter();
   }
 
+  // One action row for every section that has one. The personality section used to
+  // carry its own hand-written copy of this markup - and put it below its field,
+  // where the other sections put it above.
   function renderHelperButtons(
     sectionId: Exclude<SectionId, "basic" | "prompt">,
-    field: "appearanceDescription" | "abilityDescription" | "backstory",
+    field: "appearanceDescription" | "abilityDescription" | "backstory" | "personalityTags",
   ) {
     const labels = {
       appearanceDescription: "外貌描述",
       abilityDescription: "能力描述",
       backstory: "背景故事",
+      personalityTags: "性格标签",
     };
 
     return (
@@ -1975,7 +1979,7 @@ export function CharacterForm({
                         label="当前头像"
                       />
                       <div>
-                        <strong>Avatar Picker</strong>
+                        <strong>头像选择</strong>
                         <p className="muted">选择 Emoji 或上传本地头像图片。图片仅保存在当前浏览器。</p>
                       </div>
                     </div>
@@ -2313,6 +2317,7 @@ export function CharacterForm({
             </button>
             {!collapsedSections.personality && (
               <div className="workspace-card-body">
+                {renderHelperButtons("personality", "personalityTags")}
                 <fieldset className="tag-fieldset">
                   <legend>性格标签</legend>
                   <div className="tag-grid">
@@ -2368,32 +2373,6 @@ export function CharacterForm({
                     </div>
                   )}
                 </fieldset>
-                <div className="helper-row">
-                  <div className="helper-main-actions">
-                    <button
-                      className="ghost-button"
-                      onClick={() => showHelperSuggestion("personality", "personalityTags")}
-                      type="button"
-                    >
-                      随机灵感
-                    </button>
-                    <button className="ghost-button" disabled type="button">
-                      AI 创作 🚧
-                    </button>
-                  </div>
-                  <button
-                    className="ghost-button helper-clear-button"
-                    onClick={() =>
-                      setPendingClear({
-                        field: "personalityTags",
-                        label: "性格标签",
-                      })
-                    }
-                    type="button"
-                  >
-                    清空
-                  </button>
-                </div>
               </div>
             )}
           </section>
