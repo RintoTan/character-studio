@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.27.0**（来源：`src/config/version.ts` 的 `APP_VERSION`） |
-| Sprint | **37.1**（`APP_SPRINT`） |
+| 应用版本 | **2.27.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— **发布候选，等待授权**：线上仍是 2.27.0，本版本未打标签、未推送、未部署 |
+| Sprint | **38.2**（`APP_SPRINT`）—— 该版本收进 Sprint 38 / 38.1 / 38.2 三轮工作，最后一个完成的阶段是 38.2（取值规则见 `CHANGELOG.md` 的 2.27.1 条目） |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（短号 `bccec24`）—— 本文与 `docs/ARCHITECTURE.md` 等文档中的代码行号均以此为基准 |
