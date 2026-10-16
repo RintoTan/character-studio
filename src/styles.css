@@ -7052,26 +7052,81 @@ kbd {
 }
 
 /* Timeline (2.0). A plain ordered list with a rail rather than a canvas, so the
-   content stays real text for assistive technology and for search. */
+   content stays real text for assistive technology and for search.
+
+   The rail is one line for the whole list, drawn in one place, rather than a border
+   per group: a timeline whose line breaks between years reads as several lists.
+   It starts and ends inside the list instead of spanning it, so it does not run past
+   the last event towards the footer. */
 .timeline-rail {
+  position: relative;
   list-style: none;
-  margin: 12px 0 0;
-  padding: 0 0 0 14px;
-  border-left: 2px solid var(--border);
+  margin: 16px 0 0;
+  padding: 0 0 0 26px;
   display: grid;
-  gap: 18px;
+  gap: 22px;
 }
 
+.timeline-rail::before {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--border-strong),
+    var(--border) 45%,
+    var(--border) 75%,
+    transparent
+  );
+}
+
+/* A year is a checkpoint on the line: larger, filled, and named on the same row, so
+   the heading belongs to the events under it rather than floating above them. */
 .timeline-year-group {
   display: grid;
   gap: 10px;
+  /* The year navigation scrolls a group to the top; this is what keeps the sticky top
+     bar from covering the heading it just scrolled to. */
+  scroll-margin-top: 132px;
 }
 
 .timeline-year {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
-  font-size: 0.9rem;
-  letter-spacing: 0.08em;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text-soft);
+}
+
+.timeline-year-node {
+  position: absolute;
+  left: -25px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  transform: rotate(45deg);
+}
+
+.timeline-year-count,
+.timeline-count {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-fill);
   color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  padding: 1px 7px;
 }
 
 .timeline-events {
@@ -7079,36 +7134,53 @@ kbd {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .timeline-item {
   position: relative;
 }
 
+/* The event's own node on the same line the years sit on, tinted by kind: the one
+   place the rail says what sort of moment a card is. */
 .timeline-item::before {
   content: "";
   position: absolute;
-  left: -20px;
-  top: 18px;
+  left: -24px;
+  top: 20px;
   width: 8px;
   height: 8px;
+  border: 2px solid var(--border-strong);
   border-radius: 50%;
-  background: var(--border-strong);
+  background: var(--surface-subtle);
+}
+
+.timeline-item[data-kind="origin"]::before,
+.timeline-item[data-kind="bond"]::before {
+  border-color: var(--primary);
+}
+
+.timeline-item[data-kind="conflict"]::before,
+.timeline-item[data-kind="loss"]::before {
+  border-color: var(--danger);
 }
 
 .timeline-card {
   border: 1px solid var(--border);
   border-radius: var(--dialog-radius);
   background: var(--surface-subtle);
-  padding: 12px 14px;
+  padding: 14px 16px;
   display: grid;
-  gap: 6px;
+  gap: 8px;
 }
 
-.timeline-card h4 {
+/* The title is the card. Everything above it is a label and everything below it is
+   context, so it carries the largest type on the card and wraps rather than clipping. */
+.timeline-card-title {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.04rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .timeline-card-head {
@@ -7126,7 +7198,28 @@ kbd {
 .timeline-actions {
   margin-left: auto;
   display: flex;
-  gap: 6px;
+  gap: 2px;
+}
+
+/* Editing and deleting an event are housekeeping, not reading: text, muted, and only
+   coloured on hover rather than two bordered buttons competing with the title. */
+.timeline-action {
+  border: 0;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 4px 8px;
+}
+
+.timeline-action:hover {
+  background: var(--control-fill-hover);
+  color: var(--text);
+}
+
+.timeline-action.danger:hover {
+  color: var(--danger);
 }
 
 .timeline-kind-chip {
@@ -7155,6 +7248,134 @@ kbd {
   color: var(--text-soft);
   font-size: 0.9rem;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.timeline-meta {
+  color: var(--muted);
+}
+
+.timeline-description-toggle {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0;
+}
+
+/* Search, filters and the result count, in one row above the list. */
+.timeline-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+}
+
+.timeline-search {
+  display: flex;
+  flex: 1 1 220px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 340px;
+  min-height: var(--control-height-icon);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  padding: 0 8px 0 10px;
+}
+
+.timeline-search:focus-within {
+  border-color: var(--primary);
+  outline: 2px solid color-mix(in srgb, var(--primary) 30%, transparent);
+  outline-offset: 1px;
+}
+
+.timeline-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  outline: none;
+}
+
+.timeline-search button {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.timeline-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+/* 年份 and 类型 are two characters each; given a squeeze they wrapped to one character
+   a line, which reads as a broken label rather than a narrow one. */
+.timeline-filter-label {
+  white-space: nowrap;
+}
+
+.timeline-filter select {
+  min-height: var(--control-height-icon);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  padding: 0 6px;
+}
+
+.timeline-count {
+  margin-left: auto;
+}
+
+/* Year navigation. Only the years on screen, as buttons, because its one job is
+   jumping — the year filter is a separate control in the toolbar. */
+.timeline-year-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+
+.timeline-year-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height-icon);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0 10px;
+}
+
+.timeline-year-jump:hover {
+  border-color: var(--border-strong);
+  background: var(--control-fill-hover);
+}
+
+.timeline-year-jump.active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--text);
 }
 
 .timeline-characters {
@@ -7246,6 +7467,64 @@ kbd {
      taller than what actually fits on screen. */
   max-height: min(88dvh, 720px);
   overflow: auto;
+}
+
+/* The event dialog's groups: what happened, when, the description, and who. Each one
+   is a fieldset because the grouping is the point — eight ungrouped fields in a row is
+   what made the year and date relationship hard to read. */
+.dialog-section {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  padding: 12px;
+}
+
+.dialog-section legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.field-required,
+.field-optional {
+  margin-left: 6px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 600;
+  padding: 1px 6px;
+}
+
+.field-required {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
+
+.field-optional {
+  background: var(--control-fill);
+  color: var(--muted);
+}
+
+.field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+/* Pinned to the foot of the dialog: with a long description and a list of chosen
+   characters, saving must not be a scroll away. */
+.timeline-dialog-actions {
+  position: sticky;
+  bottom: -1px;
+  z-index: var(--z-inline-2);
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding-top: 12px;
 }
 
 .field-row {
@@ -7638,6 +7917,68 @@ kbd {
 
   .workspace-toolbar > .primary-button {
     flex: 1 1 100%;
+  }
+
+  /* Timeline on a phone: the search field takes its own row, the two filters share the
+     next one, and the years scroll sideways rather than wrapping into four lines —
+     the navigation stays one row and stays reachable. */
+  .timeline-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .timeline-filter {
+    flex: 1 1 0;
+  }
+
+  .timeline-filter select {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .timeline-count {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .timeline-year-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .timeline-year-jump {
+    flex: 0 0 auto;
+  }
+
+  /* A rail inset for a wider window is 26px of a 375px screen spent on a line. */
+  .timeline-rail {
+    padding-left: 20px;
+    gap: 18px;
+  }
+
+  .timeline-rail::before {
+    left: 4px;
+  }
+
+  .timeline-year-node {
+    left: -19px;
+  }
+
+  .timeline-item::before {
+    left: -18px;
+  }
+
+  .timeline-card {
+    padding: 12px;
+  }
+
+  .timeline-year-group {
+    scroll-margin-top: 96px;
+  }
+
+  .dialog-section {
+    padding: 10px;
   }
 
   /* The picker's list is a scroll area inside a scrolling dialog; on a phone that
