@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.28.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— **已发布**，标签 `v2.28.0`，线上 `build-info.json` 的 commit 与本仓库提交一致（`npm run verify:deploy` 通过） |
-| Sprint | **39.1**（`APP_SPRINT`）—— 本版本交付 Sprint 39（设置弹窗与编辑器六节的设计语言），同时包含 Sprint 38 / 38.1 / 38.2 的数据安全修复；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.29.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— **已发布**，标签 `v2.29.0`，线上 `build-info.json` 的 commit 与本仓库提交一致（`npm run verify:deploy` 通过） |
+| Sprint | **40.1**（`APP_SPRINT`）—— 本版本交付 Sprint 40（角色选择与关联信息体验），同时包含 Sprint 38 / 38.1 / 38.2 的数据安全修复与 Sprint 39 的设计语言收敛；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（短号 `bccec24`）—— 本文与 `docs/ARCHITECTURE.md` 等文档中的代码行号均以此为基准 |
@@ -242,3 +242,16 @@ Rapid Iteration Mode 下的第一轮：功能实现 > 用户体验 > 开发效�
 **未改动**：设置键名、迁移逻辑、`developerSettings` / AI 配置结构、`Character` 数据结构、保存与草稿逻辑、快捷键、校验、完成度、分节导航与折叠记忆、关系网 / 时间线 / 世界观工作区、Dashboard、依赖。
 
 **自动化测试**：38 文件 / 419 用例（本轮未新增用例 —— 两项都是呈现层改动，行为由既有用例覆盖；新增的覆盖是 5 项浏览器检查，见上表）。
+
+---
+
+## 13. Sprint 40（2026-10-16）—— 角色选择与关联信息体验（已发布 2.29.0）
+
+| 任务 | 改动 | 验证 | 部署 |
+| --- | --- | --- | --- |
+| A 通用角色选择器 | 新增 `components/CharacterRow`、重写 `components/CharacterPicker`（新增 `CharacterSelect`）；新建关系弹窗的两个角色下拉换成可搜索的单选器；多选列表不再因勾选重排、新增「只看已选」与键盘操作 | 单测 10 例（含变异检验）；浏览器 3 项（100 个角色下搜索 + 保存、多选计数与顺序、375px 不遮挡按钮） | commit `31e537c` |
+| B 关联角色紧凑展示 | 新增 `components/RelatedCharacters`；时间线事件卡片与世界观条目卡片从「每个角色一个标签」改为「前四个 + +N 位角色」，展开可搜索 | 单测 9 例；浏览器 2 项（时间线折叠/展开/搜索/详情入口、世界观条目 375px 无溢出） | commit `222c4fd` |
+| C1 列表第一列对齐 | **未改动**（未能复现） | 浏览器 1 项：100 行 + 批量模式，头像/名称/勾选圈相对行中线 -0.5px、彼此 0px | — |
+| C2 吸顶缝隙 | `.character-group-head` 的 `top` 去掉那 4px | 浏览器 1 项：0px（改前 4px） | commit `450be97` |
+
+**未改动**：`Character` 数据结构、关系存储协议、校验、保存与删除逻辑、Dashboard 的筛选/排序/批量逻辑、时间线与世界观的数据读写、依赖。
