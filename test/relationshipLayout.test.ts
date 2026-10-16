@@ -3,8 +3,10 @@ import {
   canvasBox,
   canvasScreenScale,
   centreOn,
+  contentBounds,
   edgeBends,
   edgeGeometry,
+  fitZoom,
   labelZoomNeeded,
   labelsReadable,
   measureNameWidth,
@@ -344,5 +346,64 @@ describe("canvas placement", () => {
     // A view box that does not start at 0 0 is the normal case here, and treating the
     // box origin as 0 puts the node off by exactly that offset.
     expect(centreOn({ x: 320, y: 320 }, 1, viewBox)).toEqual({ k: 1, x: -220, y: -270 });
+  });
+});
+
+describe("fitting the canvas to the drawing", () => {
+  const frame = { width: 1000, height: 500 };
+
+  it("measures a lone node as its own footprint, not as a spread", () => {
+    const bounds = contentBounds([{ x: 320, y: 320 }], graphMetrics(defaultGraphPrefs), 20);
+
+    // One node: no distance to span, so what is left is the node's own radius plus the
+    // padding its label needs on either side.
+    expect(bounds.width).toBeCloseTo((NODE_RADIUS + 16 + 20) * 2, 4);
+    expect(bounds.height).toBeCloseTo(NODE_RADIUS + 16 + NAME_DROP + NAME_SPACE, 4);
+  });
+
+  it("matches the box the graph is actually drawn in", () => {
+    const positions = nodePositions(5);
+
+    // canvasBox grows its box around this extent, so the fit zoom and the view box have
+    // to agree on how large the drawing is.
+    const bounds = contentBounds(positions, graphMetrics(defaultGraphPrefs), 40);
+    const drawn = canvasBox(positions, graphMetrics(defaultGraphPrefs), 40);
+    const [x, y, w, h] = drawn.viewBox.split(" ").map(Number);
+    const xs = positions.map((point) => point.x);
+    const ys = positions.map((point) => point.y);
+
+    expect(w).toBeGreaterThanOrEqual(bounds.width);
+    expect(h).toBeGreaterThanOrEqual(bounds.height);
+    expect(x).toBeLessThan(Math.min(...xs));
+    expect(y).toBeLessThan(Math.min(...ys));
+  });
+
+  it("grows the drawing until it uses the canvas, keeping a margin", () => {
+    // 1600x800 units drawn at half size is 800x400 of a 1000x500 frame: the same ratio
+    // on both axes, so the fit is 1000/800 less the tenth of margin.
+    expect(fitZoom({ width: 1600, height: 800 }, frame, 0.5)).toBeCloseTo(1.125, 4);
+  });
+
+  it("lets the tighter axis decide", () => {
+    // Wide and tall: the width has room to spare, the height does not.
+    expect(fitZoom({ width: 1000, height: 1200 }, frame, 0.3)).toBeCloseTo(1.25, 4);
+  });
+
+  it("never zooms out past the box's own fit", () => {
+    // A drawing larger than the frame, and one that already fills it: the fit view is
+    // the box's view, and names may not shrink below it.
+    expect(fitZoom({ width: 4000, height: 400 }, frame, 0.5)).toBe(1);
+    expect(fitZoom({ width: 2000, height: 1000 }, frame, 0.5)).toBe(1);
+  });
+
+  it("stops short of filling the frame mechanically", () => {
+    // One node on a measured canvas asks for far more than a plate-sized circle.
+    expect(fitZoom({ width: 8, height: 8 }, frame, 1)).toBe(1.6);
+  });
+
+  it("is the box's fit while nothing has been measured", () => {
+    expect(fitZoom({ width: 100, height: 100 }, { width: 0, height: 0 }, 1)).toBe(1);
+    expect(fitZoom({ width: 100, height: 100 }, frame, 0)).toBe(1);
+    expect(fitZoom({ width: 0, height: 0 }, frame, 1)).toBe(1);
   });
 });

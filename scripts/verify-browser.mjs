@@ -1367,6 +1367,13 @@ const READ_GRAPH_CANVAS = `
       imageHref: images.length ? (images[0].getAttribute("href") || "").slice(0, 22) : "",
       zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
       transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
+      // What the fit had to work with: the box the drawing was given, and the frame it
+      // has to fit into. Both are what decides whether the drawing uses the canvas.
+      viewBox: canvas?.getAttribute("viewBox") || "",
+      frameWidth: (() => {
+        const frame = document.querySelector(".graph-canvas-frame")?.getBoundingClientRect();
+        return frame ? Math.round(frame.width) : 0;
+      })(),
       canvasWidth: rect ? Math.round(rect.width) : 0,
       nameFontPx: named ? getComputedStyle(named.querySelector(".relationship-node-name")).fontSize : "",
       viewportWidth: window.innerWidth,
@@ -1569,6 +1576,18 @@ const GRAPH_DISPLAY_AND_EXPORT = `
     await sleep(200);
     const closed = !document.querySelector(".graph-panel");
 
+    // Output sits behind its own toggle — one entry wide instead of five controls on the
+    // bar — so opening it is part of exporting, and the check opens it the same way a
+    // reader would. The formats themselves are unchanged.
+    const exportToggle = [...document.querySelectorAll(".graph-display-wrap > button")].find(
+      (button) => button.textContent.trim() === "导出",
+    );
+    if (!exportToggle) throw new Error("导出 toggle missing");
+    exportToggle.click();
+    await sleep(250);
+    const exportPanel = document.querySelector('[aria-label="导出关系网"]');
+    if (!exportPanel) throw new Error("export panel did not open");
+
     // The outcome message is transient, so it is waited for rather than sampled once:
     // sleeping a fixed few seconds reads an empty node whether the export succeeded or
     // the whole thing is still running.
@@ -1601,7 +1620,24 @@ const GRAPH_DISPLAY_AND_EXPORT = `
       messages.push((await waitForMessage(30000)) || "（没有结果提示）");
     }
 
-    return { opened, namesHidden, namesBack, avatarsHidden, avatarsBack, closed, messages };
+    const exportRows = [...exportPanel.querySelectorAll(".graph-panel-row")].map((row) =>
+      row.textContent.replace(/\\s+/g, " ").trim(),
+    );
+
+    return {
+      opened,
+      namesHidden,
+      namesBack,
+      avatarsHidden,
+      avatarsBack,
+      closed,
+      exportOpen: {
+        present: Boolean(exportPanel),
+        rows: exportRows,
+        insideViewport: exportPanel.getBoundingClientRect().right <= window.innerWidth + 1,
+      },
+      messages,
+    };
   })()
 `;
 
@@ -4335,7 +4371,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(named && pictureDrawn && emojiDrawn && cardOk && opened.page === "preview" && opened.showsName && state.pageOverflow <= 1),
-        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；点击节点 → ${opened.page}（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
+        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}（视框 ${state.viewBox}、画布宽 ${state.frameWidth}px）、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；点击节点 → ${opened.page}（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
       };
     });
 
@@ -4432,10 +4468,19 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         state.avatarsBack.images === 1 &&
         state.avatarsBack.emojis === 4;
       const exported = state.messages.map((message) => message.replace(" 已导出", "")).join("/") === "JPG/PNG/PDF";
+      // The output panel is one entry on the bar, and it has to open to the same three
+      // formats it always had.
+      const exportOk =
+        state.exportOpen.present &&
+        state.exportOpen.rows.join("|").includes("分辨率") &&
+        state.exportOpen.rows.join("|").includes("JPG") &&
+        state.exportOpen.rows.join("|").includes("PNG") &&
+        state.exportOpen.rows.join("|").includes("PDF") &&
+        state.exportOpen.insideViewport;
 
       return {
-        pass: Boolean(panelOk && switched && exported && state.closed),
-        detail: `面板 ${state.opened.present ? "已打开" : "未打开"}（在视口内 ${state.opened.insideViewport}）：${state.opened.rows.join("；")}；名称 隐藏后 ${state.namesHidden.names} 个 → 恢复 ${state.namesBack} 个；头像 隐藏后 图片 ${state.avatarsHidden.images} / Emoji ${state.avatarsHidden.emojis} → 恢复 ${state.avatarsBack.images} / ${state.avatarsBack.emojis}；导出结果「${state.messages.join("」「")}」`,
+        pass: Boolean(panelOk && switched && exportOk && exported && state.closed),
+        detail: `面板 ${state.opened.present ? "已打开" : "未打开"}（在视口内 ${state.opened.insideViewport}）：${state.opened.rows.join("；")}；名称 隐藏后 ${state.namesHidden.names} 个 → 恢复 ${state.namesBack} 个；头像 隐藏后 图片 ${state.avatarsHidden.images} / Emoji ${state.avatarsHidden.emojis} → 恢复 ${state.avatarsBack.images} / ${state.avatarsBack.emojis}；导出入口 ${state.exportOpen.present ? "已打开" : "未打开"}（在视口内 ${state.exportOpen.insideViewport}）：${state.exportOpen.rows.join("；")}；导出结果「${state.messages.join("」「")}」`,
       };
     });
 
