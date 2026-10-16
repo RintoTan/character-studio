@@ -6,7 +6,12 @@
 // delete entry points in the app reach this code - is covered by rendering the real
 // app in deleteEntryPoints.test.ts, and in a real browser by scripts/verify-browser.mjs.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DELETE_RECOVERY_KEY, captureDeleteRecovery, restoreDeleteRecovery } from "../src/storage/deleteRecovery";
+import {
+  DELETE_RECOVERY_KEY,
+  captureDeleteRecovery,
+  readDeleteRecovery,
+  restoreDeleteRecovery,
+} from "../src/storage/deleteRecovery";
 import { loadCharacters, saveCharacters } from "../src/storage/characterStorage";
 import { loadRelationships, saveRelationships } from "../src/storage/relationshipStorage";
 import { loadTimeline, saveTimeline } from "../src/storage/timelineStorage";
@@ -85,6 +90,8 @@ function failWritesTo(key: string, errorName = "QuotaExceededError") {
     original(target, value);
   });
 }
+
+const ids = () => loadCharacters().map((character) => character.id);
 
 function snapshotOfEverything() {
   return JSON.stringify({
@@ -322,6 +329,60 @@ describe("when storage only partly accepts the recovery", () => {
     );
     expect(restoreDeleteRecovery(["a"]).status).toBe("failed");
     expect(localStorage.getItem(DELETE_RECOVERY_KEY)).toBeNull();
+  });
+});
+
+describe("two deletes in a row, with no undo in between", () => {
+  it("keeps only the latest one, and undoing it never brings back the earlier one", () => {
+    // a-b-c, so the two deletes have different references to take with them and a
+    // wrong recovery has something to get wrong.
+    saveCharacters([character("a", "沈青梧"), character("b", "陆停云"), character("c", "苏折玉")]);
+    saveRelationships([edge("r1", "a", "b"), edge("r2", "b", "c")]);
+    saveTimeline([event("t1", ["a", "b"])]);
+    saveWorldEntries([entry("w1", ["b", "c"])]);
+
+    expect(deleteWithProtection(["a"])).toEqual({ ok: true });
+    // b and c survive, the edge to a goes, and the timeline keeps only b.
+    expect(ids().sort()).toEqual(["b", "c"]);
+    expect(loadRelationships().map((item) => item.id)).toEqual(["r2"]);
+    expect(loadTimeline()[0].characterIds).toEqual(["b"]);
+
+    // The second delete overwrites the record: it is one slot, not a history.
+    expect(deleteWithProtection(["b"])).toEqual({ ok: true });
+    expect(ids()).toEqual(["c"]);
+    expect(loadRelationships()).toEqual([]);
+    expect(loadTimeline()[0].characterIds).toEqual([]);
+    expect(loadWorldEntries()[0].characterIds).toEqual(["c"]);
+
+    const record = readDeleteRecovery();
+    expect(record?.characterIds).toEqual(["b"]);
+    expect(record?.relationships.map((item) => item.id)).toEqual(["r2"]);
+    expect(record?.timeline).toEqual([{ id: "t1", characterIds: ["b"] }]);
+    expect(record?.world).toEqual([{ id: "w1", characterIds: ["b", "c"] }]);
+
+    // A request left over from the first delete must not touch the second one's
+    // record - that is the stale-notification case, and it has to be inert.
+    const stale = restoreDeleteRecovery(["a"]);
+    expect(stale.status).toBe("failed");
+    expect(stale.reason).toBe("恢复记录与这次删除不匹配");
+    expect(readDeleteRecovery()?.characterIds).toEqual(["b"]);
+
+    // Now the undo the notification actually belongs to.
+    const result = restoreDeleteRecovery(["b"]);
+    expect(result.status).toBe("restored");
+    expect(result.counts).toEqual({ characters: 1, relationships: 1, timeline: 1, world: 1 });
+
+    // b is back; a is not - and nothing was re-attached to the wrong character.
+    expect(ids().sort()).toEqual(["b", "c"]);
+    expect(loadRelationships().map((item) => item.id)).toEqual(["r2"]);
+    expect(loadTimeline()[0].characterIds).toEqual(["b"]);
+    expect(loadWorldEntries()[0].characterIds.sort()).toEqual(["b", "c"]);
+    // The edge to the earlier delete is gone for good, so the pair is not re-linked.
+    expect(loadRelationships().some((item) => item.fromId === "a" || item.toId === "a")).toBe(false);
+
+    // And the first delete cannot be replayed after the fact.
+    expect(restoreDeleteRecovery(["a"]).status).toBe("failed");
+    expect(ids().sort()).toEqual(["b", "c"]);
   });
 });
 

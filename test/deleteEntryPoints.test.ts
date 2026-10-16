@@ -183,6 +183,39 @@ describe("deleting from the dashboard", () => {
   });
 });
 
+describe("deleting twice without undoing the first", () => {
+  it("offers the second delete's undo, and it brings back only the second character", async () => {
+    await mountApp();
+
+    await click(container!.querySelector('button[aria-label="更多"]'), "卡片菜单");
+    await click(buttonByLabel("删除"), "菜单里的删除");
+    await click(dialogButton("确认删除"), "确认删除");
+
+    // Whichever card was first is gone; the survivor is the only card left.
+    const survivor = ids()[0];
+    expect(loadCharacters()).toHaveLength(1);
+
+    await click(container!.querySelector('button[aria-label="更多"]'), "剩下那张卡的菜单");
+    await click(buttonByLabel("删除"), "菜单里的删除");
+    await click(dialogButton("确认删除"), "确认删除");
+
+    expect(ids()).toEqual([]);
+    // The record on disk describes the second delete, and the notification on screen
+    // is the one that belongs to it: same single slot, same character.
+    const record = JSON.parse(localStorage.getItem(DELETE_RECOVERY_KEY) ?? "null");
+    expect(record.characterIds).toEqual([survivor]);
+    expect(undoButton()).not.toBeNull();
+
+    await click(undoButton(), "撤销按钮");
+
+    // Only the second one comes back, and the edge the first delete removed is not
+    // re-linked to a character that is no longer there.
+    expect(ids()).toEqual([survivor]);
+    expect(loadRelationships()).toEqual([]);
+    expect(localStorage.getItem(DELETE_RECOVERY_KEY)).toBeNull();
+  });
+});
+
 describe("deleting a selection from the dashboard", () => {
   it("covers every selected character and the undo brings all of them back", async () => {
     await mountApp();
