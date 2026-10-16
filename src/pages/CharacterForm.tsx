@@ -9,6 +9,7 @@ import {
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
+import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import { DEFAULT_AVATAR_EMOJI, avatarCategories } from "../data/avatarCategories";
 import type { DeleteRequestResult } from "../storage/deleteRecovery";
@@ -1832,20 +1833,25 @@ export function CharacterForm({
   function renderHero() {
     return (
       <>
-      <div className="panel workspace-hero">
-        <div className="workspace-title-block">
-          <AvatarDisplay
-            assetId={formData.avatarAssetId}
-            className="workspace-avatar"
-            emoji={formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
-            previewImageUrl={pendingAvatar?.previewUrl}
-          />
-          <div>
-            <p className="eyebrow">{character ? "Character Workspace" : "New Character"}</p>
-            <h1>{character ? "编辑角色工作台" : "新建角色工作台"}</h1>
-            <p className="muted">分模块完善角色设定，系统会在编辑旧角色时自动保存。</p>
-          </div>
-        </div>
+      {/* The editor used to open with a hero block and then its own action bar: two
+          bands of chrome, one above the other, before the first field. It opens with
+          the same compact band as every other workspace, and the avatar moved into
+          that band — which is what the hero was mostly carrying anyway. */}
+      <div className="panel editor-head-card">
+        <WorkspaceHeader
+          actions={
+            <AvatarDisplay
+              assetId={formData.avatarAssetId}
+              className="workspace-avatar workspace-avatar-band"
+              emoji={formData.avatarEmoji || DEFAULT_AVATAR_EMOJI}
+              previewImageUrl={pendingAvatar?.previewUrl}
+            />
+          }
+          compact
+          eyebrow={character ? "角色编辑" : "新建角色"}
+          summary="分模块完善角色设定，系统会在编辑旧角色时自动保存。"
+          title={character ? "编辑角色工作台" : "新建角色工作台"}
+        />
       </div>
       <div className="workspace-toolbar editor-action-bar" ref={actionBarRef}>
           <div className="editor-action-group">
@@ -2951,6 +2957,39 @@ export function CharacterForm({
               </div>
             );
           })()}
+          {/* One control on a phone instead of six. The rail's chips could not show a
+              whole section name at this width — they were cut to 「基础信息基础」 and
+              「外貌设定外…」 — so on a phone the section the author is in is named in
+              full and any other section is one tap away. The rail stays on desktop,
+              where there is room for all six at once. */}
+          <label className="nav-section-picker">
+            <span className="nav-progress-label">
+              第{" "}
+              {Math.max(
+                1,
+                visibleSectionMeta.findIndex((section) => section.id === activeSection) + 1,
+              )}{" "}
+              / {visibleSectionMeta.length} 节
+            </span>
+            <select
+              aria-label="跳转到分节"
+              onChange={(changeEvent) => {
+                const next = visibleSectionMeta.find(
+                  (section) => section.id === changeEvent.target.value,
+                );
+                if (next) {
+                  jumpToSection(next.id);
+                }
+              }}
+              value={activeSection}
+            >
+              {visibleSectionMeta.map((section, index) => (
+                <option key={section.id} value={section.id}>
+                  第 {index + 1}/{visibleSectionMeta.length} 节 · {section.title}
+                </option>
+              ))}
+            </select>
+          </label>
           {visibleSectionMeta.map((section) => (
             <button
               className={activeSection === section.id ? "active" : ""}

@@ -1679,15 +1679,19 @@ function App() {
                 </div>
               </div>
               {developerSettings.featureFlags.aiSettings && (
-                <div className="settings-group settings-group-pending">
-                  <p className="settings-group-label">未发布功能</p>
+                /* Unreleased: a named row that opens, rather than a full disabled form
+                   holding the top of the dialog. The values and the fields are the
+                   same ones, so nothing about the feature changed — the dialog just
+                   stopped making a reader scroll past it to reach what works. */
+                <details className="settings-pending">
+                  <summary>未发布功能 · AI 设置</summary>
                   <p className="muted">
                     下面的设置现在不会生效，填写也不会改变任何行为 —— 它们只是提前展示这个功能将来的样子。
                   </p>
                   <div className="settings-grid">
                     <AiSettingsForm />
                   </div>
-                </div>
+                </details>
               )}
             </div>
           </div>

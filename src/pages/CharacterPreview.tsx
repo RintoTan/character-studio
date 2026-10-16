@@ -423,12 +423,21 @@ export function CharacterPreview({
               <h2>基础资料</h2>
             </div>
             <div className="basic-grid">
-              {basicFields.map(([key, label]) => (
-                <div className="basic-item" key={key}>
-                  <span>{label}</span>
-                  <strong>{displayValue(character[key] as string)}</strong>
-                </div>
-              ))}
+              {basicFields.map(([key, label]) => {
+                // An unfilled field is still worth stating, but not at the weight of
+                // a filled one: the row marks which fields are empty instead of
+                // giving every unset value a panel of its own.
+                const value = displayValue(character[key] as string);
+                return (
+                  <div
+                    className={value === "未填写" ? "basic-item is-empty" : "basic-item"}
+                    key={key}
+                  >
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </div>
+                );
+              })}
             </div>
           </article>
 

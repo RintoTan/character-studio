@@ -3178,7 +3178,6 @@ export function Dashboard({
                   </button>
                 </div>
               </article>
-              {aiSettingsEnabled && <AiSettingsForm />}
               <article>
                 <h3>Mobile</h3>
                 <label className="settings-check">
@@ -3285,6 +3284,20 @@ export function Dashboard({
                 <h3>About Data</h3>
                 <p className="muted">当前数据保存在浏览器 localStorage。换设备不会自动同步，清除浏览器缓存可能导致数据丢失。</p>
               </article>
+              {aiSettingsEnabled && (
+                /* Unreleased, and last. The AI form used to sit between Default View
+                   and Mobile, so a form that cannot work yet held the middle of the
+                   dialog and pushed the settings that do work to either side of it.
+                   The fields and their values are the same ones, one row further down
+                   and closed until they are asked for. */
+                <details className="settings-pending">
+                  <summary>未发布功能 · AI 设置</summary>
+                  <p className="muted">
+                    面向所有用户，开发中。当前不会调用 AI，也不会上传任何用户数据；未来可填写自己的 API Key。
+                  </p>
+                  <AiSettingsForm />
+                </details>
+              )}
             </div>
           </div>
         </div>

@@ -9015,3 +9015,654 @@ kbd {
     max-height: 92vh;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Visual system, stage two — the structures inside the pages.
+
+   Stage one settled the shared skeleton (one header, one toolbar rhythm, one
+   section, one long-form dialog, four type levels). This is the other half: how
+   each workspace arranges its own content. Four rules run through the block.
+
+   1. A card's height comes from what is inside it. The dashboard card used
+      `aspect-ratio: 1 / 1.06` with 56px/54px of padding and absolutely positioned
+      corners, so the outside was filled and the middle was empty. It is now three
+      rows — state, identity, meta — in the flow, with padding that does not grow.
+   2. A container states its depth once. Below the page surface, grouping is said
+      with a title, a rule and air. A full border is kept for things that are
+      interactive (a chip, a control, a field) or for the one list-like object a
+      page anchors on, so a page is not six identical white boxes stacked.
+   3. Text meant to be read has a line length. Long prose stops at ~72 characters
+      instead of running the full width of the content column.
+   4. A toolbar states its groups with space. 8px inside a group, 16-20px between
+      them, and one control height across the row, so the grouping is legible
+      without a divider between every pair of controls.
+   --------------------------------------------------------------------------- */
+
+/* --- Dashboard card: state / identity / meta --------------------------------- */
+
+/* Three rows — state on top, identity in the middle, meta at the foot — and a
+   height that comes from what is in those rows. The card used to be
+   `aspect-ratio: 1 / 1.06` with 56px/54px of padding and four absolutely
+   positioned corners, which filled the outside and left the middle empty; the
+   rows are named areas over the existing children, so nothing is pinned to a
+   corner any more and a short name is no longer surrounded by air. */
+.character-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "tags actions"
+    "main main"
+    "foot foot";
+  align-content: normal;
+  gap: 0;
+  aspect-ratio: auto;
+  min-height: 152px;
+  padding: 12px 14px;
+}
+
+/* Cards in a row share a height and therefore share a baseline for the meta row;
+   the height itself is still the content's. */
+.card-list {
+  align-items: stretch;
+}
+
+.card-tags {
+  grid-area: tags;
+  position: static;
+  inset: auto;
+  align-self: start;
+  justify-self: start;
+  max-width: 100%;
+  max-height: 44px;
+  gap: 5px;
+}
+
+/* A status or a tag is a label, so it reads at label size rather than at the
+   smallest size on the card. */
+.card-tags button,
+.card-tags .status-badge {
+  min-height: 20px;
+  height: 20px;
+  padding: 3px 7px;
+  font-size: 11.5px;
+}
+
+.card-actions {
+  grid-area: actions;
+  position: static;
+  inset: auto;
+  align-self: start;
+  justify-self: end;
+}
+
+.card-actions button {
+  min-width: 28px;
+  min-height: 28px;
+}
+
+/* Selecting a character puts the circle in the same cell the edit and more
+   controls use: the two never appear together. */
+.character-card .select-circle {
+  grid-area: actions;
+  position: static;
+  inset: auto;
+  align-self: start;
+  justify-self: end;
+}
+
+/* The time a draft shows at the top right; the time a browsing card shows in its
+   foot. One affordance (`renderCardTime`), two cells. */
+.card-meta {
+  grid-area: actions;
+  position: static;
+  inset: auto;
+  align-self: start;
+  justify-self: end;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* While selecting, the circle owns that cell, so a card in bulk mode states its
+   time at the foot like every other card's meta. */
+.character-card.bulk-mode .card-meta {
+  grid-area: foot;
+  padding-top: 9px;
+}
+
+/* The identity block: avatar, name and the two facts a roster is compared by,
+   close enough together to read as one thing. */
+.card-main {
+  grid-area: main;
+  gap: 12px;
+  padding: 10px 0 12px;
+}
+
+.character-card.bulk-mode .card-main {
+  padding-right: 0;
+}
+
+.card-copy {
+  gap: 4px;
+}
+
+/* The foot: what acts on the character, and when it was last touched. */
+.card-footer-actions {
+  grid-area: foot;
+  position: static;
+  inset: auto;
+  align-items: center;
+  padding-top: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.card-footer-actions .mini-icon {
+  min-height: 26px;
+  padding: 0 3px;
+}
+
+/* A draft's actions are the card's footer, not a strip floating over it. */
+.draft-card-actions {
+  grid-area: foot;
+  position: static;
+  inset: auto;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* A draft card carries its actions below the name, so it needs the room. */
+.character-card:has(.draft-card-actions) {
+  min-height: 208px;
+}
+
+/* --- Dashboard toolbar: four groups, one control height ---------------------- */
+
+/* The row reads search+filter | view | create | more, at 8px inside a group and
+   16px between them. The four groups are the four tasks a roster has — finding,
+   displaying, creating, managing — and the difference in the gap is what says so;
+   the elements themselves are unchanged. */
+.list-toolbar {
+  gap: 16px;
+  align-items: center;
+}
+
+.list-toolbar > .list-filter-wrap {
+  margin-left: -8px;
+}
+
+/* One baseline across the row: the search field, the icon controls and the primary
+   action are the same height, which is what makes the row read as a toolbar. */
+.list-toolbar .hero-icon-button,
+.list-toolbar .list-search-input,
+.list-toolbar .primary-button {
+  min-height: var(--control-height);
+}
+
+.list-toolbar .hero-icon-button {
+  min-width: var(--control-height);
+}
+
+.dashboard-actions {
+  gap: var(--btn-gap);
+}
+
+/* The selection bar groups the same way: what the mode is, what acts on the
+   selection, then the destructive action held apart from both. */
+.bulk-actions-desktop {
+  gap: 12px;
+}
+
+.bulk-actions-desktop .bulk-selection-count {
+  margin-right: 2px;
+}
+
+/* --- Editor: six sections are one form, not six cards ------------------------ */
+
+.workspace-content {
+  gap: 26px;
+}
+
+.workspace-main .workspace-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+/* The head states the section, so it gets a rule under it and nothing around it. */
+.workspace-main .workspace-card-head {
+  align-items: baseline;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-main .workspace-card-head > span {
+  display: grid;
+  gap: 3px;
+}
+
+/* Title on the left, completion on the right, on one line across every section. */
+.workspace-main .workspace-card-head em {
+  flex: 0 0 auto;
+  min-width: 76px;
+  text-align: right;
+}
+
+.workspace-main .workspace-card-body {
+  border-top: 0;
+  padding: 16px 0 0;
+}
+
+/* The editor's band: the same compact header the other workspaces open with, so
+   the editor no longer spends a hero plus an action bar before the first field. */
+.editor-head-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The avatar is identity, not a hero image: one band, one size. */
+.workspace-header-actions .workspace-avatar {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  border-radius: 12px;
+  font-size: 24px;
+}
+
+/* The phone gets one named control instead of six squeezed labels; the desktop
+   keeps the rail, which has the room to show every section at once. */
+.nav-section-picker {
+  display: none;
+}
+
+.nav-section-picker select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 8px;
+  font-weight: 700;
+}
+
+/* --- Settings dialog: one scroll area, rules instead of nested boxes --------- */
+
+.settings-dialog:not(.asset-library-dialog) {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.settings-dialog:not(.asset-library-dialog) > .preview-card-title {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 20px var(--pad-surface) 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The only scrolling region in the dialog, so the actions in the head cannot be
+   pushed off screen and the last setting cannot hide behind them. Some of the
+   settings dialogs wrap their content in `.settings-body` and some hand the dialog a
+   single grid; both shapes scroll here rather than the dialog itself. */
+.settings-dialog:not(.asset-library-dialog) > .settings-body,
+.settings-dialog:not(.asset-library-dialog) > .settings-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--pad-surface);
+}
+
+.settings-dialog:not(.asset-library-dialog) > .settings-body {
+  display: grid;
+  gap: 24px;
+}
+
+.settings-dialog .settings-grid {
+  gap: 0;
+}
+
+/* A setting is a title, an explanation and a control — separated by a rule, not
+   wrapped in its own bordered card inside an already bordered dialog. */
+.settings-dialog .settings-grid article {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  gap: 8px;
+}
+
+.settings-dialog .settings-grid article + article {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* Unreleased settings: a named row that opens, rather than a full disabled form
+   holding the top of the dialog. It keeps its fields and their values, and it owns
+   the rule that separates it from the settings above. */
+.settings-pending {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.settings-pending > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--control-height-compact);
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+}
+
+.settings-pending > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-pending > summary::after {
+  content: "展开";
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.settings-pending[open] > summary::after {
+  content: "收起";
+}
+
+.settings-pending[open] > summary {
+  margin-bottom: 12px;
+}
+
+/* A choice states which value is in force, not only which one is pointed at. */
+.segmented-row button.active,
+.segmented-row button.active:hover {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+/* --- Preview: read the text, not the boxes ----------------------------------- */
+
+.basic-item {
+  border: 0;
+  background: var(--surface-subtle);
+  box-shadow: none;
+  padding: 10px 12px;
+}
+
+/* An unfilled field is a line of provenance, not a panel. */
+.basic-item.is-empty {
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--border) 85%, transparent);
+}
+
+.basic-item.is-empty strong {
+  color: var(--muted);
+  font-weight: 650;
+}
+
+/* Long prose: a line length instead of the full width of the card. */
+.preview-card.wide-card > p,
+.preview-card.wide-card .preview-long-text {
+  max-width: 72ch;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+/* Related groups: a light block instead of a third border in the same nest. */
+.related-group {
+  border: 0;
+  background: var(--surface-subtle);
+}
+
+.related-group-head {
+  align-items: baseline;
+}
+
+/* --- World manager: a tight tree, a readable detail pane --------------------- */
+
+.world-explorer {
+  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.world-tree {
+  max-height: min(70vh, 720px);
+}
+
+.world-row-main {
+  padding: 7px 8px;
+}
+
+.world-row-summary {
+  font-size: 0.82rem;
+}
+
+/* The detail pane is the reading surface: sections speak with a rule, and the
+   prose keeps a line length inside a pane that can be very wide. */
+.world-detail {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  gap: 0;
+}
+
+.world-detail-section {
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+
+.world-detail-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.world-detail-body,
+.world-detail-section p {
+  max-width: 74ch;
+}
+
+/* --- Timeline: one filter bar, a year rail, a readable event body ------------ */
+
+.timeline-toolbar {
+  gap: 10px 16px;
+}
+
+.timeline-year-nav {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.timeline-description {
+  max-width: 72ch;
+}
+
+/* Edit and delete stay where they were, quieter until the card is pointed at. */
+.timeline-actions {
+  opacity: 0.7;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+.timeline-card:hover .timeline-actions,
+.timeline-card:focus-within .timeline-actions {
+  opacity: 1;
+}
+
+/* --- Relationship graph: the drawing gets the room --------------------------- */
+
+.relationship-canvas {
+  height: clamp(300px, 52vh, 620px);
+}
+
+.graph-canvas-frame {
+  margin: 0 auto;
+}
+
+/* Search and zoom sit on the canvas they act on, as one strip. */
+.graph-canvas-tools {
+  margin: 12px 0 8px;
+}
+
+/* --- Dark theme: separate the layers ---------------------------------------- */
+
+:root[data-theme="dark"] {
+  /* The container edge was two steps from the page background, which is why cards
+     and inputs read as one flat field in the dark theme. */
+  --border: #353b48;
+  --border-strong: #4b5364;
+}
+
+/* --- Phone: the same structures, fewer of them ------------------------------- */
+
+@media (max-width: 720px) {
+  /* A card on a phone is a name and a face; the ratio and the fixed padding were
+     what pushed the list below the first screenful. */
+  .character-card {
+    min-height: 0;
+    padding: 10px 12px;
+  }
+
+  .character-card:has(.draft-card-actions) {
+    min-height: 0;
+  }
+
+  .card-tags {
+    left: auto;
+    right: auto;
+    max-width: 100%;
+    max-height: 24px;
+  }
+
+  .character-card .select-circle {
+    position: static;
+  }
+
+  .card-actions button {
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .character-card.bulk-mode .card-meta {
+    padding-top: 8px;
+  }
+
+  .card-main {
+    gap: 10px;
+    padding: 8px 0 10px;
+  }
+
+  /* One control that names the section the author is in, instead of six labels
+     held on one line and truncated to 「基础信息基础」. */
+  .nav-section-picker {
+    display: grid;
+    flex: 1 1 100%;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  /* The picker's own control already reads 「第 1/6 节 · 基础信息」, so a caption above
+     it repeating the count is one line of height spent on nothing. */
+  .nav-section-picker > span {
+    display: none;
+  }
+
+  .nav-section-picker select {
+    width: 100%;
+    min-height: var(--control-height-compact);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .workspace-nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    overflow: visible;
+  }
+
+  /* The six chips give way to the picker; the progress line and the jump stay,
+     because those are the two things the chips could not say. */
+  .workspace-nav > button {
+    display: none;
+  }
+
+  .workspace-nav .nav-progress {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 0;
+    padding: 0;
+  }
+
+  .workspace-nav .nav-progress-track {
+    display: none;
+  }
+
+  .workspace-nav .nav-jump-button {
+    margin-left: auto;
+    min-height: var(--control-height-compact);
+  }
+
+  .workspace-main .workspace-card-head {
+    padding-bottom: 10px;
+  }
+
+  .workspace-main .workspace-card-head em {
+    min-width: 0;
+  }
+
+  .workspace-content {
+    gap: 22px;
+  }
+
+  /* The dialog fills the phone and scrolls in one place. */
+  .settings-dialog:not(.asset-library-dialog) {
+    max-height: calc(100vh - 24px);
+  }
+
+  .settings-dialog:not(.asset-library-dialog) > .settings-body {
+    padding: 16px;
+  }
+
+  .preview-card.wide-card > p,
+  .preview-card.wide-card .preview-long-text {
+    max-width: none;
+  }
+
+  .world-explorer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .world-tree {
+    max-height: none;
+  }
+
+  .list-toolbar {
+    gap: 12px;
+  }
+
+  .relationship-canvas {
+    max-height: 52vh;
+  }
+
+  /* The cluster stacks three 44px buttons down the right edge, which on a phone is a
+     150px-tall strip of nothing on top of the form underneath it. The same three
+     actions in a row cover a third of that, and none of them is hidden. */
+  .floating-actions {
+    grid-auto-flow: column;
+    right: 12px;
+    gap: 2px;
+  }
+}
