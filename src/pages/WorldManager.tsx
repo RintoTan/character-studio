@@ -11,6 +11,7 @@ import {
 import type { Character } from "../types/character";
 import { CharacterPicker } from "../components/CharacterPicker";
 import { RelatedCharacters } from "../components/RelatedCharacters";
+import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import { Icon } from "../components/Icon";
 import {
   WORLD_CATEGORIES,
@@ -264,23 +265,30 @@ export function WorldManager({
 
   return (
     <section className="workspace-card world-page" id="workspace-world">
-      <div className="workspace-card-head">
-        <div>
-          <p className="eyebrow">WORLD</p>
-          <h2>世界观管理</h2>
-          <p className="muted">
-            {entries.length} 个条目 · {counts.filter((group) => group.count > 0 && group.value !== EVERY_CATEGORY).length} 个分类
-          </p>
-        </div>
-        <div className="workspace-toolbar">
-          <button className="ghost-button" onClick={onBack} type="button">
-            返回 Dashboard
-          </button>
-          <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
-            新建条目
-          </button>
-        </div>
-      </div>
+      <WorkspaceHeader
+        eyebrow="世界观"
+        title="世界观管理"
+        summary={
+          <>
+            {entries.length} 个条目 ·{" "}
+            {counts.filter((group) => group.count > 0 && group.value !== EVERY_CATEGORY).length} 个分类
+          </>
+        }
+        actions={
+          <>
+            <div className="toolbar-group">
+              <button className="ghost-button" onClick={onBack} type="button">
+                返回 Dashboard
+              </button>
+            </div>
+            <div className="toolbar-group">
+              <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
+                新建条目
+              </button>
+            </div>
+          </>
+        }
+      />
 
       {/* Search and filtering over the whole set, above the two panes: name, summary,
           details, tags and character names, plus the three structural filters. */}

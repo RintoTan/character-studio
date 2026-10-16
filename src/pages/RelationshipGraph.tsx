@@ -15,6 +15,7 @@ import {
   saveRelationships,
 } from "../storage/relationshipStorage";
 import { Icon } from "../components/Icon";
+import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import type { Character } from "../types/character";
 import {
   RELATIONSHIP_KINDS,
@@ -1169,20 +1170,20 @@ export function RelationshipGraph({
 
   return (
     <section className="workspace-card relationship-page" id="workspace-relationships">
-      <div className="workspace-card-head">
-        <div>
-          <p className="eyebrow">RELATIONSHIPS</p>
-          <h2>角色关系网</h2>
-          <p className="muted">
+      <WorkspaceHeader
+        eyebrow="关系网"
+        title="角色关系网"
+        summary={
+          <>
             {characters.length} 个角色 · {relationships.length} 条关系
-          </p>
-        </div>
-        {/* Two controls in the header, both about what the graph contains: which
-            characters are drawn, and adding an edge. Everything that acts on the
-            canvas itself sits with the canvas. The toggle used to render both of its
-            responsive labels at once, because the rule meant to hide one of them only
-            existed inside the phone breakpoint. */}
-        <div className="workspace-toolbar">
+          </>
+        }
+        actions={
+          <>
+            {/* Two controls in the header, both about what the graph contains: which
+                characters are drawn, and adding an edge. Everything that acts on the
+                canvas itself sits with the canvas. */}
+            <div className="toolbar-group">
           {canLink && (
             <button
               aria-pressed={showAll}
@@ -1191,14 +1192,18 @@ export function RelationshipGraph({
               type="button"
             >
               {showAll ? "显示全部角色" : "只显示有关联的"}
-              <span className="graph-toggle-count">{showAll ? characters.length : connectedIds.size}</span>
-            </button>
-          )}
-          <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
-            新建关系
-          </button>
-        </div>
-      </div>
+                <span className="graph-toggle-count">{showAll ? characters.length : connectedIds.size}</span>
+              </button>
+            )}
+            </div>
+            <div className="toolbar-group">
+              <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
+                新建关系
+              </button>
+            </div>
+          </>
+        }
+      />
 
       {!canLink ? (
         <div className="empty-state">

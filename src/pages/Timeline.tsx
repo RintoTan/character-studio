@@ -3,6 +3,7 @@ import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { CharacterPicker } from "../components/CharacterPicker";
 import { Icon } from "../components/Icon";
 import { RelatedCharacters } from "../components/RelatedCharacters";
+import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import {
   createTimelineEvent,
   deleteTimelineEvent,
@@ -240,23 +241,29 @@ export function Timeline({
 
   return (
     <section className="workspace-card timeline-page" id="workspace-timeline">
-      <div className="workspace-card-head">
-        <div>
-          <p className="eyebrow">TIMELINE</p>
-          <h2>世界观时间线</h2>
-          <p className="muted">
+      <WorkspaceHeader
+        eyebrow="时间线"
+        title="世界观时间线"
+        summary={
+          <>
             {events.length} 个事件 · {timelineYears(events).length} 个年份
-          </p>
-        </div>
-        <div className="workspace-toolbar">
-          <button className="ghost-button" onClick={onBack} type="button">
-            返回 Dashboard
-          </button>
-          <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
-            新建事件
-          </button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <>
+            <div className="toolbar-group">
+              <button className="ghost-button" onClick={onBack} type="button">
+                返回 Dashboard
+              </button>
+            </div>
+            <div className="toolbar-group">
+              <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
+                新建事件
+              </button>
+            </div>
+          </>
+        }
+      />
 
       {/* Search and filtering, once, above the list: the four things a long timeline is
           looked through — a word, a year, a kind and a character are all covered here. */}

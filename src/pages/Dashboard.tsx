@@ -57,6 +57,7 @@ import {
 } from "../storage/dashboardPrefs";
 import { defaultContent } from "../content/defaultContent";
 import { dashboardGroupRows, summarizeTags } from "./dashboard/dashboardGroups";
+import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import { planLegacyFavoriteMigration } from "./dashboard/legacyFavorites";
 
 type DashboardProps = {
@@ -2204,14 +2205,17 @@ export function Dashboard({
   function renderIntroPanel() {
     return (
       <>
-      <div className="panel intro-panel">
-        <div className="intro-copy">
-          <p className="eyebrow">OC Workspace</p>
-          <h1>{heroCopy.title}</h1>
-          <p className="muted">
-            {heroCopy.description}
-          </p>
-          <div className="dashboard-stats">
+      {/* A band, not a hero: the same header every other workspace opens with, sized so
+          the roster is visible in the first screenful. The counts stayed here because
+          they are also the scope control for the list below. */}
+      <div className="panel dashboard-head-card">
+        <WorkspaceHeader
+          compact
+          eyebrow="角色库"
+          title={heroCopy.title}
+          summary={heroCopy.description}
+          actions={
+            <div className="dashboard-stats">
             <button
               className={prefs.favoriteMode === "all" ? "active" : ""}
               onClick={() => updatePrefs({ favoriteMode: "all" })}
@@ -2233,8 +2237,9 @@ export function Dashboard({
             >
               草稿{dashboardSettings?.showDraftCount !== false ? ` ${stats.draftCount}` : ""}
             </button>
-          </div>
-        </div>
+            </div>
+          }
+        />
       </div>
       </>
     );
@@ -2537,7 +2542,7 @@ export function Dashboard({
 
 
   return (
-    <section className="page-grid">
+    <section className="page-grid" id="page-dashboard">
       {toastMessage && (
         <div className={`toast ${toastType}`}>
           {toastMessage}

@@ -84,6 +84,16 @@
        120-160 overlay surfaces that must clear the page but stay under modals
        900/910 modal backdrop and its content
        1000    toasts, above everything */
+  /* Four levels, and nothing in between: a page title, a section title, body copy and
+     controls, and the small print. 10-11px used to carry ordinary information — dates,
+     counts, helper lines — which is why a 40px page title sat directly above text too
+     small to read. Small print is 12px now, and only for short labels, counts and
+     timestamps. */
+  --text-page-title: 28px;
+  --text-page-title-phone: 22px;
+  --text-section-title: 20px;
+  --text-body: 14px;
+  --text-meta: 12px;
   --developer-card-radius: 8px;
   /* Standard dialogs share these two. The crop editor is excluded: it is a
      full-bleed surface with its own constraints. */
@@ -570,6 +580,25 @@ button:disabled {
   gap: 20px;
 }
 
+/* The header band supplies its own padding, so the card it sits in does not add a
+   second one. */
+/* The export footer belongs to the exported artifact, not to the page: the page has
+   one footer and it comes after everything. The capture clone marks the root with
+   `pdf-safe` as it is taken, which is where it comes back. */
+.preview-export-footer {
+  display: none;
+}
+
+.pdf-safe .preview-export-footer {
+  display: block;
+}
+
+.dashboard-head-card {
+  padding: 0;
+  border-color: var(--border);
+  overflow: hidden;
+}
+
 /* The hero says where you are and how much you have; it no longer carries the
    controls. Those moved to the list toolbar, which is what had made this card two
    rows deep and left its lower half empty on a wide window. */
@@ -849,12 +878,11 @@ button:disabled {
 }
 
 .eyebrow {
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-meta);
   font-weight: 700;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 h1,
@@ -866,13 +894,14 @@ p {
 
 h1 {
   margin-bottom: 10px;
-  font-size: clamp(28px, 5vw, 40px);
-  line-height: 1.1;
+  font-size: var(--text-page-title);
+  line-height: 1.2;
 }
 
 h2 {
   margin-bottom: 0;
-  font-size: 22px;
+  font-size: var(--text-section-title);
+  line-height: 1.3;
 }
 
 .muted,
@@ -3753,7 +3782,7 @@ input[type="number"]::-webkit-inner-spin-button {
   text-align: left;
 }
 
-.workspace-card-head:hover {
+button.workspace-card-head:hover {
   background: var(--surface-subtle);
 }
 
@@ -8799,5 +8828,184 @@ kbd {
 
   .bulk-edit-row > span {
     font-size: 12.5px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Visual system, stage one: one header, one toolbar rhythm, one section and one
+   long-form dialog. Added as its own block so the rules it replaces are visible
+   above it rather than scattered through them.
+   --------------------------------------------------------------------------- */
+
+/* The band every workspace page opens with. Label, title and summary on the left;
+   the screen's actions on the right; one divider instead of a nested card. */
+.workspace-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px 24px;
+  padding: 20px var(--pad-surface) 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.workspace-header--compact {
+  padding: 16px var(--pad-surface) 14px;
+}
+
+.workspace-header-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workspace-header-title {
+  margin: 0;
+  font-size: var(--text-page-title);
+}
+
+.workspace-header--compact .workspace-header-title {
+  font-size: 24px;
+}
+
+.workspace-header-summary {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+/* A toolbar row holds groups, not a run of buttons: search and filter together,
+   then display, then the primary action, then management. The gap inside a group
+   is 8px and between groups 20px, so the grouping is legible without a border or
+   a divider between every pair of controls. */
+.toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px;
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--btn-gap);
+}
+
+.toolbar-row > .toolbar-group + .toolbar-group {
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+
+.workspace-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--btn-gap);
+  flex-wrap: wrap;
+}
+
+/* A section inside a surface: a title, a rule, and air. It used to be another white
+   card with a full border, so a page, its sections and its fields all read as the
+   same container at the same depth. */
+.section-block {
+  display: grid;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.section-block:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.section-block > .section-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.section-block > .section-block-head h3 {
+  margin: 0;
+  font-size: var(--text-section-title);
+}
+
+.section-block-note {
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+/* Long-form dialogs: a fixed head, a scrolling body, a fixed action row. The body
+   is the only thing that scrolls, so the actions cannot end up below the fold and
+   the last field cannot be hidden behind the buttons. */
+.dialog--form {
+  display: flex;
+  flex-direction: column;
+  max-height: min(86vh, 860px);
+  padding: 0;
+  overflow: hidden;
+}
+
+.dialog--form > .dialog-form-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px var(--pad-surface) 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dialog--form > .dialog-form-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--pad-surface);
+  display: grid;
+  gap: 16px;
+}
+
+.dialog--form > .dialog-form-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px var(--pad-surface);
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* The scroll cue: the body keeps a little of the next field visible under the action
+   row, so it is legible that there is more to read. */
+.dialog--form > .dialog-form-foot::before {
+  content: "";
+  position: absolute;
+}
+
+@media (max-width: 720px) {
+  .workspace-header {
+    padding: 14px 16px 12px;
+    align-items: flex-start;
+  }
+
+  .workspace-header-title,
+  .workspace-header--compact .workspace-header-title {
+    font-size: var(--text-page-title-phone);
+  }
+
+  .toolbar-row {
+    gap: 12px;
+  }
+
+  .toolbar-row > .toolbar-group + .toolbar-group {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .dialog--form {
+    max-height: 92vh;
   }
 }
