@@ -2064,7 +2064,11 @@ h2 {
 .character-group-head {
   grid-column: 1 / -1;
   position: sticky;
-  top: calc(var(--topbar-height, 46px) + 4px);
+  /* Flush against the top bar's bottom edge. It used to stick 4px lower and the
+     wrapper paints nothing, so a 4px band of the page scrolled through the gap
+     between the two sticky layers - measured at 46px (top bar bottom) against 50px
+     (head top). The 4px below is spacing in the flow, which is where it belongs. */
+  top: var(--topbar-height, 46px);
   z-index: var(--z-inline-2);
   margin-top: 4px;
 }

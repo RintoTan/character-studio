@@ -668,6 +668,84 @@ const READ_WORLD_CROWDED = `
   })()
 `;
 
+
+// The list view's first column: the avatar and the name have to sit on the row's
+// centre line, and on each other's. Measured because "looks slightly off" is not a
+// thing a screenshot settles.
+const READ_LIST_ALIGNMENT = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const toggle = document.querySelector('button[aria-label="切换列表视图"]');
+    if (toggle) { toggle.click(); await sleep(400); }
+    // Bulk mode adds a select circle to the same cell, so it is a second layout to
+    // measure rather than a second thing to assume.
+    const bulk = document.querySelector('button[aria-label="批量选择"]');
+    if (bulk && !document.querySelector(".character-table .select-circle")) {
+      bulk.click();
+      await sleep(400);
+    }
+    const rows = [...document.querySelectorAll(".character-table-row")];
+    const centre = (node) => {
+      const rect = node.getBoundingClientRect();
+      return (rect.top + rect.bottom) / 2;
+    };
+    const round = (value) => Math.round(value * 10) / 10;
+    return {
+      rows: rows.length,
+      cells: rows.slice(0, 6).map((row) => {
+        const circle = row.querySelector(".select-circle");
+        const avatar = row.querySelector(".table-avatar");
+        const name = row.querySelector(".table-main strong");
+        const second = row.children[1];
+        const rowCentre = centre(row);
+        return {
+          avatar: round(centre(avatar) - rowCentre),
+          name: round(centre(name) - rowCentre),
+          between: round(centre(avatar) - centre(name)),
+          circle: circle ? round(centre(circle) - rowCentre) : null,
+          second: second ? round(centre(second) - rowCentre) : null,
+        };
+      }),
+    };
+  })()
+`;
+
+// The band between the sticky top bar and the sticky group head: if there is one,
+// the page behind scrolls through it.
+const READ_STICKY_GAP = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    // Group heads exist only in the card view with a large roster, and the view mode
+    // is a persisted preference - so it has to be read, not assumed.
+    const toCards = document.querySelector('button[aria-label="切换卡片视图"]');
+    if (toCards) { toCards.click(); await sleep(400); }
+    window.scrollTo(0, 0);
+    await sleep(200);
+    window.scrollTo(0, 1200);
+    await sleep(500);
+    const topbar = document.querySelector(".topbar");
+    const topbarRect = topbar.getBoundingClientRect();
+    const hex = (node) => getComputedStyle(node).backgroundColor;
+    const stuck = [...document.querySelectorAll(".character-group-head")].find((head) => {
+      const rect = head.getBoundingClientRect();
+      return rect.top >= 0 && rect.top < topbarRect.bottom + 40;
+    });
+    const round = (value) => Math.round(value * 10) / 10;
+    return {
+      scrollY: Math.round(window.scrollY),
+      topbarBottom: round(topbarRect.bottom),
+      topbarHeight: round(topbarRect.height),
+      cssVar: getComputedStyle(document.documentElement).getPropertyValue("--topbar-height").trim(),
+      topbarBackground: hex(topbar),
+      heads: document.querySelectorAll(".character-group-head").length,
+      stuckTop: stuck ? round(stuck.getBoundingClientRect().top) : null,
+      gap: stuck ? round(stuck.getBoundingClientRect().top - topbarRect.bottom) : null,
+      headBackground: stuck ? hex(stuck) : "",
+      toggleBackground: stuck ? hex(stuck.querySelector("button")) : "",
+    };
+  })()
+`;
+
 // Expand whatever the collapse memory left closed, so all six sections can be read
 // at once. Only heads whose body is missing are clicked, so nothing is collapsed.
 const EXPAND_EDITOR_SECTIONS = `
@@ -1134,6 +1212,44 @@ async function main() {
       };
     });
 
+    await check("列表视图：第一列头像与名称在行的中线上（C1）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_MANY);
+      await cdp.goto(base);
+      const state = await cdp.value(READ_LIST_ALIGNMENT);
+
+      const within = (value) => Math.abs(value) <= 1;
+      const aligned = state.cells.length > 0 && state.cells.every(
+        (cell) => within(cell.avatar) && within(cell.name) && within(cell.between)
+          && (cell.circle === null || within(cell.circle)),
+      );
+
+      return {
+        pass: Boolean(aligned),
+        detail: `${state.rows} 行；前 ${state.cells.length} 行偏差（头像/名称相对行中线，正值偏下）：`
+          + state.cells.map((cell, index) => `#${index + 1} 头像 ${cell.avatar}、名称 ${cell.name}、互相差 ${cell.between}${cell.circle === null ? "" : `、勾选圈 ${cell.circle}`}`).join("  "),
+      };
+    });
+
+    await check("吸顶：顶栏与吸顶分组头之间不应有可透视的缝隙（C2）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_CROWDED);
+      await cdp.goto(base);
+      const state = await cdp.value(READ_STICKY_GAP);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      // A gap of a pixel is rounding; anything more is a window for the content behind.
+      const noGap = state.gap !== null && Math.abs(state.gap) <= 1;
+
+      return {
+        pass: Boolean(noGap && state.heads > 0),
+        detail: `滚动到 ${state.scrollY}px；顶栏底边 ${state.topbarBottom}px（实际高 ${state.topbarHeight}px，CSS 变量 ${state.cssVar}）`
+          + `；分组头 ${state.heads} 个，吸顶者顶边 ${state.stuckTop}px → 缝隙 ${state.gap}px`
+          + `；底色 顶栏 ${state.topbarBackground} / 分组头 ${state.headBackground} / 组内按钮 ${state.toggleBackground}`,
+      };
+    });
+
     await check("编辑器：六节共用一套节头、间距与动作行（KI-02）", async () => {
       await cdp.goto(base);
       await cdp.value(SEED);
@@ -1282,6 +1398,14 @@ async function main() {
         await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
         await cdp.value(EXPAND_EDITOR_SECTIONS);
         files.push(await capture("editor-desktop"));
+
+        // The sticky group head against the top bar, where the 4px window used to be.
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 700, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED_CROWDED);
+        await cdp.goto(base);
+        await cdp.value(`(async () => { const s = (ms) => new Promise((r) => setTimeout(r, ms)); window.scrollTo(0, 1200); await s(500); return true; })()`);
+        files.push(await capture("dashboard-sticky"));
 
         // The compact related-character display, collapsed and open.
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 760, deviceScaleFactor: 2, mobile: false });
