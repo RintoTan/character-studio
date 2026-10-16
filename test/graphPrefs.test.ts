@@ -22,24 +22,64 @@ describe("graph size preferences", () => {
   });
 
   it("round-trips the sizes the author picked", () => {
-    saveGraphPrefs({ avatarSize: "large", nameSize: "small", exportScale: 3 });
+    saveGraphPrefs({
+      avatarSize: "large",
+      nameSize: "small",
+      showAvatars: false,
+      showNames: true,
+      exportScale: 3,
+    });
 
-    expect(loadGraphPrefs()).toEqual({ avatarSize: "large", nameSize: "small", exportScale: 3 });
+    expect(loadGraphPrefs()).toEqual({
+      avatarSize: "large",
+      nameSize: "small",
+      showAvatars: false,
+      showNames: true,
+      exportScale: 3,
+    });
     expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}")).toEqual({
       avatarSize: "large",
       nameSize: "small",
+      showAvatars: false,
+      showNames: true,
       exportScale: 3,
     });
   });
 
   it("falls back per field, so one bad value does not reset the others", () => {
-    // The three settings are stored as one object; reading it as one object would let
+    // The settings are stored as one object; reading it as one object would let
     // a single unknown value take the fields beside it down too.
     expect(normalizeGraphPrefs({ avatarSize: "huge", nameSize: "large", exportScale: 9 })).toEqual({
       avatarSize: defaultGraphPrefs.avatarSize,
       nameSize: "large",
+      showAvatars: defaultGraphPrefs.showAvatars,
+      showNames: defaultGraphPrefs.showNames,
       exportScale: defaultGraphPrefs.exportScale,
     });
+  });
+
+  it("reads a record written before the visibility switches existed as visible", () => {
+    // A stored object from the previous version has neither key. Reading a missing
+    // field as false would turn both off for every existing author on upgrade.
+    expect(normalizeGraphPrefs({ avatarSize: "large", nameSize: "small", exportScale: 3 })).toEqual({
+      avatarSize: "large",
+      nameSize: "small",
+      showAvatars: true,
+      showNames: true,
+      exportScale: 3,
+    });
+
+    // The same for a value of the wrong type: only an explicit boolean is honoured,
+    // and the fields beside it are untouched.
+    for (const value of ["no", 0, 1, null, undefined]) {
+      const prefs = normalizeGraphPrefs({ showAvatars: value, showNames: value, avatarSize: "large" });
+
+      expect(prefs.showAvatars).toBe(true);
+      expect(prefs.showNames).toBe(true);
+      expect(prefs.avatarSize).toBe("large");
+    }
+
+    expect(normalizeGraphPrefs({ showAvatars: false, showNames: false }).showAvatars).toBe(false);
   });
 
   it("only accepts the export resolutions it offers", () => {

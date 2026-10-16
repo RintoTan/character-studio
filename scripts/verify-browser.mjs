@@ -469,6 +469,411 @@ const CREATE_RELATION_BY_SEARCH = `
   })()
 `;
 
+// A graph with something in it: six characters — one with a real picture avatar, one
+// emoji, one outside the graph entirely — and four edges. 沈青梧 and 陆停云 are the two
+// ends a search has to tell apart; 文森特·梵高 is the character who is not on the canvas.
+const SEED_GRAPH = `
+  (async () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const make = (id, name, occupation, worldview, avatarAssetId) => ({
+      id,
+      name,
+      occupation,
+      worldview,
+      avatarEmoji: "🙂",
+      createdAt: now,
+      updatedAt: now,
+      ...(avatarAssetId ? { avatarAssetId } : {}),
+    });
+    localStorage.setItem("character-studio.characters", JSON.stringify([
+      make("g-1", "沈青梧", "调查员", "北境", "asset-red"),
+      make("g-2", "陆停云", "魔法师", "云海"),
+      make("g-3", "顾行之", "工匠", "雾隐"),
+      make("g-4", "文森特·梵高", "画家", "阿尔勒"),
+      make("g-5", "白露", "医者", "北境"),
+      make("g-6", "青芜", "记录官", "云海"),
+    ]));
+    localStorage.setItem("character-studio.relationships", JSON.stringify([
+      { id: "gr-1", fromId: "g-1", toId: "g-2", kind: "friend", createdAt: now, updatedAt: now },
+      { id: "gr-2", fromId: "g-2", toId: "g-3", kind: "mentor", createdAt: now, updatedAt: now },
+      { id: "gr-3", fromId: "g-1", toId: "g-5", kind: "family", createdAt: now, updatedAt: now },
+      { id: "gr-4", fromId: "g-3", toId: "g-6", kind: "colleague", createdAt: now, updatedAt: now },
+    ]));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.world", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    localStorage.removeItem("character-studio.graph-prefs");
+
+    // A picture where the app keeps its avatars, so "does a picture avatar draw on the
+    // canvas" is answered with a real asset rather than with the emoji that used to be
+    // the only thing a node ever drew.
+    const source = document.createElement("canvas");
+    source.width = 64;
+    source.height = 64;
+    source.getContext("2d").fillStyle = "#ff0000";
+    source.getContext("2d").fillRect(0, 0, 64, 64);
+    const blob = await new Promise((resolve) => source.toBlob(resolve, "image/png"));
+
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.open("character-studio-assets", 1);
+      request.onupgradeneeded = () => {
+        if (!request.result.objectStoreNames.contains("avatar-assets")) {
+          request.result.createObjectStore("avatar-assets", { keyPath: "id" });
+        }
+      };
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const transaction = db.transaction("avatar-assets", "readwrite");
+        transaction.objectStore("avatar-assets").put({
+          id: "asset-red",
+          type: "avatar",
+          name: "red.png",
+          mimeType: "image/png",
+          blob,
+          size: blob.size,
+          width: 64,
+          height: 64,
+          createdAt: now,
+          updatedAt: now,
+        });
+        transaction.oncomplete = () => {
+          db.close();
+          resolve(true);
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+    });
+
+    return true;
+  })()
+`;
+
+// A graph too dense to label at fit: four hundred characters in one chain, so all four
+// hundred are drawn and none of their names is legible at any zoom the focus uses. This
+// is where "the focused character and its direct connections label themselves" is worth
+// asserting — at this size those three names are the only ones on the canvas.
+const SEED_GRAPH_LARGE = `
+  (() => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const jobs = ["调查员", "魔法师", "工匠"];
+    const worlds = ["北境", "云海", "雾隐"];
+    const characters = Array.from({ length: 400 }, (_, index) => ({
+      id: "bulk-" + (index + 1),
+      name: "角色" + String(index + 1).padStart(3, "0"),
+      occupation: jobs[index % 3],
+      worldview: worlds[index % 3],
+      avatarEmoji: "🙂",
+      createdAt: now,
+      updatedAt: now,
+    }));
+    // bulk-87 and bulk-89 are the two ends of bulk-88 in the chain.
+    characters[86] = { ...characters[86], name: "陆停云", occupation: "魔法师", worldview: "云海" };
+    characters[87] = { ...characters[87], name: "沈青梧", occupation: "调查员", worldview: "北境" };
+    localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+    localStorage.setItem("character-studio.relationships", JSON.stringify(
+      Array.from({ length: 399 }, (_, index) => ({
+        id: "gr-" + (index + 1),
+        fromId: "bulk-" + (index + 1),
+        toId: "bulk-" + (index + 2),
+        kind: "colleague",
+        createdAt: now,
+        updatedAt: now,
+      })),
+    ));
+    localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+    localStorage.setItem("character-studio.world", JSON.stringify([]));
+    localStorage.setItem("character-studio.about-seen", "true");
+    localStorage.removeItem("character-studio.graph-prefs");
+    return true;
+  })()
+`;
+
+const READ_GRAPH_CANVAS = `
+  (() => {
+    const nodes = [...document.querySelectorAll(".relationship-node")];
+    const names = nodes.map((node) => node.querySelector(".relationship-node-name")?.textContent || "");
+    const images = [...document.querySelectorAll(".relationship-node-image")];
+    const canvas = document.querySelector(".relationship-canvas");
+    const rect = canvas?.getBoundingClientRect();
+    const named = nodes.find((node) => node.querySelector(".relationship-node-name"));
+
+    return {
+      nodeCount: nodes.length,
+      names: names.filter(Boolean),
+      imageCount: images.length,
+      emojiCount: document.querySelectorAll(".relationship-node-emoji").length,
+      clipCount: document.querySelectorAll("defs clipPath").length,
+      imageHref: images.length ? (images[0].getAttribute("href") || "").slice(0, 22) : "",
+      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+      transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
+      canvasWidth: rect ? Math.round(rect.width) : 0,
+      nameFontPx: named ? getComputedStyle(named.querySelector(".relationship-node-name")).fontSize : "",
+      viewportWidth: window.innerWidth,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  })()
+`;
+
+// The node's own screen centre, so a hover can be sent where the circle actually is.
+const graphNodeCentre = (name) => `
+  (() => {
+    const node = [...document.querySelectorAll(".relationship-node")].find(
+      (candidate) => candidate.querySelector(".relationship-node-name")?.textContent.trim() === ${JSON.stringify(name)},
+    );
+    if (!node) return null;
+    const rect = node.querySelector("circle").getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  })()
+`;
+
+const READ_NODE_CARD = `
+  (() => {
+    const card = document.querySelector(".graph-node-card");
+    const holder = document.querySelector(".graph-canvas-holder");
+    if (!card || !holder) return { present: false };
+    const cardRect = card.getBoundingClientRect();
+    const holderRect = holder.getBoundingClientRect();
+    return {
+      present: true,
+      text: card.textContent.replace(/\\s+/g, " ").trim(),
+      fields: [...card.querySelectorAll(".graph-node-card-field")].map((field) => field.textContent.replace(/\\s+/g, "")),
+      overflowsLeft: cardRect.left < holderRect.left - 1,
+      overflowsRight: cardRect.right > holderRect.right + 1,
+      outsideFrame: !document.querySelector(".graph-canvas-frame")?.contains(card),
+    };
+  })()
+`;
+
+// Searching, choosing, focusing and leaving the focus — driven through the search field
+// the way a writer would, and read back from the drawing.
+const GRAPH_SEARCH_AND_FOCUS = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const results = () =>
+      [...document.querySelectorAll(".graph-search-panel .character-picker-option")].map((option) => ({
+        name: option.querySelector(".character-row-name")?.textContent || "",
+        avatar: Boolean(option.querySelector(".character-row-avatar")?.getAttribute("data-avatar-image") === "true" || option.querySelector(".character-row-avatar")),
+        state: (option.querySelector(".graph-search-state")?.textContent || "").trim(),
+      }));
+
+    const field = document.querySelector(".graph-search-field input");
+    if (!field) throw new Error("graph search field missing");
+
+    const read = async (needle) => {
+      setValue(field, needle);
+      await sleep(300);
+      return results();
+    };
+
+    const byName = await read("沈青梧");
+    const byJob = await read("工匠");
+    const byWorld = await read("云海");
+    const namesBefore = [...document.querySelectorAll(".relationship-node-name")].map((node) => node.textContent.trim());
+    const before = {
+      transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
+      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+    };
+
+    // Search the name once more before choosing, so the option taken is the one this
+    // check is about rather than whatever the last search left in the panel.
+    await read("沈青梧");
+    const chosen = [...document.querySelectorAll(".graph-search-panel .character-picker-option")][0];
+    chosen.click();
+    await sleep(500);
+
+    const focusedName = (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "";
+    const focused = {
+      name: focusedName.trim(),
+      focusedCount: document.querySelectorAll(".relationship-node.focused").length,
+      names: [...document.querySelectorAll(".relationship-node-name")].map((node) => node.textContent.trim()),
+      dimmedNames: [...document.querySelectorAll(".relationship-node")].filter((node) => node.classList.contains("dimmed")).map((node) => node.querySelector(".relationship-node-name")?.textContent?.trim() || "（无名称）"),
+      activeEdges: document.querySelectorAll(".relationship-edge.active").length,
+      panelClosed: !document.querySelector(".graph-search-panel"),
+      chip: (document.querySelector(".graph-focus-chip")?.textContent || "").trim(),
+      transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
+      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+    };
+
+    // Escape is the keyboard way out; the chip is the visible one.
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await sleep(300);
+    const afterEscape = {
+      focusedCount: document.querySelectorAll(".relationship-node.focused").length,
+      dimmedCount: document.querySelectorAll(".relationship-node.dimmed").length,
+      activeEdges: document.querySelectorAll(".relationship-edge.active").length,
+      chip: Boolean(document.querySelector(".graph-focus-chip")),
+    };
+
+    return { byName, byJob, byWorld, namesBefore, before, focused, afterEscape };
+  })()
+`;
+
+// Somebody the canvas does not draw: the search has to say so, say why, and offer the
+// one way to go and look.
+const GRAPH_SEARCH_OFF_CANVAS = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    const field = document.querySelector(".graph-search-field input");
+    setValue(field, "梵高");
+    await sleep(300);
+    const option = document.querySelector(".graph-search-panel .character-picker-option");
+    const state = (option.querySelector(".graph-search-state")?.textContent || "").trim();
+    option.click();
+    await sleep(400);
+
+    const notice = document.querySelector(".graph-notice");
+    const before = {
+      nodes: document.querySelectorAll(".relationship-node").length,
+      notice: notice ? notice.textContent.replace(/\\s+/g, " ").trim() : "",
+    };
+
+    if (!notice) throw new Error("notice missing");
+    notice.querySelector("button").click();
+    await sleep(600);
+
+    return {
+      state,
+      before,
+      after: {
+        nodes: document.querySelectorAll(".relationship-node").length,
+        focused: (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "",
+        notice: Boolean(document.querySelector(".graph-notice")),
+        storedRelationships: JSON.parse(localStorage.getItem("character-studio.relationships") || "[]").length,
+        storedCharacters: JSON.parse(localStorage.getItem("character-studio.characters") || "[]").length,
+      },
+    };
+  })()
+`;
+
+// The display switches and the export buttons, driven and read back.
+const GRAPH_DISPLAY_AND_EXPORT = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const clickText = (text) => {
+      const button = [...document.querySelectorAll(".graph-panel button")].find(
+        (candidate) => candidate.textContent.trim() === text,
+      );
+      if (!button) throw new Error("panel button missing: " + text);
+      button.click();
+    };
+    const counts = () => ({
+      names: document.querySelectorAll(".relationship-node-name").length,
+      images: document.querySelectorAll(".relationship-node-image").length,
+      emojis: document.querySelectorAll(".relationship-node-emoji").length,
+    });
+
+    const toggle = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent.trim() === "显示设置",
+    );
+    if (!toggle) throw new Error("显示设置 missing");
+    toggle.click();
+    await sleep(250);
+
+    const panel = document.querySelector(".graph-panel");
+    const panelRect = panel?.getBoundingClientRect();
+    const opened = {
+      present: Boolean(panel),
+      rows: [...document.querySelectorAll(".graph-panel-row")].map((row) => row.textContent.replace(/\\s+/g, " ").trim()),
+      insideViewport: panelRect ? panelRect.left >= -1 && panelRect.right <= window.innerWidth + 1 && panelRect.top >= -1 : false,
+      namesBefore: counts().names,
+    };
+
+    clickText("隐藏");
+    await sleep(250);
+    const namesHidden = counts();
+    clickText("显示");
+    await sleep(250);
+    const namesBack = counts().names;
+
+    // The avatar row is the second one: its 隐藏 is the second 隐藏 button in the panel.
+    [...document.querySelectorAll(".graph-panel button")].filter((button) => button.textContent.trim() === "隐藏")[1].click();
+    await sleep(250);
+    const avatarsHidden = counts();
+    [...document.querySelectorAll(".graph-panel button")].filter((button) => button.textContent.trim() === "显示")[1].click();
+    await sleep(250);
+    const avatarsBack = counts();
+
+    toggle.click();
+    await sleep(200);
+    const closed = !document.querySelector(".graph-panel");
+
+    // The outcome message is transient, so it is waited for rather than sampled once:
+    // sleeping a fixed few seconds reads an empty node whether the export succeeded or
+    // the whole thing is still running.
+    const message = () => (document.querySelector(".graph-message")?.textContent || "").trim();
+    const waitForMessage = async (timeout) => {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        if (message()) return message();
+        await sleep(200);
+      }
+      return "";
+    };
+
+    const waitForClear = async (timeout) => {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline && message()) {
+        await sleep(200);
+      }
+    };
+
+    const messages = [];
+    for (const format of ["JPG", "PNG", "PDF"]) {
+      const button = [...document.querySelectorAll(".graph-canvas-bar button")].find(
+        (candidate) => candidate.textContent.trim() === format,
+      );
+      if (!button) throw new Error("export button missing: " + format);
+      // Each format starts from an empty node, so a message can only be its own.
+      await waitForClear(6000);
+      button.click();
+      messages.push((await waitForMessage(30000)) || "（没有结果提示）");
+    }
+
+    return { opened, namesHidden, namesBack, avatarsHidden, avatarsBack, closed, messages };
+  })()
+`;
+
+// The mechanism behind "a picture avatar survives the export": html2canvas serialises
+// the canvas SVG and loads it back as an image, where a blob: URL cannot resolve and a
+// data URL can. Asserted with a pixel rather than with "the image loaded".
+const IMAGE_IN_SVG_PROBE = `
+  (async () => {
+    const source = document.createElement("canvas");
+    source.width = 8;
+    source.height = 8;
+    source.getContext("2d").fillStyle = "#ff0000";
+    source.getContext("2d").fillRect(0, 0, 8, 8);
+    const dataUrl = source.toDataURL("image/png");
+    const markup = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><image href="' + dataUrl + '" width="16" height="16"/></svg>';
+    const image = new Image();
+    const loaded = await new Promise((resolve) => {
+      image.onload = () => resolve(true);
+      image.onerror = () => resolve(false);
+      image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup);
+    });
+    if (!loaded) return { loaded: false };
+    const surface = document.createElement("canvas");
+    surface.width = 16;
+    surface.height = 16;
+    const context = surface.getContext("2d");
+    context.drawImage(image, 0, 0);
+    const pixel = context.getImageData(8, 8, 1, 1).data;
+    return { loaded: true, pixel: [pixel[0], pixel[1], pixel[2], pixel[3]] };
+  })()
+`;
+
 // The multi-select on a hundred characters: search narrows, the count follows the
 // choices, and the search term survives choosing.
 const READ_WORLD_MULTI_PICKER = `
@@ -860,6 +1265,15 @@ const PICK_THEME = (label) => `
     button.click();
     await sleep(300);
     return true;
+  })()
+`;
+
+// For captures only: sets the theme attribute the app's own switcher sets. PICK_THEME
+// needs the settings dialog open, which a page shot does not.
+const FORCE_THEME = (theme) => `
+  (() => {
+    document.documentElement.dataset.theme = ${JSON.stringify(theme)};
+    return document.documentElement.dataset.theme;
   })()
 `;
 
@@ -1356,6 +1770,204 @@ async function main() {
       };
     });
 
+    await check("关系网：节点默认显示名称，悬停给出职业/世界观/关系数（任务 A）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      const state = await cdp.value(READ_GRAPH_CANVAS);
+
+      const centre = await cdp.value(graphNodeCentre("沈青梧"));
+      if (!centre) throw new Error("沈青梧 node missing");
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const card = await cdp.value(READ_NODE_CARD);
+
+      // A node is still the way into the character's own page, and a hover that came
+      // and went is not a tap. The click target is recorded as well: the pan captures
+      // the pointer on the <svg>, and a captured pointer retargets the compatibility
+      // mouse events to the capturing element — which is why the node's own click
+      // handler is not what opens it.
+      await cdp.value(`(() => {
+        window.__tapTarget = "";
+        document.addEventListener("click", (event) => {
+          window.__tapTarget = event.target.tagName + "." + (event.target.getAttribute?.("class") || "");
+        }, { capture: true, once: true });
+        return true;
+      })()`);
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      const opened = await cdp.value(
+        `({ page: ${PAGE_IDS}, showsName: document.body.textContent.includes("沈青梧"), tapTarget: window.__tapTarget || "(没有 click 事件)" })`,
+      );
+
+      // Every character on the canvas is named at fit view, and the four fields the card
+      // promises are all there. 5 nodes: the sixth character has no relationships.
+      const named = state.nodeCount === 5 && state.names.length === state.nodeCount;
+      const pictureDrawn = state.imageCount === 1 && state.clipCount === 1 && state.imageHref.startsWith("data:image/");
+      const emojiDrawn = state.emojiCount === 4;
+      const cardOk =
+        card.present &&
+        card.text.includes("沈青梧") &&
+        card.fields.join("|").includes("职业调查员") &&
+        card.fields.join("|").includes("世界观北境") &&
+        card.fields.join("|").includes("关系2条") &&
+        !card.overflowsLeft &&
+        !card.overflowsRight &&
+        card.outsideFrame;
+
+      return {
+        pass: Boolean(named && pictureDrawn && emojiDrawn && cardOk && opened.page === "preview" && opened.showsName && state.pageOverflow <= 1),
+        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；点击节点 → ${opened.page}（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
+      };
+    });
+
+    await check("关系网：400 个角色下搜索定位、聚焦高亮与退出聚焦（任务 B）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH_LARGE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
+      const sketch = await cdp.value(READ_GRAPH_CANVAS);
+      const state = await cdp.value(GRAPH_SEARCH_AND_FOCUS);
+
+      // Four hundred nodes and not one name at fit, which is what makes the rest of this
+      // check mean something: the names that appear afterwards appear because of the
+      // focus, not because they were always there.
+      const startingPoint = sketch.nodeCount === 400 && sketch.names.length === 0;
+
+      const searchOk =
+        state.byName.length === 1 &&
+        state.byName[0].name === "沈青梧" &&
+        state.byName[0].avatar &&
+        state.byJob.length > 1 &&
+        state.byWorld.length > 1 &&
+        state.byWorld.every((entry) => entry.name);
+      // 沈青梧 sits between 陆停云 and 角色089 in the chain: exactly three names are on
+      // the canvas — the focused character and its two direct connections — its two
+      // edges are lit, and the other 397 nodes are dimmed.
+      const focusOk =
+        state.focused.name === "沈青梧" &&
+        state.focused.focusedCount === 1 &&
+        state.focused.activeEdges === 2 &&
+        state.focused.names.length === 3 &&
+        state.focused.names.includes("沈青梧") &&
+        state.focused.names.includes("陆停云") &&
+        state.focused.names.includes("角色089") &&
+        state.focused.dimmedNames.length === 397 &&
+        state.focused.panelClosed &&
+        state.focused.chip.includes("沈青梧") &&
+        state.focused.transform !== state.before.transform;
+      const escapeOk =
+        state.afterEscape.focusedCount === 0 &&
+        state.afterEscape.dimmedCount === 0 &&
+        state.afterEscape.activeEdges === 0 &&
+        !state.afterEscape.chip;
+
+      return {
+        pass: Boolean(startingPoint && searchOk && focusOk && escapeOk),
+        detail: `画布 ${sketch.nodeCount} 个节点、适配时名称 ${state.namesBefore.length} 个；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name).join("/")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.focusedCount}、高亮关系线 ${state.focused.activeEdges}、聚焦后名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length} 个）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}、聚焦标 ${state.focused.chip}；Escape 后 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges} / 聚焦标 ${state.afterEscape.chip ? "仍在" : "已消失"}`,
+      };
+    });
+
+    await check("关系网：画布外的角色有明确提示与查看方式，不静默失败（任务 B）", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
+      const state = await cdp.value(GRAPH_SEARCH_OFF_CANVAS);
+
+      const told =
+        state.state === "不在画布" &&
+        state.before.notice.includes("文森特·梵高") &&
+        state.before.notice.includes("还没有任何关系") &&
+        state.before.nodes === 5;
+      const reachable =
+        state.after.nodes === 6 &&
+        state.after.focused === "文森特·梵高" &&
+        !state.after.notice;
+      // Looking at somebody is not editing anybody: no write to either store.
+      const untouched = state.after.storedRelationships === 4 && state.after.storedCharacters === 6;
+
+      return {
+        pass: Boolean(told && reachable && untouched),
+        detail: `结果标记「${state.state}」；提示「${state.before.notice}」；定位后节点 ${state.before.nodes} → ${state.after.nodes}、聚焦 ${state.after.focused}、提示 ${state.after.notice ? "仍在" : "已收起"}；存储 角色 ${state.after.storedCharacters} / 关系 ${state.after.storedRelationships} 条未变`,
+      };
+    });
+
+    await check("关系网：显示设置只含生效开关，导出三种格式无报错（任务 D）", async () => {
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".graph-canvas-bar")`, 8000);
+      const state = await cdp.value(GRAPH_DISPLAY_AND_EXPORT);
+
+      const panelOk =
+        state.opened.present &&
+        state.opened.rows.join("|").includes("名称显示隐藏") &&
+        state.opened.rows.join("|").includes("头像显示隐藏") &&
+        state.opened.insideViewport;
+      const switched =
+        state.namesHidden.names === 0 &&
+        state.namesBack === 5 &&
+        state.avatarsHidden.images === 0 &&
+        state.avatarsHidden.emojis === 0 &&
+        state.avatarsBack.images === 1 &&
+        state.avatarsBack.emojis === 4;
+      const exported = state.messages.map((message) => message.replace(" 已导出", "")).join("/") === "JPG/PNG/PDF";
+
+      return {
+        pass: Boolean(panelOk && switched && exported && state.closed),
+        detail: `面板 ${state.opened.present ? "已打开" : "未打开"}（在视口内 ${state.opened.insideViewport}）：${state.opened.rows.join("；")}；名称 隐藏后 ${state.namesHidden.names} 个 → 恢复 ${state.namesBack} 个；头像 隐藏后 图片 ${state.avatarsHidden.images} / Emoji ${state.avatarsHidden.emojis} → 恢复 ${state.avatarsBack.images} / ${state.avatarsBack.emojis}；导出结果「${state.messages.join("」「")}」`,
+      };
+    });
+
+    await check("关系网：导出机制中 data URL 头像在序列化 SVG 内可绘制", async () => {
+      await cdp.goto(base);
+      const state = await cdp.value(IMAGE_IN_SVG_PROBE);
+
+      // html2canvas hands the canvas SVG to an <img>, and a blob: URL inside an SVG
+      // loaded that way resolves to nothing at all — which is why the graph asks for a
+      // data URL. Red in the middle is the nested picture having been painted.
+      return {
+        pass: Boolean(state.loaded && state.pixel[0] > 200 && state.pixel[1] < 60 && state.pixel[3] === 255),
+        detail: state.loaded
+          ? `序列化 SVG 内嵌 data URL 图片已解析并绘制，中心像素 rgba(${state.pixel.join(",")})`
+          : "序列化 SVG 内嵌 data URL 图片未能解析",
+      };
+    });
+
+    await check("关系网：375px 下默认就能读到名称，且无横向溢出（任务 C）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 375,
+        height: 812,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const state = await cdp.value(READ_GRAPH_CANVAS);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      // Starting zoomed in enough to read a name is the narrow-screen version of "fit":
+      // at the fitted scale a phone gives a twelve-character wheel seven-pixel names.
+      const zoomed = Number(state.zoom.replace("%", "")) >= 100;
+      const readable = state.names.length === state.nodeCount && state.names.length > 0;
+      const fits = state.canvasWidth <= state.viewportWidth && state.pageOverflow <= 1;
+
+      return {
+        pass: Boolean(zoomed && readable && fits && state.imageCount === 1),
+        detail: `375px：节点 ${state.nodeCount}、名称 ${state.names.length} 个（${state.names.join("/")}）、字号 ${state.nameFontPx}、缩放 ${state.zoom}、画布 ${state.canvasWidth}px / 视口 ${state.viewportWidth}px、横向溢出 ${state.pageOverflow}px`,
+      };
+    });
+
     // Not a check: an opt-in capture, so the result of a visual change can be looked
     // at rather than only asserted. Runs only with SHOTS=1 so CI writes no files.
     if (process.env.SHOTS) {
@@ -1406,6 +2018,38 @@ async function main() {
         await cdp.goto(base);
         await cdp.value(`(async () => { const s = (ms) => new Promise((r) => setTimeout(r, ms)); window.scrollTo(0, 1200); await s(500); return true; })()`);
         files.push(await capture("dashboard-sticky"));
+
+        // The relationship graph: names on the nodes, the hover card, and the two
+        // control rows around the canvas.
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED_GRAPH);
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace("角色关系网"));
+        await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+        await cdp.value(FORCE_THEME("light"));
+        files.push(await capture("graph-desktop-light"));
+        await cdp.value(FORCE_THEME("dark"));
+        files.push(await capture("graph-desktop-dark"));
+        // The hover card, captured on its own: it only exists while the pointer is on a
+        // node, so a shot taken with the pointer elsewhere cannot show it.
+        const hovered = await cdp.value(graphNodeCentre("沈青梧"));
+        if (hovered) {
+          await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(hovered.x), y: Math.round(hovered.y), buttons: 0 });
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          files.push(await capture("graph-hover-dark"));
+          await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 4, y: 4, buttons: 0 });
+        }
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+        await cdp.goto(base);
+        await cdp.value(SEED_GRAPH);
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace("角色关系网"));
+        await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await cdp.value(FORCE_THEME("dark"));
+        files.push(await capture("graph-mobile-dark"));
 
         // The compact related-character display, collapsed and open.
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 760, deviceScaleFactor: 2, mobile: false });

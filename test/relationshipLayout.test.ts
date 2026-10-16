@@ -1,15 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   canvasBox,
+  canvasScreenScale,
+  centreOn,
   edgeBends,
   edgeGeometry,
-  labelZoomThreshold,
+  labelZoomNeeded,
+  labelsReadable,
   measureNameWidth,
+  minimumNodeSpacing,
   nodePositions,
+  projectToScreen,
+  viewBoxPointAt,
   widestNameHalfWidth,
   type GraphPoint,
 } from "../src/pages/RelationshipGraph";
-import { graphMetrics } from "../src/storage/graphPrefs";
+import { defaultGraphPrefs, graphMetrics } from "../src/storage/graphPrefs";
 
 const NODE_RADIUS = 30;
 const NAME_DROP = 44;
@@ -63,13 +69,6 @@ describe("relationship graph layout", () => {
       expect(spacing).toBeGreaterThanOrEqual(60);
       expect(points).toHaveLength(count);
     }
-  });
-
-  it("asks for more zoom before showing names as the roster grows", () => {
-    expect(labelZoomThreshold(12)).toBe(1.5);
-    expect(labelZoomThreshold(60)).toBe(1.5);
-    expect(labelZoomThreshold(112)).toBeCloseTo(2.8, 5);
-    expect(labelZoomThreshold(112)).toBeGreaterThan(labelZoomThreshold(40));
   });
 
   it("stops reserving a 640 square for a two-node graph", () => {
@@ -232,5 +231,118 @@ describe("edge geometry", () => {
     // The middle edge of three stays on the chord; the outer two take opposite sides.
     expect(bends.get("ba")).toBe(0);
     expect(Math.sign(bends.get("ab") as number)).toBe(-Math.sign(bends.get("ab2") as number));
+  });
+});
+
+// The card the canvas actually gets on a desktop window.
+const CARD = { width: 1050, height: 520 };
+
+function canvasFor(count: number, metrics = graphMetrics(defaultGraphPrefs)) {
+  const positions = nodePositions(count, metrics.radius);
+  const box = canvasBox(positions, metrics, widestNameHalfWidth(["沈青梧"], metrics.nameSize));
+
+  return { positions, metrics, box };
+}
+
+describe("node labels", () => {
+  it("draws names at fit view once the graph is small enough to read them", () => {
+    // The defect this replaces: the rule was a zoom factor, and 1.5 was above the zoom
+    // a two- to twelve-character graph ever starts at, so the names were simply absent
+    // until the author zoomed into a wheel that had been scaled up to fill the card.
+    for (const count of [2, 3, 6, 12]) {
+      const { positions, metrics, box } = canvasFor(count);
+
+      expect(
+        labelsReadable({ positions, nameSize: metrics.nameSize, zoom: 1, scale: canvasScreenScale(CARD, box.viewBox) }),
+      ).toBe(true);
+    }
+  });
+
+  it("hides the names of a large roster at fit, and shows them at the zoom they need", () => {
+    const { positions, metrics, box } = canvasFor(100);
+    const scale = canvasScreenScale(CARD, box.viewBox);
+    const needed = labelZoomNeeded(metrics.nameSize, scale);
+
+    expect(labelsReadable({ positions, nameSize: metrics.nameSize, zoom: 1, scale })).toBe(false);
+    expect(labelsReadable({ positions, nameSize: metrics.nameSize, zoom: needed, scale })).toBe(true);
+    // Zooming in is what makes a name readable; a hundred of them at fit is a smear,
+    // which is why this is a rendered-size decision rather than "always draw them".
+    expect(needed).toBeGreaterThan(1);
+  });
+
+  it("asks for a larger zoom the more the drawing is shrunk to fit", () => {
+    // Same drawing, two canvases: the phone shows less of it, so it needs more zoom
+    // before a name is legible. This is the whole difference between the two screens.
+    expect(labelZoomNeeded(13, 0.4)).toBeGreaterThan(labelZoomNeeded(13, 2));
+  });
+
+  it("never claims a label is readable before the canvas has been measured", () => {
+    const { positions, metrics } = canvasFor(3);
+
+    expect(labelsReadable({ positions, nameSize: metrics.nameSize, zoom: 4, scale: 0 })).toBe(false);
+  });
+
+  it("draws the name of a lone node", () => {
+    const { positions, metrics } = canvasFor(1);
+
+    // One node has no neighbour to collide with, so only its own size can rule it out.
+    expect(labelsReadable({ positions, nameSize: metrics.nameSize, zoom: 1, scale: 1 })).toBe(true);
+  });
+
+  it("measures the closest pair of nodes, not the average", () => {
+    expect(minimumNodeSpacing(nodePositions(1))).toBe(Number.POSITIVE_INFINITY);
+    expect(minimumNodeSpacing(nodePositions(2))).toBeCloseTo(2 * 150, 5);
+    expect(minimumNodeSpacing([{ x: 0, y: 0 }, { x: 90, y: 0 }, { x: 40, y: 0 }])).toBeCloseTo(40, 5);
+  });
+});
+
+describe("canvas placement", () => {
+  const viewBox = "-100 -50 400 200";
+  const rect = { left: 30, top: 12, width: 800, height: 200 };
+
+  it("fits the view box by the axis that runs out first", () => {
+    // 400x200 into 800x200: the height is the binding axis, so the drawing is centred
+    // horizontally rather than stretched, which is what `meet` does.
+    expect(canvasScreenScale(rect, viewBox)).toBeCloseTo(1, 5);
+  });
+
+  it("maps a client point into the view box and back again", () => {
+    const point = viewBoxPointAt(rect.left + 500, rect.top + 80, rect, viewBox);
+    const back = projectToScreen(point, { k: 1, x: 0, y: 0 }, viewBox, rect);
+
+    expect(back.x).toBeCloseTo(rect.left + 500, 5);
+    expect(back.y).toBeCloseTo(rect.top + 80, 5);
+  });
+
+  it("keeps the point under the cursor when the box and the element disagree in shape", () => {
+    // The old arithmetic mapped x and y by their own ratios, which is only equal to the
+    // fit when the two have the same proportions. This rect does not, and the point is
+    // where the wheel expects to be zooming about.
+    const scale = canvasScreenScale(rect, viewBox);
+    const point = viewBoxPointAt(rect.left + 100, rect.top + 20, rect, viewBox);
+
+    expect(scale).not.toBeCloseTo(rect.width / 400, 5);
+    expect(projectToScreen(point, { k: 1, x: 0, y: 0 }, viewBox, rect).x).toBeCloseTo(
+      rect.left + 100,
+      5,
+    );
+  });
+
+  it("centres a node whatever the zoom", () => {
+    const node = { x: 320, y: 320 };
+
+    for (const zoom of [1, 2.5, 4]) {
+      const view = centreOn(node, zoom, viewBox);
+      const projected = projectToScreen(node, view, viewBox, rect);
+
+      expect(projected.x).toBeCloseTo(rect.left + rect.width / 2, 4);
+      expect(projected.y).toBeCloseTo(rect.top + rect.height / 2, 4);
+    }
+  });
+
+  it("counts the pan from the view box, not from the drawing's own origin", () => {
+    // A view box that does not start at 0 0 is the normal case here, and treating the
+    // box origin as 0 puts the node off by exactly that offset.
+    expect(centreOn({ x: 320, y: 320 }, 1, viewBox)).toEqual({ k: 1, x: -220, y: -270 });
   });
 });
