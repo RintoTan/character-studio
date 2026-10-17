@@ -3070,6 +3070,494 @@ async function main() {
       };
     });
 
+    await check("浮动栏：375 只留滚动操作，滚动时让位、停下恢复、不压住控件", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 375,
+        height: 800,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await cdp.goto(base);
+      await cdp.value(SEED_CROWDED);
+      // The first visit opens the introduction, which is a modal: it would hide the
+      // bar for a reason that has nothing to do with scrolling.
+      await cdp.value(`localStorage.setItem("character-studio.about-seen", "true")`);
+      await cdp.goto(base);
+
+      const state = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const bar = () => document.querySelector(".floating-actions");
+        const read = () => {
+          const node = bar();
+          if (!node) return { present: false, buttons: [], covered: [], display: "none" };
+          const buttons = [...node.querySelectorAll("button")];
+          const rect = node.getBoundingClientRect();
+          // Any overlap with a control counts, including a four-pixel one at the
+          // rounded corner: that is the case a point probe misses.
+          const covered = [...document.querySelectorAll("button, a, summary")]
+            .filter((element) => !element.closest(".floating-actions"))
+            .filter((element) => {
+              const box = element.getBoundingClientRect();
+              return (
+                box.width > 0 &&
+                box.height > 0 &&
+                box.left < rect.right &&
+                box.right > rect.left &&
+                box.top < rect.bottom &&
+                box.bottom > rect.top
+              );
+            })
+            .map((element) => element.tagName + "." + String(element.className || "").split(" ")[0]);
+          return {
+            present: true,
+            buttons: buttons.map((button) => button.getAttribute("aria-label")),
+            covered: [...new Set(covered)],
+            display: getComputedStyle(node).display,
+            gap: { bottom: Math.round(window.innerHeight - rect.bottom), right: Math.round(window.innerWidth - rect.right) },
+            lift: Math.abs(Math.round(parseFloat(getComputedStyle(node).transform.split(",")[5] ?? "0") || 0)),
+            cssBottom: getComputedStyle(node).bottom,
+            box: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
+          };
+        };
+        const settle = () => sleep(420);
+
+        await settle();
+        const atTop = read();
+
+        window.scrollTo(0, 640);
+        await sleep(70);
+        const during = read();
+
+        // One gesture: several scroll positions, none of the pauses long enough to be
+        // "stopped". The bar must not blink back between them.
+        let transitions = 0;
+        let last = read().present;
+        for (let y = 700; y <= 1100; y += 50) {
+          window.scrollTo(0, y);
+          await sleep(35);
+          const now = read().present;
+          if (now !== last) transitions += 1;
+          last = now;
+        }
+        const duringBurst = read();
+        await settle();
+        const afterIdle = read();
+
+        // Two more resting places, each over a different card: the seat has to be
+        // recomputed, not carried over.
+        window.scrollTo(0, 1400);
+        await settle();
+        const restTwo = read();
+        window.scrollTo(0, 2200);
+        await settle();
+        const restThree = read();
+
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        await settle();
+        const atBottom = read();
+
+        window.scrollTo(0, 900);
+        await settle();
+        return { atTop, during, duringBurst, transitions, afterIdle, restTwo, restThree, atBottom };
+      })()`);
+
+      // A modal owns the screen: the bar must not be drawn over it, whatever the
+      // scroll position says.
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        window.scrollTo(0, 640);
+        await sleep(420);
+        const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+        if (trigger) trigger.click();
+        await sleep(400);
+        return true;
+      })()`);
+      const modal = await cdp.value(`(() => {
+        const node = document.querySelector(".floating-actions");
+        return {
+          present: Boolean(node),
+          display: node ? getComputedStyle(node).display : "none",
+          modal: Boolean(document.querySelector(".modal-backdrop")),
+        };
+      })()`);
+      await cdp.value(`(async () => {
+        const close = [...document.querySelectorAll(".settings-dialog button")].find((button) => button.textContent.trim() === "关闭");
+        if (close) close.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return true;
+      })()`);
+
+      // The editor is the screen with a real save row. The bar has the same duty there:
+      // rest somewhere that is not on top of the form's own controls.
+      await cdp.value(CARD_MENU_ACTION("编辑"));
+      await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        window.scrollTo(0, 900);
+        await sleep(520);
+        return true;
+      })()`);
+      const editor = await cdp.value(`(async () => {
+        const node = document.querySelector(".floating-actions");
+        if (!node) return { present: false, covered: [] };
+        const rect = node.getBoundingClientRect();
+        const covered = [...document.querySelectorAll("button, a, summary")]
+          .filter((element) => !element.closest(".floating-actions"))
+          .filter((element) => {
+            const box = element.getBoundingClientRect();
+            return (
+              box.width > 0 &&
+              box.height > 0 &&
+              box.left < rect.right &&
+              box.right > rect.left &&
+              box.top < rect.bottom &&
+              box.bottom > rect.top
+            );
+          })
+          .map((element) => element.tagName + "." + String(element.className || "").split(" ")[0]);
+        // A field with the caret in it hides the bar outright.
+        const field = [...document.querySelectorAll("textarea, input:not([type='hidden'])")].find(
+          (element) => {
+            const box = element.getBoundingClientRect();
+            return box.height > 0 && box.top > 0 && box.top < window.innerHeight;
+          },
+        );
+        let fieldHides = null;
+        if (field) {
+          field.focus();
+          await new Promise((resolve) => setTimeout(resolve, 120));
+          const live = document.querySelector(".floating-actions");
+          fieldHides = !live || getComputedStyle(live).display === "none";
+          field.blur();
+        }
+        return { present: true, covered: [...new Set(covered)], fieldHides };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const topOk =
+        state.atTop.present && state.atTop.buttons.length === 1 && state.atTop.buttons[0] === "滑到底部";
+      const hidesWhileScrolling =
+        !state.during.present && !state.duringBurst.present && state.transitions <= 1;
+      const returns =
+        state.afterIdle.present &&
+        state.restTwo.present &&
+        state.restThree.present &&
+        state.afterIdle.buttons.includes("回到顶部") &&
+        state.afterIdle.buttons.includes("滑到底部");
+      const bottomOk =
+        state.atBottom.present &&
+        state.atBottom.buttons.length === 1 &&
+        state.atBottom.buttons[0] === "回到顶部";
+      const clearance =
+        state.afterIdle.covered.length === 0 &&
+        state.restTwo.covered.length === 0 &&
+        state.restThree.covered.length === 0 &&
+        state.atTop.covered.length === 0 &&
+        state.atBottom.covered.length === 0 &&
+        editor.present &&
+        editor.covered.length === 0 &&
+        editor.fieldHides === true;
+      const hiddenByModal = modal.modal && modal.display === "none";
+      const safeArea =
+        state.afterIdle.gap && state.afterIdle.gap.bottom >= 10 && state.afterIdle.gap.right >= 10;
+
+      return {
+        pass: Boolean(
+          topOk && hidesWhileScrolling && returns && bottomOk && clearance && hiddenByModal && safeArea,
+        ),
+        detail: `顶部 ${state.atTop.buttons.join("/") || "无"}；滚动中 ${state.during.present ? "仍在" : "已让位"}；整段手势切换 ${state.transitions} 次、结束时 ${state.duringBurst.present ? "仍在" : "仍让位"}；停下后 ${state.afterIdle.buttons.join("/") || "无"}；到底 ${state.atBottom.buttons.join("/") || "无"}；抬起 ${state.afterIdle.lift}/${state.restTwo.lift}/${state.restThree.lift}px；压在控件上 ${[...new Set([...state.afterIdle.covered, ...state.restTwo.covered, ...state.restThree.covered])].join("/") || "无"}；距边 ${state.afterIdle.gap ? `${state.afterIdle.gap.bottom}/${state.afterIdle.gap.right}px` : "-"}；编辑器里 ${editor.present ? "在" : "不在"}、压住 ${editor.covered.join("/") || "无"}、输入时收起 ${editor.fieldHides === null ? "无字段" : editor.fieldHides ? "是" : "否"}；弹窗打开时 ${modal.display}`,
+      };
+    });
+
+    await check("设置弹窗：Escape 关闭、焦点回到触发处、展开后内容可达（键盘）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 1440,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.value(`localStorage.setItem("character-studio.about-seen", "true")`);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观时间线"));
+
+      const opened = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+        if (!trigger) throw new Error("footer settings button missing");
+        trigger.focus();
+        trigger.click();
+        await sleep(400);
+        const dialog = document.querySelector(".settings-dialog");
+        return {
+          open: Boolean(dialog),
+          activeInside: Boolean(dialog && dialog.contains(document.activeElement)),
+          activeText: document.activeElement ? document.activeElement.textContent.trim() : "",
+          triggerText: trigger.textContent.trim(),
+        };
+      })()`);
+
+      const focusables = await cdp.value(`(() => {
+        const dialog = document.querySelector(".settings-dialog");
+        if (!dialog) return { total: 0, unreachable: [], hasSummary: false };
+        const nodes = [...dialog.querySelectorAll("button, input, select, textarea, summary")].filter((node) => {
+          if (node.disabled) return false;
+          if (node.tagName === "INPUT" && node.type === "hidden") return false;
+          // A closed disclosure still reports a box in Chrome (content-visibility),
+          // so "has height" is not the same as "can take focus". Those fields are
+          // checked after the disclosure opens, below.
+          if (node.tagName !== "SUMMARY" && node.closest("details:not([open])")) return false;
+          return node.getBoundingClientRect().height > 0;
+        });
+        const unreachable = [];
+        for (const node of nodes) {
+          node.focus();
+          if (document.activeElement !== node) {
+            unreachable.push(node.tagName + "." + String(node.className || "").split(" ")[0]);
+          }
+        }
+        return {
+          total: nodes.length,
+          unreachable,
+          hasSummary: nodes.some((node) => node.tagName === "SUMMARY"),
+        };
+      })()`);
+
+      // The disclosure opens to fields that are taller than the body, so the last one
+      // has to be reachable by scrolling the body — with the head still in place.
+      const pending = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const dialog = document.querySelector(".settings-dialog");
+        const pending = dialog && dialog.querySelector(".settings-pending");
+        if (!pending) return { open: false };
+        pending.querySelector("summary").click();
+        await sleep(250);
+        const fields = [...pending.querySelectorAll("input, select, textarea, button")].filter(
+          (field) => field.getBoundingClientRect().height > 0,
+        );
+        const enabled = fields.filter((field) => !field.disabled);
+        const last = enabled[enabled.length - 1];
+        const body = dialog.querySelector(".settings-body");
+        last.scrollIntoView({ block: "nearest" });
+        await sleep(150);
+        const lastRect = last.getBoundingClientRect();
+        const bodyRect = body.getBoundingClientRect();
+        const head = dialog.querySelector(".preview-card-title").getBoundingClientRect();
+        const unreachable = enabled.filter((field) => {
+          field.focus();
+          return document.activeElement !== field;
+        });
+        return {
+          open: pending.open,
+          fields: fields.length,
+          unreachable: unreachable.length,
+          lastVisible: lastRect.top >= bodyRect.top - 1 && lastRect.bottom <= bodyRect.bottom + 1,
+          headVisible: head.height > 0 && head.top >= dialog.getBoundingClientRect().top - 1,
+          lastFocusable: (() => {
+            last.focus();
+            return document.activeElement === last;
+          })(),
+        };
+      })()`);
+
+      const esc = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(300);
+        return {
+          dialog: Boolean(document.querySelector(".settings-dialog")),
+          focusText: document.activeElement ? document.activeElement.textContent.trim() : "",
+          focusTag: document.activeElement ? document.activeElement.tagName : "",
+        };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const pass =
+        opened.open &&
+        opened.activeInside &&
+        focusables.unreachable.length === 0 &&
+        focusables.hasSummary &&
+        pending.open &&
+        pending.fields > 0 &&
+        pending.unreachable === 0 &&
+        pending.lastVisible &&
+        pending.headVisible &&
+        pending.lastFocusable &&
+        !esc.dialog &&
+        esc.focusText === opened.triggerText;
+
+      return {
+        pass: Boolean(pass),
+        detail: `打开后焦点在弹窗内 ${opened.activeInside ? "是" : "否"}（${opened.activeText || "无"}）；可聚焦控件 ${focusables.total} 个、不可达 ${focusables.unreachable.join("/") || "无"}、含未发布摘要 ${focusables.hasSummary ? "是" : "否"}；展开后字段 ${pending.fields} 个（不可聚焦 ${pending.unreachable}）、末项可见 ${pending.lastVisible ? "是" : "否"}、页头仍在 ${pending.headVisible ? "是" : "否"}、末项可聚焦 ${pending.lastFocusable ? "是" : "否"}；Escape 后弹窗 ${esc.dialog ? "仍在" : "已关"}，焦点 ${esc.focusTag}「${esc.focusText}」（触发处「${opened.triggerText}」）`,
+      };
+    });
+
+    await check("导入预览：真实导入态宽度、滚动、底部操作与 375px 换行", async () => {
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.value(`localStorage.setItem("character-studio.about-seen", "true")`);
+      await cdp.goto(base);
+
+      const before = await cdp.value(`(() => {
+        try { return JSON.parse(localStorage.getItem("character-studio.characters") || "[]").length; } catch { return -1; }
+      })()`);
+
+      const payload = {
+        version: 1,
+        exportedAt: "2026-03-01T00:00:00.000Z",
+        characters: [
+          {
+            id: "rc-import-1",
+            name: "导入预览·甲",
+            occupation: "占星师",
+            worldview: "阿尔勒",
+            avatarEmoji: "🜂",
+            createdAt: "2026-02-01T00:00:00.000Z",
+            updatedAt: "2026-02-01T00:00:00.000Z",
+          },
+          {
+            id: "rc-import-1",
+            name: "导入预览·同名 ID 冲突记录",
+            occupation: "工匠",
+            worldview: "北境",
+            avatarEmoji: "🦊",
+            createdAt: "2026-02-03T00:00:00.000Z",
+            updatedAt: "2026-02-03T00:00:00.000Z",
+          },
+          {
+            id: "rc-import-2",
+            name: "名字很长很长的守夜人第二席代理记录官·导入预览换行验证",
+            occupation: "记录官",
+            worldview: "雾海纪",
+            avatarEmoji: "🌙",
+            createdAt: "2026-02-04T00:00:00.000Z",
+            updatedAt: "2026-02-04T00:00:00.000Z",
+          },
+        ],
+      };
+
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const input = document.querySelector('input[type="file"][accept*="json"]');
+        if (!input) throw new Error("import input missing");
+        const file = new File([${JSON.stringify(JSON.stringify(payload))}], "rc-import.json", { type: "application/json" });
+        const transfer = new DataTransfer();
+        transfer.items.add(file);
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+        for (let attempt = 0; attempt < 25 && !document.querySelector(".settings-dialog.compact-dialog"); attempt++) {
+          await sleep(200);
+        }
+        return Boolean(document.querySelector(".settings-dialog.compact-dialog"));
+      })()`);
+
+      const readPreview = `(() => {
+        const dialog = document.querySelector(".settings-dialog.compact-dialog");
+        if (!dialog) return { open: false };
+        const grid = dialog.querySelector(".settings-grid");
+        const footer = dialog.querySelector(".dialog-actions");
+        const buttons = footer ? [...footer.querySelectorAll("button")] : [];
+        const rect = dialog.getBoundingClientRect();
+        const footerRect = footer.getBoundingClientRect();
+        const covered = [];
+        for (const button of buttons) {
+          const buttonRect = button.getBoundingClientRect();
+          const top = document.elementsFromPoint(
+            buttonRect.left + buttonRect.width / 2,
+            buttonRect.top + buttonRect.height / 2,
+          )[0];
+          if (!top || !(top === button || button.contains(top))) {
+            covered.push(top ? top.tagName + "." + String(top.className || "").split(" ")[0] : "none");
+          }
+        }
+        const overflowing = [...grid.querySelectorAll("article, p, span, h3")].filter(
+          (node) => node.scrollWidth - node.clientWidth > 1,
+        ).length;
+        return {
+          open: true,
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          dialogOverflow: dialog.scrollWidth - dialog.clientWidth,
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          gridOverflowY: getComputedStyle(grid).overflowY,
+          gridScrolls: grid.scrollHeight - grid.clientHeight,
+          footerTop: Math.round(footerRect.top - rect.top),
+          footerBottom: Math.round(rect.bottom - footerRect.bottom),
+          footerPadTop: parseFloat(getComputedStyle(footer).paddingTop),
+          footerPadBottom: parseFloat(getComputedStyle(footer).paddingBottom),
+          footerRule: parseFloat(getComputedStyle(footer).borderTopWidth),
+          footerInViewport: footerRect.bottom <= window.innerHeight + 1 && footerRect.top >= 0,
+          buttons: buttons.map((button) => button.textContent.trim()),
+          buttonsInDialog: buttons.every((button) => {
+            const r = button.getBoundingClientRect();
+            return r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1 && r.left >= rect.left - 1;
+          }),
+          covered,
+          overflowing,
+          stats: [...dialog.querySelectorAll(".import-preview-stats span")].slice(0, 6).map((node) => node.textContent.trim()),
+        };
+      })()`;
+
+      const desktop = await cdp.value(readPreview);
+
+      // The same open dialog at 375: it has to reflow, not scroll sideways.
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 375,
+        height: 812,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 350))`);
+      const mobile = await cdp.value(readPreview);
+
+      await cdp.value(`(async () => {
+        const cancel = [...document.querySelectorAll(".settings-dialog.compact-dialog .dialog-actions button")].find(
+          (button) => button.textContent.trim() === "取消",
+        );
+        if (cancel) cancel.click();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return true;
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const after = await cdp.value(`(() => {
+        try { return JSON.parse(localStorage.getItem("character-studio.characters") || "[]").length; } catch { return -1; }
+      })()`);
+
+      const desktopOk =
+        desktop.open &&
+        desktop.width >= 520 &&
+        desktop.width <= 640 &&
+        desktop.dialogOverflow <= 1 &&
+        desktop.pageOverflow <= 1 &&
+        desktop.gridOverflowY === "auto" &&
+        desktop.footerInViewport &&
+        desktop.footerPadTop >= 10 &&
+        desktop.footerPadBottom >= 10 &&
+        desktop.footerRule > 0 &&
+        desktop.buttonsInDialog &&
+        desktop.covered.length === 0 &&
+        desktop.overflowing === 0;
+      const mobileOk =
+        mobile.open &&
+        mobile.width <= 355 &&
+        mobile.dialogOverflow <= 1 &&
+        mobile.pageOverflow <= 1 &&
+        mobile.footerInViewport &&
+        mobile.buttonsInDialog &&
+        mobile.covered.length === 0 &&
+        mobile.overflowing === 0;
+      const readOnly = before === after;
+
+      return {
+        pass: Boolean(desktopOk && mobileOk && readOnly),
+        detail: `桌面 ${desktop.width}×${desktop.height}（视口 ${desktop.viewportWidth}）、滚动区 ${desktop.gridOverflowY}（可滚动 ${desktop.gridScrolls}px）、页脚距底 ${desktop.footerBottom}px/内边距 ${desktop.footerPadTop}|${desktop.footerPadBottom}/分隔 ${desktop.footerRule}px、按钮 ${desktop.buttons.join("+")}、遮挡 ${desktop.covered.join("/") || "无"}、溢出元素 ${desktop.overflowing}；375px 宽 ${mobile.width}、页面溢出 ${mobile.pageOverflow}px、页脚在视口内 ${mobile.footerInViewport ? "是" : "否"}、遮挡 ${mobile.covered.join("/") || "无"}、溢出元素 ${mobile.overflowing}；预览前后角色数 ${before}→${after}`,
+      };
+    });
+
 await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await check("关联信息：三类关联、计数、方向与空状态（任务 A/B/C/D）", async () => {
       await cdp.goto(base);
@@ -4676,6 +5164,81 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
         await cdp.value(EXPAND_EDITOR_SECTIONS);
         files.push(await capture("editor-mobile"));
+        await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+        return { pass: true, detail: files.join("  ") };
+      });
+
+      await check("截图（SHOTS=<目录>）：发布候选 — 浮动栏让位与真实导入预览", async () => {
+        const dir = process.env.SHOTS;
+        mkdirSync(dir, { recursive: true });
+        const capture = async (name) => {
+          const { data } = await cdp.send("Page.captureScreenshot", { format: "png" });
+          const file = join(dir, `${name}.png`);
+          writeFileSync(file, Buffer.from(data, "base64"));
+          return file;
+        };
+        const files = [];
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+        await cdp.goto(base);
+        await cdp.value(SEED_CROWDED);
+        await cdp.goto(base);
+        // Scrolling: the bar is gone while the gesture is in flight.
+        await cdp.value(`(async () => {
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          window.scrollTo(0, 900);
+          await sleep(80);
+          return true;
+        })()`);
+        files.push(await capture("floating-375-scrolling"));
+        // Stopped: it is back, above the safe area, over the page's own gutter.
+        await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 500))`);
+        files.push(await capture("floating-375-rest"));
+        // A second resting place, where the card under the corner is at a different
+        // height: the bar has to find empty page again rather than keep a fixed offset.
+        await cdp.value(`(async () => {
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          window.scrollTo(0, 1400);
+          await sleep(500);
+          return true;
+        })()`);
+        files.push(await capture("floating-375-rest-2"));
+
+        const payload = JSON.stringify({
+          version: 1,
+          exportedAt: "2026-03-01T00:00:00.000Z",
+          characters: [
+            { id: "rc-1", name: "导入预览·甲", occupation: "占星师", worldview: "阿尔勒", avatarEmoji: "🜂", createdAt: "2026-02-01T00:00:00.000Z", updatedAt: "2026-02-01T00:00:00.000Z" },
+            { id: "rc-1", name: "导入预览·同名 ID 冲突", occupation: "工匠", worldview: "北境", avatarEmoji: "🦊", createdAt: "2026-02-03T00:00:00.000Z", updatedAt: "2026-02-03T00:00:00.000Z" },
+            { id: "rc-2", name: "名字很长很长的守夜人第二席代理记录官·导入预览换行验证", occupation: "记录官", worldview: "雾海纪", avatarEmoji: "🌙", createdAt: "2026-02-04T00:00:00.000Z", updatedAt: "2026-02-04T00:00:00.000Z" },
+          ],
+        });
+        const openImport = `(async () => {
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const input = document.querySelector('input[type="file"][accept*="json"]');
+          const file = new File([${JSON.stringify(payload)}], "rc-import.json", { type: "application/json" });
+          const transfer = new DataTransfer();
+          transfer.items.add(file);
+          input.files = transfer.files;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+          for (let attempt = 0; attempt < 25 && !document.querySelector(".settings-dialog.compact-dialog"); attempt++) {
+            await sleep(200);
+          }
+          return true;
+        })()`;
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED);
+        await cdp.value(`localStorage.setItem("character-studio.about-seen", "true")`);
+        await cdp.goto(base);
+        await cdp.value(openImport);
+        files.push(await capture("import-preview-1440"));
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+        await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 350))`);
+        files.push(await capture("import-preview-375"));
         await cdp.send("Emulation.clearDeviceMetricsOverride");
 
         return { pass: true, detail: files.join("  ") };

@@ -4,11 +4,17 @@ type DialogKeyboardOptions = {
   /** Whether the dialog is on screen. A closed dialog installs nothing. */
   active: boolean;
   /** Escape, and the outcome that touches no data. */
-  onClose: () => void;
+  onClose?: () => void;
   /** Enter, from any field. Omit for a dialog with no single primary action. */
   onConfirm?: () => void;
   /** Blocks Enter while the primary action is not available yet. */
   confirmDisabled?: boolean;
+  /**
+   * Whether this hook owns Escape. A screen that already arbitrates its own dialogs
+   * (the dashboard's layer stack) keeps that job: registering a second, independent
+   * Escape there would close the dialog underneath the confirmation as well.
+   */
+  escape?: boolean;
 };
 
 /**
@@ -26,12 +32,16 @@ type DialogKeyboardOptions = {
  *     new line.
  *   - Focus moves into the dialog when it opens and back to where it came from when
  *     it closes, so a keyboard user is never left behind on the page underneath.
+ *
+ * `escape: false` keeps the second and third promises for dialogs whose screen
+ * already owns the first.
  */
 export function useDialogKeyboard({
   active,
   onClose,
   onConfirm,
   confirmDisabled = false,
+  escape = true,
 }: DialogKeyboardOptions) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
@@ -45,7 +55,7 @@ export function useDialogKeyboard({
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
     const focusable = dialogRef.current?.querySelector<HTMLElement>(
-      "input:not([type='hidden']), select, textarea, button",
+      "input:not([type='hidden']), select, textarea, button, summary",
     );
     focusable?.focus();
 
@@ -63,9 +73,16 @@ export function useDialogKeyboard({
       return;
     }
 
+    const handlesEscape = escape && Boolean(onClose);
+    if (!handlesEscape && !onConfirm) {
+      return;
+    }
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        onClose();
+        if (handlesEscape) {
+          onClose?.();
+        }
         return;
       }
 
@@ -84,7 +101,7 @@ export function useDialogKeyboard({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [active, onClose, onConfirm, confirmDisabled]);
+  }, [active, escape, onClose, onConfirm, confirmDisabled]);
 
   return dialogRef;
 }

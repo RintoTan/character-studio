@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { AiSettingsForm } from "./components/AiSettingsForm";
 import { AvatarDisplay } from "./components/AvatarDisplay";
 import { Icon } from "./components/Icon";
+import { useDialogKeyboard } from "./hooks/useDialogKeyboard";
 import {
   applyDeveloperSettings,
   defaultDeveloperSettings,
@@ -181,6 +182,14 @@ function App() {
   const [avatarAssetStats, setAvatarAssetStats] = useState({ count: 0, size: 0 });
   const [showQuickBackToTop, setShowQuickBackToTop] = useState(false);
   const [showQuickToBottom, setShowQuickToBottom] = useState(false);
+  // The bar is a scroll affordance, so while the page is actually being scrolled it
+  // is not an affordance — it is a target sitting under the reader's thumb. It steps
+  // out for the duration of the gesture and comes back once the page settles.
+  const [isPageScrolling, setIsPageScrolling] = useState(false);
+  // How far the bar steps up from its resting corner to stand on empty page rather
+  // than on a control. Measured once per resting position, not per frame.
+  const [floatingLift, setFloatingLift] = useState(0);
+  const floatingBarRef = useRef<HTMLDivElement>(null);
   // What the switcher says you are in. The character workspace covers its own
   // sub-screens: editing and previewing a character is still that workspace.
   const workspaceLabel =
@@ -241,6 +250,25 @@ function App() {
   // the same page.
   const committedEntryRef = useRef<{ page: Page; target: PageTarget | null } | null>(null);
 
+  // Escape belongs to the settings dialog, but not while one of its own
+  // confirmations is on top of it: the first Escape cancels the confirmation, and
+  // only the next one leaves the settings. The dashboard's dialogs already arbitrate
+  // this through their layer stack; the app-level dialog has these four children.
+  const appSettingsDialogRef = useDialogKeyboard({
+    active: isAppSettingsOpen,
+    onClose: () => {
+      if (
+        isAppClearDataOpen ||
+        isAppAssetCleanupOpen ||
+        pendingAppAssetDelete ||
+        pendingAppAssetBatchDeleteIds.length > 0
+      ) {
+        return;
+      }
+      setIsAppSettingsOpen(false);
+    },
+  });
+
   useEffect(() => {
     setCharacters(loadCharacters());
     setIsLoading(false);
@@ -251,7 +279,11 @@ function App() {
   }, []);
 
   useEffect(() => {
-    function handleScroll() {
+    let frame = 0;
+    let idleTimer: number | null = null;
+
+    function measure() {
+      frame = 0;
       setShowQuickBackToTop(
         window.scrollY > 280 &&
           document.documentElement.scrollHeight > window.innerHeight + 120,
@@ -264,12 +296,43 @@ function App() {
       );
     }
 
-    handleScroll();
-    window.addEventListener("scroll", handleScroll);
-    window.addEventListener("resize", handleScroll);
+    function handleScroll() {
+      // Out of the way for the gesture, back when it ends. The delay is what keeps
+      // this from flickering: a scroll event never shows the bar, only the pause
+      // after the last one does.
+      setIsPageScrolling(true);
+      // It comes back in the corner and steps to a clear spot again; a stale lift from
+      // the previous resting place would be a guess about content that has moved.
+      setFloatingLift(0);
+      if (idleTimer !== null) {
+        window.clearTimeout(idleTimer);
+      }
+      idleTimer = window.setTimeout(() => setIsPageScrolling(false), 220);
+      // One read per frame, so a fast wheel or a momentum scroll does not run a
+      // layout query per event.
+      if (frame === 0) {
+        frame = window.requestAnimationFrame(measure);
+      }
+    }
+
+    function handleResize() {
+      if (frame === 0) {
+        frame = window.requestAnimationFrame(measure);
+      }
+    }
+
+    measure();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleResize);
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("resize", handleScroll);
+      window.removeEventListener("resize", handleResize);
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+      }
+      if (idleTimer !== null) {
+        window.clearTimeout(idleTimer);
+      }
     };
   }, []);
 
@@ -927,6 +990,66 @@ function App() {
     Boolean(pendingAppAssetDelete) ||
     pendingAppAssetBatchDeleteIds.length > 0;
 
+  // The bar rests in the corner, which on a phone is where a card's own buttons live.
+  // Once the page has settled, walk it upwards in small steps until the space it
+  // would occupy is empty of controls, so it can stay reachable without sitting on
+  // top of one. Nothing is measured while scrolling, and the lift resets when the
+  // bar is replaced by another set of buttons.
+  useEffect(() => {
+    if (isAppOverlayOpen || isPageScrolling) {
+      return;
+    }
+
+    const node = floatingBarRef.current;
+    if (!node) {
+      return;
+    }
+
+    const height = node.offsetHeight;
+    const rect = node.getBoundingClientRect();
+    // Derived from `bottom`, not from the current rect: the rect is mid-transition
+    // right after a lift, and reading it would move the target every frame.
+    const baseTop = window.innerHeight - parseFloat(getComputedStyle(node).bottom) - height;
+    const step = 12;
+    const limit = Math.min(240, Math.round(window.innerHeight * 0.3));
+    let chosen = 0;
+
+    // Rectangles, not sample points: a 44px control and a 56px pill can overlap by
+    // four pixels, and four pixels is exactly what a point grid misses. Read every
+    // action's box once, then test each candidate seat against them. Actions, not
+    // their wrappers — a <label> around half a card would veto every seat — and not
+    // fields: a focused field hides the bar outright (see styles.css).
+    const controls = [...document.querySelectorAll("button, a, summary")]
+      .filter((element) => !element.closest(".floating-actions"))
+      .map((element) => element.getBoundingClientRect())
+      .filter(
+        (box) =>
+          box.width > 0 && box.height > 0 && box.bottom > 0 && box.top < window.innerHeight,
+      );
+
+    for (let lift = 0; lift <= limit; lift += step) {
+      const top = baseTop - lift;
+      if (top < 8) {
+        break;
+      }
+      const overlaps = controls.some(
+        (box) =>
+          box.left < rect.right &&
+          box.right > rect.left &&
+          box.top < top + height &&
+          box.bottom > top,
+      );
+      if (!overlaps) {
+        chosen = lift;
+        break;
+      }
+    }
+
+    if (chosen !== floatingLift) {
+      setFloatingLift(chosen);
+    }
+  }, [floatingLift, isAppOverlayOpen, isPageScrolling, showQuickBackToTop, showQuickToBottom]);
+
   return (
     <main className="app-shell">
       <nav className="topbar" ref={topbarRef}>
@@ -1269,11 +1392,18 @@ function App() {
           The bar also carried 新建角色, 搜索/筛选, 回到主页 and 编辑角色 — each a second
           copy of a control that already exists where the work happens (the dashboard's
           own toolbar, the workspace headers, the preview's actions) — and on a phone it
-          sat on top of the very form it acted on. What is left only ever moves the page,
-          appears only once there is a screenful to move, and stays clear of the home
-          indicator. While a modal is open nothing floats over it at all. */}
-      {!isAppOverlayOpen && (
-        <div className="floating-actions" aria-label="快捷操作">
+           sat on top of the very form it acted on. What is left only ever moves the page,
+           appears only once there is a screenful to move, and stays clear of the home
+           indicator. It steps out while the page is being scrolled — a control under
+           the thumb during a gesture is an obstruction, not an affordance — and comes
+           back once the page settles. While a modal is open nothing floats over it. */}
+      {!isAppOverlayOpen && !isPageScrolling && (showQuickBackToTop || showQuickToBottom) && (
+        <div
+          className="floating-actions"
+          aria-label="快捷操作"
+          ref={floatingBarRef}
+          style={floatingLift ? { transform: `translateY(-${floatingLift}px)` } : undefined}
+        >
           {showQuickBackToTop && (
             <button
               aria-label="回到顶部"
@@ -1556,7 +1686,7 @@ function App() {
         <div className="modal-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget) setIsAppSettingsOpen(false);
         }} role="presentation">
-          <div className="settings-dialog" role="dialog" aria-modal="true">
+          <div className="settings-dialog" ref={appSettingsDialogRef} role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
                 <p className="eyebrow">本地设置</p>

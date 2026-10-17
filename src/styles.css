@@ -9828,3 +9828,66 @@ select:disabled {
     gap: 8px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Release candidate — the one dialog that ends in actions.
+
+   The settings rules hand the padding to the head and to the scrolling body, which is
+   right for a settings dialog and wrong for the import preview: its footer is a third
+   child, so it inherited no padding and its buttons sat flush against the edge.
+   --------------------------------------------------------------------------- */
+
+.settings-dialog:not(.asset-library-dialog) > .dialog-actions {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 14px var(--pad-surface) calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+@media (min-width: 721px) {
+  /* Narrower than the settings dialog: this one holds a summary and two paragraphs,
+     not a settings grid, and 760px ran the prose past a readable line length. */
+  .settings-dialog.compact-dialog {
+    width: min(600px, 100%);
+  }
+}
+
+/* The corner is the bar's starting seat, not a promise: when a control already
+   occupies it the bar steps up to empty page (see the clearance effect in App.tsx),
+   and the step is eased rather than teleported. */
+.floating-actions {
+  transition: transform 160ms var(--ease-standard);
+}
+
+@media (max-width: 720px) {
+  /* The corner of a phone screen is where cards keep their own buttons. The bottom
+     centre of the card footer is the one band that is routinely empty — the heart
+     sits left, the time sits right — so that is where the bar rests. */
+  .floating-actions {
+    right: auto;
+    left: 50%;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    translate: -50% 0;
+  }
+
+  /* A dialog head is a caption and one close control. Stretching that control across
+     the width (the phone rule for page toolbars did it) made 取消 read as the
+     dialog's primary action while the same action waits in the footer. */
+  .settings-dialog .preview-card-title {
+    align-items: flex-start;
+    flex-direction: row;
+  }
+
+  .settings-dialog .preview-card-title > button {
+    flex: 0 0 auto;
+    align-self: center;
+    width: auto;
+  }
+}
+
+/* Typing is the one moment the bar must be out of the way even at rest: a field with
+   the caret in it owns the bottom of the screen. */
+body:has(input:focus, textarea:focus, select:focus) .floating-actions {
+  display: none;
+}

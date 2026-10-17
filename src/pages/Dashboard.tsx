@@ -43,6 +43,7 @@ import {
 } from "../utils/bulkEdit";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { useDashboardLayers } from "../hooks/useDashboardLayers";
+import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { useDashboardPrefs } from "../hooks/useDashboardPrefs";
 import {
   clearedFilters,
@@ -275,6 +276,12 @@ export function Dashboard({
   //   - `bulk-edit` and `restore-snapshot` were in none of the old lists, so Escape
   //     did not close them and the background menus did not close behind them
   //     either. Both are modals and now say so.
+  // Focus only: Escape is the layer stack's job (see above), and giving these two
+  // dialogs a second, independent Escape handler would close the page underneath
+  // whatever confirmation the reader was actually dismissing.
+  const settingsDialogRef = useDialogKeyboard({ active: isSettingsOpen, escape: false });
+  const importPreviewRef = useDialogKeyboard({ active: Boolean(importPlan), escape: false });
+
   const layers = useDashboardLayers([
     // Dropdowns and panel toggles: nothing underneath them to suppress.
     { id: "more-menu", open: isMoreMenuOpen, blocksMenus: false, close: () => setIsMoreMenuOpen(false) },
@@ -3133,7 +3140,7 @@ export function Dashboard({
           }}
           role="presentation"
         >
-          <div className="settings-dialog" role="dialog" aria-modal="true">
+          <div className="settings-dialog" ref={settingsDialogRef} role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
                 <p className="eyebrow">本地设置</p>
@@ -3313,7 +3320,12 @@ export function Dashboard({
           }}
           role="presentation"
         >
-          <div className="settings-dialog compact-dialog" role="dialog" aria-modal="true">
+          <div
+            className="settings-dialog compact-dialog"
+            ref={importPreviewRef}
+            role="dialog"
+            aria-modal="true"
+          >
             <div className="preview-card-title">
               <div>
                 <p className="eyebrow">导入预览</p>
