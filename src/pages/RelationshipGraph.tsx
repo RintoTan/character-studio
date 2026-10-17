@@ -58,6 +58,9 @@ type RelationshipGraphProps = {
 const MANAGE_PAGE_SIZE = 20;
 /** Past this many connected characters, the default drawing keeps only the hubs. */
 const CORE_VIEW_LIMIT = 40;
+// A phone canvas is a third of the width. Forty nodes fitted into it are six-pixel
+// dots, so the drawn core is smaller there and the note says so.
+const CORE_VIEW_LIMIT_NARROW = 24;
 const CORE_VIEW_DEGREE = 2;
 /** Below this many drawn nodes every edge can carry its type word; above it, only the
  *  edges of the node being pointed at do. */
@@ -435,8 +438,21 @@ export function fitZoom(
     (frame.width * (1 - margin)) / (content.width * screenScale),
     (frame.height * (1 - margin)) / (content.height * screenScale),
   );
+  // Whether the drawing fits at natural size, ignoring the margin.
+  const hardFit = Math.min(
+    frame.width / (content.width * screenScale),
+    frame.height / (content.height * screenScale),
+  );
 
-  return clampZoom(Math.max(1, Math.min(allowance, max)));
+  // Zooming out is for drawings that do not fit: forty nodes at natural size inside a
+  // 325px phone canvas were a screen of edges with the ring outside it. A drawing that
+  // does fit keeps its size — scaling it down only made names fall under the readable
+  // threshold, which is how a five-node graph lost its labels.
+  if (hardFit >= 1) {
+    return clampZoom(Math.max(1, Math.min(allowance, max)));
+  }
+
+  return clampZoom(Math.min(allowance, max));
 }
 
 /**
@@ -674,10 +690,19 @@ export function RelationshipGraph({
   // list answers "where is that one edge". A hundred and ninety edges cannot be both.
   const [boardMode, setBoardMode] = useState<"graph" | "manage">(() => {
     try {
-      return localStorage.getItem("character-studio.relationship-view") === "manage" ? "manage" : "graph";
+      const stored = localStorage.getItem("character-studio.relationship-view");
+      if (stored === "manage" || stored === "graph") {
+        return stored;
+      }
     } catch {
-      return "graph";
+      // No stored choice: fall through to the width-based default.
     }
+
+    // 191 edges are a list on a phone; a 24-node wheel in 325px is not where an author
+    // starts. The drawing is one tap away, and a saved choice always wins over this.
+    return typeof window !== "undefined" && window.matchMedia("(max-width: 720px)").matches
+      ? "manage"
+      : "graph";
   });
   const [manageQuery, setManageQuery] = useState("");
   const [manageKind, setManageKind] = useState<"all" | RelationshipKind>("all");
@@ -764,7 +789,9 @@ export function RelationshipGraph({
 
       const connected = characters.filter((character) => connectedIds.has(character.id));
 
-      if (connected.length <= CORE_VIEW_LIMIT) {
+      const limit = isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT;
+
+      if (connected.length <= limit) {
         return connected;
       }
 
@@ -777,7 +804,7 @@ export function RelationshipGraph({
       return [...connected]
         .filter((character) => (degree.get(character.id) ?? 0) >= CORE_VIEW_DEGREE)
         .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0))
-        .slice(0, CORE_VIEW_LIMIT);
+        .slice(0, limit);
     })();
 
     if (showAll || focusExtraIds.length === 0) {
@@ -790,7 +817,7 @@ export function RelationshipGraph({
     );
 
     return extras.length ? [...drawn, ...extras] : drawn;
-  }, [characters, connectedIds, relationships, showAll, focusExtraIds]);
+  }, [characters, connectedIds, relationships, showAll, focusExtraIds, isNarrowScreen]);
 
   const metrics = useMemo(() => graphMetrics(prefs), [prefs]);
   const positions = useMemo(
@@ -932,27 +959,9 @@ export function RelationshipGraph({
     applyFitView();
   }, [screenScale, positions, metrics, labelHalfWidth, frameSize, canvas.viewBox]);
 
-  // On a phone the same drawing is fitted into a third of the width, so at "fit" a
-  // twelve-character wheel renders its names seven pixels tall. Starting zoomed in
-  // enough to read them — and letting the zoom control fit the whole thing on request —
-  // is the readable version of the same screen. Applied once per mount, so the author's
-  // own zoom and pan are never taken back.
-  const narrowFitAppliedRef = useRef(false);
-
-  useEffect(() => {
-    if (!isNarrowScreen || narrowFitAppliedRef.current || screenScale <= 0) {
-      return;
-    }
-
-    narrowFitAppliedRef.current = true;
-    const zoom = clampZoom(Math.min(labelZoomNeeded(metrics.nameSize, screenScale), FOCUS_MAX_ZOOM));
-
-    if (zoom <= 1) {
-      return;
-    }
-
-    setView(centreOn({ x: VIEW / 2, y: VIEW / 2 }, zoom, canvas.viewBox));
-  }, [isNarrowScreen, screenScale, metrics.nameSize, canvas.viewBox]);
+  // A phone used to open zoomed in far enough to read the names, which on a large
+  // roster meant 298% of the middle of the wheel: edges crossing an empty screen. The
+  // opening view is the fit — the whole drawing — and 适应画布 gives it back at any time.
 
   function zoomBy(factor: number) {
     setView((current) => ({ ...current, k: clampZoom(current.k * factor) }));
@@ -1182,13 +1191,42 @@ export function RelationshipGraph({
     }
 
     setPendingFocusId(null);
-    // Zoom only as far as the name needs to become readable. A handful of characters
-    // are already legible at fit and are only re-centred.
-    const needed = Math.min(labelZoomNeeded(metrics.nameSize, screenScale), FOCUS_MAX_ZOOM);
-    setView((current) =>
-      centreOn(entry, clampZoom(Math.max(current.k, labelsFit ? 1 : needed)), canvas.viewBox),
+
+    // Frame the character and its direct connections together, not the character alone:
+    // a close-up of one node with its edges leaving the screen answers half the question.
+    const peers = relationships
+      .filter((edge) => edge.fromId === entry.character.id || edge.toId === entry.character.id)
+      .map((edge) => (edge.fromId === entry.character.id ? edge.toId : edge.fromId));
+    const focusIds = new Set([entry.character.id, ...peers]);
+    const points = [...byId.values()].filter((item) => focusIds.has(item.character.id));
+    const zoom = fitZoom(
+      contentBounds(points, metrics, labelHalfWidth),
+      frameSize,
+      screenScale,
+      { margin: 0.3, max: FOCUS_MAX_ZOOM },
     );
-  }, [pendingFocusId, byId, metrics.nameSize, screenScale, labelsFit, canvas.viewBox]);
+    const centrePoint = {
+      x: points.reduce((sum, item) => sum + item.x, 0) / points.length,
+      y: points.reduce((sum, item) => sum + item.y, 0) / points.length,
+    };
+
+    setView(centreOn(centrePoint, zoom, canvas.viewBox));
+  }, [pendingFocusId, byId, metrics, labelHalfWidth, screenScale, frameSize, canvas.viewBox, relationships]);
+
+  // Leaving a focus puts the overview back. Without this the canvas stayed at the
+  // close-up of the character just left, which on a phone is a screen of edges again.
+  const hadFocusRef = useRef(false);
+  useEffect(() => {
+    if (focusId) {
+      hadFocusRef.current = true;
+      return;
+    }
+
+    if (hadFocusRef.current) {
+      hadFocusRef.current = false;
+      applyFitView();
+    }
+  }, [focusId]);
 
   const focusedCharacter = focusId ? characters.find((character) => character.id === focusId) : undefined;
 
@@ -1313,7 +1351,7 @@ export function RelationshipGraph({
 
   /** Management hands the canvas one character; the drawing does the rest. */
   function locateOnGraph(relationship: Relationship) {
-    setBoardMode("graph");
+    chooseBoardMode("graph");
     setQuery("");
     setFocusId(relationship.fromId);
     setPendingFocusId(relationship.fromId);
@@ -1408,13 +1446,17 @@ export function RelationshipGraph({
     }
   }
 
-  useEffect(() => {
+  // Persisted on choice, not on mount: remembering the default would hand a phone's
+  // management view to the desktop, and the default is not a preference.
+  function chooseBoardMode(mode: "graph" | "manage") {
+    setBoardMode(mode);
+
     try {
-      localStorage.setItem("character-studio.relationship-view", boardMode);
+      localStorage.setItem("character-studio.relationship-view", mode);
     } catch {
       // A view preference is not worth failing an interaction over.
     }
-  }, [boardMode]);
+  }
 
   const characterById = useMemo(() => new Map(characters.map((item) => [item.id, item])), [characters]);
   const nameOf = (id: string) => {
@@ -1520,7 +1562,7 @@ export function RelationshipGraph({
                 <button
                   aria-pressed={boardMode === "graph"}
                   className={boardMode === "graph" ? "graph-segment-button selected" : "graph-segment-button"}
-                  onClick={() => setBoardMode("graph")}
+                  onClick={() => chooseBoardMode("graph")}
                   type="button"
                 >
                   图谱
@@ -1528,7 +1570,7 @@ export function RelationshipGraph({
                 <button
                   aria-pressed={boardMode === "manage"}
                   className={boardMode === "manage" ? "graph-segment-button selected" : "graph-segment-button"}
-                  onClick={() => setBoardMode("manage")}
+                  onClick={() => chooseBoardMode("manage")}
                   type="button"
                 >
                   管理
@@ -1662,6 +1704,12 @@ export function RelationshipGraph({
               </button>
               <button aria-label="放大画布" className="graph-zoom-step" onClick={() => zoomBy(1.25)} type="button">
                 <Icon name="plus" size={15} />
+              </button>
+              {/* Named rather than implied by a percentage: on a phone there is no
+                  tooltip, and "back to the whole network" is the way out of any close-up. */}
+              <button aria-label="适应画布" className="graph-fit-button" onClick={resetView} type="button">
+                <Icon name="grid" size={14} />
+                适应画布
               </button>
             </div>
           </div>

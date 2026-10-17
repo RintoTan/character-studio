@@ -7385,6 +7385,14 @@ kbd {
    the second character indents under the first, the kind sits beside them, and the
    note and the actions take the full width. Same markup, same table semantics. */
 @media (max-width: 720px) {
+  /* The floating jump bar found itself a gap between controls and sat on the text
+     underneath — over a management row, a timeline description, a world entry. Collision
+     search cannot fix a 56px control on a 375px column: it is hidden here, and the page
+     scrolls as it always did. Desktop keeps it. */
+  .floating-actions {
+    display: none;
+  }
+
   /* A search field and three selects in one flex row: at 375px the first select was
      squeezed to a sliver at the card's edge, so the kind filter could not be used at
      all. The search takes its own row, the filters share two columns, and the count
@@ -10354,4 +10362,30 @@ select:disabled {
    the caret in it owns the bottom of the screen. */
 body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   display: none;
+}
+
+.graph-fit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-meta);
+  white-space: nowrap;
+}
+
+.graph-fit-button:hover {
+  border-color: var(--border-strong);
+}
+
+@media (max-width: 720px) {
+  /* The percentage readout and the named control do the same thing; the name is the one
+     that can be read without a tooltip. */
+  .graph-zoom-value {
+    display: none;
+  }
 }

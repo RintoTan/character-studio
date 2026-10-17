@@ -389,10 +389,16 @@ describe("fitting the canvas to the drawing", () => {
     expect(fitZoom({ width: 1000, height: 1200 }, frame, 0.3)).toBeCloseTo(1.25, 4);
   });
 
-  it("never zooms out past the box's own fit", () => {
-    // A drawing larger than the frame, and one that already fills it: the fit view is
-    // the box's view, and names may not shrink below it.
-    expect(fitZoom({ width: 4000, height: 400 }, frame, 0.5)).toBe(1);
+  it("scales a drawing larger than the frame down until it fits", () => {
+    // 4000x400 units at half size is 2000x200 of a 1000x500 frame. The fit has to be
+    // 0.45 — with a floor of 1 the canvas showed the middle of a drawing it could not
+    // contain, which on a phone was a screen of edges and no nodes.
+    const wide = fitZoom({ width: 4000, height: 400 }, frame, 0.5);
+    expect(wide).toBeCloseTo(0.45, 4);
+    expect(4000 * wide * 0.5).toBeLessThanOrEqual(frame.width);
+
+    // One that fits without the margin keeps its natural size: shrinking it would only
+    // put its names under the readable threshold.
     expect(fitZoom({ width: 2000, height: 1000 }, frame, 0.5)).toBe(1);
   });
 
