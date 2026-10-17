@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.35.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 视觉整改 Stage 1–3 的首次发版；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.35.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 视觉整改 Stage 1–3 的首次发版（2.35.1 修补导入字段）；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **45.2**（`APP_SPRINT`）—— 本版本交付视觉整改收尾（Stage 1–3 + 浮动栏/设置/导入预览）；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -361,3 +361,5 @@ Rapid Iteration Mode 下的第一轮：功能实现 > 用户体验 > 开发效�
 **未改动**：`Character` / 关系 / 时间线 / 世界观存储协议、导入导出的数据路径、Stage 1–3 已验收的页面结构。
 
 **已知未做**：关系网宽画布两侧留白仍取决于画布长宽比；标签碰撞仍只靠缩放而不是布局算法；「筛选（n）」仍只在 ≤720px 出现；浮动栏的避让只在静止时计算（滚动中直接隐藏）。
+
+**2.35.1 导入完整性修补**：`normalizeCharacter` 漏掉 `likes` / `dislikes` / `habits` / `importantItems` / `relationshipKeywords` 五个正式字段，备份导入后为空。已补齐并逐字段校验；综合数据集 100 角色、28 个字段比对 0 差异。新增 2 个回归用例（共 512 例）。

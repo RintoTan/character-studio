@@ -5,6 +5,22 @@
 
 ---
 
+## 2.35.1 —— 角色资料导入完整性修复（Sprint 45.2）
+
+导入器重建 `Character` 时逐字段列举，漏掉了五个编辑器里可编辑的字段：`likes`、`dislikes`、`habits`、`importantItems`、`relationshipKeywords`。JSON / ZIP 备份里带着这些内容，导入后却为空；因为导出是整体序列化，问题只在导入侧。
+
+**修复**：在 `normalizeCharacter` 中按同样规则补齐五个字段（`asString`），仍然逐字段校验、不使用对象展开，未知字段继续被丢弃；旧备份无需迁移。
+
+**验证**
+- 新增 2 个回归用例：完整字段的「导入 → 导出 → 再导入」语义一致；未知字段不会绕过模型写入。
+- `npm test`：45 文件 / **512 例**通过。
+- 综合数据集 CS-FIXTURE-100-V1 在隔离 Profile 中真实导入：100 角色 / 191 关系 / 20 世界观 / 50 事件 / 18 头像；**28 个正式字段逐字段比对，0 处不一致**。
+- `npm run typecheck` 干净；`npm run build:pages` 21 文件。
+
+已知边界：导入仍会把 `personalityTags` 与 `tags` 合并（既有规范化行为），头像 `avatarAssetId` 会绑定为新的 IndexedDB 素材 id（存储层所有）。
+
+---
+
 ## 2.35.0 —— 视觉整改 Stage 1–3 收尾 + 移动端浮动栏（Sprint 45.2）
 
 > **本版本首次发布 Stage 1–3 的全部视觉成果**（逐阶段截图与对照见 `.visual-remediation-*`）；本轮只补齐剩下三处行为问题，不再做全局重构。

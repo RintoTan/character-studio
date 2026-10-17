@@ -160,6 +160,120 @@ describe("JSON import round trip", () => {
     expect(result.characters[0].occupation).toBe("游侠");
   });
 
+  it("keeps every editable profile field across import -> export -> import", async () => {
+    // The importer rebuilds a Character field by field rather than spreading the
+    // payload (unknown keys must not reach storage). That is the right shape, but it
+    // means every field has to be listed: five editable ones were missing, so a
+    // backup round trip emptied them.
+    const original: Character = {
+      id: "char-full",
+      name: "沈砚",
+      avatarEmoji: "",
+      avatarAssetId: "asset-07",
+      favorite: true,
+      isDraft: true,
+      draftOfId: "char-origin",
+      gender: "女",
+      age: "62",
+      birthDate: "1998-03-04",
+      birthYear: "雾海历 -34 年",
+      species: "人类",
+      occupation: "自治议会议长",
+      worldview: "白塔城",
+      tags: [
+        { id: "tag-01", name: "议会", color: "blue" },
+        { id: "tag-02", name: "停战协议" },
+      ],
+      personalityTags: ["克制", "长于权衡"],
+      appearanceDescription: "银灰短发，左眼下方有一道旧灼痕。",
+      abilityDescription: "能在四小时的争吵里记住每一方的底线。",
+      backstory: "长背景".repeat(300),
+      likes: "黑咖啡、旧档案纸的味道",
+      dislikes: "",
+      habits: "作决定前把钢笔帽旋开又拧紧，恰好三次。",
+      importantItems: "一枚磨平了字的私章；七只空燃料桶的编号清单",
+      relationshipKeywords: "停战协议的担保人；与商会、学会、远征队都欠着一笔人情。",
+      visualStyle: "低饱和",
+      characterKeywords: "银灰短发、灼痕、深灰长袍",
+      imagePrompt: "elegant older stateswoman, silver short hair",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-02-01T00:00:00.000Z",
+    };
+
+    exportAllCharactersJson([original]);
+    const firstJson = await exportedText();
+    const firstPlan = await prepareCharacterImport(
+      [asFile(firstJson, "backup.json", "application/json")],
+      [],
+    );
+    const imported = firstPlan.characters[0].character;
+
+    expect(imported.likes).toBe(original.likes);
+    expect(imported.dislikes).toBe("");
+    expect(imported.habits).toBe(original.habits);
+    expect(imported.importantItems).toBe(original.importantItems);
+    expect(imported.relationshipKeywords).toBe(original.relationshipKeywords);
+
+    // Second pass through the exporter, exactly as a restore-then-backup would go.
+    downloads.length = 0;
+    exportAllCharactersJson([imported]);
+    const secondJson = await exportedText();
+    const secondPlan = await prepareCharacterImport(
+      [asFile(secondJson, "backup-2.json", "application/json")],
+      [],
+    );
+    const again = secondPlan.characters[0].character;
+
+    const profile = (item: Character) => ({
+      id: item.id,
+      name: item.name,
+      avatarEmoji: item.avatarEmoji,
+      avatarAssetId: item.avatarAssetId,
+      favorite: item.favorite,
+      isDraft: item.isDraft,
+      draftOfId: item.draftOfId,
+      gender: item.gender,
+      age: item.age,
+      birthDate: item.birthDate,
+      birthYear: item.birthYear,
+      species: item.species,
+      occupation: item.occupation,
+      worldview: item.worldview,
+      tags: item.tags,
+      personalityTags: item.personalityTags,
+      appearanceDescription: item.appearanceDescription,
+      abilityDescription: item.abilityDescription,
+      backstory: item.backstory,
+      likes: item.likes,
+      dislikes: item.dislikes,
+      habits: item.habits,
+      importantItems: item.importantItems,
+      relationshipKeywords: item.relationshipKeywords,
+      visualStyle: item.visualStyle,
+      characterKeywords: item.characterKeywords,
+      imagePrompt: item.imagePrompt,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    });
+
+    expect(profile(again)).toEqual(profile(imported));
+    expect(again.likes).toBe(original.likes);
+    expect(again.relationshipKeywords).toBe(original.relationshipKeywords);
+  });
+
+  it("still drops keys that are not part of the Character model", async () => {
+    const withExtra = { ...character(), injected: "should not survive" } as Character & {
+      injected: string;
+    };
+    const plan = await prepareCharacterImport(
+      [asFile(JSON.stringify(withExtra), "one.json", "application/json")],
+      [],
+    );
+    const imported = plan.characters[0].character as Character & { injected?: string };
+
+    expect("injected" in imported).toBe(false);
+  });
+
   it("keeps existing characters when importing into a non-empty list", async () => {
     exportAllCharactersJson([character({ id: "imported", name: "导入的" })]);
     const json = await exportedText();

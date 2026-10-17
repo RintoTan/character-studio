@@ -301,6 +301,14 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     appearanceDescription: asString(value.appearanceDescription),
     abilityDescription: asString(value.abilityDescription),
     backstory: asString(value.backstory),
+    // These five are editable profile fields (see the "more" section of the editor).
+    // The importer used to rebuild the record field by field and simply omitted them,
+    // so a backup round trip silently emptied them.
+    likes: asString(value.likes),
+    dislikes: asString(value.dislikes),
+    habits: asString(value.habits),
+    importantItems: asString(value.importantItems),
+    relationshipKeywords: asString(value.relationshipKeywords),
     visualStyle: asString(value.visualStyle),
     characterKeywords: asString(value.characterKeywords),
     imagePrompt: asString(value.imagePrompt),
