@@ -4,6 +4,7 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
+import { exportCharacterSheetPdf } from "../utils/characterSheetExport";
 import type { Relationship } from "../types/relationship";
 import type { TimelineEvent } from "../types/timeline";
 import type { WorldEntry } from "../types/world";
@@ -948,7 +949,7 @@ export function Dashboard({
     }
   }
 
-  async function handleCardExport(format: "json" | "pdf" | "jpg" | "png") {
+  async function handleCardExport(format: "json" | "sheet" | "pdf" | "jpg" | "png") {
     if (!exportTarget) {
       return;
     }
@@ -958,6 +959,32 @@ export function Dashboard({
 
     if (format === "json") {
       void handleExportCharacterJson(target);
+      return;
+    }
+
+    if (format === "sheet") {
+      setLoadingAction("card-sheet");
+
+      try {
+        const workspace = readWorkspaceDatasets();
+        const result = await exportCharacterSheetPdf({
+          character: target,
+          characters,
+          relationships: workspace.relationships as Relationship[],
+          timeline: workspace.timeline as TimelineEvent[],
+          world: workspace.world as WorldEntry[],
+          includeRelated: true,
+        });
+        showToast(
+          result.missing.length > 0
+            ? `PDF 已导出（${result.pages} 页），${result.missing.length} 个字符字体里没有，已显示为 □：${result.missing.slice(0, 6).join(" ")}`
+            : `PDF 已导出（${result.pages} 页，文字可选中）`,
+        );
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "PDF 导出失败", "error");
+      } finally {
+        setLoadingAction(null);
+      }
       return;
     }
 
@@ -2947,8 +2974,8 @@ export function Dashboard({
               </button>
             </div>
             <p className="muted export-dialog-note">
-              PDF 是 A4 阅读稿，JPG / PNG 是版面截图，三者都不含关联数据，也不能再导入；
-              需要保留可再导入的数据请用 JSON 或完整备份 ZIP。
+              PDF（档案）是文字版，可选中与检索，并附带该角色的关系、事件与世界观条目；
+              PDF（截图）与 JPG / PNG 是版面本身。三者都不能再导入。
             </p>
           </div>
         </div>

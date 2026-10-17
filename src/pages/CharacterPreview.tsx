@@ -4,6 +4,7 @@ import { Icon } from "../components/Icon";
 import type { Character } from "../types/character";
 import { getAvatarAsset } from "../utils/avatarAssets";
 import { exportCharacterJson, exportPreviewImage, exportPreviewPdf } from "../utils/importExport";
+import { exportCharacterSheetPdf } from "../utils/characterSheetExport";
 import { getContentCopy } from "../config/developerSettings";
 import { CharacterRelatedInfo } from "../components/CharacterRelatedInfo";
 import type { Relationship } from "../types/relationship";
@@ -84,6 +85,8 @@ export function CharacterPreview({
   const [toastMessage, setToastMessage] = useState("");
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  // On by default: a sheet without the people the character knows is a page of fields.
+  const [includeRelated, setIncludeRelated] = useState(true);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
   const isFavorite = Boolean(character.favorite ?? character.isFavorite);
@@ -147,6 +150,30 @@ export function CharacterPreview({
     }
   }
 
+  async function handleExportSheet() {
+    setLoadingAction("sheet");
+
+    try {
+      const result = await exportCharacterSheetPdf({
+        character,
+        characters: related?.characters ?? [character],
+        relationships: related?.relationships ?? [],
+        timeline: related?.events ?? [],
+        world: related?.entries ?? [],
+        includeRelated,
+      });
+      showToast(
+        result.missing.length > 0
+          ? `PDF 已导出（${result.pages} 页），${result.missing.length} 个字符字体里没有，已显示为 □：${result.missing.slice(0, 6).join(" ")}；需要原样显示请用 PDF（版面截图）`
+          : `PDF 已导出（${result.pages} 页，文字可选中）`,
+      );
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "PDF 导出失败，请稍后重试");
+    } finally {
+      setLoadingAction(null);
+    }
+  }
+
   async function handleExportPdf() {
     if (!previewRef.current) {
       showToast("找不到可导出的角色展示区域");
@@ -195,11 +222,16 @@ export function CharacterPreview({
     }
   }
 
-  function runExport(format: "json" | "pdf" | "jpg" | "png") {
+  function runExport(format: "json" | "sheet" | "pdf" | "jpg" | "png") {
     setIsExportOpen(false);
 
     if (format === "json") {
       void handleExportJson();
+      return;
+    }
+
+    if (format === "sheet") {
+      void handleExportSheet();
       return;
     }
 
@@ -235,17 +267,20 @@ export function CharacterPreview({
               </button>
             </div>
             <div className="export-dialog-list">
-              <button onClick={() => runExport("json")} type="button">
-                导出 JSON（角色数据）
+              <button onClick={() => runExport("sheet")} type="button">
+                {loadingAction === "sheet" ? "导出中..." : "导出 PDF（文字版·可检索）"}
               </button>
               <button onClick={() => runExport("pdf")} type="button">
-                {loadingAction === "pdf" ? "导出中..." : "导出 PDF（A4 阅读稿）"}
+                {loadingAction === "pdf" ? "导出中..." : "导出 PDF（版面截图）"}
               </button>
               <button onClick={() => runExport("jpg")} type="button">
                 {loadingAction === "jpg" ? "导出中..." : "导出 JPG（版面截图）"}
               </button>
               <button onClick={() => runExport("png")} type="button">
                 {loadingAction === "png" ? "导出中..." : "导出 PNG（版面截图）"}
+              </button>
+              <button onClick={() => runExport("json")} type="button">
+                导出 JSON（角色数据）
               </button>
             </div>
             <p className="muted export-dialog-note">{getContentCopy("exportGuide")}</p>
@@ -556,10 +591,10 @@ export function CharacterPreview({
           )}
 
           {/* Kept in the capture root for the export, and out of the page on screen: the
-              app has one footer, at the end of everything. */}
-          <div className="preview-export-footer">
-            Character Studio · {getContentCopy("footerText")}
-          </div>
+              app has one footer, at the end of everything. The author's credit line is
+              deliberately not here - a shared sheet carries the product, not a forced
+              signature. */}
+          <div className="preview-export-footer">Character Studio</div>
         </div>
       </div>
 
