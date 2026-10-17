@@ -505,6 +505,10 @@ const SEED_GRAPH = `
     localStorage.setItem("character-studio.world", JSON.stringify([]));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // The graph remembers whether it was last left on 图谱 or 管理. A seed that
+    // describes a graph has to start on the graph, or the check measures the
+    // previous check's mode instead of its own data.
+    localStorage.removeItem("character-studio.relationship-view");
 
     // A picture where the app keeps its avatars, so "does a picture avatar draw on the
     // canvas" is answered with a real asset rather than with the emoji that used to be
@@ -587,6 +591,10 @@ const SEED_GRAPH_LARGE = `
     localStorage.setItem("character-studio.world", JSON.stringify([]));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // The graph remembers whether it was last left on 图谱 or 管理. A seed that
+    // describes a graph has to start on the graph, or the check measures the
+    // previous check's mode instead of its own data.
+    localStorage.removeItem("character-studio.relationship-view");
     return true;
   })()
 `;
@@ -722,6 +730,10 @@ const SEED_TIMELINE = `
     localStorage.setItem("character-studio.world", JSON.stringify([]));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // The graph remembers whether it was last left on 图谱 or 管理. A seed that
+    // describes a graph has to start on the graph, or the check measures the
+    // previous check's mode instead of its own data.
+    localStorage.removeItem("character-studio.relationship-view");
     return events.length;
   })()
 `;
@@ -1281,6 +1293,10 @@ const SEED_LINKS = `
     localStorage.setItem("character-studio.world", JSON.stringify(world));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // The graph remembers whether it was last left on 图谱 or 管理. A seed that
+    // describes a graph has to start on the graph, or the check measures the
+    // previous check's mode instead of its own data.
+    localStorage.removeItem("character-studio.relationship-view");
     return true;
   })()
 `;
@@ -1375,9 +1391,13 @@ const READ_GRAPH_CANVAS = `
         return frame ? Math.round(frame.width) : 0;
       })(),
       canvasWidth: rect ? Math.round(rect.width) : 0,
-      nameFontPx: named ? getComputedStyle(named.querySelector(".relationship-node-name")).fontSize : "",
-      viewportWidth: window.innerWidth,
-      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+       nameFontPx: named ? getComputedStyle(named.querySelector(".relationship-node-name")).fontSize : "",
+       viewportWidth: window.innerWidth,
+       // What the core view says it left out: the count has to be on screen, not only
+       // in the data.
+       scopeNote: (document.querySelector(".graph-scope-note")?.textContent || "").replace(/\s+/g, " ").trim(),
+       toggleLabel: (document.querySelector(".graph-toggle")?.textContent || "").replace(/\s+/g, " ").trim(),
+       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   })()
 `;
@@ -1452,11 +1472,17 @@ const GRAPH_SEARCH_AND_FOCUS = `
     await read("沈青梧");
     const chosen = [...document.querySelectorAll(".graph-search-panel .character-picker-option")][0];
     chosen.click();
-    await sleep(500);
+    // Selecting somebody the core view left out adds them and their direct connections
+    // to the drawing first, so the focus has to be waited for rather than sampled.
+    for (let waited = 0; waited < 2500 && !document.querySelector(".relationship-node.focused"); waited += 100) {
+      await sleep(100);
+    }
+    await sleep(300);
 
     const focusedName = (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "";
     const focused = {
       name: focusedName.trim(),
+      nodeCount: document.querySelectorAll(".relationship-node").length,
       focusedCount: document.querySelectorAll(".relationship-node.focused").length,
       names: [...document.querySelectorAll(".relationship-node-name")].map((node) => node.textContent.trim()),
       dimmedNames: [...document.querySelectorAll(".relationship-node")].filter((node) => node.classList.contains("dimmed")).map((node) => node.querySelector(".relationship-node-name")?.textContent?.trim() || "（无名称）"),
@@ -1470,7 +1496,9 @@ const GRAPH_SEARCH_AND_FOCUS = `
     // Escape is the keyboard way out; the chip is the visible one.
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     await sleep(300);
+    await sleep(200);
     const afterEscape = {
+      nodeCount: document.querySelectorAll(".relationship-node").length,
       focusedCount: document.querySelectorAll(".relationship-node.focused").length,
       dimmedCount: document.querySelectorAll(".relationship-node.dimmed").length,
       activeEdges: document.querySelectorAll(".relationship-edge.active").length,
@@ -1638,6 +1666,185 @@ const GRAPH_DISPLAY_AND_EXPORT = `
       },
       messages,
     };
+  })()
+`;
+
+// Forty-five edges over twelve characters: three pages of twenty, five kinds, and one
+// note that can only be found by its words rather than by either character's name.
+const SEED_MANAGE = `(() => {
+  const now = "2026-01-01T00:00:00.000Z";
+  const names = ["沈砚", "林雾生", "顾长庚", "白露", "苏荇", "谢云归", "程五", "阿禾", "洛澄", "江照", "岑野", "陆停云"];
+  const ids = names.map((_, index) => "m-" + (index + 1));
+  const characters = names.map((name, index) => ({
+    id: ids[index], name, occupation: "记录官", worldview: "雾海", avatarEmoji: "🙂", createdAt: now, updatedAt: now,
+  }));
+  const kinds = ["friend", "mentor", "family", "colleague", "rival"];
+  const relationships = Array.from({ length: 45 }, (_, index) => ({
+    id: "mr-" + (index + 1),
+    fromId: ids[index % 12],
+    toId: ids[(index * 5 + 3) % 12],
+    kind: kinds[index % 5],
+    note: index === 7 ? "同门，雪夜之后重逢" : "第" + (index + 1) + "条备注",
+    createdAt: now,
+    updatedAt: now,
+  }));
+  localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+  localStorage.setItem("character-studio.relationships", JSON.stringify(relationships));
+  localStorage.setItem("character-studio.timeline", JSON.stringify([]));
+  localStorage.setItem("character-studio.world", JSON.stringify([]));
+  localStorage.setItem("character-studio.about-seen", "true");
+  localStorage.removeItem("character-studio.graph-prefs");
+  // The graph remembers whether it was last left on 图谱 or 管理. A seed that
+  // describes a graph has to start on the graph, or the check measures the
+  // previous check's mode instead of its own data.
+  localStorage.removeItem("character-studio.relationship-view");
+  return relationships.length;
+})()`;
+
+const GRAPH_MANAGE = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const rows = () => [...document.querySelectorAll(".manage-table tbody tr")];
+    const rowText = (row) => row.textContent.replace(/\\s+/g, " ").trim();
+    const pager = () => (document.querySelector(".relationship-pager")?.textContent || "").replace(/\\s+/g, " ").trim();
+    const total = () => (document.querySelector(".manage-toolbar .timeline-count")?.textContent || "").trim();
+    const setValue = (input, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+      setter.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const setSelect = (select, value) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+      setter.call(select, value);
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    const initial = { rows: rows().length, pager: pager(), total: total() };
+
+    const next = () => [...document.querySelectorAll(".relationship-pager button")].find((button) => button.textContent.trim() === "下一页");
+    next().click();
+    await sleep(250);
+    const page2 = { rows: rows().length, pager: pager() };
+    [...document.querySelectorAll(".relationship-pager button")].find((button) => button.textContent.trim() === "上一页").click();
+    await sleep(250);
+
+    const search = document.querySelector(".manage-search input");
+    setValue(search, "同门");
+    await sleep(300);
+    const byNote = { rows: rows().length, texts: rows().map(rowText), total: total(), pager: pager() };
+    setValue(search, "林雾生");
+    await sleep(300);
+    const byName = { rows: rows().length, texts: rows().map(rowText) };
+    setValue(search, "");
+    await sleep(300);
+
+    const kindSelect = document.querySelector('select[aria-label="按关系类型筛选"]');
+    setSelect(kindSelect, "mentor");
+    await sleep(300);
+    const mentors = rows().map((row) => ({
+      chip: row.querySelector(".relationship-kind-chip")?.textContent.trim() || "",
+      arrow: row.querySelector(".manage-direction")?.textContent.trim() || "",
+      from: row.children[0]?.textContent.trim() || "",
+      to: row.children[2]?.textContent.trim() || "",
+    }));
+    setSelect(kindSelect, "all");
+    await sleep(250);
+
+    const sortSelect = document.querySelector('select[aria-label="关系排序"]');
+    setSelect(sortSelect, "kind");
+    await sleep(300);
+    const kindOrder = rows().map((row) => row.querySelector(".relationship-kind-chip")?.textContent.trim() || "");
+    setSelect(sortSelect, "person");
+    await sleep(250);
+
+    const characterSelect = document.querySelector('select[aria-label="按关联角色筛选"]');
+    const picked = characterSelect.options[1];
+    setSelect(characterSelect, picked.value);
+    await sleep(300);
+    const byCharacter = { name: picked.textContent.trim(), rows: rows().length, texts: rows().map(rowText) };
+    setSelect(characterSelect, "all");
+    await sleep(250);
+
+    const stored = () => JSON.parse(localStorage.getItem("character-studio.relationships") || "[]");
+    const beforeEdit = stored().length;
+    rows()[0].querySelectorAll(".relationship-row-action")[0].click();
+    await sleep(300);
+    const editDialog = document.querySelector('.confirm-dialog[aria-label="编辑关系"]');
+    const editTitle = editDialog?.querySelector("h2")?.textContent.trim() || "";
+    const noteInput = editDialog?.querySelector('input[type="text"]');
+    setValue(noteInput, "改过的备注");
+    [...editDialog.querySelectorAll("button")].find((button) => button.textContent.trim() === "保存修改").click();
+    await sleep(450);
+    const afterEdit = {
+      rowsWithNote: rows().filter((row) => rowText(row).includes("改过的备注")).length,
+      storedWithNote: stored().filter((edge) => edge.note === "改过的备注").length,
+      count: stored().length,
+      dialogClosed: !document.querySelector('.confirm-dialog[aria-label="编辑关系"]'),
+    };
+
+    // Deleting has to name the two characters — including when the canvas is not drawing
+    // them, which is the case for most of a large roster.
+    const targetRow = rows()[0];
+    const targetText = rowText(targetRow);
+    targetRow.querySelectorAll(".relationship-row-action")[2].click();
+    await sleep(300);
+    const deleteText = (document.querySelector('.confirm-dialog[aria-label="删除关系"] p')?.textContent || "").replace(/\\s+/g, " ").trim();
+    [...document.querySelectorAll('.confirm-dialog[aria-label="删除关系"] button')].find((button) => button.textContent.trim() === "确认删除").click();
+    await sleep(450);
+    const afterDelete = { count: stored().length, total: total(), pager: pager(), rows: rows().length };
+
+    // 定位 leaves the table for the drawing, focused on the edge's first character.
+    rows()[0].querySelectorAll(".relationship-row-action")[1].click();
+    await sleep(600);
+    const located = {
+      page: Boolean(document.querySelector(".relationship-canvas")),
+      chip: (document.querySelector(".graph-focus-chip")?.textContent || "").replace(/\\s+/g, " ").trim(),
+      focused: document.querySelectorAll(".relationship-node.focused").length,
+      edges: document.querySelectorAll(".relationship-edge").length,
+    };
+
+    return { initial, page2, byNote, byName, mentors, kindOrder, byCharacter, beforeEdit, editTitle, afterEdit, targetText, deleteText, afterDelete, located };
+  })()
+`;
+
+const GRAPH_MANAGE_NARROW = `
+  (async () => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const rows = () => [...document.querySelectorAll(".manage-table tbody tr")];
+    const first = rows()[0];
+    const box = first?.getBoundingClientRect();
+    const actions = [...(first?.querySelectorAll(".relationship-row-action") || [])].map((button) => ({
+      text: button.textContent.trim(),
+      visible: button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0,
+    }));
+    const state = {
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      rows: rows().length,
+      rowDisplay: first ? getComputedStyle(first).display : "",
+      rowWidth: box ? Math.round(box.width) : 0,
+      viewport: window.innerWidth,
+      actions,
+      // No row is wider than the column it sits in: the five columns are stacked into
+      // an entry rather than squeezed.
+      rowsWider: rows().filter((row) => row.scrollWidth > row.clientWidth + 1).length,
+      toolbarInside: (() => {
+        const toolbar = document.querySelector(".manage-toolbar");
+        return toolbar ? toolbar.getBoundingClientRect().right <= window.innerWidth + 1 : false;
+      })(),
+    };
+
+    first.querySelectorAll(".relationship-row-action")[0].click();
+    await sleep(300);
+    const dialog = document.querySelector('.confirm-dialog[aria-label="编辑关系"]');
+    const dialogBox = dialog?.getBoundingClientRect();
+    state.dialog = {
+      open: Boolean(dialog),
+      inside: dialogBox ? dialogBox.left >= -1 && dialogBox.right <= window.innerWidth + 1 : false,
+    };
+    [...(dialog?.querySelectorAll("button") || [])].find((button) => button.textContent.trim() === "取消")?.click();
+    await sleep(200);
+    state.dialogClosed = !document.querySelector('.confirm-dialog[aria-label="编辑关系"]');
+
+    return state;
   })()
 `;
 
@@ -5109,11 +5316,16 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
     });
 
     await check("关系网：节点默认显示名称，悬停给出职业/世界观/关系数（任务 A）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      // The frame is measured after the first paint, so names appear one render later.
+      // Waiting for them is the difference between reading the drawing and reading the
+      // frame before the drawing exists.
+      await cdp.waitFor(`document.querySelectorAll(".relationship-node-name").length > 0`, 4000);
       const state = await cdp.value(READ_GRAPH_CANVAS);
 
       const centre = await cdp.value(graphNodeCentre("沈青梧"));
@@ -5163,7 +5375,12 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
-    await check("关系网：400 个角色下搜索定位、聚焦高亮与退出聚焦（任务 B）", async () => {
+    await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+    await check("关系网：大网络默认只画核心节点，搜索任何角色都能直接定位（任务 B）", async () => {
+      // Its own viewport and its own seed: a check that readers of the previous one
+      // decide its starting point is not measuring what it says it measures.
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_GRAPH_LARGE);
       await cdp.goto(base);
@@ -5171,35 +5388,41 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
       const sketch = await cdp.value(READ_GRAPH_CANVAS);
       const state = await cdp.value(GRAPH_SEARCH_AND_FOCUS);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-      // Four hundred nodes and not one name at fit, which is what makes the rest of this
-      // check mean something: the names that appear afterwards appear because of the
-      // focus, not because they were always there.
-      const startingPoint = sketch.nodeCount === 400 && sketch.names.length === 0;
+      // Four hundred connected characters, forty drawn: the default is the core of the
+      // network, and the line under the canvas says exactly how much is not drawn.
+      const startingPoint =
+        sketch.nodeCount === 40 &&
+        sketch.scopeNote.includes("40 / 400") &&
+        sketch.scopeNote.includes("360") &&
+        sketch.toggleLabel.includes("显示全部角色");
 
       const searchOk =
         state.byName.length === 1 &&
         state.byName[0].name === "沈青梧" &&
-        state.byName[0].avatar &&
+        state.byName[0].state === "默认未显示" &&
         state.byJob.length > 1 &&
         state.byWorld.length > 1 &&
         state.byWorld.every((entry) => entry.name);
-      // 沈青梧 sits between 陆停云 and 角色089 in the chain: exactly three names are on
-      // the canvas — the focused character and its two direct connections — its two
-      // edges are lit, and the other 397 nodes are dimmed.
+      // 沈青梧 sits between 陆停云 and 角色089 in the chain and is outside the core. The
+      // search has to draw them and their two neighbours — 40 + 3 nodes — then focus:
+      // three names, two lit edges, the other forty dimmed.
       const focusOk =
         state.focused.name === "沈青梧" &&
+        state.focused.nodeCount === 43 &&
         state.focused.focusedCount === 1 &&
         state.focused.activeEdges === 2 &&
-        state.focused.names.length === 3 &&
         state.focused.names.includes("沈青梧") &&
         state.focused.names.includes("陆停云") &&
         state.focused.names.includes("角色089") &&
-        state.focused.dimmedNames.length === 397 &&
+        state.focused.dimmedNames.length === 40 &&
         state.focused.panelClosed &&
         state.focused.chip.includes("沈青梧") &&
         state.focused.transform !== state.before.transform;
+      // Leaving the focus also puts the extra nodes away: the canvas returns to its core.
       const escapeOk =
+        state.afterEscape.nodeCount === 40 &&
         state.afterEscape.focusedCount === 0 &&
         state.afterEscape.dimmedCount === 0 &&
         state.afterEscape.activeEdges === 0 &&
@@ -5207,20 +5430,24 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(startingPoint && searchOk && focusOk && escapeOk),
-        detail: `画布 ${sketch.nodeCount} 个节点、适配时名称 ${state.namesBefore.length} 个；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name).join("/")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.focusedCount}、高亮关系线 ${state.focused.activeEdges}、聚焦后名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length} 个）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}、聚焦标 ${state.focused.chip}；Escape 后 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges} / 聚焦标 ${state.afterEscape.chip ? "仍在" : "已消失"}`,
+        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」、开关「${sketch.toggleLabel}」；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name + "/" + entry.state).join(" ")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}`,
       };
     });
 
-    await check("关系网：画布外的角色有明确提示与查看方式，不静默失败（任务 B）", async () => {
+    await check("关系网：没有任何关系的角色有明确提示与查看方式，不静默失败（任务 B）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
       const state = await cdp.value(GRAPH_SEARCH_OFF_CANVAS);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
 
+      // Three states in the result list: drawn, left out by the core view (clicking
+      // draws them), and having no edge at all (the one that needs the notice).
       const told =
-        state.state === "不在画布" &&
+        state.state === "无关联" &&
         state.before.notice.includes("文森特·梵高") &&
         state.before.notice.includes("还没有任何关系") &&
         state.before.nodes === 5;
@@ -5238,10 +5465,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
     });
 
     await check("关系网：显示设置只含生效开关，导出三种格式无报错（任务 D）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".graph-canvas-bar")`, 8000);
+      await cdp.waitFor(`document.querySelectorAll(".relationship-node-name").length > 0`, 4000);
       const state = await cdp.value(GRAPH_DISPLAY_AND_EXPORT);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
 
       const panelOk =
         state.opened.present &&
@@ -5269,6 +5501,107 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return {
         pass: Boolean(panelOk && switched && exportOk && exported && state.closed),
         detail: `面板 ${state.opened.present ? "已打开" : "未打开"}（在视口内 ${state.opened.insideViewport}）：${state.opened.rows.join("；")}；名称 隐藏后 ${state.namesHidden.names} 个 → 恢复 ${state.namesBack} 个；头像 隐藏后 图片 ${state.avatarsHidden.images} / Emoji ${state.avatarsHidden.emojis} → 恢复 ${state.avatarsBack.images} / ${state.avatarsBack.emojis}；导出入口 ${state.exportOpen.present ? "已打开" : "未打开"}（在视口内 ${state.exportOpen.insideViewport}）：${state.exportOpen.rows.join("；")}；导出结果「${state.messages.join("」「")}」`,
+      };
+    });
+
+    await check("关系网管理：45 条关系可分页、按姓名与备注搜索、筛选排序与编辑删除同步", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      const seeded = await cdp.value(SEED_MANAGE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-mode")`, 8000);
+      await cdp.value(`(() => {
+        [...document.querySelectorAll(".graph-segment-button")].find((button) => button.textContent.trim().startsWith("管理")).click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".manage-table")`, 8000);
+      const state = await cdp.value(GRAPH_MANAGE);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const paged =
+        state.initial.rows === 20 &&
+        state.initial.total === "45 / 45 条" &&
+        state.initial.pager.includes("第 1 / 3 页") &&
+        state.page2.rows === 20 &&
+        state.page2.pager.includes("第 2 / 3 页");
+      const searched =
+        state.byNote.rows === 1 &&
+        state.byNote.texts.join("").includes("同门，雪夜之后重逢") &&
+        state.byNote.total === "1 / 45 条" &&
+        state.byNote.pager.includes("第 1 / 1 页") &&
+        state.byName.rows === 8 &&
+        state.byName.texts.every((text) => text.includes("林雾生"));
+      // 师承 keeps its direction: nine mentors, every one drawn left to right, and the
+      // first cell is the mentor rather than a sorted name.
+      const mentored =
+        state.mentors.length === 9 &&
+        state.mentors.every((row) => row.chip === "师承" && row.arrow === "→" && row.from && row.to && row.from !== row.to);
+      const sortedKinds = state.kindOrder.every(
+        (label, index) => index === 0 || state.kindOrder[index - 1].localeCompare(label, "zh") <= 0,
+      );
+      const filtered =
+        sortedKinds &&
+        state.kindOrder.length === 20 &&
+        state.byCharacter.rows > 0 &&
+        state.byCharacter.texts.every((text) => text.includes(state.byCharacter.name));
+      const edited =
+        state.editTitle === "编辑关系" &&
+        state.afterEdit.rowsWithNote === 1 &&
+        state.afterEdit.storedWithNote === 1 &&
+        state.afterEdit.count === seeded &&
+        state.afterEdit.dialogClosed;
+      // The dialog names both ends. It may not print "undefined" for an edge whose
+      // characters the canvas is not drawing.
+      const deleted =
+        state.deleteText.includes("将删除") &&
+        !state.deleteText.includes("undefined") &&
+        state.afterDelete.count === seeded - 1 &&
+        state.afterDelete.total === `${seeded - 1} / ${seeded - 1} 条` &&
+        state.afterDelete.rows === 20 &&
+        state.located.page &&
+        state.located.focused === 1 &&
+        state.located.edges === seeded - 1 &&
+        state.located.chip.startsWith("聚焦：");
+
+      return {
+        pass: Boolean(paged && searched && mentored && filtered && edited && deleted),
+        detail: `首页 ${state.initial.rows} 行 / ${state.initial.total} / ${state.initial.pager}；第二页 ${state.page2.rows} 行 / ${state.page2.pager}；搜「同门」${state.byNote.rows} 行（${state.byNote.total} / ${state.byNote.pager}）、搜「林雾生」${state.byName.rows} 行且每行含该名字 ${state.byName.texts.every((text) => text.includes("林雾生"))}；筛「师承」${state.mentors.length} 行、全部 → ${state.mentors.every((row) => row.arrow === "→")}、${state.mentors.map((row) => row.from + "→" + row.to).slice(0, 3).join("、")}…；按类型排序 顺序正确 ${sortedKinds}；按角色「${state.byCharacter.name}」${state.byCharacter.rows} 行；编辑「${state.editTitle}」→ 备注行 ${state.afterEdit.rowsWithNote}、存储 ${state.afterEdit.storedWithNote}、共 ${state.afterEdit.count} 条；删除确认「${state.deleteText}」→ 剩 ${state.afterDelete.count} 条 / ${state.afterDelete.total}；定位后 图谱 ${state.located.page}、聚焦节点 ${state.located.focused}、关系线 ${state.located.edges}、「${state.located.chip}」`,
+      };
+    });
+
+    await check("关系网管理：375px 行变成条目，操作可用且不溢出", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_MANAGE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-mode")`, 8000);
+      await cdp.value(`(() => {
+        [...document.querySelectorAll(".graph-segment-button")].find((button) => button.textContent.trim().startsWith("管理")).click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".manage-table tbody tr")`, 8000);
+      const state = await cdp.value(GRAPH_MANAGE_NARROW);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const pass =
+        state.overflow <= 1 &&
+        state.rows === 20 &&
+        state.rowDisplay === "grid" &&
+        state.rowWidth <= state.viewport &&
+        state.rowsWider === 0 &&
+        state.toolbarInside &&
+        state.actions.length === 3 &&
+        state.actions.every((action) => action.visible) &&
+        state.actions.map((action) => action.text).join("/") === "编辑/定位/删除" &&
+        state.dialog.open &&
+        state.dialog.inside &&
+        state.dialogClosed;
+
+      return {
+        pass: Boolean(pass),
+        detail: `375px：${state.rows} 行、行高布局 ${state.rowDisplay}、行宽 ${state.rowWidth} / 视口 ${state.viewport}、横向溢出 ${state.overflow}px、超宽行 ${state.rowsWider}、工具栏在视口内 ${state.toolbarInside}；行内操作 ${state.actions.map((action) => action.text + (action.visible ? "✓" : "✗")).join("/")}；编辑弹窗 打开 ${state.dialog.open} / 在视口内 ${state.dialog.inside} / 取消后关闭 ${state.dialogClosed}`,
       };
     });
 
