@@ -227,8 +227,8 @@ export function CharacterPreview({
           <div className="export-dialog" role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Export</p>
-                <h2>导出角色</h2>
+                <p className="eyebrow">导出角色档案</p>
+                <h2>选择导出格式</h2>
               </div>
               <button className="ghost-button" onClick={() => setIsExportOpen(false)} type="button">
                 关闭
@@ -236,16 +236,16 @@ export function CharacterPreview({
             </div>
             <div className="export-dialog-list">
               <button onClick={() => runExport("json")} type="button">
-                导出 JSON
+                导出 JSON（角色数据）
               </button>
               <button onClick={() => runExport("pdf")} type="button">
-                {loadingAction === "pdf" ? "导出中..." : "导出 PDF"}
+                {loadingAction === "pdf" ? "导出中..." : "导出 PDF（A4 阅读稿）"}
               </button>
               <button onClick={() => runExport("jpg")} type="button">
-                {loadingAction === "jpg" ? "导出中..." : "导出 JPG"}
+                {loadingAction === "jpg" ? "导出中..." : "导出 JPG（版面截图）"}
               </button>
               <button onClick={() => runExport("png")} type="button">
-                {loadingAction === "png" ? "导出中..." : "导出 PNG"}
+                {loadingAction === "png" ? "导出中..." : "导出 PNG（版面截图）"}
               </button>
             </div>
             <p className="muted export-dialog-note">{getContentCopy("exportGuide")}</p>

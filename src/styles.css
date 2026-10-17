@@ -4900,6 +4900,157 @@ button.workspace-card-head:hover {
   transform: none;
 }
 
+/* The import preview asks three questions - mode, conflict, scope - and each answer
+   changes what will be written. They are laid out as one list each so the current
+   answer is visible rather than being implied by a paragraph. */
+.import-choice-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.import-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.import-choice input {
+  flex: 0 0 auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+
+.import-choice span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.import-choice strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.import-choice small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.import-choice:has(input:checked) {
+  border-color: var(--primary);
+  background: var(--primary-soft, var(--surface-subtle));
+}
+
+.import-categories {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.import-category {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  padding: 8px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.import-category input {
+  flex: 0 0 auto;
+  width: 15px;
+  min-width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.import-warning {
+  margin-top: 10px;
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
+.import-issue-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.import-issue-list li {
+  display: grid;
+  gap: 2px;
+  border-left: 2px solid var(--border);
+  padding: 2px 0 2px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.import-issue-list strong {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.import-issue-list span {
+  color: var(--muted);
+}
+
+.settings-format-help {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+
+.settings-format-help summary {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.settings-format-help ul {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-format-help strong {
+  color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .import-categories {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .command-list {
   display: grid;
   gap: 8px;

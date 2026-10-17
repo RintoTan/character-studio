@@ -4,12 +4,24 @@
 // existing safety net was a manual export. Clearing data or importing a file
 // overwrites the live list, so a single automatic snapshot is kept for recovery.
 //
-// Scope is deliberate: only the character records (small, text) are captured.
-// Avatar binaries live in IndexedDB and are not snapshotted, so a restore can
-// leave avatar references pointing at assets that are no longer there. A caller
-// that describes this copy to the user must not call it a full backup - see the
-// two "clear local data" confirmations.
+// Scope is deliberate, and now covers every domain an import writes: the character
+// records plus the relationship graph, the timeline and the world book. Those three
+// were left out until an import could overwrite them, which made "导入前自动备份"
+// a promise the copy could not keep. All four live in localStorage, so one record
+// is one write.
+//
+// What is still outside the copy: avatar binaries, which live in IndexedDB. Nothing
+// in the import path deletes an asset - a replace re-points characters at the ones
+// the package brought - so a restore cannot leave a dangling image, and the copy is
+// complete for everything an import changes. A caller that describes this to the
+// author must not call it a full backup: see the two "clear local data" confirmations.
 import type { Character } from "../types/character";
+import type { Relationship } from "../types/relationship";
+import type { TimelineEvent } from "../types/timeline";
+import type { WorldEntry } from "../types/world";
+import { loadRelationships } from "./relationshipStorage";
+import { loadTimeline } from "./timelineStorage";
+import { loadWorldEntries } from "./worldStorage";
 
 export const BACKUP_KEY = "character-studio.backup";
 
@@ -18,6 +30,10 @@ export type LocalSnapshot = {
   createdAt: string;
   characterCount: number;
   characters: Character[];
+  /** Present from 2.36.0. Snapshots written before it hold characters only. */
+  relationships?: Relationship[];
+  timeline?: TimelineEvent[];
+  world?: WorldEntry[];
 };
 
 export type SnapshotAttempt =
@@ -40,6 +56,9 @@ export function attemptSnapshot(reason: string, characters: Character[]): Snapsh
     createdAt: new Date().toISOString(),
     characterCount: characters.length,
     characters,
+    relationships: loadRelationships(),
+    timeline: loadTimeline(),
+    world: loadWorldEntries(),
   };
 
   try {

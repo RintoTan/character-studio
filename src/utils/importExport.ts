@@ -1,7 +1,7 @@
 import type { Character, CharacterTag } from "../types/character";
-import { RELATIONSHIP_KINDS } from "../types/relationship";
-import { TIMELINE_EVENT_KINDS } from "../types/timeline";
-import { WORLD_CATEGORIES } from "../types/world";
+import { RELATIONSHIP_KINDS, type Relationship } from "../types/relationship";
+import { TIMELINE_EVENT_KINDS, type TimelineEvent } from "../types/timeline";
+import { WORLD_CATEGORIES, type WorldEntry } from "../types/world";
 import {
   dataUrlToBlob,
   getAvatarAsset,
@@ -11,15 +11,25 @@ import {
 // The two export libraries are large enough to load on demand, which makes them the
 // most likely thing in the app to be asked for by a page a deploy has moved on from.
 import { importWithRecovery } from "./lazyImport";
+import { planPageSlices } from "./pdfPageSlices";
 import {
   WORKSPACE_BACKUP_VERSION,
-  applyWorkspaceDatasets,
   countWorkspaceDatasets,
   extractWorkspaceDatasets,
-  type WorkspaceApplyResult,
+  readWorkspaceDatasets,
+  writePlannedDatasets,
+  type PlannedWorkspace,
   type WorkspaceCounts,
   type WorkspaceDatasets,
 } from "../storage/workspaceBackup";
+import {
+  ALL_CATEGORIES,
+  buildImportPlan,
+  type ConflictStrategy,
+  type ImportCategories,
+  type ImportMode,
+  type ImportPlan,
+} from "./importPlan";
 import {
   CSV_ROW_TYPES,
   CSV_TYPE_HEADER,
@@ -57,6 +67,8 @@ type PreparedAvatarAsset = {
 
 type PreparedCharacter = {
   character: Character;
+  /** The id the file used. References inside the package only ever name this one. */
+  sourceId: string;
   avatarSourceKey?: string;
 };
 
@@ -111,6 +123,22 @@ export type CharacterImportPreview = {
   /** Character references a CSV named but could not identify: names that match more
    *  than one character, and names that match none. Neither is imported. */
   unresolvedReferences: { ambiguous: number; missing: number };
+  /** Which domains will be written. The preview shows these as switches. */
+  categories: ImportCategories;
+};
+
+/** Knobs the author sets in the preview before anything is written. */
+export type CharacterImportOptions = {
+  mode?: ImportMode;
+  strategy?: ConflictStrategy;
+  categories?: Partial<ImportCategories>;
+  /** What the three stores hold now, so the plan can name conflicts and dependencies. */
+  existing?: {
+    relationships: Relationship[];
+    timeline: TimelineEvent[];
+    world: WorldEntry[];
+  };
+  now?: string;
 };
 
 export type PreparedCharacterImport = {
@@ -118,6 +146,9 @@ export type PreparedCharacterImport = {
   avatarAssets: PreparedAvatarAsset[];
   preview: CharacterImportPreview;
   workspace: WorkspaceDatasets | null;
+  plan: ImportPlan;
+  /** Keys in the file that this version does not store. Not an error, but not silent either. */
+  unsupportedFields: string[];
 };
 
 export type CharacterImportCommitResult = {
@@ -126,8 +157,8 @@ export type CharacterImportCommitResult = {
   importedAvatarCount: number;
   autoBoundAvatarCount: number;
   unboundAvatarCount: number;
-  /** Null when the file carried characters only. */
-  workspace: WorkspaceApplyResult | null;
+  /** What the three stores hold after the write; null when the file carried characters only. */
+  workspace: WorkspaceCounts | null;
 };
 
 const csvHeaders = [
@@ -143,6 +174,13 @@ const csvHeaders = [
   "外貌描述",
   "能力描述",
   "背景故事",
+  "出生日期",
+  "出生年份",
+  "喜好",
+  "厌恶",
+  "习惯",
+  "重要物品",
+  "关系关键词",
   "中文关键词",
   "英文 AI Prompt",
 ];
@@ -315,6 +353,25 @@ function normalizeCharacter(value: unknown, existingIds: Set<string>): Character
     createdAt: asString(value.createdAt) || new Date().toISOString(),
     updatedAt: asString(value.updatedAt) || new Date().toISOString(),
   };
+}
+
+/**
+ * Keys the file carries that the model does not. The importer rebuilds each record
+ * field by field, so these disappear on the way in - which is right, but it used to
+ * happen without a word. The known set is read from a normalised record rather than
+ * from a second hand-written list, so it cannot drift from the model.
+ */
+function findUnsupportedFields(value: unknown, character: Character): string[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+
+  const known = new Set(Object.keys(character));
+  // `avatarAssetData` is transport: a single-character export embeds the picture
+  // this way, and the importer reads it before the record is rebuilt.
+  known.add("avatarAssetData");
+
+  return Object.keys(value).filter((key) => !known.has(key));
 }
 
 function getCharacterCandidates(value: unknown): unknown[] {
@@ -598,6 +655,15 @@ export function exportCharactersCsv(
     put(row, "外貌描述", character.appearanceDescription || "");
     put(row, "能力描述", character.abilityDescription || "");
     put(row, "背景故事", character.backstory || "");
+    // The same fields the editor writes. A column that is exported but not imported
+    // (or the other way round) turns the table into a lossy copy of the library.
+    put(row, "出生日期", character.birthDate || "");
+    put(row, "出生年份", character.birthYear || "");
+    put(row, "喜好", character.likes || "");
+    put(row, "厌恶", character.dislikes || "");
+    put(row, "习惯", character.habits || "");
+    put(row, "重要物品", character.importantItems || "");
+    put(row, "关系关键词", character.relationshipKeywords || "");
     put(row, "中文关键词", character.characterKeywords || "");
     put(row, "英文 AI Prompt", character.imagePrompt || "");
     rows.push(row);
@@ -665,6 +731,7 @@ export async function importCharactersFromFiles(
 export async function prepareCharacterImport(
   files: FileList,
   existingCharacters: Character[],
+  options: CharacterImportOptions = {},
 ): Promise<PreparedCharacterImport> {
   const existingIds = new Set(existingCharacters.map((character) => character.id));
   const preparedCharacters: PreparedCharacter[] = [];
@@ -676,6 +743,7 @@ export async function prepareCharacterImport(
   let dataVersion = "旧版 JSON";
   let workspace: WorkspaceDatasets | null = null;
   let csvWorkspaceRows: CsvWorkspaceRows | null = null;
+  const unsupportedFields = new Set<string>();
 
   for (const file of Array.from(files)) {
     if (isZipFile(file)) {
@@ -686,6 +754,7 @@ export async function prepareCharacterImport(
       hasBackupInfo = hasBackupInfo || prepared.hasBackupInfo;
       dataVersion = prepared.dataVersion || dataVersion;
       workspace = prepared.workspace ?? workspace;
+      prepared.unsupportedFields.forEach((key) => unsupportedFields.add(key));
       continue;
     }
 
@@ -781,10 +850,24 @@ export async function prepareCharacterImport(
     (item) => item.avatarSourceKey && uniqueSourceKeys.has(item.avatarSourceKey),
   ).length;
 
+  const plan = buildImportPlan(
+    preparedCharacters.map((item) => ({ character: item.character, sourceId: item.sourceId })),
+    workspace,
+    {
+      characters: existingCharacters,
+      relationships: options.existing?.relationships ?? [],
+      timeline: options.existing?.timeline ?? [],
+      world: options.existing?.world ?? [],
+    },
+    { mode: options.mode, strategy: options.strategy, categories: options.categories, now: options.now },
+  );
+
   return {
     characters: preparedCharacters,
     avatarAssets: dedupePreparedAssets(preparedAssets),
     workspace,
+    plan,
+    unsupportedFields: [...unsupportedFields],
     preview: {
       roleCount: preparedCharacters.length,
       avatarCount: dedupePreparedAssets(preparedAssets).length,
@@ -799,6 +882,7 @@ export async function prepareCharacterImport(
       hasBackupInfo,
       dataVersion,
       importType: hasCsv ? "csv" : hasZip && hasJson ? "mixed" : hasZip ? "zip" : "json",
+      categories: { ...ALL_CATEGORIES, ...options.categories },
       workspaceCounts: workspace ? countWorkspaceDatasets(workspace) : null,
       unresolvedReferences,
     },
@@ -809,6 +893,7 @@ export async function commitCharacterImport(
   plan: PreparedCharacterImport,
   existingCharacters: Character[],
 ): Promise<CharacterImportCommitResult> {
+  const importPlan = plan.plan;
   const existingAssets = await listAvatarAssets();
   const dataUrlToAssetId = new Map<string, string>();
   let importedAvatarCount = 0;
@@ -821,7 +906,7 @@ export async function commitCharacterImport(
 
   const sourceAssetToNewAsset = new Map<string, string>();
 
-  for (const asset of plan.avatarAssets) {
+  for (const asset of importPlan.categories.avatars ? plan.avatarAssets : []) {
     const existingId = dataUrlToAssetId.get(asset.dataUrl);
 
     if (existingId) {
@@ -835,13 +920,24 @@ export async function commitCharacterImport(
     importedAvatarCount += 1;
   }
 
+  const avatarKeyBySource = new Map(
+    plan.characters.map((item) => [item.sourceId, item.avatarSourceKey ?? ""]),
+  );
+  const storedById = new Map(existingCharacters.map((character) => [character.id, character]));
+
   let autoBoundAvatarCount = 0;
-  const importedCharacters = plan.characters.map(({ character, avatarSourceKey }) => {
+  const importedCharacters = importPlan.characters.items.map(({ sourceId, character, action }) => {
     const nextCharacter = { ...character };
+    const avatarSourceKey = avatarKeyBySource.get(sourceId) ?? "";
 
     if (avatarSourceKey && sourceAssetToNewAsset.has(avatarSourceKey)) {
       nextCharacter.avatarAssetId = sourceAssetToNewAsset.get(avatarSourceKey);
       autoBoundAvatarCount += 1;
+    } else if (action === "update") {
+      // A replacement that carries no picture must not silently delete the one that
+      // is stored: "this file has no avatar" and "remove this avatar" are different
+      // statements, and only the second one should erase an image.
+      nextCharacter.avatarAssetId = storedById.get(character.id)?.avatarAssetId ?? "";
     } else {
       nextCharacter.avatarAssetId = "";
     }
@@ -849,16 +945,37 @@ export async function commitCharacterImport(
     return nextCharacter;
   });
 
-  const mergedCharacters = [...importedCharacters, ...existingCharacters];
+  const mergedCharacters =
+    importPlan.mode === "replace"
+      ? importedCharacters
+      : [...importedCharacters, ...existingCharacters];
 
   // The domains are applied only now, so a relationship can point at a character
   // that arrived in the same file.
-  const workspace = plan.workspace
-    ? applyWorkspaceDatasets(
-        plan.workspace,
-        new Set(mergedCharacters.map((character) => character.id)),
-      )
-    : null;
+  let workspace: WorkspaceCounts | null = null;
+
+  if (plan.workspace) {
+    const current = readWorkspaceDatasets();
+    const keep = <T>(category: boolean, incoming: T[], stored: unknown[]): T[] => {
+      if (category) {
+        return incoming;
+      }
+      // Excluded by the author: the store is left as it is, which in a replace means
+      // carrying the current records across rather than emptying the domain.
+      return importPlan.mode === "replace" ? (stored as T[]) : [];
+    };
+    const datasets: PlannedWorkspace = {
+      relationships: keep(
+        importPlan.categories.relationships,
+        importPlan.relationships.items,
+        current.relationships,
+      ),
+      timeline: keep(importPlan.categories.timeline, importPlan.timeline.items, current.timeline),
+      world: keep(importPlan.categories.world, importPlan.world.items, current.world),
+    };
+
+    workspace = writePlannedDatasets(importPlan.mode, datasets);
+  }
 
   return {
     characters: mergedCharacters,
@@ -941,6 +1058,13 @@ const CSV_FIELDS = {
   外貌描述: "appearanceDescription",
   能力描述: "abilityDescription",
   背景故事: "backstory",
+  出生日期: "birthDate",
+  出生年份: "birthYear",
+  喜好: "likes",
+  厌恶: "dislikes",
+  习惯: "habits",
+  重要物品: "importantItems",
+  关系关键词: "relationshipKeywords",
   中文关键词: "characterKeywords",
   "英文 AI Prompt": "imagePrompt",
 } as const;
@@ -1002,8 +1126,9 @@ async function prepareCharactersFromCsv(file: File, existingIds: Set<string>) {
 
     const character = normalizeCharacter(candidate, existingIds);
     if (character) {
-      // A CSV carries text only, so there is no avatar to bind.
-      characters.push({ character, avatarSourceKey: "" });
+      // A CSV carries text only, so there is no avatar to bind, and no id to carry
+      // either: the row is matched by name, so the character's own id is the source.
+      characters.push({ character, sourceId: character.id, avatarSourceKey: "" });
     }
   }
 
@@ -1021,6 +1146,7 @@ async function prepareCharactersFromCsv(file: File, existingIds: Set<string>) {
     hasBackupInfo: false,
     dataVersion: "CSV",
     workspaceRows,
+    unsupportedFields: [],
   };
 }
 
@@ -1031,13 +1157,17 @@ async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
   const preparedAssets = Array.from(sourceAssetKeys.values());
   const candidates = getCharacterCandidates(parsedValue);
   const preparedCharacters: PreparedCharacter[] = [];
+  const unsupportedFields = new Set<string>();
 
   for (const candidate of candidates) {
+    const sourceId = isRecord(candidate) ? asString(candidate.id) : "";
     const character = normalizeCharacter(candidate, existingIds);
 
     if (!character) {
       continue;
     }
+
+    findUnsupportedFields(candidate, character).forEach((key) => unsupportedFields.add(key));
 
     let avatarSourceKey = "";
 
@@ -1058,7 +1188,7 @@ async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
     }
 
     character.avatarAssetId = "";
-    preparedCharacters.push({ character, avatarSourceKey });
+    preparedCharacters.push({ character, sourceId, avatarSourceKey });
   }
 
   return {
@@ -1067,6 +1197,7 @@ async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
     hasBackupInfo: isRecord(parsedValue) && isRecord(parsedValue["backup-info"]),
     dataVersion: getJsonDataVersion(parsedValue),
     workspace: extractWorkspaceDatasets(parsedValue),
+    unsupportedFields: [...unsupportedFields],
   };
 }
 
@@ -1092,6 +1223,7 @@ async function prepareCharactersFromBackupZip(file: File, existingIds: Set<strin
   const preparedAssets = await collectZipAvatarAssets(entries, manifestValue);
   const candidates = getCharacterCandidates(charactersValue);
   const preparedCharacters: PreparedCharacter[] = [];
+  const unsupportedFields = new Set<string>();
 
   for (const candidate of candidates) {
     const sourceCharacterId = isRecord(candidate) ? asString(candidate.id) : "";
@@ -1101,13 +1233,15 @@ async function prepareCharactersFromBackupZip(file: File, existingIds: Set<strin
       continue;
     }
 
+    findUnsupportedFields(candidate, character).forEach((key) => unsupportedFields.add(key));
+
     const avatarSourceKey = findManifestBoundAssetKey(
       manifestValue,
       sourceCharacterId,
     );
 
     character.avatarAssetId = "";
-    preparedCharacters.push({ character, avatarSourceKey });
+    preparedCharacters.push({ character, sourceId: sourceCharacterId, avatarSourceKey });
   }
 
   return {
@@ -1115,6 +1249,7 @@ async function prepareCharactersFromBackupZip(file: File, existingIds: Set<strin
     avatarAssets: preparedAssets,
     hasBackupInfo: Boolean(backupInfoEntry),
     dataVersion: getBackupDataVersion(backupInfoValue),
+    unsupportedFields: [...unsupportedFields],
     workspace: workspaceEntry
       ? extractWorkspaceDatasets(JSON.parse(await workspaceEntry.blob.text()) as unknown)
       : null,
@@ -1517,36 +1652,130 @@ export async function exportPreviewImage(
   downloadBlob(blob, exportNodeName(characterName, format), mimeType);
 }
 
+/**
+ * The last row that carries anything, plus a small margin. Reading upwards and
+ * stopping at the first painted row keeps the cost to a few reads on a normal sheet.
+ */
+function lastContentRow(context: CanvasRenderingContext2D, width: number, height: number) {
+  const padding = 24;
+
+  for (let y = height - 1; y >= 0; y -= 2) {
+    if (!isFlatRow(context, y, width)) {
+      return Math.min(height, y + padding);
+    }
+  }
+
+  return height;
+}
+
+/** True when a row of the capture is one flat colour, i.e. nothing is being cut. */
+function isFlatRow(
+  context: CanvasRenderingContext2D,
+  y: number,
+  width: number,
+) {
+  const row = context.getImageData(0, y, width, 1).data;
+  const red = row[0];
+  const green = row[1];
+  const blue = row[2];
+
+  // Sampling every fourth pixel: a cut through a glyph shows up within a few pixels,
+  // and reading a whole 2880-wide row for every candidate is needless work.
+  for (let index = 4; index < row.length; index += 16) {
+    if (row[index] !== red || row[index + 1] !== green || row[index + 2] !== blue) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * The sheet on A4 pages.
+ *
+ * The capture is one tall bitmap. Each page gets its own slice of it, encoded once:
+ * the first version embedded the whole image on every page, so a two-page file
+ * carried the picture twice, and it cut at a fixed height, which sliced lines of
+ * text in half. Both are fixed here.
+ *
+ * Text is not selectable. jsPDF's built-in fonts have no CJK glyphs, and embedding a
+ * Chinese font means shipping a multi-megabyte binary - a trade this app does not
+ * make for a share file. The reading copy therefore stays an image; what changed is
+ * its size and how it is paginated.
+ */
 async function createPreviewPdfBlob(element: HTMLElement, options: PreviewCaptureOptions = {}) {
   const [{ jsPDF }, canvas] = await Promise.all([
     importWithRecovery(() => import("jspdf")),
     capturePreviewCanvas(element, options),
   ]);
 
-    if (canvas.width <= 0 || canvas.height <= 0) {
-      throw new Error("PDF 截图生成失败");
-    }
+  if (canvas.width <= 0 || canvas.height <= 0) {
+    throw new Error("PDF 截图生成失败");
+  }
 
-    const imageData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imageWidth = pageWidth;
-    const imageHeight = (canvas.height * imageWidth) / canvas.width;
-    let position = 0;
-    let remainingHeight = imageHeight;
+  const pdf = new jsPDF("p", "mm", "a4");
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  // A band is kept clear at the foot of every page so the page number sits on paper
+  // rather than on top of the last line.
+  const footerBand = 9;
+  const usableHeight = pageHeight - footerBand;
+  // One page holds this many pixels of the capture once it is scaled to page width.
+  const pageHeightPx = Math.max(1, Math.floor((usableHeight * canvas.width) / pageWidth));
+  const context = canvas.getContext("2d");
+  // The preview page is taller than its content and the capture keeps the empty tail,
+  // which used to come out as a mostly blank final page.
+  const contentHeight = context ? lastContentRow(context, canvas.width, canvas.height) : canvas.height;
+  const slices = planPageSlices(
+    Math.max(1, contentHeight),
+    pageHeightPx,
+    context ? (y) => isFlatRow(context, y, canvas.width) : () => false,
+  );
 
-    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
-    remainingHeight -= pageHeight;
+  const mmPerPixel = pageWidth / canvas.width;
 
-    while (remainingHeight > 0) {
-      position -= pageHeight;
+  slices.forEach((slice, index) => {
+    if (index > 0) {
       pdf.addPage();
-      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
-      remainingHeight -= pageHeight;
     }
 
-    return pdf.output("blob");
+    const page = document.createElement("canvas");
+    page.width = canvas.width;
+    page.height = slice.height;
+    const pageContext = page.getContext("2d");
+
+    if (!pageContext) {
+      throw new Error("PDF 分页渲染失败");
+    }
+
+    pageContext.drawImage(canvas, 0, slice.top, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+    // JPEG rather than PNG: the capture is a rendered page, not line art, and at the
+    // quality kept here the difference is invisible while the file is an order of
+    // magnitude smaller. Resolution is untouched, so small text stays small text.
+    pdf.addImage(
+      page.toDataURL("image/jpeg", 0.92),
+      "JPEG",
+      0,
+      0,
+      pageWidth,
+      slice.height * mmPerPixel,
+    );
+  });
+
+  // Page numbers are added once the page count is known, so there is exactly one
+  // footer per page instead of a footer baked into every slice.
+  if (slices.length > 1) {
+    const total = pdf.getNumberOfPages();
+
+    for (let index = 1; index <= total; index += 1) {
+      pdf.setPage(index);
+      pdf.setFontSize(7);
+      pdf.setTextColor(140);
+      pdf.text(`${index} / ${total}`, pageWidth - 12, pageHeight - 7, { align: "right" });
+    }
+  }
+
+  return pdf.output("blob");
 }
 
 export async function exportPreviewPdf(

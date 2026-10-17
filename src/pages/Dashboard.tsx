@@ -4,6 +4,9 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
+import type { Relationship } from "../types/relationship";
+import type { TimelineEvent } from "../types/timeline";
+import type { WorldEntry } from "../types/world";
 import {
   exportAllCharactersJson,
   exportCharacterSnapshot,
@@ -27,13 +30,24 @@ import {
   listAvatarAssets,
   type AvatarAssetRecord,
 } from "../utils/avatarAssets";
-import { createSnapshot, readSnapshot, type LocalSnapshot } from "../storage/backup";
+import { attemptSnapshot, readSnapshot, type LocalSnapshot } from "../storage/backup";
+import { loadCharacters } from "../storage/characterStorage";
 import { clearLocalDataPreservingSnapshot } from "../storage/localDataReset";
 import type {
   DeleteRequestResult,
   RestoreDeleteResult,
 } from "../storage/deleteRecovery";
-import { readWorkspaceDatasets } from "../storage/workspaceBackup";
+import {
+  readWorkspaceCounts,
+  readWorkspaceDatasets,
+  writePlannedDatasets,
+} from "../storage/workspaceBackup";
+import {
+  ALL_CATEGORIES,
+  buildImportPlan,
+  type ConflictStrategy,
+  type ImportCategories,
+} from "../utils/importPlan";
 import {
   applyBulkPatch,
   describeBulkPatch,
@@ -221,6 +235,11 @@ export function Dashboard({
   const [isAssetLibraryOpen, setIsAssetLibraryOpen] = useState(false);
   const [importPlan, setImportPlan] = useState<PreparedCharacterImport | null>(null);
   const [isImportDetailOpen, setIsImportDetailOpen] = useState(false);
+  // The file only says what is in it. What happens to it is decided here, and the
+  // plan is recomputed whenever one of these changes - before anything is written.
+  const [importIntent, setImportIntent] = useState<"merge" | "replace" | "selective">("merge");
+  const [importStrategy, setImportStrategy] = useState<ConflictStrategy>("copy");
+  const [importCategories, setImportCategories] = useState<ImportCategories>(ALL_CATEGORIES);
   const [isClearDataOpen, setIsClearDataOpen] = useState(false);
   const [isAssetCleanupOpen, setIsAssetCleanupOpen] = useState(false);
   const [pendingRestore, setPendingRestore] = useState<LocalSnapshot | null>(null);
@@ -251,6 +270,36 @@ export function Dashboard({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSignalRef = useRef(searchSignal);
   const cardTagLimit = Math.max(0, Math.min(dashboardSettings?.cardTagCount ?? 5, 8));
+
+  // The plan behind the preview. Reading the three stores each time is deliberate:
+  // a conflict is only a conflict against what is stored *now*, and the preview must
+  // show the same answer the write will use.
+  const importDetail = useMemo(() => {
+    if (!importPlan) {
+      return null;
+    }
+
+    const workspace = readWorkspaceDatasets();
+
+    return buildImportPlan(
+      importPlan.characters.map((item) => ({
+        character: item.character,
+        sourceId: item.sourceId,
+      })),
+      importPlan.workspace,
+      {
+        characters,
+        relationships: workspace.relationships as Relationship[],
+        timeline: workspace.timeline as TimelineEvent[],
+        world: workspace.world as WorldEntry[],
+      },
+      {
+        mode: importIntent === "replace" ? "replace" : "merge",
+        strategy: importIntent === "replace" ? "copy" : importStrategy,
+        categories: importIntent === "replace" ? undefined : importCategories,
+      },
+    );
+  }, [importPlan, importIntent, importStrategy, importCategories, characters]);
 
   // One switch, read once, used by the table header and the table cell.
   //
@@ -1108,10 +1157,30 @@ export function Dashboard({
       return;
     }
 
+    // Snapshots written before 2.36.0 hold characters only; restoring one of those
+    // must not empty the graph, the timeline or the world book.
+    const hasWorkspace =
+      Array.isArray(pendingRestore.relationships) ||
+      Array.isArray(pendingRestore.timeline) ||
+      Array.isArray(pendingRestore.world);
+
+    if (hasWorkspace) {
+      writePlannedDatasets("replace", {
+        relationships: pendingRestore.relationships ?? [],
+        timeline: pendingRestore.timeline ?? [],
+        world: pendingRestore.world ?? [],
+      });
+    }
+
     onImport(pendingRestore.characters);
     setPendingRestore(null);
     setIsSettingsOpen(false);
-    showToast(`已恢复 ${pendingRestore.characterCount} 个角色`, "success");
+    showToast(
+      hasWorkspace
+        ? `已恢复 ${pendingRestore.characterCount} 个角色及其关联数据`
+        : `已恢复 ${pendingRestore.characterCount} 个角色（这份旧备份不含关联数据）`,
+      "success",
+    );
   }
 
   async function clearLocalData() {
@@ -1317,7 +1386,7 @@ export function Dashboard({
       updatePrefs({ favoriteMode: "favorites" });
     }
     if (command === "import") {
-      fileInputRef.current?.click();
+      openImport("merge");
     }
     if (command === "export") {
       openCharacterExportDialog("all");
@@ -1328,20 +1397,40 @@ export function Dashboard({
     setIsCommandOpen(false);
   }
 
+  function openImport(intent: "merge" | "replace" | "selective") {
+    setImportIntent(intent);
+    setImportStrategy("copy");
+    setImportCategories(ALL_CATEGORIES);
+    setIsMoreMenuOpen(false);
+    setIsSettingsOpen(false);
+    fileInputRef.current?.click();
+  }
+
   async function handleImportJson(files: FileList | null) {
     if (!files?.length) {
       return;
     }
 
     setLoadingAction("import");
-    setIsMoreMenuOpen(false);
 
     try {
-      const nextImportPlan = await prepareCharacterImport(files, characters);
+      const workspace = readWorkspaceDatasets();
+      const nextImportPlan = await prepareCharacterImport(files, characters, {
+        existing: {
+          relationships: workspace.relationships as Relationship[],
+          timeline: workspace.timeline as TimelineEvent[],
+          world: workspace.world as WorldEntry[],
+        },
+      });
       setImportPlan(nextImportPlan);
       setIsImportDetailOpen(false);
-    } catch {
-      showToast("导入失败：JSON 文件不合法", "error");
+    } catch (error) {
+      // A refused file is not always "JSON is invalid": a ZIP can be missing its
+      // characters, a CSV can be missing its name column. Say which.
+      showToast(
+        error instanceof Error && error.message ? `导入失败：${error.message}` : "导入失败：文件无法读取",
+        "error",
+      );
     } finally {
       setLoadingAction(null);
 
@@ -1352,24 +1441,75 @@ export function Dashboard({
   }
 
   async function confirmImportPlan() {
-    if (!importPlan) {
+    if (!importPlan || !importDetail) {
       return;
     }
 
     setLoadingAction("import");
 
+    // A recovery point is a precondition, not a courtesy. Writing avatars to
+    // IndexedDB and records to localStorage cannot be one transaction, so the only
+    // honest guarantee is: there is a copy of everything this import can overwrite,
+    // written before the first byte of the import itself. If that copy cannot be
+    // written, the import does not start.
+    const point = attemptSnapshot("导入前自动恢复点", characters);
+
+    if (point.status === "failed") {
+      setLoadingAction(null);
+      showToast(`无法写入恢复点（${point.reason}），已取消导入。请先导出备份或清理浏览器存储。`, "error");
+      return;
+    }
+
     try {
-      createSnapshot("导入前自动备份", characters);
-      const result = await commitCharacterImport(importPlan, characters);
+      const result = await commitCharacterImport({ ...importPlan, plan: importDetail }, characters);
       onImport(result.characters);
+
+      // Verify the write by reading it back rather than by trusting the return value.
+      // "Imported 100 characters" is a claim; 100 rows in storage is evidence.
+      const storedCharacters = loadCharacters().length;
+      const storedWorkspace = readWorkspaceCounts();
+      const mismatch =
+        storedCharacters !== importDetail.target.characters ||
+        (result.workspace !== null &&
+          (storedWorkspace.relationships !== importDetail.target.relationships ||
+            storedWorkspace.timeline !== importDetail.target.timeline ||
+            storedWorkspace.world !== importDetail.target.world));
+
+      if (mismatch) {
+        throw new Error(
+          `写入结果与预览不一致（角色 ${storedCharacters}/${importDetail.target.characters}，关系 ${storedWorkspace.relationships}/${importDetail.target.relationships}，事件 ${storedWorkspace.timeline}/${importDetail.target.timeline}，世界观 ${storedWorkspace.world}/${importDetail.target.world}）`,
+        );
+      }
+
       setImportPlan(null);
       await refreshAvatarAssetStats();
       showToast(
-        `已导入 ${result.importedCharacterCount} 个角色，${result.importedAvatarCount} 个头像素材，自动绑定 ${result.autoBoundAvatarCount} 个`,
+        importDetail.mode === "replace"
+          ? `已完整恢复：${result.importedCharacterCount} 个角色、${importDetail.target.relationships} 条关系、${importDetail.target.timeline} 个事件、${importDetail.target.world} 个世界观条目`
+          : `已导入 ${result.importedCharacterCount} 个角色，新增 ${importDetail.relationships.add} 条关系、${importDetail.timeline.add} 个事件、${importDetail.world.add} 个条目`,
         "success",
       );
-    } catch {
-      showToast("导入失败：写入数据时出现问题", "error");
+    } catch (error) {
+      // Put the library back the way it was before saying anything else, so a failed
+      // import never leaves a half-written project behind.
+      if (point.status === "created") {
+        const snapshot = point.snapshot;
+        try {
+          writePlannedDatasets("replace", {
+            relationships: snapshot.relationships ?? [],
+            timeline: snapshot.timeline ?? [],
+            world: snapshot.world ?? [],
+          });
+        } catch {
+          // The copy exists; restoring it can be retried from 设置 → 数据.
+        }
+        onImport(snapshot.characters);
+      }
+
+      showToast(
+        `导入未完成，已回滚到导入前的状态。${error instanceof Error ? error.message : ""}`,
+        "error",
+      );
     } finally {
       setLoadingAction(null);
     }
@@ -2406,13 +2546,13 @@ export function Dashboard({
                 </button>
               )}
               <p className="export-menu-group">数据管理</p>
-              <button onClick={() => fileInputRef.current?.click()} type="button">
+              <button onClick={() => openImport("merge")} type="button">
                 <Icon name="upload" size={16} />
-                导入角色 JSON/ZIP/CSV
+                导入数据（JSON/ZIP/CSV）
               </button>
               <button onClick={() => openCharacterExportDialog("all")} type="button">
                 <Icon name="package" size={16} />
-                导出角色 JSON/ZIP/CSV
+                导出角色数据
               </button>
             </div>
           )}
@@ -2768,8 +2908,9 @@ export function Dashboard({
           >
             <div className="preview-card-title">
               <div>
-                <p className="eyebrow">Export</p>
-                <h2>导出角色</h2>
+                <p className="eyebrow">导出角色档案</p>
+                <h2>选择导出格式</h2>
+                <p className="muted">阅读与分享用版面稿，不含关联数据。</p>
               </div>
               <button
                 className="ghost-button"
@@ -2805,6 +2946,10 @@ export function Dashboard({
                 {loadingAction === "card-png" ? "导出中..." : "PNG"}
               </button>
             </div>
+            <p className="muted export-dialog-note">
+              PDF 是 A4 阅读稿，JPG / PNG 是版面截图，三者都不含关联数据，也不能再导入；
+              需要保留可再导入的数据请用 JSON 或完整备份 ZIP。
+            </p>
           </div>
         </div>
       )}
@@ -2949,8 +3094,8 @@ export function Dashboard({
                 ["search", "搜索角色", "/"],
                 ["drafts", "打开草稿箱", ""],
                 ["favorites", "打开收藏夹", ""],
-                ["import", "导入角色 JSON/ZIP/CSV", ""],
-                ["export", "导出角色 JSON/ZIP", ""],
+                ["import", "导入数据（JSON/ZIP/CSV）", ""],
+                ["export", "导出角色数据", ""],
                 ["theme", "切换主题", ""],
               ].map(([id, label, shortcut]) => (
                 <button key={id} onClick={() => runCommand(id)} type="button">
@@ -3231,14 +3376,32 @@ export function Dashboard({
                   <span>PDF 浅色模式</span>
                 </label>
               </article>
-              <article>
+              <article className="settings-data">
                 <h3>数据</h3>
+                <p className="muted">
+                  当前 {characters.length} 个角色。完整备份包含角色、关系、时间线、世界观与头像图片；
+                  角色 JSON / CSV 与 PDF / 图片只用于阅读或归档。
+                </p>
                 <div className="settings-actions">
-                  <button className="ghost-button" onClick={() => openCharacterExportDialog("all")} type="button">
-                    导出角色 JSON/ZIP
+                  <button
+                    className="ghost-button"
+                    disabled={loadingAction === "full-backup"}
+                    onClick={() => void handleExportFullBackup()}
+                    type="button"
+                  >
+                    {loadingAction === "full-backup" ? "正在打包..." : "完整备份 ZIP"}
                   </button>
-                  <button className="ghost-button" onClick={() => fileInputRef.current?.click()} type="button">
-                    导入角色 JSON/ZIP/CSV
+                  <button className="ghost-button" onClick={() => openImport("replace")} type="button">
+                    完整恢复…
+                  </button>
+                  <button className="ghost-button" onClick={() => openImport("merge")} type="button">
+                    合并导入…
+                  </button>
+                  <button className="ghost-button" onClick={() => openImport("selective")} type="button">
+                    选择性导入…
+                  </button>
+                  <button className="ghost-button" onClick={() => openCharacterExportDialog("all")} type="button">
+                    导出角色数据…
                   </button>
                   {(() => {
                     const snapshot = readSnapshot();
@@ -3256,9 +3419,28 @@ export function Dashboard({
                     清空本地数据
                   </button>
                 </div>
+                <details className="settings-format-help">
+                  <summary>这几种数据有什么区别</summary>
+                  <ul>
+                    <li>
+                      <strong>完整备份 ZIP</strong>：角色、关系、时间线、世界观与头像图片，换设备或长期存档用。
+                    </li>
+                    <li>
+                      <strong>完整恢复</strong>：用备份替换当前全部数据；写入前自动保存恢复点，失败会回滚。
+                    </li>
+                    <li>
+                      <strong>合并导入</strong>：保留现有资料，只加入备份里的内容，冲突可逐个策略处理。
+                    </li>
+                    <li>
+                      <strong>选择性导入</strong>：合并时可以只导入关系、时间线或世界观。
+                    </li>
+                    <li>
+                      <strong>角色 JSON / CSV / PDF / 图片</strong>：阅读与归档用；JSON 与 CSV 不含头像二进制，
+                      图片与 PDF 不含关联数据，也不能再导入。
+                    </li>
+                  </ul>
+                </details>
                 <div className="settings-notes">
-                  <p>{contentText.importGuide}</p>
-                  <p>{contentText.exportGuide}</p>
                   <p>{contentText.dialogCopy}</p>
                   <p>{contentText.privacy}</p>
                   <p className="settings-license">{contentText.license}</p>
@@ -3310,7 +3492,7 @@ export function Dashboard({
         </div>
       )}
 
-      {importPlan && (
+      {importPlan && importDetail && (
         <div
           className="modal-backdrop"
           onMouseDown={(event) => {
@@ -3321,15 +3503,18 @@ export function Dashboard({
           role="presentation"
         >
           <div
-            className="settings-dialog compact-dialog"
+            className="settings-dialog compact-dialog import-dialog"
             ref={importPreviewRef}
             role="dialog"
             aria-modal="true"
+            aria-labelledby="import-dialog-title"
           >
             <div className="preview-card-title">
               <div>
                 <p className="eyebrow">导入预览</p>
-                <h2>确认导入</h2>
+                <h2 id="import-dialog-title">
+                  {importDetail.mode === "replace" ? "完整恢复" : "确认导入"}
+                </h2>
               </div>
               <button className="ghost-button" onClick={() => setImportPlan(null)} type="button">
                 取消
@@ -3337,63 +3522,199 @@ export function Dashboard({
             </div>
             <div className="settings-grid import-preview-grid">
               <article>
-                <h3>即将导入</h3>
-                <p className="muted">确认前不会写入角色或头像素材。</p>
+                <h3>数据包内容</h3>
+                <p className="muted">确认前不会写入角色、关联数据或头像素材。</p>
                 <div className="import-preview-stats">
-                  <span>角色：{importPlan.preview.roleCount} 个</span>
+                  <span>角色：{importDetail.incoming.characters} 个</span>
+                  <span>关系：{importDetail.incoming.relationships} 条</span>
+                  <span>事件：{importDetail.incoming.timeline} 个</span>
+                  <span>世界观：{importDetail.incoming.world} 条</span>
                   <span>头像素材：{importPlan.preview.avatarCount} 个</span>
                   <span>导入类型：{getImportTypeLabel(importPlan.preview.importType)}</span>
-                  {/* Files written before the graph, the timeline and the world book
-                      existed carry characters only, and then this line is absent. */}
-                  {importPlan.preview.workspaceCounts && (
-                    <span>
-                      关系网 {importPlan.preview.workspaceCounts.relationships} · 世界观{" "}
-                      {importPlan.preview.workspaceCounts.world} · 时间线{" "}
-                      {importPlan.preview.workspaceCounts.timeline}
-                    </span>
-                  )}
+                  <span>数据版本：{getDataVersionLabel(importPlan.preview.dataVersion)}</span>
+                  <span>重名角色：{importPlan.preview.duplicateCharacterCount} 个</span>
+                  <span>重复头像素材：{importPlan.preview.duplicateAssetCount} 个</span>
                 </div>
-                <button
-                  className="ghost-button import-detail-toggle"
-                  onClick={() => setIsImportDetailOpen((current) => !current)}
-                  type="button"
-                >
-                  {isImportDetailOpen ? "收起详细信息 ▲" : "查看详细信息 ▼"}
-                </button>
-                {isImportDetailOpen && (
-                  <div className="import-preview-stats">
-                    <span>自动绑定头像：{importPlan.preview.autoMatchedAvatarCount} 个</span>
-                    <span>未绑定头像：{importPlan.preview.unmatchedAvatarCount} 个</span>
-                    <span>重复头像素材：{importPlan.preview.duplicateAssetCount} 个</span>
-                    <span>同名角色：{importPlan.preview.duplicateCharacterCount} 个</span>
+                {importPlan.workspace === null && (
+                  <p className="field-hint">
+                    这份文件不含关系、时间线与世界观数据：导入只影响角色，现有关联保持不变。
+                  </p>
+                )}
+                {importPlan.preview.unresolvedReferences.ambiguous +
+                  importPlan.preview.unresolvedReferences.missing >
+                  0 && (
+                  <p className="field-hint">
+                    CSV 里有{" "}
                     {importPlan.preview.unresolvedReferences.ambiguous +
-                      importPlan.preview.unresolvedReferences.missing >
-                      0 && (
-                      <span>
-                        未导入的关联：
-                        {importPlan.preview.unresolvedReferences.ambiguous +
-                          importPlan.preview.unresolvedReferences.missing}{" "}
-                        条 —— 角色重名 {importPlan.preview.unresolvedReferences.ambiguous} 条、
-                        角色不存在 {importPlan.preview.unresolvedReferences.missing} 条，无法确定指向，因此没有建立
-                      </span>
-                    )}
-                    <span>数据版本：{getDataVersionLabel(importPlan.preview.dataVersion)}</span>
-                    <span>完整备份信息：{importPlan.preview.hasBackupInfo ? "包含" : "未包含"}</span>
-                  </div>
+                      importPlan.preview.unresolvedReferences.missing}{" "}
+                    处按名字无法唯一确定的关联（重名{" "}
+                    {importPlan.preview.unresolvedReferences.ambiguous}、找不到{" "}
+                    {importPlan.preview.unresolvedReferences.missing}），不会导入。
+                  </p>
                 )}
               </article>
+
               <article>
-                <h3>冲突处理</h3>
-                <p className="muted">
-                  当前策略为保留全部角色；同 ID 会自动生成新 ID，重复头像素材会自动复用。
+                <h3>导入模式</h3>
+                <div className="segmented-row">
+                  <button
+                    aria-pressed={importDetail.mode === "merge"}
+                    className={importDetail.mode === "merge" ? "active" : ""}
+                    onClick={() => setImportIntent("merge")}
+                    type="button"
+                  >
+                    合并导入
+                  </button>
+                  <button
+                    aria-pressed={importDetail.mode === "replace"}
+                    className={importDetail.mode === "replace" ? "active" : ""}
+                    onClick={() => setImportIntent("replace")}
+                    type="button"
+                  >
+                    完整恢复
+                  </button>
+                </div>
+                <p className="field-hint">
+                  {importDetail.mode === "merge"
+                    ? "保留现有资料，只加入数据包里的内容；冲突按下面的策略处理。"
+                    : `用数据包替换当前的 ${characters.length} 个角色与全部关联数据。`}
                 </p>
-                <p className="muted">
-                  按角色名建立的关系会先校验名字是否唯一：名字同时对应多个角色、或找不到对应角色时，
-                  该关联不会导入，并在上面的导入摘要里计数 —— 角色名不是身份标识，宁可少导入一条，
-                  也不要连到错误的角色上。
-                </p>
-                <p className="muted">
-                  头像只根据备份内的头像绑定信息或单角色内嵌头像恢复，不会靠文件名猜测。
+                {importDetail.mode === "replace" && (
+                  <p className="import-warning">
+                    写入前会自动保存恢复点，覆盖范围是角色、关系、时间线、世界观；头像素材只增不删。
+                    写入结果与预览不一致时会自动回滚。
+                  </p>
+                )}
+              </article>
+
+              {importDetail.mode === "merge" && (
+                <article>
+                  <h3>冲突处理</h3>
+                  <p className="muted">
+                    {importDetail.characters.conflicts > 0
+                      ? `${importDetail.characters.conflicts} 个角色与现有数据同 ID。`
+                      : "没有同 ID 的角色。"}
+                    同名不算同一个角色。
+                  </p>
+                  <div className="import-choice-list">
+                    {(
+                      [
+                        ["keep", "保留现有", "数据包里的同 ID 角色不写入，引用指向现有角色。"],
+                        ["replace", "替换已有", "用数据包里的内容更新同 ID 角色，保留创建时间。"],
+                        ["copy", "创建副本", "同 ID 角色以新 ID 写入，包内引用跟随新 ID。"],
+                      ] as Array<[ConflictStrategy, string, string]>
+                    ).map(([value, label, hint]) => (
+                      <label className="import-choice" key={value}>
+                        <input
+                          checked={importStrategy === value}
+                          name="import-strategy"
+                          onChange={() => setImportStrategy(value)}
+                          type="radio"
+                        />
+                        <span>
+                          <strong>{label}</strong>
+                          <small>{hint}</small>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </article>
+              )}
+
+              {importDetail.mode === "merge" && (
+                <article>
+                  <h3>导入范围</h3>
+                  <div className="import-categories">
+                    {(
+                      [
+                        ["relationships", `关系 ${importDetail.relationships.items.length} 条`],
+                        ["timeline", `时间线 ${importDetail.timeline.items.length} 个`],
+                        ["world", `世界观 ${importDetail.world.items.length} 条`],
+                        ["avatars", "头像素材"],
+                      ] as Array<[keyof ImportCategories, string]>
+                    ).map(([key, label]) => (
+                      <label className="import-category" key={key}>
+                        <input
+                          checked={importCategories[key]}
+                          onChange={(event) =>
+                            setImportCategories((current) => ({
+                              ...current,
+                              [key]: event.target.checked,
+                            }))
+                          }
+                          type="checkbox"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="field-hint">
+                    角色始终导入；不选的关系或条目不会写入，也不会删除已存储的内容。
+                  </p>
+                </article>
+              )}
+
+              <article>
+                <h3>依赖检查</h3>
+                <div className="import-preview-stats">
+                  <span>暂缓的关系：{importDetail.relationships.deferred} 条</span>
+                  <span>删去的失效引用：{importDetail.timeline.prunedReferences + importDetail.world.prunedReferences} 处</span>
+                  <span>重复关系：{importDetail.relationships.duplicates} 条</span>
+                  <span>字段不合格：{importDetail.relationships.invalid + importDetail.timeline.invalid + importDetail.world.invalid} 条</span>
+                  <span>不兼容字段：{importPlan.unsupportedFields.length} 个</span>
+                </div>
+                {importPlan.unsupportedFields.length > 0 && (
+                  <p className="field-hint">
+                    数据包里这些字段本版本不会保存：{importPlan.unsupportedFields.slice(0, 6).join("、")}
+                    {importPlan.unsupportedFields.length > 6 ? " 等" : ""}。
+                  </p>
+                )}
+                {importDetail.omitted.length > 0 ? (
+                  <>
+                    <button
+                      className="ghost-button import-detail-toggle"
+                      onClick={() => setIsImportDetailOpen((current) => !current)}
+                      type="button"
+                    >
+                      {isImportDetailOpen ? "收起明细 ▲" : `查看明细（${importDetail.omitted.length}）▼`}
+                    </button>
+                    {isImportDetailOpen && (
+                      <>
+                        <ul className="import-issue-list">
+                          {importDetail.omitted.slice(0, 12).map((item, index) => (
+                            <li key={`${item.domain}-${index}`}>
+                              <strong>{item.label}</strong>
+                              <span>{item.reason}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        {importDetail.omitted.length > 12 && (
+                          <p className="field-hint">
+                            另有 {importDetail.omitted.length - 12} 条同类记录，处理方式相同。
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <p className="field-hint">没有无法解析的引用，也没有重复或不合格的记录。</p>
+                )}
+              </article>
+
+              <article>
+                <h3>导入后</h3>
+                <div className="import-preview-stats">
+                  <span>角色 {importDetail.target.characters} 个</span>
+                  <span>关系 {importDetail.target.relationships} 条</span>
+                  <span>事件 {importDetail.target.timeline} 个</span>
+                  <span>世界观 {importDetail.target.world} 条</span>
+                </div>
+                <p className="field-hint">
+                  {importDetail.mode === "replace"
+                    ? `替换当前的 ${importDetail.characters.replaced} 个角色`
+                    : `新增 ${importDetail.characters.add} · 更新 ${importDetail.characters.update} · 保留现有 ${importDetail.characters.retained}`}
+                  {importPlan.preview.autoMatchedAvatarCount > 0 &&
+                    ` · 自动绑定头像 ${importPlan.preview.autoMatchedAvatarCount} 个`}
                 </p>
               </article>
             </div>
@@ -3407,7 +3728,11 @@ export function Dashboard({
                 onClick={() => void confirmImportPlan()}
                 type="button"
               >
-                {loadingAction === "import" ? "正在导入..." : "确认导入"}
+                {loadingAction === "import"
+                  ? "正在导入..."
+                  : importDetail.mode === "replace"
+                    ? "确认恢复"
+                    : "确认导入"}
               </button>
             </div>
           </div>
@@ -3443,9 +3768,9 @@ export function Dashboard({
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>清空本地数据</h2>
             <p>
-              确定要清空所有本地角色数据吗？当前共 {characters.length} 个角色。清空前会自动备份一份
-              角色文字资料，但头像图片、角色关系网、世界观时间线、世界观条目和全部设置都不在这份
-              备份里，清空后无法用它找回。
+              确定要清空所有本地角色数据吗？当前共 {characters.length} 个角色。清空前会自动保存一份
+              恢复点，包含角色、关系网、时间线、世界观条目；头像图片与设置不在这份恢复点里，
+              清空后无法用它找回。
             </p>
             <div className="form-actions">
               <button className="ghost-button" onClick={() => setIsClearDataOpen(false)} type="button">

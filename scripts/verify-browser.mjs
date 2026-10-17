@@ -3559,6 +3559,306 @@ async function main() {
     });
 
 await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+
+    // ---- Import: the plan, the write, and what the two agree on -----------------
+    //
+    // These are the checks that a unit test cannot make: the plan is correct in
+    // isolation, but what matters is which ids end up in localStorage after the
+    // dialog is confirmed, and whether the recovery point can actually put them back.
+
+    const FEED_IMPORT = (payload, name) => `(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const input = document.querySelector('input[type="file"][accept*="json"]');
+      if (!input) throw new Error("import input missing");
+      const file = new File([${JSON.stringify(JSON.stringify(payload))}], ${JSON.stringify(name)}, { type: "application/json" });
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      input.files = transfer.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      for (let attempt = 0; attempt < 40 && !document.querySelector(".import-dialog"); attempt++) {
+        await sleep(150);
+      }
+      return Boolean(document.querySelector(".import-dialog"));
+    })()`;
+
+    const CONFIRM_IMPORT = (label) => `(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const dialog = document.querySelector(".import-dialog");
+      if (!dialog) throw new Error("import dialog missing");
+      const button = [...dialog.querySelectorAll(".dialog-actions button")].find(
+        (item) => item.textContent.trim() === ${JSON.stringify(label)},
+      );
+      if (!button) throw new Error("confirm button missing: " + ${JSON.stringify(label)});
+      button.click();
+      for (let attempt = 0; attempt < 80 && document.querySelector(".import-dialog"); attempt++) {
+        await sleep(150);
+      }
+      await sleep(300);
+      return !document.querySelector(".import-dialog");
+    })()`;
+
+    const READ_STORES = `(() => {
+      const read = (key) => {
+        try { return JSON.parse(localStorage.getItem(key) || "[]"); } catch { return []; }
+      };
+      return {
+        characters: read("character-studio.characters"),
+        relationships: read("character-studio.relationships"),
+        timeline: read("character-studio.timeline"),
+        world: read("character-studio.world"),
+        point: (() => {
+          try { return JSON.parse(localStorage.getItem("character-studio.backup") || "null"); } catch { return null; }
+        })(),
+      };
+    })()`;
+
+    await check("导入：合并时引用跟随新 ID，缺失引用被暂缓而预览一致", async () => {
+      const now = "2026-01-01T00:00:00.000Z";
+
+      await cdp.goto(base);
+      await cdp.value(`localStorage.setItem("character-studio.characters", JSON.stringify([
+        { id: "dup-1", name: "已存在的甲", createdAt: ${JSON.stringify(now)}, updatedAt: ${JSON.stringify(now)} }
+      ]));
+      localStorage.setItem("character-studio.relationships", "[]");
+      localStorage.setItem("character-studio.timeline", "[]");
+      localStorage.setItem("character-studio.world", "[]");`);
+      await cdp.goto(base);
+
+      const payload = {
+        exportType: "character-studio-full-backup",
+        exportedAt: now,
+        characters: [
+          { id: "dup-1", name: "包里的甲", createdAt: now, updatedAt: now },
+          { id: "new-2", name: "包里的乙", createdAt: now, updatedAt: now },
+        ],
+        relationships: [
+          // Both ends are in the package, but 包里的甲 has to move to a new id.
+          { id: "rel-keep", fromId: "dup-1", toId: "new-2", kind: "friend", createdAt: now, updatedAt: now },
+          // One end is nobody: this edge must be set aside, not attached to a guess.
+          { id: "rel-ghost", fromId: "dup-1", toId: "ghost", kind: "family", createdAt: now, updatedAt: now },
+        ],
+        timeline: [
+          { id: "evt-1", title: "初遇", date: "2040-01-01", kind: "origin", characterIds: ["dup-1", "ghost"], createdAt: now, updatedAt: now },
+        ],
+        world: [
+          { id: "w-1", name: "白塔城", category: "location", tags: [], characterIds: ["ghost"], createdAt: now, updatedAt: now },
+        ],
+      };
+
+      const opened = await cdp.value(FEED_IMPORT(payload, "mapping.json"));
+      const preview = await cdp.value(`(() => {
+        const dialog = document.querySelector(".import-dialog");
+        if (!dialog) return { stats: [], target: [] };
+        const groups = [...dialog.querySelectorAll("article")];
+        const statsOf = (heading) => {
+          const article = groups.find((item) => item.querySelector("h3")?.textContent.trim() === heading);
+          return article ? [...article.querySelectorAll(".import-preview-stats span")].map((node) => node.textContent.trim()) : [];
+        };
+        return { stats: statsOf("数据包内容"), deps: statsOf("依赖检查"), target: statsOf("导入后") };
+      })()`);
+
+      const confirmed = await cdp.value(CONFIRM_IMPORT("确认导入"));
+      const stores = await cdp.value(READ_STORES);
+
+      const byName = (name) => stores.characters.find((item) => item.name === name);
+      const importedA = byName("包里的甲");
+      const importedB = byName("包里的乙");
+      const edge = stores.relationships[0];
+
+      const conditions = {
+        opened,
+        confirmed,
+        keptExisting: Boolean(byName("已存在的甲")),
+        copiedToNewId: Boolean(importedA) && importedA.id !== "dup-1",
+        threeCharacters: stores.characters.length === 3,
+        oneEdge: stores.relationships.length === 1,
+        edgeFromCopy: Boolean(edge && importedA) && edge.fromId === importedA.id,
+        edgeToPackageCharacter: Boolean(edge && importedB) && edge.toId === importedB.id,
+        ghostNotLinked: stores.relationships.every((item) => item.toId !== "ghost"),
+        timelineKeptPruned: stores.timeline.length === 1 && stores.timeline[0].characterIds.length === 1,
+        worldKeptEmpty: stores.world.length === 1 && stores.world[0].characterIds.length === 0,
+        previewSaidDeferred: preview.deps.some((line) => line.includes("暂缓的关系：1")),
+        targetMatches: preview.target.some((line) => line === "角色 3 个"),
+      };
+      const failing = Object.entries(conditions).filter(([, value]) => !value).map(([key]) => key);
+
+      return {
+        pass: failing.length === 0,
+        detail: `失败项 ${failing.join("/") || "无"}；角色 ${stores.characters.length}（${stores.characters.map((item) => item.name + ":" + item.id).join("、")}）；关系 ${stores.relationships.length} 条（${stores.relationships.map((item) => item.id + " " + item.fromId + "→" + item.toId).join("、")}）；事件关联 ${stores.timeline[0] ? stores.timeline[0].characterIds.length : "-"}；世界观关联 ${stores.world[0] ? stores.world[0].characterIds.length : "-"}；预览「${preview.stats.join(" / ")}」依赖「${preview.deps.join(" / ")}」→ 结果「${preview.target.join(" / ")}」`,
+      };
+    });
+
+    await check("导入：完整恢复覆盖全部数据域，恢复点能真正回滚", async () => {
+      const now = "2026-01-01T00:00:00.000Z";
+
+      await cdp.goto(base);
+      await cdp.value(`(() => {
+        const character = (id, name) => ({ id, name, createdAt: ${JSON.stringify(now)}, updatedAt: ${JSON.stringify(now)} });
+        localStorage.setItem("character-studio.characters", JSON.stringify([character("old-1", "旧的甲"), character("old-2", "旧的乙")]));
+        localStorage.setItem("character-studio.relationships", JSON.stringify([{ id: "old-rel", fromId: "old-1", toId: "old-2", kind: "friend", createdAt: ${JSON.stringify(now)}, updatedAt: ${JSON.stringify(now)} }]));
+        localStorage.setItem("character-studio.timeline", JSON.stringify([{ id: "old-evt", title: "旧事件", date: "2040-01-01", kind: "origin", characterIds: ["old-1"], createdAt: ${JSON.stringify(now)}, updatedAt: ${JSON.stringify(now)} }]));
+        localStorage.setItem("character-studio.world", JSON.stringify([{ id: "old-world", name: "旧条目", category: "location", tags: [], characterIds: ["old-1"], createdAt: ${JSON.stringify(now)}, updatedAt: ${JSON.stringify(now)} }]));
+        localStorage.removeItem("character-studio.backup");
+        return true;
+      })()`);
+      await cdp.goto(base);
+
+      const payload = {
+        exportType: "character-studio-full-backup",
+        exportedAt: now,
+        characters: [{ id: "restore-1", name: "恢复进来的角色", createdAt: now, updatedAt: now }],
+        relationships: [],
+        timeline: [],
+        world: [],
+      };
+
+      const opened = await cdp.value(FEED_IMPORT(payload, "restore.json"));
+      // Switch mode inside the dialog: the same dialog, a different promise.
+      const switched = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const dialog = document.querySelector(".import-dialog");
+        const button = dialog ? [...dialog.querySelectorAll(".segmented-row button")].find((item) => item.textContent.trim() === "完整恢复") : null;
+        if (!button) return { ok: false };
+        button.click();
+        await sleep(300);
+        const warning = dialog.querySelector(".import-warning");
+        const title = dialog.querySelector("h2")?.textContent.trim();
+        const target = [...dialog.querySelectorAll("article")]
+          .find((item) => item.querySelector("h3")?.textContent.trim() === "导入后");
+        return {
+          ok: true,
+          warning: warning ? warning.textContent.trim().slice(0, 20) : "",
+          title,
+          target: target ? [...target.querySelectorAll(".import-preview-stats span")].map((node) => node.textContent.trim()) : [],
+        };
+      })()`);
+
+      const confirmed = await cdp.value(CONFIRM_IMPORT("确认恢复"));
+      const restored = await cdp.value(READ_STORES);
+
+      // Put it back from the recovery point, through the button the author would use.
+      const rollback = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const trigger = [...document.querySelectorAll("footer button, button")].find((item) => item.textContent.trim() === "Settings");
+        if (!trigger) return { opened: false };
+        trigger.click();
+        await sleep(400);
+        const restoreButton = [...document.querySelectorAll(".settings-data button")].find((item) => item.textContent.includes("恢复上次自动备份"));
+        if (!restoreButton) return { opened: true, found: false };
+        restoreButton.click();
+        await sleep(400);
+        const confirm = [...document.querySelectorAll(".confirm-dialog button, .form-actions button")].find((item) => item.textContent.trim() === "确认恢复");
+        if (!confirm) return { opened: true, found: true, confirmed: false };
+        confirm.click();
+        await sleep(600);
+        return { opened: true, found: true, confirmed: true };
+      })()`);
+      const afterRollback = await cdp.value(READ_STORES);
+
+      const conditions = {
+        opened,
+        switched: switched.ok,
+        warningShown: Boolean(switched.warning),
+        titleSaysRestore: switched.title === "完整恢复",
+        previewTargetsZero: switched.target.some((line) => line === "关系 0 条"),
+        confirmed,
+        oneCharacter: restored.characters.length === 1 && restored.characters[0].name === "恢复进来的角色",
+        domainsCleared:
+          restored.relationships.length === 0 &&
+          restored.timeline.length === 0 &&
+          restored.world.length === 0,
+        pointWritten: Boolean(restored.point) && restored.point.relationships.length === 1,
+        rollbackRan: rollback.confirmed === true,
+        charactersBack: afterRollback.characters.length === 2,
+        edgeBack: afterRollback.relationships.length === 1,
+        timelineBack: afterRollback.timeline.length === 1,
+        worldBack: afterRollback.world.length === 1,
+      };
+      const failing = Object.entries(conditions).filter(([, value]) => !value).map(([key]) => key);
+
+      return {
+        pass: failing.length === 0,
+        detail: `失败项 ${failing.join("/") || "无"}；恢复后 角色 ${restored.characters.length}·关系 ${restored.relationships.length}·事件 ${restored.timeline.length}·世界观 ${restored.world.length}；恢复点 角色 ${restored.point ? restored.point.characters.length : "-"}·关系 ${restored.point ? restored.point.relationships.length : "-"}；回滚后 角色 ${afterRollback.characters.length}·关系 ${afterRollback.relationships.length}·事件 ${afterRollback.timeline.length}·世界观 ${afterRollback.world.length}；弹窗标题「${switched.title}」提示「${switched.warning}」→「${switched.target.join(" / ")}」`,
+      };
+    });
+
+    await check("导出：PDF 分页不再重复嵌入整幅图，体积与页数在预算内", async () => {
+      const now = "2026-01-01T00:00:00.000Z";
+      const longText = "第一次潮汐失衡时他十九岁，站在白塔的第三层，看着海水从下城的排水口倒灌进来。".repeat(70);
+
+      await cdp.goto(base);
+      await cdp.value(`localStorage.setItem("character-studio.characters", JSON.stringify([{
+        id: "pdf-1",
+        name: "顾长庚",
+        createdAt: ${JSON.stringify(now)},
+        updatedAt: ${JSON.stringify(now)},
+        gender: "男",
+        age: "62",
+        species: "人类",
+        occupation: "自治议会议长",
+        worldview: "白塔城",
+        personalityTags: ["长于权衡", "记仇", "极少承诺"],
+        appearanceDescription: "银灰短发，左眼下方有一道旧灼痕。" + "穿深灰长袍，袖口永远磨得发亮。".repeat(6),
+        abilityDescription: "能在四小时的争吵里记住每一方的底线。" + "也因此在每一次让步之后都清楚地知道自己失去了什么。".repeat(10),
+        backstory: ${JSON.stringify(longText)},
+        likes: "黑咖啡、旧档案纸的味道",
+        importantItems: "一枚磨平了字的私章",
+      }]))`);
+      await cdp.goto(base);
+
+      const opened = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        window.__pdf = null;
+        if (!window.__origCreateObjectUrl) window.__origCreateObjectUrl = URL.createObjectURL;
+        URL.createObjectURL = function (blob) { window.__pdf = blob; return window.__origCreateObjectUrl.call(URL, blob); };
+        const more = document.querySelector('button[aria-label="更多"]');
+        if (!more) return "no-menu";
+        more.click();
+        await sleep(300);
+        const item = [...document.querySelectorAll(".card-menu button")].find((node) => node.textContent.trim() === "导出");
+        if (!item) return "no-export";
+        item.click();
+        await sleep(400);
+        const pdf = [...document.querySelectorAll(".export-dialog-list button")].find((node) => node.textContent.trim() === "PDF");
+        if (!pdf) return "no-pdf";
+        window.__pdfStart = performance.now();
+        pdf.click();
+        return "ok";
+      })()`);
+
+      const ready = opened === "ok" ? await cdp.waitFor("!!window.__pdf", 60000) : false;
+      const measured = ready
+        ? await cdp.value(`(async () => {
+            const blob = window.__pdf;
+            const bytes = new Uint8Array(await blob.arrayBuffer());
+            let text = "";
+            for (let index = 0; index < bytes.length; index += 65536) {
+              text += String.fromCharCode.apply(null, bytes.subarray(index, index + 65536));
+            }
+            return {
+              size: blob.size,
+              pages: (text.match(/\\/Type\\s*\\/Page[^s]/g) || []).length,
+              ms: Math.round(performance.now() - window.__pdfStart),
+            };
+          })()`)
+        : null;
+
+      const conditions = {
+        clicked: opened === "ok",
+        produced: Boolean(measured),
+        multiPage: Boolean(measured) && measured.pages >= 2,
+        // The old path embedded the whole capture once per page and produced 25 MB
+        // for this character; the budget below is an order of magnitude under it.
+        withinBudget: Boolean(measured) && measured.size > 0 && measured.size < 4_000_000,
+      };
+      const failing = Object.entries(conditions).filter(([, value]) => !value).map(([key]) => key);
+
+      return {
+        pass: failing.length === 0,
+        detail: `失败项 ${failing.join("/") || "无"}；${measured ? `${(measured.size / 1024).toFixed(0)} KB / ${measured.pages} 页 / ${measured.ms}ms` : opened}`,
+      };
+    });
+
       await check("关联信息：三类关联、计数、方向与空状态（任务 A/B/C/D）", async () => {
       await cdp.goto(base);
       await cdp.value(SEED_LINKS);

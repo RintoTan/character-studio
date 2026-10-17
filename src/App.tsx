@@ -1904,8 +1904,8 @@ function App() {
           <div className="confirm-dialog" role="dialog" aria-modal="true">
             <h2>清空本地数据</h2>
             <p>
-              确定要清空角色、设置和所有本地头像素材吗？清空前会自动备份一份角色文字资料，但头像素材、
-              角色关系网、世界观时间线、世界观条目和全部设置都不在这份备份里，清空后无法用它找回。
+              确定要清空角色、设置和所有本地头像素材吗？清空前会自动保存一份恢复点，包含角色、关系网、
+              时间线、世界观条目；头像素材与设置不在其中，清空后无法用这份恢复点找回。
             </p>
             {clearDataError && (
               <div className="form-error" role="alert">

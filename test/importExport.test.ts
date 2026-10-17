@@ -261,6 +261,36 @@ describe("JSON import round trip", () => {
     expect(again.relationshipKeywords).toBe(original.relationshipKeywords);
   });
 
+  it("carries the same profile fields through the CSV channel", async () => {
+    // CSV is offered as an import format, so it has to carry what the editor writes.
+    // The export used to omit these columns while the importer read them, which made
+    // a spreadsheet round trip quietly delete half the profile.
+    const original = character({
+      birthDate: "1998-03-04",
+      birthYear: "雾海历 -34 年",
+      likes: "黑咖啡、旧档案纸的味道",
+      dislikes: "把话说满的人",
+      habits: "作决定前把钢笔帽旋开又拧紧，恰好三次。",
+      importantItems: "一枚磨平了字的私章",
+      relationshipKeywords: "停战协议的担保人",
+    });
+
+    exportCharactersCsv([original], null);
+    const csv = await exportedText();
+    expect(csv).toContain("喜好");
+
+    const plan = await prepareCharacterImport([asFile(csv, "rows.csv", "text/csv")], []);
+    const imported = plan.characters[0].character;
+
+    expect(imported.likes).toBe(original.likes);
+    expect(imported.dislikes).toBe(original.dislikes);
+    expect(imported.habits).toBe(original.habits);
+    expect(imported.importantItems).toBe(original.importantItems);
+    expect(imported.relationshipKeywords).toBe(original.relationshipKeywords);
+    expect(imported.birthDate).toBe(original.birthDate);
+    expect(imported.birthYear).toBe(original.birthYear);
+  });
+
   it("still drops keys that are not part of the Character model", async () => {
     const withExtra = { ...character(), injected: "should not survive" } as Character & {
       injected: string;
