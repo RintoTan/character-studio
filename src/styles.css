@@ -6764,6 +6764,38 @@ kbd {
   font-size: 0.8rem;
 }
 
+.export-related-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.export-related-toggle input {
+  flex: 0 0 auto;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--primary);
+}
+
+.export-related-toggle span {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.export-related-toggle small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .export-dialog-note {
   margin: 12px 0 0;
   font-size: 0.86rem;
@@ -7238,6 +7270,239 @@ kbd {
   color: var(--on-primary);
 }
 
+.relationship-mode {
+  flex: 0 0 auto;
+}
+
+.relationship-mode-count {
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Relationship management: a table that behaves like a list ---------------- */
+
+.manage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+
+.manage-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 240px;
+  max-width: 360px;
+  min-height: var(--control-height);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 0 12px;
+  color: var(--muted);
+}
+
+.manage-search:focus-within {
+  border-color: var(--border-strong);
+}
+
+.manage-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.86rem;
+  outline: none;
+}
+
+.manage-search button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.manage-toolbar .timeline-count {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+/* Fixed layout with stated widths: auto layout let a long note run underneath the
+   action buttons, which then sat on top of the words they were meant to follow. */
+.relationship-table.manage-table {
+  table-layout: fixed;
+}
+
+/* The base table makes every cell one line; a note is the exception, and this has to
+   out-specify that rule rather than merely follow it. */
+.relationship-table.manage-table td {
+  padding: 8px 10px;
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.relationship-table.manage-table .relationship-table-note {
+  max-width: none;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.manage-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.manage-direction {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.relationship-table.manage-table .relationship-col-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  justify-content: flex-end;
+  /* Pinned: the shared rule reserves 1% for one delete button, which three actions
+     and their labels cannot share. */
+  width: 132px;
+  padding-left: 0;
+}
+
+.relationship-table.manage-table .relationship-row-action {
+  white-space: nowrap;
+}
+
+/* A five-column table is a desktop instrument. On a phone the rows become entries:
+   the second character indents under the first, the kind sits beside them, and the
+   note and the actions take the full width. Same markup, same table semantics. */
+@media (max-width: 720px) {
+  /* A search field and three selects in one flex row: at 375px the first select was
+     squeezed to a sliver at the card's edge, so the kind filter could not be used at
+     all. The search takes its own row, the filters share two columns, and the count
+     stops looking like a progress bar. */
+  .manage-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px 10px;
+    align-items: end;
+  }
+
+  .manage-search {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+
+  .manage-toolbar .timeline-filter {
+    min-width: 0;
+  }
+
+  .manage-toolbar .timeline-filter select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .manage-toolbar .timeline-count {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-left: 0;
+  }
+
+  .relationship-table.manage-table thead {
+    display: none;
+  }
+
+  .relationship-table.manage-table,
+  .relationship-table.manage-table tbody {
+    display: block;
+  }
+
+  .relationship-table.manage-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 8px;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 0 10px;
+  }
+
+  .relationship-table.manage-table td {
+    display: block;
+    border: 0;
+    padding: 0;
+  }
+
+  .relationship-table.manage-table td:nth-child(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .relationship-table.manage-table td:nth-child(2) {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    padding-top: 2px;
+  }
+
+  .relationship-table.manage-table td:nth-child(3) {
+    grid-column: 1;
+    grid-row: 2;
+    padding-left: 18px;
+    color: var(--text-soft);
+  }
+
+  .relationship-table.manage-table td:nth-child(4) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    margin-top: 4px;
+  }
+
+  .relationship-table.manage-table td:nth-child(5) {
+    grid-column: 1 / -1;
+    grid-row: 4;
+    width: auto;
+    justify-content: flex-start;
+    margin-top: 8px;
+  }
+}
+
+.relationship-node-name.hub {
+  font-weight: 700;
+}
+
+.graph-scope-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.relationship-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 14px 0 2px;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.relationship-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.manage-hint {
+  margin: 6px 0 0;
+  font-size: var(--text-meta);
+}
+
 .graph-segment-button:disabled {
   cursor: progress;
   opacity: 0.6;
@@ -7686,12 +7951,17 @@ kbd {
    jumping — the year filter is a separate control in the toolbar. */
 .timeline-year-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   margin: 12px 0 0;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scroll-behavior: smooth;
 }
 
 .timeline-year-jump {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -8385,7 +8655,6 @@ kbd {
 
 .world-detail-back {
   justify-self: start;
-  transform: rotate(180deg);
   gap: 4px;
 }
 
@@ -9047,6 +9316,43 @@ kbd {
   align-items: center;
   gap: var(--btn-gap);
   flex-wrap: wrap;
+}
+
+/* The three data workspaces put their content straight onto the card, so the header
+   had a 24px inset and everything under it started 1px from the border: a search
+   field flush with a panel edge, under a title that was not. One measure per page,
+   declared once and inherited by whatever the page puts on it. The relationship
+   canvas keeps its own inset rather than bleeding, so the drawing and the table below
+   it share a left edge.
+   The timeline is a reading surface before it is a list, so its column is capped: an
+   event description 1,050px wide is a line the eye cannot track back. */
+.relationship-page,
+.timeline-page,
+.world-page {
+  --workspace-inset: 24px;
+}
+
+.relationship-page > :not(.workspace-header),
+.world-page > :not(.workspace-header),
+.timeline-page > :not(.workspace-header) {
+  margin-inline: var(--workspace-inset);
+}
+
+.timeline-page > :not(.workspace-header) {
+  margin-inline: var(--workspace-inset);
+  max-width: 880px;
+}
+
+.world-page .world-detail {
+  max-width: 720px;
+}
+
+@media (max-width: 720px) {
+  .relationship-page,
+  .timeline-page,
+  .world-page {
+    --workspace-inset: 16px;
+  }
 }
 
 /* A section inside a surface, and the long-form dialog's frame, are stated by the pages
@@ -9968,6 +10274,13 @@ select:disabled {
     width: 100%;
     justify-content: flex-start;
     background: var(--surface);
+  }
+
+  /* In detail mode the phone shows one pane. The search field, the two filters and the
+     count belong to the list, which is not on screen: leaving them above the entry
+     offered controls that filtered something the reader could not see. */
+  .world-page:has(.world-explorer.show-detail) .world-toolbar {
+    display: none;
   }
 
   /* The canvas keeps its own tools rather than the page's. */
