@@ -53,6 +53,15 @@ type RelationshipGraphProps = {
   onFocusHandled?: () => void;
 };
 
+/** Rows per page in the management list. Twenty fits a laptop screen without a scroll
+ *  inside the page, and keeps the pager close to the row being edited. */
+const MANAGE_PAGE_SIZE = 20;
+/** Past this many connected characters, the default drawing keeps only the hubs. */
+const CORE_VIEW_LIMIT = 40;
+const CORE_VIEW_DEGREE = 2;
+/** Below this many drawn nodes every edge can carry its type word; above it, only the
+ *  edges of the node being pointed at do. */
+const EDGE_LABEL_LIMIT = 18;
 const VIEW = 640;
 const RADIUS = 236;
 const NODE_RADIUS = 30;
@@ -85,8 +94,8 @@ const NODE_GAP = 18;
 // the small one is enlarged (its names were hidden anyway, at a zoom nobody had
 // reached) and the large one is shrunk until a name is three pixels tall. These three
 // numbers are what "a name you can read" means here.
-const MIN_LABEL_PX = 9;
-const LABEL_GAP_FACTOR = 2.4;
+const MIN_LABEL_PX = 11;
+const LABEL_GAP_FACTOR = 2.2;
 const LABEL_GAP_MIN = 12;
 // Where focusing a character stops zooming in. Enough for a big roster's names to
 // become readable; past it the canvas is a close-up of one circle.
@@ -659,6 +668,22 @@ export function RelationshipGraph({
 }: RelationshipGraphProps) {
   const [relationships, setRelationships] = useState<Relationship[]>([]);
   const [draft, setDraft] = useState<{ fromId: string; toId: string; kind: RelationshipKind; note: string } | null>(null);
+  // Editing reuses the create dialog: the same four fields, with an id to write over.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  // Two jobs on one screen. The drawing answers "who is this person connected to"; the
+  // list answers "where is that one edge". A hundred and ninety edges cannot be both.
+  const [boardMode, setBoardMode] = useState<"graph" | "manage">(() => {
+    try {
+      return localStorage.getItem("character-studio.relationship-view") === "manage" ? "manage" : "graph";
+    } catch {
+      return "graph";
+    }
+  });
+  const [manageQuery, setManageQuery] = useState("");
+  const [manageKind, setManageKind] = useState<"all" | RelationshipKind>("all");
+  const [manageCharacter, setManageCharacter] = useState("all");
+  const [manageSort, setManageSort] = useState<"person" | "kind" | "recent">("person");
+  const [managePage, setManagePage] = useState(1);
   const [pendingDelete, setPendingDelete] = useState<Relationship | null>(null);
   const [prefs, setPrefs] = useState<GraphPrefs>(() => loadGraphPrefs());
   const [exporting, setExporting] = useState(false);
@@ -708,6 +733,11 @@ export function RelationshipGraph({
   }, [characters]);
 
   const [showAll, setShowAll] = useState(false);
+  // A character the default view left out is still findable: searching for one adds
+  // them and their direct connections to the drawing, so focusing works in one step
+  // instead of asking the reader to turn on the whole roster first. Cleared whenever
+  // the focus is, so the canvas returns to its core view.
+  const [focusExtraIds, setFocusExtraIds] = useState<string[]>([]);
 
   const connectedIds = useMemo(() => {
     const ids = new Set<string>();
@@ -721,10 +751,46 @@ export function RelationshipGraph({
   // Only characters that are actually in a relationship are drawn by default. A
   // roster of a hundred with one relationship is a ring of ninety-nine dots that
   // say nothing about anyone; the rest of the roster is one click away.
-  const visibleCharacters = useMemo(
-    () => (showAll ? characters : characters.filter((character) => connectedIds.has(character.id))),
-    [characters, connectedIds, showAll],
-  );
+  // A hundred nodes on one ring is a circle of dots with a hairball inside it: the
+  // drawing answers nothing at that density. The default view keeps the characters who
+  // hold the graph together (two or more edges, most connected first) and says how many
+  // it left out; 显示全部角色 draws every one of them. Nothing is hidden without a way
+  // to see it.
+  const visibleCharacters = useMemo(() => {
+    const drawn = (() => {
+      if (showAll) {
+        return characters;
+      }
+
+      const connected = characters.filter((character) => connectedIds.has(character.id));
+
+      if (connected.length <= CORE_VIEW_LIMIT) {
+        return connected;
+      }
+
+      const degree = new Map<string, number>();
+      for (const relationship of relationships) {
+        degree.set(relationship.fromId, (degree.get(relationship.fromId) ?? 0) + 1);
+        degree.set(relationship.toId, (degree.get(relationship.toId) ?? 0) + 1);
+      }
+
+      return [...connected]
+        .filter((character) => (degree.get(character.id) ?? 0) >= CORE_VIEW_DEGREE)
+        .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0))
+        .slice(0, CORE_VIEW_LIMIT);
+    })();
+
+    if (showAll || focusExtraIds.length === 0) {
+      return drawn;
+    }
+
+    const present = new Set(drawn.map((character) => character.id));
+    const extras = characters.filter(
+      (character) => focusExtraIds.includes(character.id) && !present.has(character.id),
+    );
+
+    return extras.length ? [...drawn, ...extras] : drawn;
+  }, [characters, connectedIds, relationships, showAll, focusExtraIds]);
 
   const metrics = useMemo(() => graphMetrics(prefs), [prefs]);
   const positions = useMemo(
@@ -797,6 +863,31 @@ export function RelationshipGraph({
   // canvas happens to be zoomed into. The author's own switch still wins: names turned
   // off are off in the picture too.
   const showLabels = prefs.showNames && (exporting || labelsFit);
+
+  // When not every name fits, a few still do: the nodes the most edges meet at are the
+  // ones that make the shape legible ("the two clusters meet at 沈砚"), and the rest
+  // appear on hover or focus.
+  const hubIds = useMemo(() => {
+    if (visibleCharacters.length <= 24) {
+      return new Set<string>();
+    }
+
+    const drawn = new Set(visibleCharacters.map((character) => character.id));
+    const degree = new Map<string, number>();
+    for (const relationship of relationships) {
+      if (drawn.has(relationship.fromId) && drawn.has(relationship.toId)) {
+        degree.set(relationship.fromId, (degree.get(relationship.fromId) ?? 0) + 1);
+        degree.set(relationship.toId, (degree.get(relationship.toId) ?? 0) + 1);
+      }
+    }
+
+    return new Set(
+      [...degree.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 10)
+        .map(([id]) => id),
+    );
+  }, [visibleCharacters, relationships]);
 
   // The canvas only exists once there is something to draw, so this has to re-run when
   // it appears; measuring nothing on mount and never measuring again would leave the
@@ -1060,10 +1151,20 @@ export function RelationshipGraph({
     setNotOnCanvas(null);
 
     if (!byId.has(character.id)) {
-      // Not silently: the character exists, the canvas is filtered, and the author is
-      // told which of the two it is.
-      setNotOnCanvas(character);
-      return;
+      // Two different reasons to be missing, and only one of them needs the reader's
+      // help. Somebody with edges was left out by the core-view cap: draw them and their
+      // direct connections and carry on. Somebody with no edges has nothing to join —
+      // that one is stated, with the way to see them anyway.
+      const peers = relationships
+        .filter((relationship) => relationship.fromId === character.id || relationship.toId === character.id)
+        .map((relationship) => (relationship.fromId === character.id ? relationship.toId : relationship.fromId));
+
+      if (peers.length === 0) {
+        setNotOnCanvas(character);
+        return;
+      }
+
+      setFocusExtraIds([character.id, ...peers]);
     }
 
     setFocusId(character.id);
@@ -1115,6 +1216,14 @@ export function RelationshipGraph({
       setFocusId(null);
     }
   }, [focusId, byId]);
+
+  // Leaving the focus puts the canvas back to its core view: the nodes added for that
+  // one search were an answer to that search, not a new default.
+  useEffect(() => {
+    if (!focusId) {
+      setFocusExtraIds((current) => (current.length ? [] : current));
+    }
+  }, [focusId]);
 
   // Escape leaves the focus, which is the keyboard way out of a highlight that changes
   // what every other node looks like. Not while a dialog is open: those use Escape to
@@ -1183,6 +1292,7 @@ export function RelationshipGraph({
   }, [hoveredId, byId, view, canvas.viewBox, metrics]);
 
   function openDraft() {
+    setEditingId(null);
     setDraft({
       fromId: characters[0]?.id ?? "",
       toId: characters[1]?.id ?? characters[0]?.id ?? "",
@@ -1191,19 +1301,63 @@ export function RelationshipGraph({
     });
   }
 
+  function openEdit(relationship: Relationship) {
+    setEditingId(relationship.id);
+    setDraft({
+      fromId: relationship.fromId,
+      toId: relationship.toId,
+      kind: relationship.kind,
+      note: relationship.note ?? "",
+    });
+  }
+
+  /** Management hands the canvas one character; the drawing does the rest. */
+  function locateOnGraph(relationship: Relationship) {
+    setBoardMode("graph");
+    setQuery("");
+    setFocusId(relationship.fromId);
+    setPendingFocusId(relationship.fromId);
+    window.setTimeout(() => {
+      holderRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+  }
+
   function submitDraft() {
     if (!draft || !draft.fromId || !draft.toId || draft.fromId === draft.toId) {
       return;
     }
     // Refused rather than stored: storage drops the repeat on read anyway, and a save
     // that silently does nothing reads as a broken button.
-    if (findDuplicateRelationship(relationships, draft.fromId, draft.toId, draft.kind)) {
+    // The edge being edited is not a duplicate of itself.
+    const others = editingId
+      ? relationships.filter((relationship) => relationship.id !== editingId)
+      : relationships;
+    if (findDuplicateRelationship(others, draft.fromId, draft.toId, draft.kind)) {
       show("这条关系已经存在了");
       return;
     }
-    const next = [...loadRelationships(), createRelationship(draft.fromId, draft.toId, draft.kind, draft.note)];
-    saveRelationships(next);
+
+    if (editingId) {
+      const next = loadRelationships().map((relationship) =>
+        relationship.id === editingId
+          ? {
+              ...relationship,
+              fromId: draft.fromId,
+              toId: draft.toId,
+              kind: draft.kind,
+              note: draft.note.trim() || undefined,
+              updatedAt: new Date().toISOString(),
+            }
+          : relationship,
+      );
+      saveRelationships(next);
+    } else {
+      const next = [...loadRelationships(), createRelationship(draft.fromId, draft.toId, draft.kind, draft.note)];
+      saveRelationships(next);
+    }
+
     setRelationships(loadRelationships());
+    setEditingId(null);
     setDraft(null);
   }
 
@@ -1254,17 +1408,89 @@ export function RelationshipGraph({
     }
   }
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("character-studio.relationship-view", boardMode);
+    } catch {
+      // A view preference is not worth failing an interaction over.
+    }
+  }, [boardMode]);
+
+  const characterById = useMemo(() => new Map(characters.map((item) => [item.id, item])), [characters]);
+  const nameOf = (id: string) => {
+    const character = characterById.get(id);
+    return character ? characterDisplayName(character) : "";
+  };
+
+  const manageRows = useMemo(() => {
+    const query = manageQuery.trim().toLowerCase();
+    const rows = relationships.filter((relationship) => {
+      if (manageKind !== "all" && relationship.kind !== manageKind) {
+        return false;
+      }
+      if (
+        manageCharacter !== "all" &&
+        relationship.fromId !== manageCharacter &&
+        relationship.toId !== manageCharacter
+      ) {
+        return false;
+      }
+      if (!query) {
+        return true;
+      }
+      const haystack = [
+        characterById.get(relationship.fromId)?.name ?? "",
+        characterById.get(relationship.toId)?.name ?? "",
+        relationship.note ?? "",
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+
+    return [...rows].sort((left, right) => {
+      if (manageSort === "kind") {
+        return relationshipKindLabel(left.kind).localeCompare(relationshipKindLabel(right.kind), "zh");
+      }
+      if (manageSort === "recent") {
+        return (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "");
+      }
+      const leftName = characterById.get(left.fromId)?.name ?? "";
+      const rightName = characterById.get(right.fromId)?.name ?? "";
+      return leftName.localeCompare(rightName, "zh");
+    });
+  }, [relationships, manageQuery, manageKind, manageCharacter, manageSort, characterById]);
+
+  const managePageCount = Math.max(1, Math.ceil(manageRows.length / MANAGE_PAGE_SIZE));
+  const currentPage = Math.min(managePage, managePageCount);
+  const pageRows = manageRows.slice((currentPage - 1) * MANAGE_PAGE_SIZE, currentPage * MANAGE_PAGE_SIZE);
+
+  // A filter that shortens the list must not leave the reader on page 9 of 2.
+  useEffect(() => {
+    if (managePage > managePageCount) {
+      setManagePage(managePageCount);
+    }
+  }, [managePage, managePageCount]);
+
   const canLink = characters.length >= 2;
   const draftSymmetric = draft ? isSymmetricKind(draft.kind) : false;
   const draftDuplicate = draft
-    ? findDuplicateRelationship(relationships, draft.fromId, draft.toId, draft.kind)
+    ? findDuplicateRelationship(
+        editingId ? relationships.filter((relationship) => relationship.id !== editingId) : relationships,
+        draft.fromId,
+        draft.toId,
+        draft.kind,
+      )
     : undefined;
   const draftDuplicateReversed =
     draft && draftDuplicate ? draftDuplicate.fromId === draft.toId : false;
   // Both dialogs take the keyboard: Escape cancels, Enter saves, focus moves in.
   const draftDialogRef = useDialogKeyboard({
     active: Boolean(draft),
-    onClose: () => setDraft(null),
+    onClose: () => {
+      setDraft(null);
+      setEditingId(null);
+    },
     onConfirm: submitDraft,
     confirmDisabled: Boolean(draft) && (draft!.fromId === draft!.toId || Boolean(draftDuplicate)),
   });
@@ -1290,18 +1516,41 @@ export function RelationshipGraph({
                 characters are drawn, and adding an edge. Everything that acts on the
                 canvas itself sits with the canvas. */}
             <div className="toolbar-group">
-          {canLink && (
-            <button
-              aria-pressed={showAll}
-              className={showAll ? "graph-toggle active" : "graph-toggle"}
-              onClick={() => setShowAll((current) => !current)}
-              type="button"
-            >
-              {showAll ? "显示全部角色" : "只显示有关联的"}
-                <span className="graph-toggle-count">{showAll ? characters.length : connectedIds.size}</span>
-              </button>
-            )}
+              <div aria-label="关系网视图" className="graph-segment relationship-mode" role="group">
+                <button
+                  aria-pressed={boardMode === "graph"}
+                  className={boardMode === "graph" ? "graph-segment-button selected" : "graph-segment-button"}
+                  onClick={() => setBoardMode("graph")}
+                  type="button"
+                >
+                  图谱
+                </button>
+                <button
+                  aria-pressed={boardMode === "manage"}
+                  className={boardMode === "manage" ? "graph-segment-button selected" : "graph-segment-button"}
+                  onClick={() => setBoardMode("manage")}
+                  type="button"
+                >
+                  管理
+                  <span className="relationship-mode-count">{relationships.length}</span>
+                </button>
+              </div>
             </div>
+            {boardMode === "graph" && canLink && (
+              <div className="toolbar-group">
+                <button
+                  aria-pressed={showAll}
+                  className={showAll ? "graph-toggle active" : "graph-toggle"}
+                  onClick={() => setShowAll((current) => !current)}
+                  type="button"
+                >
+                  {/* The label and the count say what pressing it will show, so the two
+                      never describe different sets. */}
+                  {showAll ? "只看有关联的" : "显示全部角色"}
+                  <span className="graph-toggle-count">{showAll ? connectedIds.size : characters.length}</span>
+                </button>
+              </div>
+            )}
             <div className="toolbar-group">
               <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
                 新建关系
@@ -1322,10 +1571,12 @@ export function RelationshipGraph({
           <h3>还没有关系</h3>
           <p>关系网只画有连接的角色。点「新建关系」连接两个角色，它们就会出现在这里。</p>
         </div>
-      ) : (
+      ) : boardMode === "graph" ? (
         <>
-          {/* The drawing is decorative markup; the edge list below is the
-              accessible representation of the same data.
+          {/* The drawing is decorative markup; the edge list is the accessible
+              representation of the same data, and it lives in 管理 - one screen
+              answers "who is this person connected to", the other "where is that
+              one edge". A hundred and ninety rows under a drawing answered neither.
               The canvas zooms and pans so a large roster stays navigable instead of
               being flattened into one unreadable ring: names appear only past the
               label zoom, which scales with how many characters there are. */}
@@ -1368,7 +1619,11 @@ export function RelationshipGraph({
                       >
                         <CharacterRow character={character} />
                         <span className="graph-search-state">
-                          {byId.has(character.id) ? "在画布中" : "不在画布"}
+                          {byId.has(character.id)
+                            ? "在画布中"
+                            : (degreeById.get(character.id) ?? 0) > 0
+                              ? "默认未显示"
+                              : "无关联"}
                         </span>
                       </button>
                     ))
@@ -1410,6 +1665,14 @@ export function RelationshipGraph({
               </button>
             </div>
           </div>
+
+          {!showAll && visibleCharacters.length < connectedIds.size && (
+            <p className="graph-scope-note" role="status">
+              画布显示 {visibleCharacters.length} / {connectedIds.size} 个有连接的角色（共{" "}
+              {characters.length} 个），另有 {connectedIds.size - visibleCharacters.length} 个未画出。
+              点「显示全部角色」可以看完整的网络。
+            </p>
+          )}
 
           {notOnCanvas && (
             <div className="graph-notice" role="status">
@@ -1494,9 +1757,16 @@ export function RelationshipGraph({
                   {geometry.arrow && (
                     <polygon className="relationship-arrow-head" points={geometry.arrow} />
                   )}
-                  <text x={geometry.labelX} y={geometry.labelY}>
-                    {relationshipKindLabel(relationship.kind)}
-                  </text>
+                  {/* Edge labels are the first thing a dense graph has too many of:
+                      a hundred rings of 同僚 and 友人 sat on top of each other and none
+                      were read. The stroke style already says the kind, and the legend
+                      names it; the word appears when a node is pointed at, or when the
+                      graph is small enough for every word to have room. */}
+                  {(visibleCharacters.length <= EDGE_LABEL_LIMIT || touchesHovered) && (
+                    <text x={geometry.labelX} y={geometry.labelY}>
+                      {relationshipKindLabel(relationship.kind)}
+                    </text>
+                  )}
                 </g>
               );
             })}
@@ -1507,7 +1777,9 @@ export function RelationshipGraph({
               // The focused node and its direct connections keep their labels whatever
               // the zoom: without that, searching for somebody in a large roster would
               // highlight circles whose names are not being drawn.
-              const labelled = prefs.showNames && (showLabels || isHovered || isFocused || isNeighbour);
+              const labelled =
+                prefs.showNames &&
+                (showLabels || isHovered || isFocused || isNeighbour || hubIds.has(character.id));
               const state = isFocused
                 ? "relationship-node active focused"
                 : isHovered
@@ -1563,8 +1835,16 @@ export function RelationshipGraph({
                   )}
                   {labelled && (
                     <text
-                      className="relationship-node-name"
-                      style={{ fontSize: `${metrics.nameSize}px` }}
+                      className={
+                        !showLabels && hubIds.has(character.id)
+                          ? "relationship-node-name hub"
+                          : "relationship-node-name"
+                      }
+                      style={{
+                        // A hub name carries the structure when no other name fits, so it
+                        // is drawn larger rather than at the size that did not fit.
+                        fontSize: `${metrics.nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1)}px`,
+                      }}
                       x={positions[index].x}
                       y={positions[index].y + metrics.nameDrop}
                     >
@@ -1768,61 +2048,200 @@ export function RelationshipGraph({
             </div>
           </div>
 
-          <div className="relationship-table-head">
-            <h3>关系列表</h3>
-            <span className="muted">
-              {relationships.length} 条 · 互为关系不分方向，师承指向学习的一方
+        </>
+      ) : (
+        <>
+          <div className="manage-toolbar">
+            <label className="manage-search">
+              <Icon name="search" size={15} />
+              <input
+                aria-label="搜索关系"
+                onChange={(event) => {
+                  setManageQuery(event.target.value);
+                  setManagePage(1);
+                }}
+                placeholder="搜索角色名或备注"
+                type="search"
+                value={manageQuery}
+              />
+              {manageQuery !== "" && (
+                <button
+                  aria-label="清空关系搜索"
+                  onClick={() => {
+                    setManageQuery("");
+                    setManagePage(1);
+                  }}
+                  type="button"
+                >
+                  <Icon name="close" size={13} />
+                </button>
+              )}
+            </label>
+            <label className="timeline-filter">
+              <span className="timeline-filter-label">关系</span>
+              <select
+                aria-label="按关系类型筛选"
+                onChange={(event) => {
+                  setManageKind(event.target.value as "all" | RelationshipKind);
+                  setManagePage(1);
+                }}
+                value={manageKind}
+              >
+                <option value="all">全部类型</option>
+                {RELATIONSHIP_KINDS.map((kind) => (
+                  <option key={kind.value} value={kind.value}>
+                    {kind.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="timeline-filter">
+              <span className="timeline-filter-label">角色</span>
+              <select
+                aria-label="按关联角色筛选"
+                onChange={(event) => {
+                  setManageCharacter(event.target.value);
+                  setManagePage(1);
+                }}
+                value={manageCharacter}
+              >
+                <option value="all">全部角色</option>
+                {[...characters]
+                  .sort((left, right) => left.name.localeCompare(right.name, "zh"))
+                  .map((character) => (
+                    <option key={character.id} value={character.id}>
+                      {characterDisplayName(character)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="timeline-filter">
+              <span className="timeline-filter-label">排序</span>
+              <select
+                aria-label="关系排序"
+                onChange={(event) => setManageSort(event.target.value as "person" | "kind" | "recent")}
+                value={manageSort}
+              >
+                <option value="person">按角色名</option>
+                <option value="kind">按关系类型</option>
+                <option value="recent">按更新时间</option>
+              </select>
+            </label>
+            <span aria-live="polite" className="timeline-count">
+              {manageRows.length} / {relationships.length} 条
             </span>
           </div>
-          <div className="relationship-table-wrap">
-            <table className="relationship-table">
-              <caption className="visually-hidden">
-                关系列表：关系类型、两个角色、备注与操作
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">关系</th>
-                  <th scope="col">角色</th>
-                  <th scope="col">另一方</th>
-                  <th scope="col">备注</th>
-                  <th className="relationship-col-actions" scope="col">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {relationships.map((relationship) => {
-                  const symmetric = isSymmetricKind(relationship.kind);
-                  const fromName = byId.get(relationship.fromId)?.character.name ?? "未知角色";
-                  const toName = byId.get(relationship.toId)?.character.name ?? "未知角色";
-                  return (
-                    <tr key={relationship.id}>
-                      <td>
-                        <span className={`relationship-kind-chip kind-${relationship.kind}`}>
-                          {relationshipKindLabel(relationship.kind)}
-                        </span>
-                      </td>
-                      <td>{fromName}</td>
-                      <td>
-                        <span aria-hidden="true">{symmetric ? "↔" : "→"}</span>
-                        <span className="visually-hidden">{symmetric ? "与" : "指向"}</span>
-                        {toName}
-                      </td>
-                      <td className="relationship-table-note">{relationship.note || "—"}</td>
-                      <td className="relationship-col-actions">
-                        <button
-                          aria-label={`删除 ${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
-                          className="relationship-row-action"
-                          onClick={() => setPendingDelete(relationship)}
-                          type="button"
-                        >
-                          删除
-                        </button>
-                      </td>
+
+          {manageRows.length === 0 ? (
+            <div className="empty-state">
+              <h3>没有匹配的关系</h3>
+              <p>换个关键词，或把类型与角色筛选恢复为全部。</p>
+            </div>
+          ) : (
+            <>
+              <div className="relationship-table-wrap">
+                <table className="relationship-table manage-table">
+                  <colgroup>
+                    <col style={{ width: "18%" }} />
+                    <col style={{ width: "130px" }} />
+                    <col style={{ width: "18%" }} />
+                    <col />
+                    <col style={{ width: "132px" }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>角色 A</th>
+                      <th>关系</th>
+                      <th>角色 B</th>
+                      <th>备注</th>
+                      <th>操作</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {pageRows.map((relationship) => {
+                      const symmetric = isSymmetricKind(relationship.kind);
+                      const fromName = nameOf(relationship.fromId) || "未知角色";
+                      const toName = nameOf(relationship.toId) || "未知角色";
+                      return (
+                        <tr key={relationship.id}>
+                          <td className="manage-name">{fromName}</td>
+                          <td>
+                            <span className={`relationship-kind-chip kind-${relationship.kind}`}>
+                              {relationshipKindLabel(relationship.kind)}
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              className="manage-direction"
+                              title={symmetric ? "互为关系" : "方向由左指向右"}
+                            >
+                              {symmetric ? "↔" : "→"}
+                            </span>
+                            <span className="visually-hidden">
+                              {symmetric ? "与对方互为" : "指向右侧角色"}
+                            </span>
+                          </td>
+                          <td className="manage-name">{toName}</td>
+                          <td className="relationship-table-note">{relationship.note || "—"}</td>
+                          <td className="relationship-col-actions">
+                            <button
+                              aria-label={`编辑 ${fromName} 与 ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
+                              className="relationship-row-action"
+                              onClick={() => openEdit(relationship)}
+                              type="button"
+                            >
+                              编辑
+                            </button>
+                            <button
+                              aria-label={`在图谱中定位 ${fromName}`}
+                              className="relationship-row-action"
+                              onClick={() => locateOnGraph(relationship)}
+                              type="button"
+                            >
+                              定位
+                            </button>
+                            <button
+                              aria-label={`删除 ${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
+                              className="relationship-row-action"
+                              onClick={() => setPendingDelete(relationship)}
+                              type="button"
+                            >
+                              删除
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="relationship-pager">
+                <button
+                  className="ghost-button"
+                  disabled={currentPage <= 1}
+                  onClick={() => setManagePage(currentPage - 1)}
+                  type="button"
+                >
+                  上一页
+                </button>
+                <span>
+                  第 {currentPage} / {managePageCount} 页
+                </span>
+                <button
+                  className="ghost-button"
+                  disabled={currentPage >= managePageCount}
+                  onClick={() => setManagePage(currentPage + 1)}
+                  type="button"
+                >
+                  下一页
+                </button>
+              </div>
+
+              <p className="muted manage-hint">
+                → 方向由左指向右（师承方在前）；↔ 互为关系。点「定位」在图谱中放大该角色。
+              </p>
+            </>
+          )}
         </>
       )}
 
@@ -1839,9 +2258,9 @@ export function RelationshipGraph({
             ref={draftDialogRef}
             role="dialog"
             aria-modal="true"
-            aria-label="新建关系"
+            aria-label={editingId ? "编辑关系" : "新建关系"}
           >
-            <h2>新建关系</h2>
+            <h2>{editingId ? "编辑关系" : "新建关系"}</h2>
             {/* The ends and the kind are labelled for the kind chosen: a symmetric
                 relationship has two equal sides, a 师承 edge has a direction. The two
                 ends are pickers rather than dropdowns, because a hundred names in a
@@ -1890,7 +2309,14 @@ export function RelationshipGraph({
               </p>
             )}
             <div className="form-actions">
-              <button className="ghost-button" onClick={() => setDraft(null)} type="button">
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  setDraft(null);
+                  setEditingId(null);
+                }}
+                type="button"
+              >
                 取消
               </button>
               <button
@@ -1899,7 +2325,7 @@ export function RelationshipGraph({
                 onClick={submitDraft}
                 type="button"
               >
-                保存关系
+                {editingId ? "保存修改" : "保存关系"}
               </button>
             </div>
           </div>
@@ -1917,9 +2343,12 @@ export function RelationshipGraph({
           >
             <h2>删除关系</h2>
             <p>
-              将删除「{relationshipKindLabel(pendingDelete.kind)}」关系：{byId.get(pendingDelete.fromId)?.character.name}
+              {/* Every character, not only the ones the canvas draws: a 191-edge roster
+                  can delete an edge whose ends the core view left out, and the dialog
+                  still has to say who it belongs to. */}
+              将删除「{relationshipKindLabel(pendingDelete.kind)}」关系：{nameOf(pendingDelete.fromId) || "未知角色"}
               {isSymmetricKind(pendingDelete.kind) ? " ↔ " : " → "}
-              {byId.get(pendingDelete.toId)?.character.name}。
+              {nameOf(pendingDelete.toId) || "未知角色"}。
             </p>
             <div className="form-actions">
               <button className="ghost-button" onClick={() => setPendingDelete(null)} type="button">
