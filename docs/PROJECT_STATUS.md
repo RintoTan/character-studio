@@ -21,6 +21,21 @@
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
 
+### Sprint 47（已写在仓库、未发布）
+
+版本号不动（仍 2.36.0 / Sprint 46），这一轮是导出与复杂工作区的体验升级，等外部视觉验收后再统一发布。
+
+| 事项 | 实现证据 | 验证 |
+| --- | --- | --- |
+| 角色档案 PDF（文字版，可选中/检索） | `src/utils/characterSheetPdf.ts`（642 行）、`src/utils/characterSheetExport.ts`、`src/utils/fontGlyphCoverage.ts`、`src/assets/fonts/NotoSansSC-CS.ttf` | pypdf 抽取中文文本；4 份样本 1–3 页、63–80 ms |
+| 缺字形不静默丢失 | 同上 `safe()` / `findUnsupportedCharacters` | `test/characterSheetPdf.test.ts` 8 例；`special-chars-sheet.pdf` 15 个字符呈 □ |
+| 关系网图谱 / 管理双模式 | `src/pages/RelationshipGraph.tsx`（2366 行） | 191 条关系分 10 页、姓名+备注搜索、类型/角色筛选、编辑删除定位；375px 条目化 |
+| 工作区容器内距与阅读宽度 | `src/styles.css` 的 `--workspace-inset`、`.timeline-page` 880px、`.world-detail` 720px | 1440/375 无横向溢出；容器贴近卡片边缘的问题消失 |
+| 时间线年份导航 | `src/pages/Timeline.tsx`（649 行） | 单行滚动、当前年入视野、点年份避开吸顶栏 |
+| 世界观主从边界与移动端切换 | `src/pages/WorldManager.tsx`（706 行） | 手机一次一屏、返回列表左向 chevron、详情模式隐藏列表工具栏 |
+
+**浏览器检查**：`npm run verify:browser` 55/55（新增管理视图与控制台两组）。**单元测试**：48 文件 / 538 用例。
+
 **版本号口径已统一（原 KI-07，2026-10-15 修复）**：`package.json` 的 `version` 已由 `1.0.0` 改为 **`2.27.0`**，与 `src/config/version.ts` 的 `APP_VERSION` 一致。
 应用内所有版本显示仍然只读 `version.ts`；`package.json` 的版本号是包元数据，不参与界面与构建产物（`scripts/build-info.mjs` 从 `version.ts` 取值）。
 两处尚未合并为单一来源 —— 见 `docs/ROADMAP.md` 的 R-13。
@@ -52,9 +67,10 @@
 | 收藏 / 草稿箱 | `Dashboard.tsx`（`favoriteMode` 偏好）、`App.tsx` 的 `handlePromoteDraft` / `handleDraftSave` | 已实现 |
 | 搜索 / 筛选 / 排序 | `storage/dashboardPrefs.ts` + `Dashboard.tsx` 的 `getVisibleCharacters` | 已实现 |
 | 批量选择 / 批量编辑 / 批量删除 / 批量复制 | `utils/bulkEdit.ts`、`Dashboard.tsx` 批量条 | 已实现 |
-| 角色关系网 | `src/pages/RelationshipGraph.tsx`（1095 行）+ `storage/relationshipStorage.ts` + `types/relationship.ts` | 已实现 |
-| 世界观时间线 | `src/pages/Timeline.tsx`（319 行）+ `storage/timelineStorage.ts` | 已实现 |
-| 世界观管理（分层条目） | `src/pages/WorldManager.tsx`（381 行）+ `storage/worldStorage.ts` | 已实现 |
+| 角色关系网（图谱 / 管理双模式） | `src/pages/RelationshipGraph.tsx`（2366 行）+ `storage/relationshipStorage.ts` + `storage/graphPrefs.ts` + `types/relationship.ts` | 已实现 |
+| 世界观时间线 | `src/pages/Timeline.tsx`（649 行）+ `storage/timelineStorage.ts` | 已实现 |
+| 世界观管理（分层条目） | `src/pages/WorldManager.tsx`（706 行）+ `storage/worldStorage.ts` | 已实现 |
+| 角色档案 PDF 导出（文字版 / 截图版） | `utils/characterSheetPdf.ts` + `utils/characterSheetExport.ts` + `utils/fontGlyphCoverage.ts` + `assets/fonts/` | 已实现（未发布） |
 | 开发者中心 | `src/pages/DeveloperCenter.tsx`（1199 行）+ `config/developerSettings.ts` | 已实现 |
 | 头像（Emoji + 图片上传 / 裁剪 / 压缩） | `hooks/useAvatarEditing.ts`（433 行）、`utils/cropGeometry.ts`、`components/AvatarDisplay.tsx` | 已实现 |
 | 头像素材库（IndexedDB） | `utils/avatarAssets.ts`（374 行） | 已实现 |
