@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.36.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 数据资产管理与导入导出 2.0；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **46**（`APP_SPRINT`）—— 导入计划/冲突策略/完整恢复/选择性导入/档案 PDF；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.37.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 角色档案 PDF 与复杂工作区；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **47**（`APP_SPRINT`）—— 文字版档案 PDF、关系网双模式、时间线与世界观布局收尾；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（短号 `bccec24`）—— 本文与 `docs/ARCHITECTURE.md` 等文档中的代码行号均以此为基准 |
@@ -21,9 +21,9 @@
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
 
-### Sprint 47（已写在仓库、未发布）
+### Sprint 47（2.37.0）
 
-版本号不动（仍 2.36.0 / Sprint 46），这一轮是导出与复杂工作区的体验升级，等外部视觉验收后再统一发布。
+已随 2.37.0 发布。
 
 | 事项 | 实现证据 | 验证 |
 | --- | --- | --- |
@@ -34,7 +34,7 @@
 | 时间线年份导航 | `src/pages/Timeline.tsx`（649 行） | 单行滚动、当前年入视野、点年份避开吸顶栏 |
 | 世界观主从边界与移动端切换 | `src/pages/WorldManager.tsx`（706 行） | 手机一次一屏、返回列表左向 chevron、详情模式隐藏列表工具栏 |
 
-**浏览器检查**：`npm run verify:browser` 55/55（新增管理视图与控制台两组）。**单元测试**：48 文件 / 538 用例。
+**浏览器检查**：`npm run verify:browser` 56/56（新增管理视图、手机图谱适配与浮动栏新行为三组）。**单元测试**：48 文件 / 538 用例。
 
 **版本号口径已统一（原 KI-07，2026-10-15 修复）**：`package.json` 的 `version` 已由 `1.0.0` 改为 **`2.27.0`**，与 `src/config/version.ts` 的 `APP_VERSION` 一致。
 应用内所有版本显示仍然只读 `version.ts`；`package.json` 的版本号是包元数据，不参与界面与构建产物（`scripts/build-info.mjs` 从 `version.ts` 取值）。
@@ -70,7 +70,7 @@
 | 角色关系网（图谱 / 管理双模式） | `src/pages/RelationshipGraph.tsx`（2366 行）+ `storage/relationshipStorage.ts` + `storage/graphPrefs.ts` + `types/relationship.ts` | 已实现 |
 | 世界观时间线 | `src/pages/Timeline.tsx`（649 行）+ `storage/timelineStorage.ts` | 已实现 |
 | 世界观管理（分层条目） | `src/pages/WorldManager.tsx`（706 行）+ `storage/worldStorage.ts` | 已实现 |
-| 角色档案 PDF 导出（文字版 / 截图版） | `utils/characterSheetPdf.ts` + `utils/characterSheetExport.ts` + `utils/fontGlyphCoverage.ts` + `assets/fonts/` | 已实现（未发布） |
+| 角色档案 PDF 导出（文字版 / 截图版） | `utils/characterSheetPdf.ts` + `utils/characterSheetExport.ts` + `utils/fontGlyphCoverage.ts` + `assets/fonts/` | 已实现 |
 | 开发者中心 | `src/pages/DeveloperCenter.tsx`（1199 行）+ `config/developerSettings.ts` | 已实现 |
 | 头像（Emoji + 图片上传 / 裁剪 / 压缩） | `hooks/useAvatarEditing.ts`（433 行）、`utils/cropGeometry.ts`、`components/AvatarDisplay.tsx` | 已实现 |
 | 头像素材库（IndexedDB） | `utils/avatarAssets.ts`（374 行） | 已实现 |
