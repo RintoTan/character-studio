@@ -15,6 +15,7 @@ export type IconName =
   | "check"
   | "checkSquare"
   | "chevronDown"
+  | "chevronLeft"
   | "chevronRight"
   | "clock"
   | "close"
@@ -88,6 +89,7 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   chevronDown: <path d="m6 9 6 6 6-6" />,
+  chevronLeft: <path d="m15 5-7 7 7 7" />,
   chevronRight: <path d="m9 5 7 7-7 7" />,
   close: <path d="M18 6 6 18M6 6l12 12" />,
   component: (

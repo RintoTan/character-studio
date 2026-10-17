@@ -82,6 +82,7 @@ export function Timeline({
   // what a reader opened to read is not a property of the event.
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [activeYear, setActiveYear] = useState("");
+  const yearNavRef = useRef<HTMLElement | null>(null);
   // The event another screen asked to see, lit up until it is looked at.
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const yearRefs = useRef(new Map<string, HTMLLIElement>());
@@ -187,6 +188,29 @@ export function Timeline({
       window.clearTimeout(timer);
     };
   }, [focusEventId, eventsLoaded, events, visibleEvents, onFocusHandled]);
+
+  // The years are one rail that scrolls, not four rows of chips: with thirty-five
+  // years the navigation used to take the top of the page. Keeping the year being
+  // read in view is what makes a rail as usable as a wrapped grid.
+  useEffect(() => {
+    if (!activeYear) {
+      return;
+    }
+
+    const nav = yearNavRef.current;
+    const chip = nav?.querySelector<HTMLElement>(`[data-year="${activeYear}"]`);
+
+    if (!nav || !chip) {
+      return;
+    }
+
+    const left = chip.offsetLeft;
+    const right = left + chip.offsetWidth;
+
+    if (left < nav.scrollLeft || right > nav.scrollLeft + nav.clientWidth) {
+      nav.scrollTo({ left: left - nav.clientWidth / 2 + chip.offsetWidth / 2, behavior: "smooth" });
+    }
+  }, [activeYear]);
 
   function jumpToYear(year: string) {
     setActiveYear(year);
@@ -347,10 +371,11 @@ export function Timeline({
       {/* Year navigation: only the years on screen, and only worth showing when there is
           more than one of them. */}
       {grouped.length > 1 && (
-        <nav aria-label="年份导航" className="timeline-year-nav">
+        <nav aria-label="年份导航" className="timeline-year-nav" ref={yearNavRef}>
           {grouped.map(([year, yearEvents]) => (
             <button
               aria-current={activeYear === year ? "true" : undefined}
+              data-year={year}
               className={activeYear === year ? "timeline-year-jump active" : "timeline-year-jump"}
               key={year}
               onClick={() => jumpToYear(year)}

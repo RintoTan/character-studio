@@ -456,7 +456,9 @@ export function WorldManager({
           <section aria-label="条目详情" className="world-detail">
             {isNarrowScreen && (
               <button className="ghost-button world-detail-back" onClick={() => setPhonePane("list")} type="button">
-                <Icon name="chevronRight" size={15} />
+                {/* A left chevron, not a right chevron turned around: rotating the button
+                    flipped the label with it. */}
+                <Icon name="chevronLeft" size={15} />
                 返回列表
               </button>
             )}
