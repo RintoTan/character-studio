@@ -1848,6 +1848,35 @@ const GRAPH_MANAGE_NARROW = `
   })()
 `;
 
+// What a phone actually sees: how many node centres are inside the canvas box, which is
+// the difference between "a wheel" and "edges crossing an empty screen".
+const GRAPH_MOBILE_VIEW = `
+  (() => {
+    const svg = document.querySelector(".relationship-canvas");
+    const box = svg?.getBoundingClientRect();
+    const centres = [...document.querySelectorAll(".relationship-node")].map((node) => {
+      const rect = node.getBoundingClientRect();
+      return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, lit: !node.classList.contains("dimmed") };
+    });
+    const inside = (point) => Boolean(box) && point.x >= box.left - 1 && point.x <= box.right + 1 && point.y >= box.top - 1 && point.y <= box.bottom + 1;
+    return {
+      mode: (document.querySelector(".graph-segment-button.selected")?.textContent || "").trim(),
+      nodes: centres.length,
+      inside: centres.filter(inside).length,
+      lit: centres.filter((point) => point.lit).length,
+      litInside: centres.filter((point) => point.lit && inside(point)).length,
+      focused: document.querySelectorAll(".relationship-node.focused").length,
+      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+      fitButton: Boolean(document.querySelector('button[aria-label="适应画布"]')),
+      chip: (document.querySelector(".graph-focus-chip")?.textContent || "").replace(/\\s+/g, " ").trim(),
+      frame: box ? [Math.round(box.width), Math.round(box.height)] : null,
+      viewport: window.innerWidth,
+      overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      scopeNote: (document.querySelector(".graph-scope-note")?.textContent || "").replace(/\\s+/g, " ").trim(),
+    };
+  })()
+`;
+
 // The mechanism behind "a picture avatar survives the export": html2canvas serialises
 // the canvas SVG and loads it back as an image, where a blob: URL cannot resolve and a
 // data URL can. Asserted with a pixel rather than with "the image loaded".
@@ -3277,7 +3306,10 @@ async function main() {
       };
     });
 
-    await check("浮动栏：375 只留滚动操作，滚动时让位、停下恢复、不压住控件", async () => {
+    await check("浮动栏：手机端不显示，桌面端让位且不压住控件", async () => {
+      // A 56px floating control cannot be given a seat on a 375px column of text: every
+      // seat it found was over a row it could not see (buttons were avoided, prose was
+      // not). On phones it is not drawn. The desktop bar keeps its old behaviour.
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: 375,
         height: 800,
@@ -3286,127 +3318,65 @@ async function main() {
       });
       await cdp.goto(base);
       await cdp.value(SEED_CROWDED);
-      // The first visit opens the introduction, which is a modal: it would hide the
-      // bar for a reason that has nothing to do with scrolling.
       await cdp.value(`localStorage.setItem("character-studio.about-seen", "true")`);
       await cdp.goto(base);
 
-      const state = await cdp.value(`(async () => {
+      const phone = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const bar = () => document.querySelector(".floating-actions");
-        const read = () => {
+        const drawn = () => {
           const node = bar();
-          if (!node) return { present: false, buttons: [], covered: [], display: "none" };
-          const buttons = [...node.querySelectorAll("button")];
-          const rect = node.getBoundingClientRect();
-          // Any overlap with a control counts, including a four-pixel one at the
-          // rounded corner: that is the case a point probe misses.
-          const covered = [...document.querySelectorAll("button, a, summary")]
-            .filter((element) => !element.closest(".floating-actions"))
-            .filter((element) => {
-              const box = element.getBoundingClientRect();
-              return (
-                box.width > 0 &&
-                box.height > 0 &&
-                box.left < rect.right &&
-                box.right > rect.left &&
-                box.top < rect.bottom &&
-                box.bottom > rect.top
-              );
-            })
-            .map((element) => element.tagName + "." + String(element.className || "").split(" ")[0]);
-          return {
-            present: true,
-            buttons: buttons.map((button) => button.getAttribute("aria-label")),
-            covered: [...new Set(covered)],
-            display: getComputedStyle(node).display,
-            gap: { bottom: Math.round(window.innerHeight - rect.bottom), right: Math.round(window.innerWidth - rect.right) },
-            lift: Math.abs(Math.round(parseFloat(getComputedStyle(node).transform.split(",")[5] ?? "0") || 0)),
-            cssBottom: getComputedStyle(node).bottom,
-            box: [Math.round(rect.left), Math.round(rect.top), Math.round(rect.width), Math.round(rect.height)],
-          };
+          if (!node) return false;
+          const style = getComputedStyle(node);
+          const box = node.getBoundingClientRect();
+          return style.display !== "none" && style.visibility !== "hidden" && box.width > 0 && box.height > 0;
         };
-        const settle = () => sleep(420);
-
-        await settle();
-        const atTop = read();
-
         window.scrollTo(0, 640);
-        await sleep(70);
-        const during = read();
-
-        // One gesture: several scroll positions, none of the pauses long enough to be
-        // "stopped". The bar must not blink back between them.
-        let transitions = 0;
-        let last = read().present;
-        for (let y = 700; y <= 1100; y += 50) {
-          window.scrollTo(0, y);
-          await sleep(35);
-          const now = read().present;
-          if (now !== last) transitions += 1;
-          last = now;
-        }
-        const duringBurst = read();
-        await settle();
-        const afterIdle = read();
-
-        // Two more resting places, each over a different card: the seat has to be
-        // recomputed, not carried over.
-        window.scrollTo(0, 1400);
-        await settle();
-        const restTwo = read();
-        window.scrollTo(0, 2200);
-        await settle();
-        const restThree = read();
-
+        await sleep(500);
+        const mid = drawn();
         window.scrollTo(0, document.documentElement.scrollHeight);
-        await settle();
-        const atBottom = read();
-
-        window.scrollTo(0, 900);
-        await settle();
-        return { atTop, during, duringBurst, transitions, afterIdle, restTwo, restThree, atBottom };
+        await sleep(500);
+        const bottom = drawn();
+        return {
+          present: Boolean(bar()),
+          display: bar() ? getComputedStyle(bar()).display : "none",
+          mid,
+          bottom,
+          scrolled: Math.round(window.scrollY),
+          pageHeight: document.documentElement.scrollHeight,
+        };
       })()`);
 
-      // A modal owns the screen: the bar must not be drawn over it, whatever the
-      // scroll position says.
-      await cdp.value(`(async () => {
+      // Hiding the bar must not take the page's scrolling or its dialogs with it.
+      const dialog = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        window.scrollTo(0, 640);
-        await sleep(420);
+        window.scrollTo(0, 400);
+        await sleep(200);
         const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
         if (trigger) trigger.click();
         await sleep(400);
-        return true;
-      })()`);
-      const modal = await cdp.value(`(() => {
-        const node = document.querySelector(".floating-actions");
-        return {
-          present: Boolean(node),
-          display: node ? getComputedStyle(node).display : "none",
-          modal: Boolean(document.querySelector(".modal-backdrop")),
-        };
-      })()`);
-      await cdp.value(`(async () => {
+        const open = Boolean(document.querySelector(".settings-dialog"));
         const close = [...document.querySelectorAll(".settings-dialog button")].find((button) => button.textContent.trim() === "关闭");
         if (close) close.click();
-        await new Promise((resolve) => setTimeout(resolve, 300));
-        return true;
+        await sleep(250);
+        return { open, closed: !document.querySelector(".settings-dialog") };
       })()`);
 
-      // The editor is the screen with a real save row. The bar has the same duty there:
-      // rest somewhere that is not on top of the form's own controls.
-      await cdp.value(CARD_MENU_ACTION("编辑"));
-      await cdp.waitFor(`!!document.querySelector(".editor-more-wrap")`, 8000);
-      await cdp.value(`(async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 1440,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await cdp.goto(base);
+      await cdp.value(SEED_CROWDED);
+      await cdp.goto(base);
+      const desktop = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         window.scrollTo(0, 900);
         await sleep(520);
-        return true;
-      })()`);
-      const editor = await cdp.value(`(async () => {
         const node = document.querySelector(".floating-actions");
-        if (!node) return { present: false, covered: [] };
+        if (!node) return { present: false };
         const rect = node.getBoundingClientRect();
         const covered = [...document.querySelectorAll("button, a, summary")]
           .filter((element) => !element.closest(".floating-actions"))
@@ -3422,57 +3392,36 @@ async function main() {
             );
           })
           .map((element) => element.tagName + "." + String(element.className || "").split(" ")[0]);
-        // A field with the caret in it hides the bar outright.
-        const field = [...document.querySelectorAll("textarea, input:not([type='hidden'])")].find(
-          (element) => {
-            const box = element.getBoundingClientRect();
-            return box.height > 0 && box.top > 0 && box.top < window.innerHeight;
-          },
-        );
-        let fieldHides = null;
-        if (field) {
-          field.focus();
-          await new Promise((resolve) => setTimeout(resolve, 120));
-          const live = document.querySelector(".floating-actions");
-          fieldHides = !live || getComputedStyle(live).display === "none";
-          field.blur();
-        }
-        return { present: true, covered: [...new Set(covered)], fieldHides };
+        const buttons = [...node.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"));
+        const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+        if (trigger) trigger.click();
+        await sleep(400);
+        const modalBar = document.querySelector(".floating-actions");
+        const hiddenInDialog = !modalBar || getComputedStyle(modalBar).display === "none";
+        const close = [...document.querySelectorAll(".settings-dialog button")].find((button) => button.textContent.trim() === "关闭");
+        if (close) close.click();
+        await sleep(250);
+        return { present: true, buttons, covered: [...new Set(covered)], hiddenInDialog };
       })()`);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-      const topOk =
-        state.atTop.present && state.atTop.buttons.length === 1 && state.atTop.buttons[0] === "滑到底部";
-      const hidesWhileScrolling =
-        !state.during.present && !state.duringBurst.present && state.transitions <= 1;
-      const returns =
-        state.afterIdle.present &&
-        state.restTwo.present &&
-        state.restThree.present &&
-        state.afterIdle.buttons.includes("回到顶部") &&
-        state.afterIdle.buttons.includes("滑到底部");
-      const bottomOk =
-        state.atBottom.present &&
-        state.atBottom.buttons.length === 1 &&
-        state.atBottom.buttons[0] === "回到顶部";
-      const clearance =
-        state.afterIdle.covered.length === 0 &&
-        state.restTwo.covered.length === 0 &&
-        state.restThree.covered.length === 0 &&
-        state.atTop.covered.length === 0 &&
-        state.atBottom.covered.length === 0 &&
-        editor.present &&
-        editor.covered.length === 0 &&
-        editor.fieldHides === true;
-      const hiddenByModal = modal.modal && modal.display === "none";
-      const safeArea =
-        state.afterIdle.gap && state.afterIdle.gap.bottom >= 10 && state.afterIdle.gap.right >= 10;
+      const phoneOk =
+        phone.display === "none" &&
+        !phone.mid &&
+        !phone.bottom &&
+        phone.scrolled > 0 &&
+        dialog.open &&
+        dialog.closed;
+      const desktopOk =
+        desktop.present &&
+        desktop.buttons.includes("回到顶部") &&
+        desktop.buttons.includes("滑到底部") &&
+        desktop.covered.length === 0 &&
+        desktop.hiddenInDialog === true;
 
       return {
-        pass: Boolean(
-          topOk && hidesWhileScrolling && returns && bottomOk && clearance && hiddenByModal && safeArea,
-        ),
-        detail: `顶部 ${state.atTop.buttons.join("/") || "无"}；滚动中 ${state.during.present ? "仍在" : "已让位"}；整段手势切换 ${state.transitions} 次、结束时 ${state.duringBurst.present ? "仍在" : "仍让位"}；停下后 ${state.afterIdle.buttons.join("/") || "无"}；到底 ${state.atBottom.buttons.join("/") || "无"}；抬起 ${state.afterIdle.lift}/${state.restTwo.lift}/${state.restThree.lift}px；压在控件上 ${[...new Set([...state.afterIdle.covered, ...state.restTwo.covered, ...state.restThree.covered])].join("/") || "无"}；距边 ${state.afterIdle.gap ? `${state.afterIdle.gap.bottom}/${state.afterIdle.gap.right}px` : "-"}；编辑器里 ${editor.present ? "在" : "不在"}、压住 ${editor.covered.join("/") || "无"}、输入时收起 ${editor.fieldHides === null ? "无字段" : editor.fieldHides ? "是" : "否"}；弹窗打开时 ${modal.display}`,
+        pass: Boolean(phoneOk && desktopOk),
+        detail: `375：节点${phone.present ? "仍在 DOM" : "已移除"}、display ${phone.display}、滚动中 ${phone.mid ? "可见" : "不可见"}、到底 ${phone.bottom ? "可见" : "不可见"}、可滚动 ${phone.scrolled}px / 页高 ${phone.pageHeight}；设置弹窗 打开 ${dialog.open} / 关闭 ${dialog.closed}。1440：${desktop.present ? `存在（${desktop.buttons.join("/")}）、压住控件 ${desktop.covered.join("/") || "无"}、弹窗时 ${desktop.hiddenInDialog ? "隐藏" : "仍在"}` : "不存在"}`,
       };
     });
 
@@ -5620,7 +5569,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
-    await check("关系网：375px 下默认就能读到名称，且无横向溢出（任务 C）", async () => {
+    await check("关系网：375px 首次落在管理视图，切到图谱是一屏能看全的视图", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: 375,
         height: 812,
@@ -5628,23 +5577,141 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         mobile: true,
       });
       await cdp.goto(base);
-      await cdp.value(SEED_GRAPH);
+      await cdp.value(SEED_MANAGE);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-mode")`, 8000);
+      const first = await cdp.value(`(() => ({
+        mode: (document.querySelector(".graph-segment-button.selected")?.textContent || "").trim(),
+        canvas: Boolean(document.querySelector(".relationship-canvas")),
+        table: Boolean(document.querySelector(".manage-table")),
+      }))()`);
+
+      await cdp.value(`(() => {
+        [...document.querySelectorAll(".graph-segment-button")].find((button) => button.textContent.trim() === "图谱").click();
+        return true;
+      })()`);
       await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const state = await cdp.value(READ_GRAPH_CANVAS);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      const fitted = await cdp.value(GRAPH_MOBILE_VIEW);
+
+      // Zooming in is allowed; the named control has to bring the whole drawing back.
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const plus = document.querySelector('button[aria-label="放大画布"]');
+        plus.click();
+        plus.click();
+        await sleep(350);
+        return true;
+      })()`);
+      const zoomed = await cdp.value(GRAPH_MOBILE_VIEW);
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        document.querySelector('button[aria-label="适应画布"]').click();
+        await sleep(450);
+        return true;
+      })()`);
+      const refitted = await cdp.value(GRAPH_MOBILE_VIEW);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-      // Starting zoomed in enough to read a name is the narrow-screen version of "fit":
-      // at the fitted scale a phone gives a twelve-character wheel seven-pixel names.
-      const zoomed = Number(state.zoom.replace("%", "")) >= 100;
-      const readable = state.names.length === state.nodeCount && state.names.length > 0;
-      const fits = state.canvasWidth <= state.viewportWidth && state.pageOverflow <= 1;
+      // A phone opens the list, because 45 edges are a list there; the drawing is one tap
+      // away. Once in the drawing, every node is inside the canvas — not just the middle.
+      const entered = first.mode.includes("管理") && first.table && !first.canvas;
+      // A small drawing fits at natural size, so "fitted" means 100% or less, never more:
+      // the opening view may not be a close-up.
+      const fits =
+        fitted.nodes === 12 &&
+        fitted.inside === 12 &&
+        Number(fitted.zoom.replace("%", "")) <= 100 &&
+        refitted.inside === refitted.nodes;
+      const zoomsBack =
+        Number(zoomed.zoom.replace("%", "")) > Number(fitted.zoom.replace("%", "")) &&
+        refitted.inside === refitted.nodes &&
+        fitted.fitButton;
 
       return {
-        pass: Boolean(zoomed && readable && fits && state.imageCount === 1),
-        detail: `375px：节点 ${state.nodeCount}、名称 ${state.names.length} 个（${state.names.join("/")}）、字号 ${state.nameFontPx}、缩放 ${state.zoom}、画布 ${state.canvasWidth}px / 视口 ${state.viewportWidth}px、横向溢出 ${state.pageOverflow}px`,
+        pass: Boolean(entered && fits && zoomsBack && fitted.overflow <= 1),
+        detail: `首次进入 模式「${first.mode}」（画布 ${first.canvas} / 表格 ${first.table}）；切到图谱 节点 ${fitted.nodes}、在画布内 ${fitted.inside}、缩放 ${fitted.zoom}、画布 ${fitted.frame?.join("x")} / 视口 ${fitted.viewport}、溢出 ${fitted.overflow}px、说明「${fitted.scopeNote}」；放大两档 → ${zoomed.zoom}（在画布内 ${zoomed.inside}/${zoomed.nodes}）；按「适应画布」→ ${refitted.zoom}（在画布内 ${refitted.inside}/${refitted.nodes}）`,
+      };
+    });
+
+    await check("关系网：375px 聚焦后角色与直接关系都在视野内，退出恢复概览", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 375,
+        height: 812,
+        deviceScaleFactor: 2,
+        mobile: true,
+      });
+      await cdp.goto(base);
+      await cdp.value(SEED_MANAGE);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-mode")`, 8000);
+      await cdp.value(`(() => {
+        [...document.querySelectorAll(".graph-segment-button")].find((button) => button.textContent.trim() === "图谱").click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      const before = await cdp.value(GRAPH_MOBILE_VIEW);
+
+      // Start zoomed in, so a framing that never runs is visible: the focus has to bring
+      // the view back to something that contains the neighbourhood.
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const plus = document.querySelector('button[aria-label="放大画布"]');
+        plus.click();
+        plus.click();
+        await sleep(350);
+        return true;
+      })()`);
+      const zoomedBefore = await cdp.value(GRAPH_MOBILE_VIEW);
+
+      const focused = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const input = document.querySelector(".graph-search-field input");
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        setter.call(input, "沈砚");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        await sleep(320);
+        const option = document.querySelector(".graph-search-panel .character-picker-option");
+        if (!option) return { found: false };
+        option.click();
+        for (let waited = 0; waited < 2500 && !document.querySelector(".relationship-node.focused"); waited += 100) {
+          await sleep(100);
+        }
+        await sleep(350);
+        return { found: true };
+      })()`);
+      const afterFocus = await cdp.value(GRAPH_MOBILE_VIEW);
+
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(650);
+        return true;
+      })()`);
+      const afterEscape = await cdp.value(GRAPH_MOBILE_VIEW);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      // The focused character and every direct connection are in the viewport, not only
+      // the character; leaving the focus puts the whole drawing back.
+      const framed =
+        focused.found &&
+        afterFocus.focused === 1 &&
+        afterFocus.lit >= 2 &&
+        afterFocus.litInside === afterFocus.lit &&
+        afterFocus.chip.includes("聚焦") &&
+        Number(afterFocus.zoom.replace("%", "")) < Number(zoomedBefore.zoom.replace("%", ""));
+      const overview =
+        afterEscape.focused === 0 &&
+        afterEscape.inside === afterEscape.nodes &&
+        !afterEscape.chip;
+
+      return {
+        pass: Boolean(framed && overview && before.inside === before.nodes),
+        detail: `聚焦前 节点 ${before.nodes}、在画布内 ${before.inside}、缩放 ${before.zoom}（放大两档后 ${zoomedBefore.zoom}）；搜索「沈砚」${focused.found ? "命中并聚焦" : "未命中"} → 聚焦 ${afterFocus.focused}、未变暗 ${afterFocus.lit} 个、其中在画布内 ${afterFocus.litInside}、缩放 ${afterFocus.zoom}、「${afterFocus.chip}」；退出后 聚焦 ${afterEscape.focused}、在画布内 ${afterEscape.inside}/${afterEscape.nodes}、缩放 ${afterEscape.zoom}`,
       };
     });
 
