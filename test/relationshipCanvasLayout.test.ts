@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { normalizeCanvasStyle, styleForPreset } from "../src/storage/canvasStyle";
 import {
   applyPositions,
   clusterLayout,
@@ -14,6 +15,7 @@ import {
   materializeLayout,
   mergeImportedLayout,
   normalizeLayout,
+  mergeImportedLayout,
   placeMissingPositions,
   pruneLayout,
   removeGroup,
@@ -26,10 +28,11 @@ import {
 describe("normalizeLayout", () => {
   it("returns an empty layout for anything that is not a record", () => {
     for (const value of [null, undefined, 42, "x", [], true]) {
-      expect(normalizeLayout(value)).toEqual({
+      expect(normalizeLayout(value)).toMatchObject({
         schemaVersion: LAYOUT_SCHEMA_VERSION,
         positions: {},
         groups: [],
+        style: expect.objectContaining({ preset: "classic" }),
       });
     }
   });
@@ -448,5 +451,94 @@ describe("additional arrangements", () => {
     expect(hierarchyLayout(["b", "a", "c"], edges, { x: 10, y: 20 }, 28)).toEqual(
       hierarchyLayout(["b", "a", "c"], edges, { x: 10, y: 20 }, 28),
     );
+  });
+});
+
+
+describe("canvas appearance", () => {
+  it("opens a Sprint 49 layout in the classic look", () => {
+    const layout = normalizeLayout({
+      schemaVersion: 1,
+      positions: { a: { x: 1, y: 2 } },
+      groups: [],
+    });
+    expect(layout.style?.preset).toBe("classic");
+    expect(layout.style?.node.showNames).toBe(true);
+    expect(layout.nodeStyles).toEqual({});
+    expect(layout.bookmarks).toEqual([]);
+  });
+
+  it("styles each preset differently and keeps the choice on the layout", () => {
+    const archive = styleForPreset("archive");
+    expect(archive.node.showAvatars).toBe(false);
+    expect(archive.canvas.grid).toBe("lines");
+    expect(archive.edge.width).toBeLessThan(styleForPreset("portrait").edge.width);
+
+    const layout = normalizeLayout({ schemaVersion: 2, positions: {}, groups: [], style: archive });
+    expect(layout.style?.preset).toBe("archive");
+    expect(layout.style?.canvas.grid).toBe("lines");
+  });
+
+  it("clamps broken numbers instead of blanking the drawing", () => {
+    const style = normalizeCanvasStyle({
+      preset: "custom",
+      node: { size: 99, nameSize: -3 },
+      edge: { width: "wide", dash: "zigzag" },
+      canvas: { grid: "hexes", gridOpacity: 9 },
+    });
+    expect(style.node.size).toBe(2);
+    expect(style.node.nameSize).toBe(8);
+    expect(style.edge.width).toBe(1.4);
+    expect(style.edge.dash).toBe("solid");
+    expect(style.canvas.grid).toBe("dots");
+    expect(style.canvas.gridOpacity).toBe(0.8);
+  });
+
+  it("drops a deleted character's local style but keeps the rest", () => {
+    const pruned = pruneLayout(
+      normalizeLayout({
+        positions: { a: { x: 0, y: 0 }, b: { x: 1, y: 1 } },
+        groups: [],
+        nodeStyles: { a: { size: 1.2 }, b: { size: 0.8 } },
+      }),
+      ["a"],
+    );
+    expect(pruned.positions.b).toBeUndefined();
+    expect(pruned.nodeStyles).toEqual({ a: { size: 1.2 } });
+  });
+
+  it("protects the local look on merge and takes the package look on replace", () => {
+    const current = normalizeLayout({
+      positions: { local: { x: 0, y: 0 } },
+      groups: [],
+      style: styleForPreset("minimal"),
+      bookmarks: [{ id: "v1", name: "近景", view: { k: 1, x: 2, y: 3 } }],
+    });
+    const incoming = {
+      schemaVersion: 2,
+      positions: { "file-a": { x: 10, y: 10 } },
+      groups: [],
+      style: styleForPreset("archive"),
+    };
+
+    const merged = mergeImportedLayout({
+      current,
+      incoming,
+      idBySource: new Map([["file-a", "file-a"]]),
+      finalIds: ["local", "file-a"],
+      mode: "merge",
+    });
+    expect(merged.style?.preset).toBe("minimal");
+    expect(merged.bookmarks).toHaveLength(1);
+
+    const replaced = mergeImportedLayout({
+      current,
+      incoming,
+      idBySource: new Map([["file-a", "file-a"]]),
+      finalIds: ["file-a"],
+      mode: "replace",
+    });
+    expect(replaced.style?.preset).toBe("archive");
+    expect(replaced.positions.local).toBeUndefined();
   });
 });

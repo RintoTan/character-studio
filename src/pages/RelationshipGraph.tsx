@@ -1,3 +1,4 @@
+import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type CanvasStyle, type CanvasPresetId } from "../storage/canvasStyle";
 import {
   useEffect,
   useLayoutEffect,
@@ -869,6 +870,7 @@ export function RelationshipGraph({
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [isAlignOpen, setIsAlignOpen] = useState(false);
+  const [isStyleOpen, setIsStyleOpen] = useState(false);
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
   const redoRef = useRef<CanvasLayout[]>([]);
@@ -882,9 +884,11 @@ export function RelationshipGraph({
   // than a guess about which fields count.
   const draftBaselineRef = useRef("");
   useEscapeDismiss(isArrangeOpen, () => setIsArrangeOpen(false));
+  useEscapeDismiss(isStyleOpen, () => setIsStyleOpen(false));
   useEscapeDismiss(isGroupsOpen, () => setIsGroupsOpen(false));
   useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
   useEscapeDismiss(Boolean(preview), () => setPreview(null));
+  const style = layout.style ?? DEFAULT_CANVAS_STYLE;
   const metrics = useMemo(() => graphMetrics(prefs), [prefs]);
   // The ring the canvas starts as. It is still what a workspace with no saved layout
   // draws, so an untouched graph looks exactly as it did before free placement.
@@ -1236,6 +1240,15 @@ export function RelationshipGraph({
     setLayout(next);
     saveLayout(next);
     setHistoryVersion((version) => version + 1);
+  }
+
+  /** Style edits are layout edits: same store, same undo history, same backup. */
+  function patchStyle(next: CanvasStyle) {
+    commitLayout({ ...workingLayout(), style: next });
+  }
+
+  function applyPreset(id: CanvasPresetId) {
+    patchStyle(styleForPreset(id));
   }
 
   function undoLayout() {
@@ -2543,6 +2556,14 @@ export function RelationshipGraph({
               </div>
 
               <button
+                aria-expanded={isStyleOpen}
+                className="graph-tool-button"
+                onClick={() => setIsStyleOpen((open) => !open)}
+                type="button"
+              >
+                外观
+              </button>
+              <button
                 aria-label="重置视角"
                 className="graph-tool-button"
                 onClick={() => {
@@ -2613,27 +2634,33 @@ export function RelationshipGraph({
               {/* A dot grid, drawn in drawing coordinates so it pans and zooms with
                   the nodes. It is a reference for the eye, not a container: there is
                   no boundary to hit. */}
-              <pattern height="48" id="graph-dot-grid" patternUnits="userSpaceOnUse" width="48">
+              <pattern height={style.canvas.gridSize} id="graph-dot-grid" patternUnits="userSpaceOnUse" width={style.canvas.gridSize}>
                 <circle className="graph-grid-dot" cx="1" cy="1" r="1.1" />
+              </pattern>
+              <pattern height={style.canvas.gridSize} id="graph-line-grid" patternUnits="userSpaceOnUse" width={style.canvas.gridSize}>
+                <path className="graph-grid-dot" d={`M 0 0 L ${style.canvas.gridSize} 0 M 0 0 L 0 ${style.canvas.gridSize}`} fill="none" strokeWidth="0.6" />
               </pattern>
               {prefs.showAvatars &&
                 visibleCharacters.map((character, index) =>
                   avatarUrls[character.id] ? (
                     <clipPath id={avatarClipId(character.id)} key={character.id}>
-                      <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius} />
+                      <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius * style.node.size} />
                     </clipPath>
                   ) : null,
                 )}
             </defs>
             <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
-            <rect
-              className="graph-grid-plane"
-              fill="url(#graph-dot-grid)"
-              height={12000}
-              width={16000}
-              x={-8000}
-              y={-6000}
-            />
+            {style.canvas.grid !== "none" && (
+              <rect
+                className="graph-grid-plane"
+                fill={`url(#${style.canvas.grid === "lines" ? "graph-line-grid" : "graph-dot-grid"})`}
+                height={12000}
+                opacity={style.canvas.gridOpacity}
+                width={16000}
+                x={-8000}
+                y={-6000}
+              />
+            )}
             {/* Visual groups sit under the edges and the nodes: a rectangle that
                 covered them would swallow every drag that started inside it. */}
             {groupRects.map(({ group, rect }) => (
@@ -2668,6 +2695,13 @@ export function RelationshipGraph({
                 metrics,
                 symmetrical: symmetric,
               });
+              const edgeColor = style.edge.byKind
+                ? `hsl(${kindHue(relationship.kind)} 42% 48%)`
+                : style.edge.color || undefined;
+              const edgePath =
+                style.edge.curve === "straight"
+                  ? `M ${from.x} ${from.y} L ${to.x} ${to.y}`
+                  : geometry.path;
               const touchesHovered =
                 activeId !== null &&
                 (relationship.fromId === activeId || relationship.toId === activeId);
@@ -2676,17 +2710,34 @@ export function RelationshipGraph({
                   className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}`}
                   key={relationship.id}
                 >
-                  <path d={geometry.path} />
+                  <path
+                    d={edgePath}
+                    style={{
+                      stroke: edgeColor,
+                      strokeDasharray:
+                        style.edge.dash === "dashed"
+                          ? "7 5"
+                          : style.edge.dash === "dotted"
+                            ? "2 4"
+                            : undefined,
+                      strokeWidth: style.edge.width,
+                    }}
+                  />
                   {geometry.arrow && (
-                    <polygon className="relationship-arrow-head" points={geometry.arrow} />
+                    <polygon
+                      className="relationship-arrow-head"
+                      points={geometry.arrow}
+                      style={edgeColor ? { fill: edgeColor } : undefined}
+                    />
                   )}
                   {/* Edge labels are the first thing a dense graph has too many of:
                       a hundred rings of 同僚 and 友人 sat on top of each other and none
                       were read. The stroke style already says the kind, and the legend
                       names it; the word appears when a node is pointed at, or when the
                       graph is small enough for every word to have room. */}
-                  {(visibleCharacters.length <= EDGE_LABEL_LIMIT || touchesHovered) && (
-                    <text x={geometry.labelX} y={geometry.labelY}>
+                  {style.edge.showLabel &&
+                    (visibleCharacters.length <= EDGE_LABEL_LIMIT || touchesHovered) && (
+                    <text style={{ fontSize: `${style.edge.labelSize}px` }} x={geometry.labelX} y={geometry.labelY}>
                       {relationshipKindLabel(relationship.kind)}
                     </text>
                   )}
@@ -2724,7 +2775,7 @@ export function RelationshipGraph({
                   onPointerLeave={() => setHoveredId(null)}
                   role="presentation"
                 >
-                  <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius} />
+                  <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius * style.node.size} />
                   {/* An uploaded picture is drawn as the node itself, through the same
                       circle and at the same size as the emoji it replaces. Before this
                       the graph only ever drew `avatarEmoji`, so a character with a
@@ -2815,6 +2866,74 @@ export function RelationshipGraph({
             </div>
           )}
           </div>
+
+          {isStyleOpen && (
+            <div className="graph-style-panel" role="group" aria-label="画布外观">
+              <div className="graph-style-presets">
+                {CANVAS_PRESETS.map((preset) => (
+                  <button
+                    className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
+                    key={preset.id}
+                    onClick={() => applyPreset(preset.id)}
+                    title={preset.hint}
+                    type="button"
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+              <div className="graph-style-grid">
+                <label>节点大小
+                  <input max={2} min={0.6} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })} step={0.05} type="range" value={style.node.size} />
+                </label>
+                <label className="graph-style-check">
+                  <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
+                  显示头像
+                </label>
+                <label>连线宽度
+                  <input max={6} min={0.4} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } })} step={0.1} type="range" value={style.edge.width} />
+                </label>
+                <label>线型
+                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
+                    <option value="solid">实线</option>
+                    <option value="dashed">虚线</option>
+                    <option value="dotted">点线</option>
+                  </select>
+                </label>
+                <label>走向
+                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
+                    <option value="curved">曲线</option>
+                    <option value="straight">直线</option>
+                  </select>
+                </label>
+                <label className="graph-style-check">
+                  <input checked={style.edge.byKind} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, byKind: event.target.checked } })} type="checkbox" />
+                  按关系类型着色
+                </label>
+                <label className="graph-style-check">
+                  <input checked={style.edge.showLabel} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })} type="checkbox" />
+                  关系标签
+                </label>
+                <label>画布底色
+                  <input onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
+                </label>
+                <label>网格
+                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
+                    <option value="dots">点阵</option>
+                    <option value="lines">方格</option>
+                    <option value="none">无</option>
+                  </select>
+                </label>
+                <label>网格密度
+                  <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } })} step={4} type="range" value={style.canvas.gridSize} />
+                </label>
+                <label>网格强度
+                  <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } })} step={0.05} type="range" value={style.canvas.gridOpacity} />
+                </label>
+              </div>
+              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复默认外观</button>
+            </div>
+          )}
 
           {/* A fixed slot, so showing a preview or a selection hint does not push
               the canvas down under the pointer that just selected something. */}

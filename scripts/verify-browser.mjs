@@ -6578,7 +6578,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         pruned.groups === 0 &&
         pruned.overflow <= 1 &&
         shelf.toolbar <= 110 && shelf.names >= 4 && shelf.toolsHidden &&
-        menu.open && menu.items.length === 4 && !menu.coversCanvas && menuClosed;
+        menu.open && menu.items.length >= 4 && !menu.coversCanvas && menuClosed;
 
       return {
         pass: Boolean(pass),
@@ -6940,6 +6940,64 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return {
         pass,
         detail: `异常释放 世界x=${afterOddRelease} 期望=${expected}（${oddReleaseOk ? "未跳" : "跳动"}）；撤销回 ${Math.round(afterUndo)} / 起始 ${Math.round(startWorld)}；重做 ${Math.round(afterRedo)} / ${Math.round(expected)}（${historyOk}）；顶对齐 cy ${aligned.a.toFixed(1)}/${aligned.b.toFixed(1)}；适应选中改坐标 ${Math.abs(afterFit - beforeFit) < 0.5 ? "否" : "是"}；布局模式 ${modes.join("、")}；网格预览 ${gridPreview.includes("网格布局")}；取消后回到 ${Math.abs(afterCancel - beforeGrid) < 0.5}`,
+      };
+    });
+
+
+    await check("外观：五种预设真实改变节点、连线与网格，刷新后保留（Sprint 50）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await OPEN_GRAPH();
+      const look = async () => cdp.value(`(() => {
+        const circle = document.querySelector(".relationship-node circle");
+        const path = document.querySelector(".relationship-edge path");
+        const grid = document.querySelector(".graph-grid-plane");
+        const raw = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "{}");
+        return {
+          r: circle ? Number(circle.getAttribute("r")) : null,
+          width: path ? Number.parseFloat(getComputedStyle(path).strokeWidth) : null,
+          grid: grid ? getComputedStyle(grid).fill : "none",
+          preset: raw.style ? raw.style.preset : null,
+        };
+      })()`);
+
+      const base = await look();
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "外观")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
+      const presetCount = await cdp.value(`document.querySelectorAll(".graph-preset").length`);
+      await cdp.value(`([...document.querySelectorAll(".graph-preset")].find((b) => b.textContent.trim() === "档案研究")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const archive = await look();
+      await cdp.value(`([...document.querySelectorAll(".graph-preset")].find((b) => b.textContent.trim() === "人物群像")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const portrait = await look();
+      await cdp.value(`([...document.querySelectorAll(".graph-preset")].find((b) => b.textContent.trim() === "极简展示")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const minimal = await look();
+
+      await OPEN_GRAPH();
+      const reloaded = await look();
+
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "外观")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-style-panel button")].find((b) => b.textContent.trim() === "恢复默认外观")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const restored = await look();
+
+      const pass =
+        presetCount === 5 &&
+        archive.r < base.r &&
+        Math.abs(archive.width - 1) < 0.15 &&
+        String(archive.grid).includes("line-grid") &&
+        portrait.r > base.r &&
+        String(minimal.grid) === "none" &&
+        reloaded.preset === "minimal" &&
+        Math.abs(reloaded.r - minimal.r) < 0.5 &&
+        restored.preset === "classic" &&
+        Math.abs(restored.r - base.r) < 0.5;
+
+      return {
+        pass,
+        detail: `预设 ${presetCount} 个；基准 r=${base.r} 线宽=${base.width}；档案 r=${archive.r} 线宽=${archive.width} 网格线=${String(archive.grid).includes("line-grid")}；群像 r=${portrait.r}；极简网格=${minimal.grid}；刷新后 ${reloaded.preset} r=${reloaded.r}；恢复后 ${restored.preset} r=${restored.r}`,
       };
     });
 

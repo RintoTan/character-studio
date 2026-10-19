@@ -6,13 +6,22 @@
 // cluster of circles is not a claim about their world. Nothing here is derived
 // from a worldview field, and nothing here writes one.
 //
+import {
+  DEFAULT_CANVAS_STYLE,
+  normalizeCanvasStyle,
+  type CanvasBookmark,
+  type CanvasStyle,
+  type EdgeStylePatch,
+  type NodeStylePatch,
+} from "./canvasStyle";
+
 // Positions are keyed by character id, so renaming a character moves nothing.
 // The layout is versioned on its own so a later shape can migrate rather than
 // guess, and every reader goes through `normalizeLayout`, so a hand-edited or
 // half-written record degrades to an empty canvas instead of a broken one.
 export const RELATIONSHIP_LAYOUT_KEY = "character-studio.relationship-layout";
 
-export const LAYOUT_SCHEMA_VERSION = 1;
+export const LAYOUT_SCHEMA_VERSION = 2;
 
 /** Drawing-space coordinates, the same units `nodePositions` produces. */
 export type LayoutPoint = { x: number; y: number };
@@ -27,12 +36,21 @@ export type CanvasLayout = {
   schemaVersion: number;
   positions: Record<string, LayoutPoint>;
   groups: CanvasGroup[];
+  /** Drawing appearance. Presentation only — never character or relationship data. */
+  style?: CanvasStyle;
+  nodeStyles?: Record<string, NodeStylePatch>;
+  edgeStyles?: Record<string, EdgeStylePatch>;
+  bookmarks?: CanvasBookmark[];
 };
 
 export const emptyLayout = (): CanvasLayout => ({
   schemaVersion: LAYOUT_SCHEMA_VERSION,
   positions: {},
   groups: [],
+  style: DEFAULT_CANVAS_STYLE,
+  nodeStyles: {},
+  edgeStyles: {},
+  bookmarks: [],
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,7 +128,50 @@ export function normalizeLayout(value: unknown): CanvasLayout {
     }
   }
 
-  return { schemaVersion: LAYOUT_SCHEMA_VERSION, positions, groups };
+  const nodeStyles: Record<string, NodeStylePatch> = {};
+  if (isRecord(value.nodeStyles)) {
+    for (const [id, patch] of Object.entries(value.nodeStyles)) {
+      if (id && isRecord(patch)) {
+        nodeStyles[id] = patch as NodeStylePatch;
+      }
+    }
+  }
+  const edgeStyles: Record<string, EdgeStylePatch> = {};
+  if (isRecord(value.edgeStyles)) {
+    for (const [id, patch] of Object.entries(value.edgeStyles)) {
+      if (id && isRecord(patch)) {
+        edgeStyles[id] = patch as EdgeStylePatch;
+      }
+    }
+  }
+  const bookmarks: CanvasBookmark[] = Array.isArray(value.bookmarks)
+    ? value.bookmarks
+        .filter(isRecord)
+        .map((item) => {
+          const view = (item.view ?? {}) as Record<string, unknown>;
+          return {
+            id: typeof item.id === "string" ? item.id : "",
+            name: typeof item.name === "string" ? item.name.slice(0, 40) : "",
+            view: { k: Number(view.k), x: Number(view.x), y: Number(view.y) },
+          };
+        })
+        .filter(
+          (item) =>
+            item.id && item.name && Number.isFinite(item.view.k) && Number.isFinite(item.view.x) && Number.isFinite(item.view.y),
+        )
+        .slice(0, 30)
+    : [];
+
+  return {
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    positions,
+    groups,
+    // Sprint 49 packages have no style block; they open in the accepted classic look.
+    style: normalizeCanvasStyle(value.style),
+    nodeStyles,
+    edgeStyles,
+    bookmarks,
+  };
 }
 
 export function loadLayout(): CanvasLayout {
@@ -162,7 +223,18 @@ export function pruneLayout(layout: CanvasLayout, validIds: Iterable<string>): C
     }))
     .filter((group) => group.characterIds.length >= 2);
 
-  return { schemaVersion: LAYOUT_SCHEMA_VERSION, positions, groups };
+  const nodeStyles = Object.fromEntries(
+    Object.entries(layout.nodeStyles ?? {}).filter(([id]) => valid.has(id)),
+  );
+  return {
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    positions,
+    groups,
+    style: layout.style,
+    nodeStyles,
+    edgeStyles: layout.edgeStyles,
+    bookmarks: layout.bookmarks,
+  };
 }
 
 export type PlacementOptions = {
@@ -555,8 +627,23 @@ export function mergeImportedLayout(options: {
     }))
     .filter((group) => group.characterIds.length >= 2);
 
+  const mappedNodeStyles: Record<string, NodeStylePatch> = {};
+  for (const [sourceId, patch] of Object.entries(incoming.nodeStyles ?? {})) {
+    const mapped = map(sourceId);
+    if (valid.has(mapped)) {
+      mappedNodeStyles[mapped] = patch;
+    }
+  }
+
   if (options.mode === "replace") {
-    return normalizeLayout({ positions, groups });
+    return normalizeLayout({
+      positions,
+      groups,
+      style: incoming.style,
+      nodeStyles: mappedNodeStyles,
+      edgeStyles: incoming.edgeStyles,
+      bookmarks: incoming.bookmarks,
+    });
   }
 
   const current = options.current;
@@ -573,8 +660,13 @@ export function mergeImportedLayout(options: {
   return {
     schemaVersion: LAYOUT_SCHEMA_VERSION,
     // the local canvas wins; a merge is not a reason to rearrange someone's work
+    // or repaint it with someone else's appearance
     positions: { ...positions, ...current.positions },
     groups: [...current.groups, ...additions],
+    style: current.style,
+    nodeStyles: { ...mappedNodeStyles, ...current.nodeStyles },
+    edgeStyles: { ...incoming.edgeStyles, ...current.edgeStyles },
+    bookmarks: current.bookmarks ?? [],
   };
 }
 
