@@ -325,10 +325,13 @@ const clickWorkspace = (label) => `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     document.querySelector(".workspace-switch").click();
-    await sleep(200);
-    const item = [...document.querySelectorAll('button[role="menuitem"]')].find((button) =>
-      button.textContent.includes(${JSON.stringify(label)}),
-    );
+    await sleep(350);
+    // Below 720px the same list opens as a bottom sheet; above it, as a dropdown. One
+    // helper, both presentations — otherwise every navigation check would have to know
+    // which width it is running at.
+    const inSheet = [...document.querySelectorAll('[data-testid="workspace-sheet"] .sheet-row')];
+    const item = (inSheet.length > 0 ? inSheet : [...document.querySelectorAll('button[role="menuitem"]')])
+      .find((button) => button.textContent.includes(${JSON.stringify(label)}));
     if (!item) throw new Error("menu item missing: " + ${JSON.stringify(label)});
     item.click();
     await sleep(700);
@@ -2122,7 +2125,14 @@ const READ_WORLD_CROWDED = `
 const READ_LIST_ALIGNMENT = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const toggle = document.querySelector('button[aria-label="切换列表视图"]');
+    let toggle = document.querySelector('button[aria-label="切换列表视图"]');
+    if (!toggle) {
+      // Phones keep the view switch in the 更多 sheet.
+      document.querySelector('button[aria-label="更多操作"]')?.click();
+      await sleep(350);
+      toggle = [...document.querySelectorAll('[data-testid="more-sheet"] .sheet-menu button')]
+        .find((button) => button.textContent.includes("切换为列表视图"));
+    }
     if (toggle) { toggle.click(); await sleep(400); }
     // Bulk mode adds a select circle to the same cell, so it is a second layout to
     // measure rather than a second thing to assume.
@@ -2518,7 +2528,15 @@ const READ_TWO_VIEWS = `
     const cardsCount = (document.querySelector(".section-title.list-section-title span") || {}).textContent.trim() || "";
     const cardsStates = { pinned: cardStatus("第03位北境人"), favourite: cardStatus("第04位北境人") };
 
-    document.querySelector('button[aria-label="切换列表视图"]').click();
+    const directToggle = document.querySelector('button[aria-label="切换列表视图"]');
+    if (directToggle) {
+      directToggle.click();
+    } else {
+      document.querySelector('button[aria-label="更多操作"]')?.click();
+      await sleep(350);
+      [...document.querySelectorAll('[data-testid="more-sheet"] .sheet-menu button')]
+        .find((button) => button.textContent.includes("切换为列表视图"))?.click();
+    }
     await sleep(600);
     const listOrder = listNames();
     const listCount = (document.querySelector(".section-title.list-section-title span") || {}).textContent.trim() || "";
@@ -3124,6 +3142,7 @@ async function main() {
     });
 
     await check("列表视图：第一列头像与名称在行的中线上（C1）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_MANY);
       await cdp.goto(base);
@@ -3303,6 +3322,154 @@ async function main() {
       return {
         pass: Boolean(fits && dark),
         detail: `主题 ${state.theme || "(未设置)"}、弹窗底色 ${state.dialogBackground}；375px 下弹窗 ${state.dialogWidth}px、弹窗溢出 ${state.dialogOverflow}px、页面溢出 ${state.pageOverflow}px`,
+      };
+    });
+
+    await check("移动端：主导航是底部抽屉，四项齐全、选中明确、遮罩与 Escape 都能关", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      await cdp.waitFor(`!!document.querySelector(".workspace-switch")`, 8000);
+
+      const opened = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        document.querySelector(".workspace-switch").click();
+        await sleep(400);
+        const sheet = document.querySelector('[data-testid="workspace-sheet"]');
+        const panel = sheet?.querySelector(".sheet-panel");
+        const box = panel?.getBoundingClientRect();
+        const rows = sheet ? [...sheet.querySelectorAll(".sheet-row")] : [];
+        return {
+          present: Boolean(sheet),
+          labels: rows.map((row) => row.textContent.replace(/\\s+/g, " ").trim()),
+          selected: rows.filter((row) => row.classList.contains("selected")).length,
+          selectedLabel: (rows.find((row) => row.classList.contains("selected"))?.textContent || "").replace(/\\s+/g, " ").trim(),
+          inViewport: box ? box.top >= -1 && box.bottom <= window.innerHeight + 1 && box.left >= -1 && box.right <= window.innerWidth + 1 : false,
+          reachesBottom: box ? Math.abs(box.bottom - window.innerHeight) <= 1 : false,
+          focusInside: sheet ? sheet.contains(document.activeElement) : false,
+          bodyLocked: document.documentElement.style.overflow === "hidden",
+          scrollable: sheet ? getComputedStyle(sheet.querySelector(".sheet-body")).overflowY === "auto" : false,
+          rowHeight: rows[0] ? Math.round(rows[0].getBoundingClientRect().height) : 0,
+        };
+      })()`);
+
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const closed = await cdp.value(`(() => ({
+        gone: !document.querySelector('[data-testid="workspace-sheet"]'),
+        focus: (document.activeElement?.className || "").toString(),
+        bodyUnlocked: document.documentElement.style.overflow !== "hidden",
+      }))()`);
+
+      // The same sheet switches: pick the third entry and the app lands there.
+      const switched = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        document.querySelector(".workspace-switch").click();
+        await sleep(350);
+        const row = [...document.querySelectorAll('[data-testid="workspace-sheet"] .sheet-row')]
+          .find((button) => button.textContent.includes("世界观管理"));
+        row?.click();
+        await sleep(700);
+        return {
+          sheetGone: !document.querySelector('[data-testid="workspace-sheet"]'),
+          label: (document.querySelector(".workspace-switch-label")?.textContent || "").trim(),
+          world: Boolean(document.querySelector("#workspace-world, .world-page")),
+        };
+      })()`);
+
+      const sheetOk =
+        opened.present &&
+        opened.labels.length === 4 &&
+        opened.labels.some((label) => label.includes("角色关系网")) &&
+        opened.labels.some((label) => label.includes("世界观时间线")) &&
+        opened.labels.some((label) => label.includes("世界观管理")) &&
+        opened.selected === 1 &&
+        opened.selectedLabel.includes("角色创作工作台") &&
+        opened.inViewport &&
+        opened.reachesBottom &&
+        opened.focusInside &&
+        opened.bodyLocked &&
+        opened.scrollable &&
+        opened.rowHeight >= 44;
+
+      const closeOk = closed.gone && closed.focus.includes("workspace-switch") && closed.bodyUnlocked;
+      const switchOk = switched.sheetGone && switched.label === "世界观管理" && switched.world;
+
+      return {
+        pass: sheetOk && closeOk && switchOk,
+        detail: `抽屉 ${opened.present ? "打开" : "未打开"}：${opened.labels.join(" / ")}；选中 ${opened.selected}（${opened.selectedLabel}）；在视口内 ${opened.inViewport}、贴底 ${opened.reachesBottom}、行高 ${opened.rowHeight}px、内部可滚动 ${opened.scrollable}、焦点在内 ${opened.focusInside}、页面锁定 ${opened.bodyLocked}；Escape 关闭 ${closed.gone}、焦点回到 ${closed.focus || "无"}、解锁 ${closed.bodyUnlocked}；切换后 ${switched.label}（抽屉关闭 ${switched.sheetGone}、页面就位 ${switched.world}）`,
+      };
+    });
+
+    await check("移动端：更多操作走抽屉不裁切，视图切换进抽屉，首屏更快看到角色", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_DASHBOARD);
+      await cdp.goto(base);
+      await cdp.waitFor(`!!document.querySelector(".list-toolbar")`, 8000);
+
+      const state = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const firstCard = document.querySelector(".character-card");
+        const toolbar = document.querySelector(".list-toolbar").getBoundingClientRect();
+        const more = document.querySelector('button[aria-label="更多操作"]');
+        const moreBox = more ? more.getBoundingClientRect() : null;
+        const view = document.querySelector('button[aria-label="切换列表视图"], button[aria-label="切换卡片视图"]');
+        more?.click();
+        await sleep(400);
+        const sheet = document.querySelector('[data-testid="more-sheet"]');
+        const box = sheet?.querySelector(".sheet-panel")?.getBoundingClientRect();
+        return {
+          firstCardTop: firstCard ? Math.round(firstCard.getBoundingClientRect().top) : null,
+          toolbarWidth: Math.round(toolbar.width),
+          moreWidth: moreBox ? Math.round(moreBox.width) : null,
+          viewInToolbar: Boolean(view),
+          sheet: Boolean(sheet),
+          rows: sheet ? [...sheet.querySelectorAll(".sheet-menu button")].map((button) => button.textContent.replace(/\\s+/g, " ").trim()) : [],
+          inViewport: box ? box.top >= -1 && box.bottom <= window.innerHeight + 1 : false,
+          scrollable: sheet ? getComputedStyle(sheet.querySelector(".sheet-body")).overflowY === "auto" : false,
+          title: sheet?.querySelector(".sheet-head h2")?.textContent || "",
+          panel: box ? [Math.round(box.top), Math.round(box.bottom), Math.round(box.left), Math.round(box.right)] : null,
+          head: (() => {
+            const head = sheet?.querySelector(".sheet-head");
+            const rect = head?.getBoundingClientRect();
+            return rect ? [Math.round(rect.top), Math.round(rect.bottom)] : null;
+          })(),
+          body: (() => {
+            const body = sheet?.querySelector(".sheet-body");
+            const rect = body?.getBoundingClientRect();
+            return rect ? [Math.round(rect.top), Math.round(rect.bottom), body.scrollHeight] : null;
+          })(),
+          panelStyle: sheet ? (() => {
+            const style = getComputedStyle(sheet.querySelector(".sheet-panel"));
+            return [style.height, style.maxHeight, style.display];
+          })() : null,
+        };
+      })()`);
+
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const closed = await cdp.value(`!document.querySelector('[data-testid="more-sheet"]')`);
+
+      const firstScreenOk = state.firstCardTop !== null && state.firstCardTop <= 430;
+      // One ellipsis icon, not a 300px grey bar: the wrapper used to stretch to the
+      // toolbar's width and the button with it.
+      const toolbarOk = state.moreWidth !== null && state.moreWidth <= 64 && !state.viewInToolbar;
+      const sheetOk =
+        state.sheet &&
+        state.rows.length >= 6 &&
+        state.rows.some((row) => row.includes("批量管理")) &&
+        state.rows.some((row) => row.includes("列表视图") || row.includes("卡片视图")) &&
+        state.inViewport &&
+        state.scrollable &&
+        closed;
+
+      return {
+        pass: firstScreenOk && toolbarOk && sheetOk,
+        detail: `首个角色卡片 y=${state.firstCardTop}px（阈值 ≤430）；工具栏宽 ${state.toolbarWidth}、更多按钮宽 ${state.moreWidth}px、视图切换仍在工具栏 ${state.viewInToolbar}；抽屉 ${state.sheet ? "打开" : "未打开"}「${state.title}」面板 ${state.panel?.join(",")} 头部 ${state.head?.join(",")} 正文 ${state.body?.join(",")} 样式 ${state.panelStyle?.join("/")}，${state.rows.length} 行（${state.rows.join(" / ")}），在视口内 ${state.inViewport}、可滚动 ${state.scrollable}、Escape 关闭 ${closed}`,
       };
     });
 
