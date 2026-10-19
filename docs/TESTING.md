@@ -44,7 +44,7 @@
 
 ---
 
-## 3. 浏览器回归（`scripts/verify-browser.mjs`，73 项）
+## 3. 浏览器回归（`scripts/verify-browser.mjs`，75 项）
 
 脚本通过 Chrome DevTools Protocol 驱动**本机 Chrome**（不是 Playwright），注入确定性种子数据后操作真实 DOM。
 

@@ -10,11 +10,11 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.38.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 角色灵感工作室 2.0 与交互稳定性修复；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **48**（`APP_SPRINT`）—— 角色灵感工作室 2.0；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.39.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 自由关系画布、关系管理 2.0 与复杂表单弹窗；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **49**（`APP_SPRINT`）—— 自由关系画布；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
-| 审计基线提交 | `4f903af`（2.38.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
+| 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
 | 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
 | 工作区状态 | **干净**（`git status --porcelain` 无输出） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
@@ -45,9 +45,9 @@
 | 长名称关系行 | 名称换行、单元格等高、按钮留在行内、横向溢出裁掉 | 1440 行高 82/60、375 为 199/135、320 为 221/156，溢出 0 |
 | 时间线弹窗 | 固定标题 / 滚动正文 / 常驻底栏 | 320–1440 底栏可见；未保存提示照旧 |
 
-### 自由关系画布（Sprint 49，待验收）
+### 自由关系画布（2.39.0 / Sprint 49）
 
-应用版本仍为 **2.38.0**。关系图从固定环形布局升级为可自由摆放的画布；自动布局保留为辅助整理。布局是独立的展示数据（`character-studio.relationship-layout`），不改角色字段、关系语义或世界观归属。
+应用版本为 **2.39.0**。关系图从固定环形布局升级为可自由摆放的画布；自动布局保留为辅助整理。布局是独立的展示数据（`character-studio.relationship-layout`），不改角色字段、关系语义或世界观归属。
 
 | 事项 | 实现 | 验证 |
 | --- | --- | --- |
@@ -59,7 +59,7 @@
 | 备份 | ZIP/JSON 的 `relationshipLayout`；完全恢复/合并保护/ID 重映射/旧包兼容 | `canvasBackup` 5 例 + 布局合并 6 例 |
 | 移动端 | 触屏拖动、单指点选、双指缩放、375 无溢出 | 5px 抖动不移动、40px 拖动不误开 |
 
-### 关系管理与共享弹窗（Sprint 49 补充，待验收）
+### 关系管理与共享弹窗（2.39.0 / Sprint 49）
 
 与自由画布同一版本验收。只改展示与交互结构，不改关系数据、角色字段或画布坐标。
 
@@ -158,7 +158,7 @@
 | 角色预览展示页 | `src/pages/CharacterPreview.tsx`（555 行），双模式 `browse` / `editing` | 已实现 |
 | 收藏 / 草稿箱 | `Dashboard.tsx`（`favoriteMode` 偏好）、`App.tsx` 的 `handlePromoteDraft` / `handleDraftSave` | 已实现 |
 | 角色灵感工作室 | `components/InspirationStudio.tsx`、`data/inspirationLibrary.ts`、`inspiration/engine.ts` | 已实现 |
-| 自由关系画布 | `pages/RelationshipGraph.tsx`、`storage/relationshipLayout.ts` | 已实现（Sprint 49，待验收） |
+| 自由关系画布 | `pages/RelationshipGraph.tsx`、`storage/relationshipLayout.ts` | 已实现（2.39.0） |
 | 搜索 / 筛选 / 排序 | `storage/dashboardPrefs.ts` + `Dashboard.tsx` 的 `getVisibleCharacters` | 已实现 |
 | 批量选择 / 批量编辑 / 批量删除 / 批量复制 | `utils/bulkEdit.ts`、`Dashboard.tsx` 批量条 | 已实现 |
 | 角色关系网（图谱 / 管理双模式） | `src/pages/RelationshipGraph.tsx`（2366 行）+ `storage/relationshipStorage.ts` + `storage/graphPrefs.ts` + `types/relationship.ts` | 已实现 |
@@ -204,7 +204,7 @@
 
 ## 5. 验证等级与最近一次验证结果
 
-### 5.1 最近一次执行（2026-10-19，2.38.0 + Sprint 49 待发布）
+### 5.1 最近一次执行（2026-10-19，2.39.0）
 
 | 命令 | 结果 |
 | --- | --- |
@@ -212,8 +212,8 @@
 | `npm test` | **通过**：51 个文件 / 592 个用例，0 失败 0 跳过 |
 | `npm run build:pages` | **通过**，22 个产物文件；发布构建入口与样式见线上 `build-info.json` |
 | `npm run verify:browser` | **73/73 通过**（新增返回来源、编辑器取消、图谱默认、灵感工作室、长名称关系行、自由画布五项断言；原有断言保留） |
-| `npm run verify:version` | **通过**，2.38.0 |
-| 线上 `build-info.json` | 部署后由 `npm run verify:deploy` 核对：版本 2.38.0、sprint 48、commit 等于发布提交，22 个文件逐字节一致 |
+| `npm run verify:version` | **通过**，2.39.0 |
+| 线上 `build-info.json` | 部署后由 `npm run verify:deploy` 核对：版本 2.39.0、sprint 49、commit 等于发布提交，22 个文件逐字节一致 |
 
 ### 5.2 各模块的验证等级
 
