@@ -206,7 +206,11 @@ export function hasPosition(layout: CanvasLayout, characterId: string): boolean 
  * A deleted character must not leave a rectangle behind, and a group reduced to
  * one member is no longer a group.
  */
-export function pruneLayout(layout: CanvasLayout, validIds: Iterable<string>): CanvasLayout {
+export function pruneLayout(
+  layout: CanvasLayout,
+  validIds: Iterable<string>,
+  validEdgeIds?: Iterable<string>,
+): CanvasLayout {
   const valid = new Set(validIds);
   const positions: Record<string, LayoutPoint> = {};
 
@@ -226,13 +230,19 @@ export function pruneLayout(layout: CanvasLayout, validIds: Iterable<string>): C
   const nodeStyles = Object.fromEntries(
     Object.entries(layout.nodeStyles ?? {}).filter(([id]) => valid.has(id)),
   );
+  // Edges are only pruned when the caller knows the live set: a layout may be
+  // loaded before the relationships are, and "not asked" is not "deleted".
+  const edges = validEdgeIds ? new Set(validEdgeIds) : null;
+  const edgeStyles = edges
+    ? Object.fromEntries(Object.entries(layout.edgeStyles ?? {}).filter(([id]) => edges.has(id)))
+    : layout.edgeStyles;
   return {
     schemaVersion: LAYOUT_SCHEMA_VERSION,
     positions,
     groups,
     style: layout.style,
     nodeStyles,
-    edgeStyles: layout.edgeStyles,
+    edgeStyles,
     bookmarks: layout.bookmarks,
   };
 }

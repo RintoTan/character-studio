@@ -482,16 +482,23 @@ describe("canvas appearance", () => {
   it("clamps broken numbers instead of blanking the drawing", () => {
     const style = normalizeCanvasStyle({
       preset: "custom",
-      node: { size: 99, nameSize: -3 },
+      node: { size: 99, nameScale: -3 },
       edge: { width: "wide", dash: "zigzag" },
       canvas: { grid: "hexes", gridOpacity: 9 },
     });
     expect(style.node.size).toBe(2);
-    expect(style.node.nameSize).toBe(8);
+    expect(style.node.nameScale).toBe(0.8);
     expect(style.edge.width).toBe(1.4);
     expect(style.edge.dash).toBe("solid");
     expect(style.canvas.grid).toBe("dots");
     expect(style.canvas.gridOpacity).toBe(0.8);
+  });
+
+  it("reads a Sprint 50 absolute name size as the ratio it now means", () => {
+    // 13px was "medium" when the field was absolute, so a stored 13 must mean 1x.
+    expect(normalizeCanvasStyle({ preset: "custom", node: { nameSize: 13 } }).node.nameScale).toBe(1);
+    expect(normalizeCanvasStyle({ preset: "custom", node: { nameSize: 19.5 } }).node.nameScale).toBe(1.5);
+    expect(normalizeCanvasStyle({ preset: "custom", node: { nameSize: 40 } }).node.nameScale).toBe(1.8);
   });
 
   it("drops a deleted character's local style but keeps the rest", () => {

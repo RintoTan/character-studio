@@ -18,7 +18,10 @@ export type CanvasStyle = {
     shape: NodeShape;
     showAvatars: boolean;
     showNames: boolean;
-    nameSize: number;
+    /** Multiplier on the size the display settings already chose, not a second
+     *  absolute size: two controls for one number is how a preference gets
+     *  silently overridden. */
+    nameScale: number;
     nameInside: boolean;
     borderColor: string;
     background: string;
@@ -67,7 +70,7 @@ const BASE: CanvasStyle = {
     shape: "circle",
     showAvatars: true,
     showNames: true,
-    nameSize: 11,
+    nameScale: 1,
     nameInside: false,
     borderColor: "",
     background: "",
@@ -96,12 +99,12 @@ const BASE: CanvasStyle = {
 const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
   classic: {},
   archive: {
-    node: { size: 0.92, showAvatars: false, nameSize: 12, borderColor: "#b6a899", background: "#fffdf8" },
+    node: { size: 0.92, showAvatars: false, nameScale: 1, borderColor: "#b6a899", background: "#fffdf8" },
     edge: { color: "#7a6a58", width: 1, showLabel: true, labelBackground: true },
     canvas: { background: "#f7f2e8", grid: "lines", gridSize: 40, gridOpacity: 0.35 },
   },
   portrait: {
-    node: { size: 1.35, nameSize: 13, showAvatars: true },
+    node: { size: 1.35, nameScale: 1.2, showAvatars: true },
     edge: { width: 1.2, labelSize: 11, showLabel: false },
     canvas: { grid: "none" },
   },
@@ -111,7 +114,7 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
     canvas: { grid: "dots", gridSize: 56, gridOpacity: 0.35 },
   },
   minimal: {
-    node: { size: 0.9, showAvatars: false, nameSize: 11 },
+    node: { size: 0.9, showAvatars: false, nameScale: 0.95 },
     edge: { width: 0.8, arrowSize: 0.6, showLabel: false },
     canvas: { grid: "none", background: "" },
   },
@@ -165,7 +168,17 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
       shape: node.shape === "square" ? "square" : "circle",
       showAvatars: typeof node.showAvatars === "boolean" ? node.showAvatars : base.node.showAvatars,
       showNames: typeof node.showNames === "boolean" ? node.showNames : base.node.showNames,
-      nameSize: num(node.nameSize, base.node.nameSize, 8, 20),
+      // A Sprint 50 build stored an absolute size here. It is read as a ratio of the
+      // 13px the display settings called "medium", so an old layout keeps the size
+      // it was given instead of snapping to the preset.
+      nameScale: num(
+        node.nameScale,
+        typeof node.nameSize === "number"
+          ? Math.min(1.8, Math.max(0.8, node.nameSize / 13))
+          : base.node.nameScale,
+        0.8,
+        1.8,
+      ),
       nameInside: typeof node.nameInside === "boolean" ? node.nameInside : base.node.nameInside,
       borderColor: typeof node.borderColor === "string" ? node.borderColor : base.node.borderColor,
       background: typeof node.background === "string" ? node.background : base.node.background,

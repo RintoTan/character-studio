@@ -7513,14 +7513,22 @@ body:has([aria-modal="true"]) .floating-actions {
 }
 
 .relationship-node circle {
-  fill: var(--surface-subtle);
-  stroke: var(--border-strong);
+  /* A per-node override travels as a variable, so the hover and selected rules
+     below can still win: an inline stroke would beat all of them. */
+  fill: var(--node-fill, var(--surface-subtle));
+  stroke: var(--node-stroke, var(--border-strong));
   stroke-width: 2;
 }
 
 .relationship-node:hover circle,
 .relationship-node:focus-visible circle {
   stroke: var(--primary);
+}
+
+/* An explicit border colour is the author's answer, not a hover state, so it
+   outranks the hover highlight. */
+.relationship-node[data-local-border="true"] circle {
+  stroke: var(--node-stroke);
 }
 
 /* Sizes come from the graph's own preference (inline style); these carry only what
@@ -11253,10 +11261,27 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   pointer-events: none;
 }
 
-.relationship-node.selected > circle {
+.relationship-node-ring {
+  fill: none;
   stroke: var(--primary);
   stroke-width: 2;
   stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+/* A selected line: a soft halo under it, so its own colour and dash stay exactly
+   as the author set them. */
+.relationship-edge-halo {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 9;
+  stroke-linecap: round;
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+.relationship-edge path {
+  cursor: pointer;
 }
 
 .graph-mobile-tools-trigger {
@@ -12304,4 +12329,29 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   .graph-studio-list {
     max-height: 30dvh;
   }
+}
+
+/* Local overrides sit above the canvas-wide controls: they answer a narrower
+   question, and they must be reversible in one press. */
+.graph-style-local {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-style-local > strong {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.graph-style-local > span {
+  font-size: 12px;
+}
+
+/* A slider whose units are not obvious says what it currently produces. */
+.graph-style-value {
+  font-size: 11px;
+  color: var(--muted);
 }

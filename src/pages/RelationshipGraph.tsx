@@ -870,6 +870,9 @@ export function RelationshipGraph({
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [isAlignOpen, setIsAlignOpen] = useState(false);
+  // One edge at a time: an edge has no box to marquee and its properties are a
+  // different set from a node's, so it is its own selection.
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
   const [isStyleOpen, setIsStyleOpen] = useState(false);
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
@@ -911,13 +914,18 @@ export function RelationshipGraph({
   );
   // The widest name the drawing will have to fit, so the outermost labels of a wide
   // wheel are not cut off by the canvas edge.
+  // What the names are actually drawn at. The display settings choose a base size;
+  // the canvas style scales it. Both the drawing and the "would these fit" test
+  // read this one number, so a larger name can never be painted over a neighbour
+  // that the test believed was clear.
+  const nameSize = Math.round(metrics.nameSize * style.node.nameScale * 100) / 100;
   const labelHalfWidth = useMemo(
     () =>
       widestNameHalfWidth(
         visibleCharacters.map((character) => character.name || "未命名角色"),
-        metrics.nameSize,
+        nameSize,
       ),
-    [visibleCharacters, metrics.nameSize],
+    [visibleCharacters, nameSize],
   );
   // The view box follows the visible set, not the live coordinates. Recomputing it
   // from a node being dragged would change the mapping under the pointer, which is
@@ -961,8 +969,12 @@ export function RelationshipGraph({
   // happens before the drawing reads the layout, so nothing is drawn at a stale point.
   useEffect(() => {
     const valid = characters.map((character) => character.id);
+    const validEdges = relationships.map((relationship) => relationship.id);
+    if (relationshipsLoaded) {
+      setSelectedEdgeId((current) => (current && !validEdges.includes(current) ? null : current));
+    }
     setLayout((current) => {
-      const pruned = pruneLayout(current, valid);
+      const pruned = pruneLayout(current, valid, relationshipsLoaded ? validEdges : undefined);
       if (JSON.stringify(pruned) === JSON.stringify(current)) {
         return current;
       }
@@ -970,7 +982,7 @@ export function RelationshipGraph({
       return pruned;
     });
     setSelectedIds((current) => current.filter((id) => valid.includes(id)));
-  }, [characters]);
+  }, [characters, relationships, relationshipsLoaded]);
 
   // A character drawn for the first time — 显示全部, a search that adds a stranger,
   // a fresh import — needs somewhere to stand. Once the author has arranged the
@@ -1021,6 +1033,7 @@ export function RelationshipGraph({
   const pinchRef = useRef<{ distance: number } | null>(null);
   // The node a press started on, if any: what a tap opens.
   const pressedNodeRef = useRef<string | null>(null);
+  const pressedEdgeRef = useRef<string | null>(null);
   // A press on a node is a drag until it is released without moving; a press on
   // empty canvas is a pan; a press on a group rectangle moves the whole group.
   const nodeDragRef = useRef<{
@@ -1073,7 +1086,7 @@ export function RelationshipGraph({
   const screenScale = measured ? canvasScreenScale(frameSize, canvas.viewBox) : 0;
   const labelsFit = labelsReadable({
     positions,
-    nameSize: metrics.nameSize,
+    nameSize,
     zoom: view.k,
     scale: screenScale,
   });
@@ -1547,7 +1560,12 @@ export function RelationshipGraph({
     const groupId = nodeId
       ? null
       : target?.closest?.("[data-group-id]")?.getAttribute("data-group-id") ?? null;
+    const edgeId =
+      nodeId || groupId
+        ? null
+        : target?.closest?.("[data-edge-id]")?.getAttribute("data-edge-id") ?? null;
     pressedNodeRef.current = nodeId;
+    pressedEdgeRef.current = edgeId;
 
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1724,6 +1742,7 @@ export function RelationshipGraph({
     const groupDrag = groupDragRef.current;
     const pan = panRef.current;
     const tappedId = pressedNodeRef.current;
+    const tappedEdgeId = pressedEdgeRef.current;
 
     const nodeGesture = nodeDrag && nodeDrag.pointerId === event.pointerId ? nodeDrag : null;
     const groupGesture = groupDrag && groupDrag.pointerId === event.pointerId ? groupDrag : null;
@@ -1775,12 +1794,21 @@ export function RelationshipGraph({
         onOpenCharacter(tappedId);
       } else {
         lastTapRef.current = { id: tappedId, at: now };
+        setSelectedEdgeId(null);
         toggleSelected(tappedId, selectMode || event.shiftKey);
       }
     } else if (groupGesture && !groupGesture.moved) {
+      setSelectedEdgeId(null);
       setSelectedIds(groupGesture.members);
+    } else if (!panned && tappedEdgeId) {
+      // Tapping a line selects the relationship it draws. It never edits it:
+      // the edge's own dialog is still opened from 管理, and this selection only
+      // feeds the appearance controls.
+      setSelectedIds([]);
+      setSelectedEdgeId(tappedEdgeId);
     } else if (!panned && !tappedId && !groupGesture) {
       setSelectedIds([]);
+      setSelectedEdgeId(null);
     }
 
     pointersRef.current.delete(event.pointerId);
@@ -2244,6 +2272,134 @@ export function RelationshipGraph({
   // mean two different things depending on where it is opened.
   const stylePanel = (
             <div className="graph-style-panel" role="group" aria-label="画布外观">
+              {/* Above the presets, because it applies to one object: what the whole
+                  canvas looks like is the wrong question while a single line is
+                  selected. */}
+              {selectedEdgeId && (
+                <div className="graph-style-local" role="group" aria-label="所选关系线外观">
+                  <strong>所选关系线</strong>
+                  {(() => {
+                    const edge = relationships.find((item) => item.id === selectedEdgeId);
+                    if (!edge) {
+                      return <p className="muted">这条关系已不存在。</p>;
+                    }
+                    const local = layout.edgeStyles?.[edge.id] ?? {};
+                    const patch = (next: Partial<NonNullable<typeof local>>) =>
+                      commitLayout({
+                        ...layout,
+                        edgeStyles: {
+                          ...(layout.edgeStyles ?? {}),
+                          [edge.id]: { ...local, ...next },
+                        },
+                      });
+                    return (
+                      <>
+                        <span className="muted">
+                          {characterDisplayName(byId.get(edge.fromId)?.character ?? ({ name: "?" } as Character))} →{" "}
+                          {characterDisplayName(byId.get(edge.toId)?.character ?? ({ name: "?" } as Character))} ·{" "}
+                          {relationshipKindLabel(edge.kind)}
+                        </span>
+                        <div className="graph-style-grid">
+                          <label>线条颜色
+                            <input
+                              aria-label="线条颜色"
+                              onChange={(event) => patch({ color: event.target.value })}
+                              type="color"
+                              value={local.color || style.edge.color || "#7b87a8"}
+                            />
+                          </label>
+                          <label>线条粗细
+                            <input
+                              aria-label="线条粗细"
+                              max={6}
+                              min={0.4}
+                              onChange={(event) => patch({ width: Number(event.target.value) })}
+                              step={0.1}
+                              type="range"
+                              value={local.width ?? style.edge.width}
+                            />
+                          </label>
+                          <label>线型
+                            <select
+                              aria-label="线型"
+                              onChange={(event) => patch({ dash: event.target.value as CanvasStyle["edge"]["dash"] })}
+                              value={local.dash ?? style.edge.dash}
+                            >
+                              <option value="solid">实线</option>
+                              <option value="dashed">虚线</option>
+                              <option value="dotted">点线</option>
+                            </select>
+                          </label>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          disabled={!layout.edgeStyles?.[edge.id]}
+                          onClick={() => {
+                            const next = { ...(layout.edgeStyles ?? {}) };
+                            delete next[edge.id];
+                            commitLayout({ ...layout, edgeStyles: next });
+                          }}
+                          type="button"
+                        >
+                          恢复这条线的默认外观
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+              {!selectedEdgeId && selectedIds.length === 1 && byId.get(selectedIds[0]) && (
+                <div className="graph-style-local" role="group" aria-label="所选节点外观">
+                  <strong>所选节点</strong>
+                  {(() => {
+                    const nodeId = selectedIds[0];
+                    const local = layout.nodeStyles?.[nodeId] ?? {};
+                    const patch = (next: Partial<NonNullable<typeof local>>) =>
+                      commitLayout({
+                        ...layout,
+                        nodeStyles: {
+                          ...(layout.nodeStyles ?? {}),
+                          [nodeId]: { ...local, ...next },
+                        },
+                      });
+                    return (
+                      <>
+                        <span className="muted">{characterDisplayName(byId.get(nodeId)!.character)}</span>
+                        <div className="graph-style-grid">
+                          <label>边框颜色
+                            <input
+                              aria-label="边框颜色"
+                              onChange={(event) => patch({ borderColor: event.target.value })}
+                              type="color"
+                              value={local.borderColor || "#b8bfd0"}
+                            />
+                          </label>
+                          <label>节点底色
+                            <input
+                              aria-label="节点底色"
+                              onChange={(event) => patch({ background: event.target.value })}
+                              type="color"
+                              value={local.background || "#f4f5f8"}
+                            />
+                          </label>
+                        </div>
+                        <button
+                          className="ghost-button"
+                          disabled={!layout.nodeStyles?.[nodeId]}
+                          onClick={() => {
+                            const next = { ...(layout.nodeStyles ?? {}) };
+                            delete next[nodeId];
+                            commitLayout({ ...layout, nodeStyles: next });
+                          }}
+                          type="button"
+                        >
+                          恢复这个节点的默认外观
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
               <div className="graph-style-presets">
                 {CANVAS_PRESETS.map((preset) => (
                   <button
@@ -2260,6 +2416,18 @@ export function RelationshipGraph({
               <div className="graph-style-grid">
                 <label>节点大小
                   <input max={2} min={0.6} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })} step={0.05} type="range" value={style.node.size} />
+                </label>
+                <label>姓名字号
+                  <input
+                    aria-label="姓名字号"
+                    max={1.8}
+                    min={0.8}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: Number(event.target.value) } })}
+                    step={0.05}
+                    type="range"
+                    value={style.node.nameScale}
+                  />
+                  <span className="graph-style-value">{Math.round(nameSize)}px</span>
                 </label>
                 <label className="graph-style-check">
                   <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
@@ -2830,9 +2998,17 @@ export function RelationshipGraph({
                 metrics,
                 symmetrical: symmetric,
               });
-              const edgeColor = style.edge.byKind
-                ? `hsl(${kindHue(relationship.kind)} 42% 48%)`
-                : style.edge.color || undefined;
+              // A single edge may be recoloured, thickened or re-dashed without
+              // touching the kind it records or any other line on the canvas.
+              const localEdge = layout.edgeStyles?.[relationship.id];
+              const edgeColor =
+                localEdge?.color ||
+                (style.edge.byKind
+                  ? `hsl(${kindHue(relationship.kind)} 42% 48%)`
+                  : style.edge.color || undefined);
+              const edgeWidth = localEdge?.width ?? style.edge.width;
+              const edgeDash = localEdge?.dash ?? style.edge.dash;
+              const isEdgeSelected = selectedEdgeId === relationship.id;
               const edgePath =
                 style.edge.curve === "straight"
                   ? `M ${from.x} ${from.y} L ${to.x} ${to.y}`
@@ -2842,20 +3018,20 @@ export function RelationshipGraph({
                 (relationship.fromId === activeId || relationship.toId === activeId);
               return (
                 <g
-                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}`}
+                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}`}
+                  data-edge-id={relationship.id}
                   key={relationship.id}
                 >
+                  {/* A selection halo under the line: an inline colour must not be
+                      able to hide the fact that this is the selected object. */}
+                  {isEdgeSelected && <path className="relationship-edge-halo" d={edgePath} />}
                   <path
                     d={edgePath}
                     style={{
                       stroke: edgeColor,
                       strokeDasharray:
-                        style.edge.dash === "dashed"
-                          ? "7 5"
-                          : style.edge.dash === "dotted"
-                            ? "2 4"
-                            : undefined,
-                      strokeWidth: style.edge.width,
+                        edgeDash === "dashed" ? "7 5" : edgeDash === "dotted" ? "2 4" : undefined,
+                      strokeWidth: edgeWidth,
                     }}
                   />
                   {geometry.arrow && (
@@ -2887,6 +3063,7 @@ export function RelationshipGraph({
               // the zoom: without that, searching for somebody in a large roster would
               // highlight circles whose names are not being drawn.
               const isSelected = selectedIds.includes(character.id);
+              const nodeOverride = layout.nodeStyles?.[character.id];
               const labelled =
                 prefs.showNames &&
                 (showLabels || isHovered || isFocused || isNeighbour || isSelected || hubIds.has(character.id));
@@ -2904,13 +3081,41 @@ export function RelationshipGraph({
                   className={state}
                   data-character-id={character.id}
                   data-character-name={characterDisplayName(character)}
+                  data-local-border={nodeOverride?.borderColor ? "true" : undefined}
                   data-selected={isSelected ? "true" : undefined}
                   key={character.id}
                   onPointerEnter={() => setHoveredId(character.id)}
                   onPointerLeave={() => setHoveredId(null)}
                   role="presentation"
                 >
-                  <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius * style.node.size} />
+                  {/* The selection ring is its own circle, one step outside the
+                      node: a node may carry a local border colour, and a ring drawn
+                      by restyling the node's own stroke would either hide that colour
+                      or be hidden by it. */}
+                  {isSelected && (
+                    <circle
+                      className="relationship-node-ring"
+                      cx={positions[index].x}
+                      cy={positions[index].y}
+                      r={metrics.radius * style.node.size + 6}
+                    />
+                  )}
+                  <circle
+                    cx={positions[index].x}
+                    cy={positions[index].y}
+                    r={metrics.radius * style.node.size}
+                    style={{
+                      // Variables rather than properties: the selected state is a
+                      // stroke on this same circle, and an inline stroke would win
+                      // over it.
+                      ...(nodeOverride?.borderColor
+                        ? ({ "--node-stroke": nodeOverride.borderColor } as Record<string, string>)
+                        : {}),
+                      ...(nodeOverride?.background
+                        ? ({ "--node-fill": nodeOverride.background } as Record<string, string>)
+                        : {}),
+                    }}
+                  />
                   {/* An uploaded picture is drawn as the node itself, through the same
                       circle and at the same size as the emoji it replaces. Before this
                       the graph only ever drew `avatarEmoji`, so a character with a
@@ -2948,7 +3153,7 @@ export function RelationshipGraph({
                       style={{
                         // A hub name carries the structure when no other name fits, so it
                         // is drawn larger rather than at the size that did not fit.
-                        fontSize: `${metrics.nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1)}px`,
+                        fontSize: `${nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1)}px`,
                       }}
                       x={positions[index].x}
                       y={positions[index].y + metrics.nameDrop}
@@ -3340,6 +3545,15 @@ export function RelationshipGraph({
                 >
                   创建分组
                 </button>
+                {selectedIds.length === 1 && (
+                  <button
+                    className="ghost-button"
+                    onClick={() => setIsStyleOpen(true)}
+                    type="button"
+                  >
+                    外观
+                  </button>
+                )}
                 <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
                   清除选择
                 </button>
