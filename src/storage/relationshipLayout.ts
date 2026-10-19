@@ -448,7 +448,7 @@ export function clusterLayout(
 export function groupBounds(
   layout: CanvasLayout,
   group: CanvasGroup,
-  padding = 34,
+  padding = 58,
 ): { x: number; y: number; width: number; height: number } | null {
   const points = group.characterIds
     .map((id) => layout.positions[id])
@@ -517,4 +517,63 @@ export function renameGroup(layout: CanvasLayout, groupId: string, name: string)
 /** Which group, if any, already owns this character. */
 export function groupOf(layout: CanvasLayout, characterId: string): CanvasGroup | null {
   return layout.groups.find((group) => group.characterIds.includes(characterId)) ?? null;
+}
+
+/**
+ * The layout a backup contributes, merged into the one already here.
+ *
+ * Separate from the import flow so the three rules can be stated and tested
+ * without a file picker: a full restore takes the package's canvas, a merge only
+ * adds coordinates for characters this browser has never placed, and every id is
+ * translated through the import's own remap first. References to characters that
+ * do not survive the import are dropped, never left dangling.
+ */
+export function mergeImportedLayout(options: {
+  current: CanvasLayout;
+  incoming: unknown;
+  /** File id → id in the final library (which is the same id when unchanged). */
+  idBySource: Map<string, string>;
+  finalIds: Iterable<string>;
+  mode: "merge" | "replace";
+}): CanvasLayout {
+  const incoming = normalizeLayout(options.incoming);
+  const valid = new Set(options.finalIds);
+  const map = (id: string) => options.idBySource.get(id) ?? id;
+
+  const positions: Record<string, LayoutPoint> = {};
+  for (const [sourceId, point] of Object.entries(incoming.positions)) {
+    const mapped = map(sourceId);
+    if (valid.has(mapped)) {
+      positions[mapped] = point;
+    }
+  }
+
+  const groups = incoming.groups
+    .map((group) => ({
+      ...group,
+      characterIds: [...new Set(group.characterIds.map(map))].filter((id) => valid.has(id)),
+    }))
+    .filter((group) => group.characterIds.length >= 2);
+
+  if (options.mode === "replace") {
+    return normalizeLayout({ positions, groups });
+  }
+
+  const current = options.current;
+  const claimed = new Set(current.groups.flatMap((group) => group.characterIds));
+  const usedGroupIds = new Set(current.groups.map((group) => group.id));
+  const additions = groups
+    .map((group) => ({
+      ...group,
+      id: usedGroupIds.has(group.id) ? `${group.id}-imported` : group.id,
+      characterIds: group.characterIds.filter((id) => !claimed.has(id)),
+    }))
+    .filter((group) => group.characterIds.length >= 2);
+
+  return {
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    // the local canvas wins; a merge is not a reason to rearrange someone's work
+    positions: { ...positions, ...current.positions },
+    groups: [...current.groups, ...additions],
+  };
 }

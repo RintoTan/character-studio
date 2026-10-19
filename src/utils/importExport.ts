@@ -23,6 +23,14 @@ import {
   type WorkspaceDatasets,
 } from "../storage/workspaceBackup";
 import {
+  isEmptyLayout,
+  loadLayout,
+  mergeImportedLayout,
+  placeMissingPositions,
+  pruneLayout,
+  saveLayout,
+} from "../storage/relationshipLayout";
+import {
   ALL_CATEGORIES,
   buildImportPlan,
   type ConflictStrategy,
@@ -490,10 +498,12 @@ export async function exportFullBackupJson(
     workspaceVersion: WORKSPACE_BACKUP_VERSION,
     characters,
     avatarAssets,
-    // The three domains that used to be unbackupable travel in the same file.
+    // The three domains that used to be unbackupable travel in the same file,
+    // together with where the author put things on the relationship canvas.
     relationships: workspace?.relationships ?? [],
     timeline: workspace?.timeline ?? [],
     world: workspace?.world ?? [],
+    relationshipLayout: workspace?.relationshipLayout ?? null,
   };
 
   downloadBlob(
@@ -588,6 +598,7 @@ export async function exportFullBackupZip(
               relationships: workspace?.relationships ?? [],
               timeline: workspace?.timeline ?? [],
               world: workspace?.world ?? [],
+              relationshipLayout: workspace?.relationshipLayout ?? null,
             },
             null,
             2,
@@ -889,6 +900,52 @@ export async function prepareCharacterImport(
   };
 }
 
+/**
+ * Writes the canvas layout a backup carried, after the characters it names exist.
+ *
+ * Three rules, in the order the brief asks for them:
+ * - 完全恢复 replaces the canvas with the package's, mapped through the id remap.
+ * - 合并导入 never overwrites a coordinate the local author already has; incoming
+ *   positions only fill characters this browser has never placed.
+ * - 选择性导入 only carries the characters that were actually imported.
+ *
+ * A layout naming a character that is not in the final library is dropped, and a
+ * group left with one member stops being a group. Old packages without a layout
+ * leave the canvas exactly as it is, apart from placing the newcomers.
+ */
+function applyImportedLayout(
+  plan: PreparedCharacterImport,
+  finalCharacters: Character[],
+): void {
+  const incomingRaw = plan.workspace?.relationshipLayout;
+  const importedCharacters = plan.plan.characters.items;
+
+  if (importedCharacters.length === 0) {
+    return;
+  }
+
+  const idBySource = new Map(importedCharacters.map((item) => [item.sourceId, item.character.id]));
+  const finalIds = new Set(finalCharacters.map((character) => character.id));
+  const current = loadLayout();
+  const merged = mergeImportedLayout({
+    current,
+    incoming: incomingRaw,
+    idBySource,
+    finalIds,
+    mode: plan.plan.mode,
+  });
+
+  const importedIds = importedCharacters.map((item) => item.character.id);
+  const pruned = pruneLayout(merged, finalIds);
+  const placed = placeMissingPositions(pruned, importedIds, { spacing: 110 });
+
+  // A fresh package with no layout at all still has to leave newcomers somewhere
+  // sensible rather than all on top of each other.
+  if (!isEmptyLayout(placed)) {
+    saveLayout(placed);
+  }
+}
+
 export async function commitCharacterImport(
   plan: PreparedCharacterImport,
   existingCharacters: Character[],
@@ -976,6 +1033,8 @@ export async function commitCharacterImport(
 
     workspace = writePlannedDatasets(importPlan.mode, datasets);
   }
+
+  applyImportedLayout(plan, mergedCharacters);
 
   return {
     characters: mergedCharacters,

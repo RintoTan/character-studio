@@ -54,6 +54,27 @@ describe("workspace backup", () => {
     localStorage.clear();
   });
 
+  it("carries the canvas layout out of a package, both shapes", () => {
+    const layout = {
+      schemaVersion: 1,
+      positions: { "char-1": { x: 10, y: 20 } },
+      groups: [{ id: "g1", name: "旧友", characterIds: ["char-1", "char-2"] }],
+    };
+
+    expect(
+      extractWorkspaceDatasets({ workspace: { relationships: [], relationshipLayout: layout } })
+        ?.relationshipLayout,
+    ).toEqual(layout);
+    expect(
+      extractWorkspaceDatasets({ relationships: [], relationshipLayout: layout })?.relationshipLayout,
+    ).toEqual(layout);
+  });
+
+  it("leaves the layout out when the package predates it", () => {
+    const datasets = extractWorkspaceDatasets({ relationships: [] });
+    expect(datasets?.relationshipLayout).toBeUndefined();
+  });
+
   it("finds the datasets at the top level or under workspace", () => {
     expect(extractWorkspaceDatasets({ characters: [], relationships: [relationship()] })).toEqual({
       relationships: [relationship()],

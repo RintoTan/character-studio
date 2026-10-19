@@ -11192,3 +11192,344 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
     padding-bottom: max(20px, env(safe-area-inset-bottom));
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Free relationship canvas
+
+   Placement is the author's: the node, the group rectangle and the grid all
+   live in drawing coordinates under one transform, so dragging moves what is
+   under the pointer and nothing else. These controls sit in the canvas strip
+   rather than floating over the drawing, so none of them can cover a node.
+   --------------------------------------------------------------------------- */
+
+.graph-grid-dot {
+  fill: var(--border-strong);
+  opacity: 0.55;
+}
+
+.graph-grid-plane {
+  pointer-events: none;
+}
+
+.relationship-node.selected > circle {
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.graph-edit-tools {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.graph-tool-wrap {
+  position: relative;
+}
+
+.graph-tool-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: var(--control-height-icon);
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.graph-tool-button:hover,
+.graph-tool-button[aria-expanded="true"] {
+  background: var(--control-fill-hover);
+}
+
+.graph-tool-button.active {
+  border-color: var(--primary);
+  background: var(--control-fill-active);
+}
+
+.graph-tool-count {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--control-fill-active);
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 17px;
+  text-align: center;
+}
+
+.graph-panel.graph-arrange-panel,
+.graph-panel.graph-group-panel {
+  position: absolute;
+  z-index: var(--z-inline-5, 40);
+  top: calc(100% + 6px);
+  /* The base class anchors panels upward; both top and bottom would collapse this
+     one to a sliver. */
+  bottom: auto;
+  right: 0;
+  width: min(320px, calc(100vw - 40px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+}
+
+.graph-panel-title {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.graph-scope-switch {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--surface-subtle);
+}
+
+.graph-scope-switch button {
+  flex: 1 1 0;
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.graph-scope-switch button.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+.graph-arrange-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.graph-arrange-actions button {
+  flex: 1 1 0;
+}
+
+.graph-arrange-panel .muted,
+.graph-group-panel .muted {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.graph-group-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.graph-group-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--surface-subtle);
+}
+
+.graph-group-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.graph-group-count {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.graph-group-remove {
+  min-height: 26px;
+  padding: 0 8px;
+  font-size: 11.5px;
+}
+
+.graph-group-create {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.graph-group-form {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-group-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.graph-group-field input {
+  min-height: var(--control-height-compact);
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.graph-group-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* Arrange preview, undo and the selection hint share one strip: they are states
+   of the drawing, not dialogs, so they sit above it in the page rather than
+   floating over the nodes. */
+.graph-edit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+  color: var(--text-soft);
+  font-size: 12.5px;
+}
+
+.graph-edit-bar.preview {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.graph-edit-bar.selection {
+  background: var(--surface);
+}
+
+.graph-edit-bar-actions {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.graph-edit-bar-actions .ghost-button,
+.graph-edit-bar-actions .primary-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.graph-group-rect {
+  fill: color-mix(in srgb, var(--primary) 5%, transparent);
+  stroke: color-mix(in srgb, var(--primary) 28%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 8 6;
+  cursor: grab;
+}
+
+.graph-group:hover .graph-group-rect {
+  fill: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+.graph-group-label {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  cursor: grab;
+  user-select: none;
+}
+
+@media (max-width: 720px) {
+  /* On a phone the edit controls take their own row under the zoom, and a panel
+     opens to the frame's width rather than pushing past it. */
+  .graph-edit-tools {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .graph-tool-button {
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: var(--control-height-compact);
+    padding: 0 8px;
+    font-size: 12.5px;
+  }
+
+  .graph-tool-wrap {
+    flex: 1 1 0;
+    display: flex;
+  }
+
+  .graph-tool-wrap > .graph-tool-button {
+    width: 100%;
+  }
+
+  .graph-panel.graph-arrange-panel,
+  .graph-panel.graph-group-panel {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+
+  .graph-edit-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .graph-edit-bar-actions {
+    width: 100%;
+  }
+
+  .graph-edit-bar-actions button {
+    flex: 1 1 0;
+  }
+}
+
+/* A reserved strip for the arrange/selection bar: its height never changes, so
+   selecting a node cannot shift the canvas under the next tap. */
+.graph-edit-slot {
+  display: flex;
+  align-items: flex-start;
+  min-height: 44px;
+  margin-top: 8px;
+}
+
+.graph-edit-slot .graph-edit-bar {
+  margin-top: 0;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .graph-edit-slot {
+    min-height: 40px;
+  }
+}

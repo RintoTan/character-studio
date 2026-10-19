@@ -9,6 +9,7 @@ import {
   groupOf,
   LAYOUT_SCHEMA_VERSION,
   materializeLayout,
+  mergeImportedLayout,
   normalizeLayout,
   placeMissingPositions,
   pruneLayout,
@@ -285,5 +286,119 @@ describe("visual groups", () => {
   it("returns no rectangle when no member has a position", () => {
     const layout = normalizeLayout({ groups: [{ id: "g1", name: "空", characterIds: ["a", "b"] }] });
     expect(groupBounds(layout, layout.groups[0])).toBeNull();
+  });
+});
+
+describe("mergeImportedLayout", () => {
+  const backup = {
+    schemaVersion: 1,
+    positions: {
+      "file-a": { x: 100, y: 100 },
+      "file-b": { x: 200, y: 200 },
+      gone: { x: 1, y: 2 },
+    },
+    groups: [
+      { id: "g1", name: "备份组", characterIds: ["file-a", "file-b"] },
+      { id: "g2", name: "缺人", characterIds: ["file-a", "gone"] },
+    ],
+  };
+
+  it("restores the package canvas through an id remap", () => {
+    const merged = mergeImportedLayout({
+      current: normalizeLayout({ positions: { stale: { x: 9, y: 9 } } }),
+      incoming: backup,
+      idBySource: new Map([
+        ["file-a", "new-a"],
+        ["file-b", "new-b"],
+      ]),
+      finalIds: ["new-a", "new-b"],
+      mode: "replace",
+    });
+
+    expect(merged.positions).toEqual({
+      "new-a": { x: 100, y: 100 },
+      "new-b": { x: 200, y: 200 },
+    });
+    expect(merged.groups).toEqual([
+      { id: "g1", name: "备份组", characterIds: ["new-a", "new-b"] },
+    ]);
+  });
+
+  it("protects local coordinates in a merge", () => {
+    const merged = mergeImportedLayout({
+      current: normalizeLayout({ positions: { "file-a": { x: 7, y: 7 } } }),
+      incoming: backup,
+      idBySource: new Map(),
+      finalIds: ["file-a", "file-b"],
+      mode: "merge",
+    });
+
+    expect(merged.positions["file-a"]).toEqual({ x: 7, y: 7 });
+    expect(merged.positions["file-b"]).toEqual({ x: 200, y: 200 });
+  });
+
+  it("drops references to characters the import did not bring", () => {
+    const merged = mergeImportedLayout({
+      current: emptyLayout(),
+      incoming: backup,
+      idBySource: new Map(),
+      finalIds: ["file-a", "file-b"],
+      mode: "replace",
+    });
+
+    expect(Object.keys(merged.positions).sort()).toEqual(["file-a", "file-b"]);
+    expect(merged.groups.map((group) => group.id)).toEqual(["g1"]);
+  });
+
+  it("adds an imported group without stealing local members or ids", () => {
+    const current = normalizeLayout({
+      positions: { local: { x: 0, y: 0 } },
+      groups: [{ id: "g1", name: "本地组", characterIds: ["local", "file-a"] }],
+    });
+
+    const merged = mergeImportedLayout({
+      current,
+      incoming: {
+        positions: {},
+        groups: [
+          { id: "g1", name: "同名备份组", characterIds: ["file-b", "file-c"] },
+          // Its only surviving member is already claimed locally, so this one
+          // must vanish rather than become a group of one.
+          { id: "g2", name: "被本地拿走", characterIds: ["file-a", "file-d"] },
+        ],
+      },
+      idBySource: new Map(),
+      finalIds: ["local", "file-a", "file-b", "file-c", "file-d"],
+      mode: "merge",
+    });
+
+    expect(merged.groups[0]).toEqual(current.groups[0]);
+    expect(merged.groups[1]).toMatchObject({ id: "g1-imported", characterIds: ["file-b", "file-c"] });
+    expect(merged.groups.flatMap((group) => group.characterIds).filter((id) => id === "file-a")).toHaveLength(1);
+  });
+
+  it("accepts a workspace with no layout at all", () => {
+    const merged = mergeImportedLayout({
+      current: normalizeLayout({ positions: { local: { x: 3, y: 4 } } }),
+      incoming: null,
+      idBySource: new Map(),
+      finalIds: ["local"],
+      mode: "merge",
+    });
+
+    expect(merged.positions).toEqual({ local: { x: 3, y: 4 } });
+  });
+
+  it("treats a corrupt payload as an empty one", () => {
+    const merged = mergeImportedLayout({
+      current: emptyLayout(),
+      incoming: { positions: { a: { x: "x", y: 0 } }, groups: "nope" },
+      idBySource: new Map(),
+      finalIds: ["a"],
+      mode: "replace",
+    });
+
+    expect(merged.positions).toEqual({});
+    expect(merged.groups).toEqual([]);
   });
 });

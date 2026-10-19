@@ -13,6 +13,7 @@
 import type { Relationship } from "../types/relationship";
 import type { TimelineEvent } from "../types/timeline";
 import type { WorldEntry } from "../types/world";
+import { loadLayout } from "./relationshipLayout";
 import { loadRelationships, saveRelationships } from "./relationshipStorage";
 import { loadTimeline, saveTimeline } from "./timelineStorage";
 import { loadWorldEntries, saveWorldEntries } from "./worldStorage";
@@ -25,6 +26,12 @@ export type WorkspaceDatasets = {
   relationships: unknown[];
   timeline: unknown[];
   world: unknown[];
+  /**
+   * The free canvas's coordinates and visual groups, as stored. Kept raw here:
+   * the import plan remaps character ids before anything is written, and this
+   * module deliberately does not decide that mapping itself.
+   */
+  relationshipLayout?: unknown;
 };
 
 export type WorkspaceCounts = {
@@ -44,6 +51,7 @@ export function readWorkspaceDatasets(): WorkspaceDatasets {
     relationships: loadRelationships(),
     timeline: loadTimeline(),
     world: loadWorldEntries(),
+    relationshipLayout: loadLayout(),
   };
 }
 
@@ -64,6 +72,10 @@ export function extractWorkspaceDatasets(value: unknown): WorkspaceDatasets | nu
   const relationships = Array.isArray(source.relationships) ? source.relationships : null;
   const timeline = Array.isArray(source.timeline) ? source.timeline : null;
   const world = Array.isArray(source.world) ? source.world : null;
+  const relationshipLayout =
+    source.relationshipLayout && typeof source.relationshipLayout === "object"
+      ? source.relationshipLayout
+      : null;
 
   if (!relationships && !timeline && !world) {
     return null;
@@ -73,6 +85,7 @@ export function extractWorkspaceDatasets(value: unknown): WorkspaceDatasets | nu
     relationships: relationships ?? [],
     timeline: timeline ?? [],
     world: world ?? [],
+    ...(relationshipLayout ? { relationshipLayout } : {}),
   };
 }
 

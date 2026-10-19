@@ -37,6 +37,28 @@ import {
   type GraphMetrics,
   type GraphPrefs,
 } from "../storage/graphPrefs";
+import {
+  applyPositions,
+  centroid,
+  clusterLayout,
+  createGroup,
+  emptyLayout,
+  groupBounds,
+  isEmptyLayout,
+  loadLayout,
+  materializeLayout,
+  placeMissingPositions,
+  pruneLayout,
+  removeGroup,
+  ringLayout,
+  saveLayout,
+  setPosition,
+  translatePositions,
+  type ArrangeMode,
+  type CanvasGroup,
+  type CanvasLayout,
+  type LayoutPoint,
+} from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { getAvatarAssetDataUrl } from "../utils/avatarAssets";
 import { useTransientMessage } from "../hooks/useTransientMessage";
@@ -822,8 +844,32 @@ export function RelationshipGraph({
     return extras.length ? [...drawn, ...extras] : drawn;
   }, [characters, connectedIds, relationships, showAll, focusExtraIds, isNarrowScreen]);
 
+  // Free placement lives in its own store, keyed by character id: a rename moves
+  // nothing, and a deleted character is pruned out rather than ghosted.
+  const [layout, setLayout] = useState<CanvasLayout>(() => loadLayout());
+  const [livePositions, setLivePositions] = useState<Record<string, LayoutPoint> | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [isArrangeOpen, setIsArrangeOpen] = useState(false);
+  const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
+  const [preview, setPreview] = useState<{
+    mode: ArrangeMode;
+    scope: "visible" | "all";
+    positions: Record<string, LayoutPoint>;
+  } | null>(null);
+  const [isGroupsOpen, setIsGroupsOpen] = useState(false);
+  const [groupDraft, setGroupDraft] = useState<{ name: string; editingId: string | null } | null>(null);
+  // One step of undo for a whole arrange, which is the only operation that moves
+  // every node at once. A drag is undone by dragging back; an arrange is not.
+  const [arrangeUndo, setArrangeUndo] = useState<{ layout: CanvasLayout; label: string } | null>(null);
+  useEscapeDismiss(isArrangeOpen, () => setIsArrangeOpen(false));
+  useEscapeDismiss(isGroupsOpen, () => setIsGroupsOpen(false));
+  useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
+  useEscapeDismiss(Boolean(preview), () => setPreview(null));
   const metrics = useMemo(() => graphMetrics(prefs), [prefs]);
-  const positions = useMemo(
+  // The ring the canvas starts as. It is still what a workspace with no saved layout
+  // draws, so an untouched graph looks exactly as it did before free placement.
+  const ringPositions = useMemo(
     () => nodePositions(visibleCharacters.length, metrics.radius),
     [visibleCharacters.length, metrics.radius],
   );
@@ -837,11 +883,90 @@ export function RelationshipGraph({
       ),
     [visibleCharacters, metrics.nameSize],
   );
-  const canvas = useMemo(
-    () => canvasBox(positions, metrics, labelHalfWidth),
-    [positions, metrics, labelHalfWidth],
-  );
+  // The view box follows the visible set, not the live coordinates. Recomputing it
+  // from a node being dragged would change the mapping under the pointer, which is
+  // exactly the "release and it jumps back" this canvas is meant not to do.
+  const visibleKey = visibleCharacters.map((character) => character.id).join("|");
+  const stableBoxRef = useRef<{ key: string; viewBox: string; width: number } | null>(null);
+  const canvas = useMemo(() => {
+    if (stableBoxRef.current?.key === visibleKey) {
+      return stableBoxRef.current;
+    }
+
+    const box = canvasBox(
+      visibleCharacters.map((character, index) => layout.positions[character.id] ?? ringPositions[index]),
+      metrics,
+      labelHalfWidth,
+    );
+    stableBoxRef.current = { key: visibleKey, ...box };
+    return stableBoxRef.current;
+  }, [visibleKey, visibleCharacters, layout, ringPositions, metrics, labelHalfWidth]);
   const bends = useMemo(() => edgeBends(relationships), [relationships]);
+
+  // What each drawn node's coordinates are right now: a preview (arrange) wins over
+  // a live drag, which wins over what is stored.
+  const basePositions = useMemo(
+    () =>
+      visibleCharacters.map(
+        (character, index) => layout.positions[character.id] ?? ringPositions[index],
+      ),
+    [visibleCharacters, layout, ringPositions],
+  );
+  const positions = useMemo(
+    () =>
+      visibleCharacters.map(
+        (character, index) =>
+          preview?.positions[character.id] ?? livePositions?.[character.id] ?? basePositions[index],
+      ),
+    [visibleCharacters, preview, livePositions, basePositions],
+  );
+
+  // A deleted character must not leave a coordinate or a rectangle behind. Pruning
+  // happens before the drawing reads the layout, so nothing is drawn at a stale point.
+  useEffect(() => {
+    const valid = characters.map((character) => character.id);
+    setLayout((current) => {
+      const pruned = pruneLayout(current, valid);
+      if (JSON.stringify(pruned) === JSON.stringify(current)) {
+        return current;
+      }
+      saveLayout(pruned);
+      return pruned;
+    });
+    setSelectedIds((current) => current.filter((id) => valid.includes(id)));
+  }, [characters]);
+
+  // A character drawn for the first time — 显示全部, a search that adds a stranger,
+  // a fresh import — needs somewhere to stand. Once the author has arranged the
+  // canvas, newcomers go under the drawing rather than through it.
+  useEffect(() => {
+    if (isEmptyLayout(layout)) {
+      return;
+    }
+
+    const missing = visibleCharacters
+      .map((character) => character.id)
+      .filter((id) => !layout.positions[id]);
+
+    if (missing.length === 0) {
+      return;
+    }
+
+    const next = placeMissingPositions(layout, missing, { spacing: metrics.radius * 2 + 44 });
+    setLayout(next);
+    saveLayout(next);
+  }, [visibleCharacters, layout, metrics.radius]);
+
+  // Group rectangles follow the same live positions as the nodes they enclose, so a
+  // dragged group looks like one object instead of a box that catches up on release.
+  const groupRects = useMemo(() => {
+    const positionsNow = { ...layout.positions, ...(livePositions ?? {}), ...(preview?.positions ?? {}) };
+    return layout.groups
+      .map((group) => ({ group, rect: groupBounds({ ...layout, positions: positionsNow }, group) }))
+      .filter((entry): entry is { group: CanvasGroup; rect: NonNullable<ReturnType<typeof groupBounds>> } =>
+        Boolean(entry.rect),
+      );
+  }, [layout, livePositions, preview]);
 
   // Zoom and pan live in the drawing's own coordinates, so the wheel stays on the
   // point under the cursor and the fit view is just k = 1 with no offset.
@@ -860,6 +985,32 @@ export function RelationshipGraph({
   const pinchRef = useRef<{ distance: number } | null>(null);
   // The node a press started on, if any: what a tap opens.
   const pressedNodeRef = useRef<string | null>(null);
+  // A press on a node is a drag until it is released without moving; a press on
+  // empty canvas is a pan; a press on a group rectangle moves the whole group.
+  const nodeDragRef = useRef<{
+    id: string;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    grab: LayoutPoint;
+    moved: boolean;
+    base: CanvasLayout;
+  } | null>(null);
+  const groupDragRef = useRef<{
+    groupId: string;
+    pointerId: number;
+    start: LayoutPoint;
+    members: string[];
+    base: CanvasLayout;
+    moved: boolean;
+  } | null>(null);
+  // One state write per animation frame while dragging, so a hundred nodes are not
+  // re-rendered for every pointer event the trackpad emits.
+  const dragFrameRef = useRef<number | null>(null);
+  const pendingDragRef = useRef<Record<string, LayoutPoint> | null>(null);
+  // A double tap is two taps on the same node within this window. The browser's own
+  // `dblclick` is not usable: the pointer capture on the <svg> retargets it.
+  const lastTapRef = useRef<{ id: string; at: number } | null>(null);
 
   // Hover and focus are the same highlight. Focus wins while it is set, so hovering a
   // different node does not quietly drop the character the author searched for.
@@ -987,6 +1138,129 @@ export function RelationshipGraph({
     applyFitView();
   }
 
+  /** The only path that writes coordinates. One gesture, one write. */
+  function commitLayout(next: CanvasLayout) {
+    setLayout(next);
+    saveLayout(next);
+  }
+
+  /**
+   * The stored layout with every visible node's current ring slot materialised.
+   *
+   * Editing a workspace that has never been arranged must not make the other
+   * ninety-nine circles jump: their drawn positions become their stored ones at
+   * the same moment the first drag commits.
+   */
+  function workingLayout(): CanvasLayout {
+    return materializeLayout(
+      layout,
+      visibleCharacters.map((character) => character.id),
+      ringPositions,
+    );
+  }
+
+  /** A client point, in the coordinates the nodes are drawn in (view transform undone). */
+  function drawingPoint(clientX: number, clientY: number, svg: SVGSVGElement): LayoutPoint {
+    const point = viewBoxPointAt(clientX, clientY, svg.getBoundingClientRect(), canvas.viewBox);
+    return { x: (point.x - view.x) / view.k, y: (point.y - view.y) / view.k };
+  }
+
+  function scheduleDrag(next: Record<string, LayoutPoint>) {
+    pendingDragRef.current = next;
+
+    if (dragFrameRef.current !== null) {
+      return;
+    }
+
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      setLivePositions(pendingDragRef.current);
+    });
+  }
+
+  function stopDragFrame() {
+    if (dragFrameRef.current !== null) {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    pendingDragRef.current = null;
+    setLivePositions(null);
+  }
+
+  function proposeArrange(mode: ArrangeMode) {
+    const ids =
+      arrangeScope === "visible"
+        ? visibleCharacters.map((character) => character.id)
+        : characters.map((character) => character.id);
+    const base = workingLayout();
+    const points = ids
+      .map((id) => base.positions[id])
+      .filter((point): point is LayoutPoint => Boolean(point));
+    const center = centroid(points, { x: VIEW / 2, y: VIEW / 2 });
+    const positions =
+      mode === "ring"
+        ? ringLayout(ids, center, metrics.radius)
+        : clusterLayout(ids, relationships, center, metrics.radius);
+
+    setPreview({ mode, scope: arrangeScope, positions });
+    setIsArrangeOpen(false);
+  }
+
+  function applyArrange() {
+    if (!preview) {
+      return;
+    }
+
+    const base = workingLayout();
+    setArrangeUndo({
+      layout: base,
+      label: preview.mode === "ring" ? "环形整理" : "关系聚类",
+    });
+    commitLayout(applyPositions(base, preview.positions));
+    setPreview(null);
+  }
+
+  function undoArrange() {
+    if (!arrangeUndo) {
+      return;
+    }
+
+    commitLayout(arrangeUndo.layout);
+    setArrangeUndo(null);
+  }
+
+  function toggleSelected(id: string, additive: boolean) {
+    setSelectedIds((current) => {
+      if (!additive) {
+        return current.length === 1 && current[0] === id ? [] : [id];
+      }
+      return current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+    });
+  }
+
+  function saveGroupDraft() {
+    if (!groupDraft) {
+      return;
+    }
+
+    const next = createGroup(
+      workingLayout(),
+      groupDraft.name,
+      selectedIds,
+      `group-${Date.now().toString(36)}`,
+    );
+
+    if (!next) {
+      return;
+    }
+
+    commitLayout(next);
+    setGroupDraft(null);
+    setSelectedIds([]);
+    setSelectMode(false);
+    setArrangeUndo(null);
+  }
+
   /** Zooms about a point given in client coordinates, so the point stays put. */
   function zoomAround(svg: SVGSVGElement, clientX: number, clientY: number, factor: number) {
     const pointer = viewBoxPointAt(clientX, clientY, svg.getBoundingClientRect(), canvas.viewBox);
@@ -1028,6 +1302,15 @@ export function RelationshipGraph({
     return () => svg.removeEventListener("wheel", onWheel);
   }, [canvas.viewBox]);
 
+  /**
+   * How far a press may travel before it counts as a drag.
+   *
+   * A finger rolls by a few pixels when it taps, so the touch threshold is larger
+   * than the mouse one. Without the gap, every tap on a phone drags the node a
+   * little and then also opens nothing.
+   */
+  const dragThreshold = (pointerType: string) => (pointerType === "touch" ? 8 : 4);
+
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
@@ -1037,12 +1320,14 @@ export function RelationshipGraph({
     //
     // Capturing the pointer on the <svg> retargets the compatibility mouse events to
     // the capturing element, so the `click` that follows a tap is delivered to the
-    // <svg> and never reaches the node's own handler — which is how "click a node to
-    // open the character" quietly stopped working everywhere except the keyboard. The
-    // gesture is resolved on release instead, from the node the press began on.
-    pressedNodeRef.current =
-      (event.target as Element | null)?.closest?.("[data-character-id]")?.getAttribute("data-character-id") ??
-      null;
+    // <svg> and never reaches the node's own handler. The gesture is resolved on
+    // release instead, from the node the press began on.
+    const target = event.target as Element | null;
+    const nodeId = target?.closest?.("[data-character-id]")?.getAttribute("data-character-id") ?? null;
+    const groupId = nodeId
+      ? null
+      : target?.closest?.("[data-group-id]")?.getAttribute("data-group-id") ?? null;
+    pressedNodeRef.current = nodeId;
 
     event.currentTarget.setPointerCapture(event.pointerId);
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1050,6 +1335,46 @@ export function RelationshipGraph({
     if (pointersRef.current.size === 2) {
       const [first, second] = [...pointersRef.current.values()];
       pinchRef.current = { distance: Math.hypot(first.x - second.x, first.y - second.y) };
+      panRef.current = null;
+      nodeDragRef.current = null;
+      groupDragRef.current = null;
+      return;
+    }
+
+    if (pointersRef.current.size > 2) {
+      return;
+    }
+
+    if (nodeId) {
+      const index = visibleCharacters.findIndex((character) => character.id === nodeId);
+      const nodePoint = positions[index];
+
+      if (nodePoint) {
+        const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+        nodeDragRef.current = {
+          id: nodeId,
+          pointerId: event.pointerId,
+          startX: event.clientX,
+          startY: event.clientY,
+          grab: { x: nodePoint.x - world.x, y: nodePoint.y - world.y },
+          moved: false,
+          base: workingLayout(),
+        };
+        panRef.current = null;
+        return;
+      }
+    }
+
+    if (groupId) {
+      const group = layout.groups.find((item) => item.id === groupId);
+      groupDragRef.current = {
+        groupId,
+        pointerId: event.pointerId,
+        start: drawingPoint(event.clientX, event.clientY, event.currentTarget),
+        members: group?.characterIds ?? [],
+        base: workingLayout(),
+        moved: false,
+      };
       panRef.current = null;
       return;
     }
@@ -1070,6 +1395,13 @@ export function RelationshipGraph({
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     if (pointers.size >= 2) {
+      // A second finger turns the gesture into a pinch: whatever the first finger
+      // was dragging must be abandoned, not committed halfway.
+      nodeDragRef.current = null;
+      groupDragRef.current = null;
+      if (livePositions) {
+        stopDragFrame();
+      }
       const [first, second] = [...pointers.values()];
       const distance = Math.hypot(first.x - second.x, first.y - second.y);
       const previous = pinchRef.current;
@@ -1082,6 +1414,55 @@ export function RelationshipGraph({
         );
       }
       pinchRef.current = { distance };
+      return;
+    }
+
+    const nodeDrag = nodeDragRef.current;
+    if (nodeDrag && nodeDrag.pointerId === event.pointerId) {
+      const travelled = Math.hypot(event.clientX - nodeDrag.startX, event.clientY - nodeDrag.startY);
+
+      if (!nodeDrag.moved && travelled > dragThreshold(event.pointerType)) {
+        nodeDrag.moved = true;
+        setFocusId(null);
+        setHoveredId(null);
+      }
+
+      if (nodeDrag.moved) {
+        const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+        scheduleDrag({
+          ...nodeDrag.base.positions,
+          [nodeDrag.id]: {
+            x: Math.round((world.x + nodeDrag.grab.x) * 100) / 100,
+            y: Math.round((world.y + nodeDrag.grab.y) * 100) / 100,
+          },
+        });
+      }
+      return;
+    }
+
+    const groupDrag = groupDragRef.current;
+    if (groupDrag && groupDrag.pointerId === event.pointerId) {
+      const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+      const delta = { x: world.x - groupDrag.start.x, y: world.y - groupDrag.start.y };
+
+      if (!groupDrag.moved && Math.hypot(delta.x, delta.y) > dragThreshold(event.pointerType)) {
+        groupDrag.moved = true;
+        setHoveredId(null);
+      }
+
+      if (groupDrag.moved) {
+        const next = { ...groupDrag.base.positions };
+        for (const id of groupDrag.members) {
+          const point = groupDrag.base.positions[id];
+          if (point) {
+            next[id] = {
+              x: Math.round((point.x + delta.x) * 100) / 100,
+              y: Math.round((point.y + delta.y) * 100) / 100,
+            };
+          }
+        }
+        scheduleDrag(next);
+      }
       return;
     }
 
@@ -1103,12 +1484,68 @@ export function RelationshipGraph({
   }
 
   function endPan(event: ReactPointerEvent<SVGSVGElement>) {
+    const nodeDrag = nodeDragRef.current;
+    const groupDrag = groupDragRef.current;
     const pan = panRef.current;
-    // A press that never moved is a tap: that, not a `click`, is what opens the
-    // character. It has to be the pan this gesture started, so lifting one finger of a
-    // pinch is not a tap on whatever it landed on.
-    const tapped = Boolean(pan && pan.pointerId === event.pointerId && !pan.moved && pressedNodeRef.current);
     const tappedId = pressedNodeRef.current;
+
+    const nodeGesture = nodeDrag && nodeDrag.pointerId === event.pointerId ? nodeDrag : null;
+    const groupGesture = groupDrag && groupDrag.pointerId === event.pointerId ? groupDrag : null;
+    const panned = Boolean(pan && pan.pointerId === event.pointerId && pan.moved);
+
+    if (nodeGesture?.moved) {
+      // A fast flick can end before the next animation frame, so the release
+      // position is computed here as well. Without this the node snaps back.
+      const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+      const final = pendingDragRef.current ?? {
+        ...nodeGesture.base.positions,
+        [nodeGesture.id]: {
+          x: Math.round((world.x + nodeGesture.grab.x) * 100) / 100,
+          y: Math.round((world.y + nodeGesture.grab.y) * 100) / 100,
+        },
+      };
+      commitLayout({ ...nodeGesture.base, positions: final });
+      setArrangeUndo(null);
+      stopDragFrame();
+    } else if (groupGesture?.moved) {
+      const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+      const delta = {
+        x: world.x - groupGesture.start.x,
+        y: world.y - groupGesture.start.y,
+      };
+      const fallback = { ...groupGesture.base.positions };
+      for (const id of groupGesture.members) {
+        const point = groupGesture.base.positions[id];
+        if (point) {
+          fallback[id] = {
+            x: Math.round((point.x + delta.x) * 100) / 100,
+            y: Math.round((point.y + delta.y) * 100) / 100,
+          };
+        }
+      }
+      commitLayout({ ...groupGesture.base, positions: pendingDragRef.current ?? fallback });
+      setArrangeUndo(null);
+      stopDragFrame();
+    } else if (nodeGesture && tappedId) {
+      // A press that never moved is a tap. Two taps on the same node inside the
+      // window open the character; one tap selects it, which is what makes
+      // multi-select and grouping possible with a mouse or a finger.
+      const previous = lastTapRef.current;
+      const now = Date.now();
+      const doubleTap = previous?.id === tappedId && now - previous.at < 350;
+
+      if (doubleTap) {
+        lastTapRef.current = null;
+        onOpenCharacter(tappedId);
+      } else {
+        lastTapRef.current = { id: tappedId, at: now };
+        toggleSelected(tappedId, selectMode || event.shiftKey);
+      }
+    } else if (groupGesture && !groupGesture.moved) {
+      setSelectedIds(groupGesture.members);
+    } else if (!panned && !tappedId && !groupGesture) {
+      setSelectedIds([]);
+    }
 
     pointersRef.current.delete(event.pointerId);
     if (pointersRef.current.size < 2) {
@@ -1117,10 +1554,8 @@ export function RelationshipGraph({
     if (pointersRef.current.size === 0) {
       panRef.current = null;
       pressedNodeRef.current = null;
-    }
-
-    if (tapped && tappedId) {
-      onOpenCharacter(tappedId);
+      nodeDragRef.current = null;
+      groupDragRef.current = null;
     }
   }
   const byId = useMemo(
@@ -1715,6 +2150,223 @@ export function RelationshipGraph({
                 适应画布
               </button>
             </div>
+
+            {/* Free placement, arranging and grouping. They act on the drawing, so
+                they sit with it, in the same strip as search and zoom. */}
+            <div aria-label="画布编辑" className="graph-edit-tools" role="group">
+              <button
+                aria-pressed={selectMode}
+                className={`graph-tool-button${selectMode ? " active" : ""}`}
+                onClick={() => {
+                  setSelectMode((current) => {
+                    if (current) {
+                      setSelectedIds([]);
+                    }
+                    return !current;
+                  });
+                }}
+                type="button"
+              >
+                多选
+              </button>
+
+              <div className="graph-tool-wrap">
+                <button
+                  aria-expanded={isGroupsOpen}
+                  aria-label="视觉分组"
+                  className={`graph-tool-button${layout.groups.length > 0 ? " has-count" : ""}`}
+                  onClick={() => setIsGroupsOpen((current) => !current)}
+                  type="button"
+                >
+                  分组
+                  {layout.groups.length > 0 && <span className="graph-tool-count">{layout.groups.length}</span>}
+                </button>
+                {isGroupsOpen && (
+                  <div className="graph-panel graph-group-panel" role="group" aria-label="视觉分组面板">
+                    {groupDraft ? (
+                      <form
+                        className="graph-group-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          saveGroupDraft();
+                        }}
+                      >
+                        <label className="graph-group-field">
+                          <span>分组名称</span>
+                          <input
+                            aria-label="分组名称"
+                            autoFocus
+                            maxLength={40}
+                            onChange={(event) =>
+                              setGroupDraft((current) =>
+                                current ? { ...current, name: event.target.value } : current,
+                              )
+                            }
+                            placeholder="例如：北境线"
+                            value={groupDraft.name}
+                          />
+                        </label>
+                        <p className="muted">将 {selectedIds.length} 个角色归为一组。只影响画布，不写世界观。</p>
+                        <div className="graph-group-actions">
+                          <button className="ghost-button" onClick={() => setGroupDraft(null)} type="button">
+                            取消
+                          </button>
+                          <button className="primary-button" disabled={!groupDraft.name.trim()} type="submit">
+                            创建分组
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        {layout.groups.length === 0 ? (
+                          <p className="muted">还没有分组。选中两个以上角色后创建。</p>
+                        ) : (
+                          <ul className="graph-group-list">
+                            {layout.groups.map((group) => (
+                              <li key={group.id}>
+                                <span className="graph-group-name">{group.name}</span>
+                                <span className="graph-group-count">{group.characterIds.length} 人</span>
+                                <button
+                                  aria-label={`取消分组 ${group.name}`}
+                                  className="ghost-button graph-group-remove"
+                                  onClick={() => {
+                                    commitLayout(removeGroup(layout, group.id));
+                                    setArrangeUndo(null);
+                                  }}
+                                  type="button"
+                                >
+                                  取消分组
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <button
+                          className="ghost-button graph-group-create"
+                          disabled={selectedIds.length < 2}
+                          onClick={() => setGroupDraft({ name: "", editingId: null })}
+                          type="button"
+                        >
+                          用所选创建分组（{selectedIds.length}）
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="graph-tool-wrap">
+                <button
+                  aria-expanded={isArrangeOpen}
+                  className="graph-tool-button"
+                  onClick={() => setIsArrangeOpen((current) => !current)}
+                  type="button"
+                >
+                  整理
+                </button>
+                {isArrangeOpen && (
+                  <div className="graph-panel graph-arrange-panel" role="group" aria-label="自动整理">
+                    <p className="graph-panel-title">先预览，确认后才写入布局</p>
+                    <div className="graph-scope-switch" role="group" aria-label="整理范围">
+                      <button
+                        aria-pressed={arrangeScope === "visible"}
+                        className={arrangeScope === "visible" ? "active" : ""}
+                        onClick={() => setArrangeScope("visible")}
+                        type="button"
+                      >
+                        当前可见（{visibleCharacters.length}）
+                      </button>
+                      <button
+                        aria-pressed={arrangeScope === "all"}
+                        className={arrangeScope === "all" ? "active" : ""}
+                        onClick={() => setArrangeScope("all")}
+                        type="button"
+                      >
+                        全部角色（{characters.length}）
+                      </button>
+                    </div>
+                    <div className="graph-arrange-actions">
+                      <button className="ghost-button" onClick={() => proposeArrange("cluster")} type="button">
+                        关系聚类
+                      </button>
+                      <button className="ghost-button" onClick={() => proposeArrange("ring")} type="button">
+                        环形布局
+                      </button>
+                    </div>
+                    <p className="muted">只移动所选范围的节点，不改角色资料与关系。</p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                aria-label="重置视角"
+                className="graph-tool-button"
+                onClick={() => {
+                  setFocusId(null);
+                  setSelectedIds([]);
+                  resetView();
+                }}
+                type="button"
+              >
+                重置视角
+              </button>
+            </div>
+          </div>
+
+          {/* A fixed slot, so showing a preview or a selection hint does not push
+              the canvas down under the pointer that just selected something. */}
+          <div className="graph-edit-slot">
+          {preview && (
+            <div className="graph-edit-bar preview" role="status">
+              <span>
+                预览：{preview.mode === "ring" ? "环形布局" : "关系聚类"} ·{" "}
+                {Object.keys(preview.positions).length} 个节点（
+                {preview.scope === "visible" ? "当前可见" : "全部角色"}）
+              </span>
+              <div className="graph-edit-bar-actions">
+                <button className="ghost-button" onClick={() => setPreview(null)} type="button">
+                  取消
+                </button>
+                <button className="primary-button" onClick={applyArrange} type="button">
+                  确认应用
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!preview && arrangeUndo && (
+            <div className="graph-edit-bar" role="status">
+              <span>已应用{arrangeUndo.label}</span>
+              <div className="graph-edit-bar-actions">
+                <button className="ghost-button" onClick={undoArrange} type="button">
+                  撤销
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectedIds.length > 0 && !preview && (
+            <div className="graph-edit-bar selection" role="status">
+              <span>已选 {selectedIds.length} 个角色</span>
+              <div className="graph-edit-bar-actions">
+                <button
+                  className="ghost-button"
+                  disabled={selectedIds.length < 2}
+                  onClick={() => {
+                    setGroupDraft({ name: "", editingId: null });
+                    setIsGroupsOpen(true);
+                  }}
+                  type="button"
+                >
+                  创建分组
+                </button>
+                <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                  清除选择
+                </button>
+              </div>
+            </div>
+          )}
+
           </div>
 
           {!showAll && visibleCharacters.length < connectedIds.size && (
@@ -1769,6 +2421,12 @@ export function RelationshipGraph({
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
+              {/* A dot grid, drawn in drawing coordinates so it pans and zooms with
+                  the nodes. It is a reference for the eye, not a container: there is
+                  no boundary to hit. */}
+              <pattern height="48" id="graph-dot-grid" patternUnits="userSpaceOnUse" width="48">
+                <circle className="graph-grid-dot" cx="1" cy="1" r="1.1" />
+              </pattern>
               {prefs.showAvatars &&
                 visibleCharacters.map((character, index) =>
                   avatarUrls[character.id] ? (
@@ -1779,6 +2437,31 @@ export function RelationshipGraph({
                 )}
             </defs>
             <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
+            <rect
+              className="graph-grid-plane"
+              fill="url(#graph-dot-grid)"
+              height={12000}
+              width={16000}
+              x={-8000}
+              y={-6000}
+            />
+            {/* Visual groups sit under the edges and the nodes: a rectangle that
+                covered them would swallow every drag that started inside it. */}
+            {groupRects.map(({ group, rect }) => (
+              <g className="graph-group" data-group-id={group.id} key={group.id}>
+                <rect
+                  className="graph-group-rect"
+                  height={rect.height}
+                  rx={26}
+                  width={rect.width}
+                  x={rect.x}
+                  y={rect.y}
+                />
+                <text className="graph-group-label" x={rect.x + 18} y={rect.y + 24}>
+                  {group.name}
+                </text>
+              </g>
+            ))}
             {relationships.map((relationship) => {
               const from = byId.get(relationship.fromId);
               const to = byId.get(relationship.toId);
@@ -1831,27 +2514,23 @@ export function RelationshipGraph({
               const labelled =
                 prefs.showNames &&
                 (showLabels || isHovered || isFocused || isNeighbour || hubIds.has(character.id));
-              const state = isFocused
+              const baseState = isFocused
                 ? "relationship-node active focused"
                 : isHovered
                   ? "relationship-node active"
                   : activeId && character.id !== activeId && !isNeighbour
                     ? "relationship-node dimmed"
                     : "relationship-node";
+              const isSelected = selectedIds.includes(character.id);
+              const state = `${baseState}${isSelected ? " selected" : ""}`;
               const avatarUrl = avatarUrls[character.id];
               return (
                 <g
                   className={state}
                   data-character-id={character.id}
                   data-character-name={characterDisplayName(character)}
+                  data-selected={isSelected ? "true" : undefined}
                   key={character.id}
-                  onClick={() => {
-                    // A drag ends on the node it started on; that is a pan, not a click.
-                    if (panRef.current?.moved) {
-                      return;
-                    }
-                    onOpenCharacter(character.id);
-                  }}
                   onPointerEnter={() => setHoveredId(character.id)}
                   onPointerLeave={() => setHoveredId(null)}
                   role="presentation"
