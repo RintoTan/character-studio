@@ -2573,18 +2573,30 @@ h2 {
 }
 
 .table-avatar {
-  display: grid;
+  /* Centred flex rather than a grid: a percentage height on the picture resolves
+     against a grid track that is itself sized by the picture, so the image kept its
+     natural 2:3 height and hung out of the bottom of the well. A flex item's
+     percentage resolves against the container's definite 34px. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   width: 34px;
   height: 34px;
   min-width: 34px;
   flex: 0 0 34px;
   aspect-ratio: 1 / 1;
-  place-items: center;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 9px;
   background:
     linear-gradient(0deg, var(--avatar-tint), var(--avatar-tint)),
     var(--surface-subtle);
+  /* Same rule as the row avatar: the emoji gets a square, one-line box centred in
+     the well, so it lines up with a picture avatar above and below it. */
+  font-family: var(--emoji-font);
+  font-size: 17px;
+  line-height: 1;
 }
 
 .table-avatar img,
@@ -2616,7 +2628,12 @@ h2 {
   contain: layout paint;
 }
 
-.table-avatar,
+/* `.table-avatar` is deliberately not in this list. When the font-family declaration
+   below became a comment, the selector list was left in front of `.table-tags` and
+   merged with it, so everything named here also received `display: flex`. Every other
+   avatar container restates its own display further down; the table avatar's rule is
+   above this point, so it silently became a flex row and its emoji sat at the left
+   edge of the well instead of in the middle. */
 .avatar-placeholder,
 .avatar-inner,
 .workspace-avatar,
@@ -8618,13 +8635,29 @@ kbd {
 .character-row-avatar {
   display: inline-flex;
   flex: 0 0 auto;
+  align-self: center;
   align-items: center;
   justify-content: center;
   width: 26px;
   height: 26px;
   overflow: hidden;
   border-radius: 50%;
-  font-size: 14px;
+  font-family: var(--emoji-font);
+  /* An emoji's own line box is taller than the glyph and sits on a baseline, so
+     aligning the box left the face a pixel or two low and a little left of centre
+     next to an image avatar. A one-line box measured from its own top, centred by
+     the grid, is the same rule the developer page's emoji sample already uses. */
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* `.settings-check span` nudges text down a pixel so it sits optically level with the
+   toggle beside it. That rule also matched this avatar, which is a span: the content
+   box lost a pixel off the top, the picture came out 1px shorter than its circle and
+   both kinds of avatar sat half a pixel low. The nudge belongs to text, not to a
+   box that clips a picture. */
+.character-row .character-row-avatar {
+  padding: 0;
 }
 
 .character-row-name {

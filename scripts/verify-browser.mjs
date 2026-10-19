@@ -5629,7 +5629,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean([relation, timeline, world, narrow].every(contained) && loaded && emojiKept),
-        detail: `新建关系 ${relation.count} 行 / 溢出 ${relation.escaped}px / 图片 ${relation.pictures} 个（最宽源 ${relation.widest}px）/ 保存按钮命中 ${relation.saveHit}；时间线 ${timeline.count} 行 / 溢出 ${timeline.escaped}px / 命中 ${timeline.saveHit}；世界观 ${world.count} 行 / 溢出 ${world.escaped}px / 命中 ${world.saveHit}；375px ${narrow.count} 行 / 溢出 ${narrow.escaped}px / 页面溢出 ${narrow.pageOverflow}px；头像框 ${relation.rows[0] && relation.rows[0].box.join("x")}、图片 ${relation.rows[0] && (relation.rows[0].image || []).join("x")}（源 ${relation.rows[0] && relation.rows[0].natural && relation.rows[0].natural.join("x")}）、clip ${relation.rows[0] && relation.rows[0].clipped}；emoji 行 ${emojiKept ? "保留" : "丢失"}`,
+        detail: `新建关系 ${relation.count} 行 / 溢出 ${relation.escaped}px / 图片 ${relation.pictures} 个（最宽源 ${relation.widest}px）/ 保存按钮命中 ${relation.saveHit}；时间线 ${timeline.count} 行 / 溢出 ${timeline.escaped}px / 命中 ${timeline.saveHit}；世界观 ${world.count} 行 / 溢出 ${world.escaped}px / 命中 ${world.saveHit}；375px ${narrow.count} 行 / 溢出 ${narrow.escaped}px / 页面溢出 ${narrow.pageOverflow}px；头像框 ${relation.rows[0] && relation.rows[0].box.join("x")}、图片 ${relation.rows[0] && (relation.rows[0].image || []).join("x")}（源 ${relation.rows[0] && relation.rows[0].natural && relation.rows[0].natural.join("x")}）、clip ${relation.rows[0] && relation.rows[0].clipped}；emoji 行 ${emojiKept ? "保留" : "丢失"}；逐行 ${timeline.rows.map((row) => row.box.join("x") + (row.image ? "/" + row.image.join("x") : "") + "/" + row.escaped).join(" ")}`,
       };
     });
 
@@ -6313,6 +6313,180 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return { pass: true, detail: files.join("  ") };
       });
     }
+
+    await check("头像：列表里的 Emoji、图片与默认头像都与容器同心", async () => {
+      // Four rows, three appearances: an emoji, a picture, the default emoji and a
+      // second emoji with different metrics. Measured in the dashboard's list view and
+      // in the timeline dialog's character rows, because those are the two list
+      // avatars the app draws at different sizes.
+      const seedAvatars = `
+        (async () => {
+          const now = "2026-01-01T00:00:00.000Z";
+          const make = (id, name, avatarEmoji, avatarAssetId) => ({
+            id, name, occupation: "调查员", worldview: "北境", createdAt: now, updatedAt: now,
+            ...(avatarEmoji ? { avatarEmoji } : {}),
+            ...(avatarAssetId ? { avatarAssetId } : {}),
+          });
+          localStorage.setItem("character-studio.characters", JSON.stringify([
+            make("av-1", "表情头像", "🙂"),
+            make("av-2", "图片头像", "", "asset-list"),
+            make("av-3", "默认头像"),
+            make("av-4", "狐狸头像", "🦊"),
+          ]));
+          localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+          localStorage.setItem("character-studio.timeline", JSON.stringify([{
+            id: "av-tl", title: "列表头像检查", date: "2026-01-01", kind: "origin",
+            characterIds: ["av-1", "av-2", "av-3", "av-4"], createdAt: now, updatedAt: now,
+          }]));
+          localStorage.setItem("character-studio.world", JSON.stringify([]));
+          localStorage.setItem("character-studio.about-seen", "true");
+          localStorage.setItem("character-studio.dashboard-prefs", JSON.stringify({
+            searchTerm: "", sortMode: "updated-desc", worldviewFilter: "全部",
+            genderFilter: "全部", visualStyleFilter: "全部", favoriteMode: "all", viewMode: "list",
+          }));
+
+          const source = document.createElement("canvas");
+          source.width = 64;
+          source.height = 96;
+          source.getContext("2d").fillStyle = "#3366cc";
+          source.getContext("2d").fillRect(0, 0, 64, 96);
+          const blob = await new Promise((resolve) => source.toBlob(resolve, "image/png"));
+
+          await new Promise((resolve, reject) => {
+            const request = indexedDB.open("character-studio-assets", 1);
+            request.onupgradeneeded = () => {
+              if (!request.result.objectStoreNames.contains("avatar-assets")) {
+                request.result.createObjectStore("avatar-assets", { keyPath: "id" });
+              }
+            };
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => {
+              const db = request.result;
+              const transaction = db.transaction("avatar-assets", "readwrite");
+              transaction.objectStore("avatar-assets").put({
+                id: "asset-list", type: "avatar", name: "tall.png", mimeType: "image/png",
+                blob, size: blob.size, width: 64, height: 96, createdAt: now, updatedAt: now,
+              });
+              transaction.oncomplete = () => { db.close(); resolve(true); };
+              transaction.onerror = () => reject(transaction.error);
+            };
+          });
+          return true;
+        })()
+      `;
+
+      const measure = `
+        (() => {
+          const centre = (rect) => ({ x: (rect.left + rect.right) / 2, y: (rect.top + rect.bottom) / 2 });
+          const rows = [...document.querySelectorAll(window.__avatarScope || ".character-row-avatar, .table-avatar")].map((box) => {
+            const outer = box.getBoundingClientRect();
+            const image = box.querySelector("img");
+            let inner = null;
+            let kind = "";
+            if (image) {
+              kind = "image";
+              inner = image.getBoundingClientRect();
+            } else {
+              const text = [...box.childNodes].find((node) => node.nodeType === 3 && node.textContent.trim());
+              if (!text) return null;
+              kind = "emoji";
+              const range = document.createRange();
+              range.selectNodeContents(text);
+              inner = range.getBoundingClientRect();
+            }
+            const a = centre(outer);
+            const b = centre(inner);
+            return {
+              kind,
+              glyph: (box.textContent || "").trim(),
+              dx: Math.round((b.x - a.x) * 100) / 100,
+              dy: Math.round((b.y - a.y) * 100) / 100,
+              box: [Math.round(outer.width), Math.round(outer.height)],
+              inner: [Math.round(inner.width), Math.round(inner.height)],
+              row: Math.round((box.closest(".character-picker-option") || box.closest(".character-table-row") || box.parentElement).getBoundingClientRect().height),
+              fit: image ? getComputedStyle(image).objectFit : "",
+              clipped: getComputedStyle(box).overflow,
+              lineHeight: getComputedStyle(box).lineHeight,
+            };
+          }).filter(Boolean);
+          return rows;
+        })()
+      `;
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 2, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(seedAvatars);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 500))`);
+      await cdp.value(`window.__avatarScope = ".character-table .table-avatar"`);
+      const listRows = await cdp.value(measure);
+
+      // The same rows inside a dialog: open 新建事件, whose 涉及角色 list is the
+      // CharacterRow presentation.
+      await cdp.value(clickWorkspace("世界观时间线"));
+      await cdp.waitFor(`!!document.querySelector(".timeline-toolbar")`, 8000);
+      await cdp.value(`window.__avatarScope = ".timeline-dialog .character-row-avatar"`);
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const create = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建事件");
+        if (!create) throw new Error("新建事件 missing");
+        create.click();
+        await sleep(500);
+        return true;
+      })()`);
+      const dialogRows = await cdp.value(measure);
+
+      // Dark theme, same measurement: the alignment is a layout question, not a colour
+      // one, but the two themes have different borders and backgrounds.
+      await cdp.value(`localStorage.setItem("character-studio.theme", "dark")`);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 500))`);
+      await cdp.value(clickWorkspace("世界观时间线"));
+      await cdp.waitFor(`!!document.querySelector(".timeline-toolbar")`, 8000);
+      await cdp.value(`window.__avatarScope = ".timeline-dialog .character-row-avatar"`);
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const create = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建事件");
+        if (!create) throw new Error("新建事件 missing");
+        create.click();
+        await sleep(500);
+        return true;
+      })()`);
+      const darkRows = await cdp.value(measure);
+      await cdp.value(`localStorage.removeItem("character-studio.theme")`);
+
+      const all = [...listRows, ...dialogRows, ...darkRows];
+      const tolerance = 0.75;
+      const problems = all.filter((row) =>
+        Math.abs(row.dx) > tolerance ||
+        Math.abs(row.dy) > tolerance ||
+        row.inner[0] === 0 ||
+        (row.kind === "image" && row.fit !== "cover"),
+      );
+      const kinds = new Set(all.map((row) => row.kind));
+      // The rows themselves must not have grown to fit the avatar: every row on one
+      // surface keeps the same height whether it holds an emoji or a picture.
+      const sameHeight = (rows) => new Set(rows.map((row) => row.row)).size === 1;
+      const rowHeights = [sameHeight(listRows), sameHeight(dialogRows), sameHeight(darkRows)];
+
+      return {
+        pass:
+          listRows.length >= 4 &&
+          dialogRows.length >= 4 &&
+          darkRows.length >= 4 &&
+          kinds.has("emoji") &&
+          kinds.has("image") &&
+          problems.length === 0 &&
+          rowHeights.every(Boolean),
+        detail:
+          `列表 ${listRows.length} 个（${listRows.map((r) => r.kind + ":" + r.glyph + " d=" + r.dx + "/" + r.dy).join("、")}）；`
+          + `弹窗 ${dialogRows.length} 个（${dialogRows.map((r) => r.kind + " d=" + r.dx + "/" + r.dy).join("、")}）；`
+          + `深色 ${darkRows.length} 个（${darkRows.map((r) => r.kind + " d=" + r.dx + "/" + r.dy).join("、")}）；`
+          + `容器 ${[...new Set(all.map((r) => r.box.join("x")))].join("/")}、行高一致 ${rowHeights.join("/")}、`
+          + `图片裁切 ${[...new Set(all.filter((r) => r.kind === "image").map((r) => r.fit + "/" + r.clipped))].join("/")}；`
+          + (problems.length ? `偏移 ${problems.map((r) => r.kind + " " + r.dx + "/" + r.dy).join("、")}` : "全部同心"),
+      };
+    });
 
     await check("窄屏（375）：后退同样恢复工作区页面", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
