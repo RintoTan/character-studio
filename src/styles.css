@@ -9759,9 +9759,24 @@ kbd {
   margin-inline: var(--workspace-inset);
 }
 
+/* A capped column that is also centred. With only the cap, an 880px column sat at
+   the left edge of a 1,120px workspace and left 215px of empty space on the right —
+   the reading surface looked pushed aside rather than set on the page. The inset
+   stays as the minimum gutter; the auto margins take over once the cap is reached. */
 .timeline-page > :not(.workspace-header) {
-  margin-inline: var(--workspace-inset);
+  width: calc(100% - 2 * var(--workspace-inset));
   max-width: 880px;
+  margin-inline: auto;
+}
+
+/* The masthead joins the same column, so its title and its actions share an edge with
+   the events below instead of sitting 72px further left. Its own inline padding is
+   dropped because the column already carries the gutter. */
+.timeline-page > .workspace-header {
+  width: calc(100% - 2 * var(--workspace-inset));
+  max-width: 880px;
+  margin-inline: auto;
+  padding-inline: 0;
 }
 
 .world-page .world-detail {
@@ -10227,11 +10242,16 @@ kbd {
 
 .world-explorer {
   grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
-  gap: 16px;
+  gap: 20px;
+  /* The tree is the tall pane; the detail is usually shorter. Capping the tree at
+     70vh held the whole explorer open at 718px and left ~180px of empty space under
+     the detail, which read as a container that had not finished loading. A shorter
+     cap keeps the two panes within ~20px of each other on a laptop. */
+  align-items: start;
 }
 
 .world-tree {
-  max-height: min(70vh, 720px);
+  max-height: min(52vh, 520px);
 }
 
 .world-row-main {
@@ -10263,7 +10283,10 @@ kbd {
 
 .world-detail-body,
 .world-detail-section p {
-  max-width: 74ch;
+  /* `ch` is the width of a zero, which is a poor ruler for Chinese: 74ch measured
+     about 52 Han characters per line here. 40em is ~40 characters at this size,
+     and still a normal measure for Latin prose. */
+  max-width: 40em;
 }
 
 /* --- Timeline: one filter bar, a year rail, a readable event body ------------ */

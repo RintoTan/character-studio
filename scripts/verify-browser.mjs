@@ -6776,6 +6776,98 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
+
+    await check("布局：时间线阅读列居中、世界观分栏与正文行宽", async () => {
+      const nav = async (label) => cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        document.querySelector(".workspace-switch").click();
+        await sleep(350);
+        const button = [...document.querySelectorAll("button")].find((entry) => entry.textContent.includes(${JSON.stringify(label)}));
+        if (!button) throw new Error("nav missing");
+        button.click();
+        await sleep(900);
+        return true;
+      })()`);
+
+      const snapshots = [];
+      for (const width of [1440, 1920]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: width === 1440 ? 900 : 1080, deviceScaleFactor: 1, mobile: false });
+        await cdp.goto(base);
+        await cdp.value(SEED);
+        await cdp.value(`localStorage.setItem("character-studio.world", JSON.stringify([{
+          id: "w-layout", name: "测试大陆", category: "location",
+          summary: "一段用来检查行宽的摘要，足够长以触发换行。",
+          details: "潮汐失衡之后，沿海聚落各自收缩，形成今天互相试探的格局。这一段刻意写得足够长，用来验证详情正文的行宽上限是否生效，而不是一路铺到容器边缘。",
+          tags: [], characterIds: [],
+          createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+        }]))`);
+        await cdp.goto(base);
+        await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 600))`);
+        await nav("世界观时间线");
+
+        const timeline = await cdp.value(`(() => {
+          const section = document.querySelector(".timeline-page");
+          const workspace = section.getBoundingClientRect();
+          const header = section.querySelector(".workspace-header");
+          const column = [...section.children].find((node) => !node.classList.contains("workspace-header"));
+          const box = column.getBoundingClientRect();
+          return {
+            left: +(box.left - workspace.left).toFixed(2),
+            right: +(workspace.right - box.right).toFixed(2),
+            width: +box.width.toFixed(1),
+            headerLeft: +(header.getBoundingClientRect().left - workspace.left).toFixed(1),
+            innerLeft: +(header.firstElementChild ? header.firstElementChild.getBoundingClientRect().left - workspace.left : 0).toFixed(1),
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          };
+        })()`);
+
+        await nav("世界观管理");
+        const world = await cdp.value(`(() => {
+          const explorer = document.querySelector(".world-explorer");
+          const columns = getComputedStyle(explorer).gridTemplateColumns.split(" ").map((value) => parseFloat(value));
+          const detail = document.querySelector(".world-detail");
+          const body = document.querySelector(".world-detail-body") || document.querySelector(".world-detail-section p");
+          const section = document.querySelector(".world-page");
+          const workspace = section.getBoundingClientRect();
+          return {
+            sidebar: +columns[0].toFixed(0),
+            gap: parseFloat(getComputedStyle(explorer).columnGap),
+            detail: +detail.getBoundingClientRect().width.toFixed(0),
+            body: body ? +body.getBoundingClientRect().width.toFixed(0) : 0,
+            bodyText: body ? body.textContent.slice(0, 12) : "",
+            bodyFont: parseFloat(getComputedStyle(body || detail).fontSize),
+            bottom: +(workspace.bottom - detail.getBoundingClientRect().bottom).toFixed(0),
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          };
+        })()`);
+
+        snapshots.push({ width, timeline, world });
+      }
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const failures = [];
+      for (const snapshot of snapshots) {
+        if (Math.abs(snapshot.timeline.left - snapshot.timeline.right) > 2) failures.push(`${snapshot.width}: 阅读列不居中`);
+        if (snapshot.timeline.width > 880 || snapshot.timeline.width < 600) failures.push(`${snapshot.width}: 阅读列宽 ${snapshot.timeline.width}`);
+        if (snapshot.timeline.overflow > 0) failures.push(`${snapshot.width}: 时间线横向溢出`);
+        if (snapshot.world.sidebar !== 320) failures.push(`${snapshot.width}: 左栏 ${snapshot.world.sidebar}`);
+        if (snapshot.world.gap !== 20) failures.push(`${snapshot.width}: 分栏间距 ${snapshot.world.gap}`);
+        if (snapshot.world.detail > 720) failures.push(`${snapshot.width}: 详情 ${snapshot.world.detail}`);
+        if (snapshot.world.body > snapshot.world.bodyFont * 40 + 2) failures.push(`${snapshot.width}: 正文 ${snapshot.world.body}`);
+        if (snapshot.world.overflow > 0) failures.push(`${snapshot.width}: 世界观横向溢出`);
+        if (snapshot.world.bottom > 60) failures.push(`${snapshot.width}: 详情下方空白 ${snapshot.world.bottom}`);
+      }
+
+      return {
+        pass: failures.length === 0,
+        detail: snapshots.map((snapshot) =>
+          `${snapshot.width}：左右 ${snapshot.timeline.left}/${snapshot.timeline.right}、列宽 ${snapshot.timeline.width}、`
+          + `标题内缘 ${snapshot.timeline.innerLeft}；世界观 ${snapshot.world.sidebar}+${snapshot.world.detail}（间距 ${snapshot.world.gap}）、`
+          + `正文 ${snapshot.world.body}（字号 ${snapshot.world.bodyFont}，「${snapshot.world.bodyText}」）、下方空白 ${snapshot.world.bottom}`,
+        ).join(" ｜ ") + (failures.length ? `；问题：${failures.join("、")}` : ""),
+      };
+    });
+
     await check("窄屏（375）：后退同样恢复工作区页面", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: 375,
