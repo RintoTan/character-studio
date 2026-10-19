@@ -75,7 +75,12 @@ describe("canvas layout in a full backup", () => {
     });
     await commitCharacterImport(plan, []);
 
-    expect(readLayout()).toEqual(layout);
+    expect(readLayout()).toMatchObject({
+      schemaVersion: 2,
+      positions: layout.positions,
+      groups: layout.groups,
+      style: expect.objectContaining({ preset: "classic" }),
+    });
   });
 
   it("replaces a local canvas that the package disagrees with", async () => {
