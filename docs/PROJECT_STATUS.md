@@ -21,6 +21,17 @@
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
 
+### 移动端专项（2026-10-19，未发布）
+
+版本与 Sprint 不变（2.37.0 / 47），只改手机上的导航、弹层与信息密度。
+
+| 事项 | 实现 | 验证 |
+| --- | --- | --- |
+| 主导航底部抽屉 | `components/BottomSheet.tsx`（Portal、滚动锁定、Escape、焦点回归、安全区）+ `App.tsx` 的一份 `workspaceEntries` 同时供下拉与抽屉 | `verify:browser`：四项齐全、选中 1、贴底、可滚动、Escape 关闭且焦点回到 `.workspace-switch` |
+| 「更多操作」抽屉 | `Dashboard.tsx` 同一份行内容，桌面下拉 / 手机抽屉 | 7 行、面板 295–812、内部滚动、Escape 关闭 |
+| Dashboard 首屏 | 顶栏一行、隐藏重复标题带、范围计数下移、工具行四控件、视图与批量进抽屉 | 375px 首个角色卡片 y=321（此前 646） |
+| 弹层外点判定 | Portal 层带 `data-sheet-root`，App 与 Dashboard 的外点 handler 放行 | 手指按下不会先关抽屉（synthetic click 测不出，代码层修正） |
+
 ### Sprint 47（2.37.0）
 
 已随 2.37.0 发布。
@@ -34,7 +45,7 @@
 | 时间线年份导航 | `src/pages/Timeline.tsx`（649 行） | 单行滚动、当前年入视野、点年份避开吸顶栏 |
 | 世界观主从边界与移动端切换 | `src/pages/WorldManager.tsx`（706 行） | 手机一次一屏、返回列表左向 chevron、详情模式隐藏列表工具栏 |
 
-**浏览器检查**：`npm run verify:browser` 56/56（新增管理视图、手机图谱适配与浮动栏新行为三组）。**单元测试**：48 文件 / 538 用例。
+**浏览器检查**：`npm run verify:browser` 58/58（新增管理视图、手机图谱适配、浮动栏新行为、移动端导航抽屉与首屏两组）。**单元测试**：48 文件 / 538 用例。
 
 **版本号口径已统一（原 KI-07，2026-10-15 修复）**：`package.json` 的 `version` 已由 `1.0.0` 改为 **`2.27.0`**，与 `src/config/version.ts` 的 `APP_VERSION` 一致。
 应用内所有版本显示仍然只读 `version.ts`；`package.json` 的版本号是包元数据，不参与界面与构建产物（`scripts/build-info.mjs` 从 `version.ts` 取值）。
