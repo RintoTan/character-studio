@@ -45,6 +45,20 @@
 | 长名称关系行 | 名称换行、单元格等高、按钮留在行内、横向溢出裁掉 | 1440 行高 82/60、375 为 199/135、320 为 221/156，溢出 0 |
 | 时间线弹窗 | 固定标题 / 滚动正文 / 常驻底栏 | 320–1440 底栏可见；未保存提示照旧 |
 
+### 自由关系画布（Sprint 49，待验收）
+
+应用版本仍为 **2.38.0**。关系图从固定环形布局升级为可自由摆放的画布；自动布局保留为辅助整理。布局是独立的展示数据（`character-studio.relationship-layout`），不改角色字段、关系语义或世界观归属。
+
+| 事项 | 实现 | 验证 |
+| --- | --- | --- |
+| 布局模型 | `src/storage/relationshipLayout.ts`：`schemaVersion`、按 ID 的坐标、视觉分组 | 归一化/裁剪/补位/分组 36 例 |
+| 节点拖动 | `RelationshipGraph.tsx`：指针捕获、4/8px 阈值、rAF 合帧、松手写入 | 拖动中不落盘、松手坐标正确、刷新后一致 |
+| 无界视图 | 现有 `view` 平移缩放；`viewBox` 只随可见集合变化 | 缩放/平移改变变换，重置视角不清坐标 |
+| 自动整理 | 聚类（连通分量）与环形；可见/全部；预览、取消、确认、撤销 | 预览不落盘、取消复原、确认写入、撤销恢复 |
+| 视觉分组 | 多选、命名、整体拖动、取消 | 两名成员位移一致；关系数据不变 |
+| 备份 | ZIP/JSON 的 `relationshipLayout`；完全恢复/合并保护/ID 重映射/旧包兼容 | `canvasBackup` 5 例 + 布局合并 6 例 |
+| 移动端 | 触屏拖动、单指点选、双指缩放、375 无溢出 | 5px 抖动不移动、40px 拖动不误开 |
+
 ### UX 一致性与布局（2026-10-19，2.37.2）
 
 随 **2.37.2** 发布，Sprint 仍为 47。八项维护，不含新功能；存储协议与导入导出格式未变。
@@ -131,6 +145,7 @@
 | 角色预览展示页 | `src/pages/CharacterPreview.tsx`（555 行），双模式 `browse` / `editing` | 已实现 |
 | 收藏 / 草稿箱 | `Dashboard.tsx`（`favoriteMode` 偏好）、`App.tsx` 的 `handlePromoteDraft` / `handleDraftSave` | 已实现 |
 | 角色灵感工作室 | `components/InspirationStudio.tsx`、`data/inspirationLibrary.ts`、`inspiration/engine.ts` | 已实现 |
+| 自由关系画布 | `pages/RelationshipGraph.tsx`、`storage/relationshipLayout.ts` | 已实现（Sprint 49，待验收） |
 | 搜索 / 筛选 / 排序 | `storage/dashboardPrefs.ts` + `Dashboard.tsx` 的 `getVisibleCharacters` | 已实现 |
 | 批量选择 / 批量编辑 / 批量删除 / 批量复制 | `utils/bulkEdit.ts`、`Dashboard.tsx` 批量条 | 已实现 |
 | 角色关系网（图谱 / 管理双模式） | `src/pages/RelationshipGraph.tsx`（2366 行）+ `storage/relationshipStorage.ts` + `storage/graphPrefs.ts` + `types/relationship.ts` | 已实现 |
@@ -145,7 +160,7 @@
 | 弹窗键盘控制 | `hooks/useDialogKeyboard.ts`（90 行） | 已实现 |
 | 懒加载块自愈 | `utils/lazyImport.ts`（83 行） | 已实现 |
 | 构建身份与部署校验 | `scripts/build-identity.mjs`、`build-info.mjs`、`verify-deploy.mjs`、`.github/workflows/deploy-pages.yml` | 已实现 |
-| 单元测试 | `test/` **49 个文件 / 549 个用例** | 已实现 |
+| 单元测试 | `test/` **51 个文件 / 592 个用例** | 已实现 |
 
 ---
 
@@ -176,14 +191,14 @@
 
 ## 5. 验证等级与最近一次验证结果
 
-### 5.1 最近一次执行（2026-10-19，2.38.0）
+### 5.1 最近一次执行（2026-10-19，2.38.0 + Sprint 49 待发布）
 
 | 命令 | 结果 |
 | --- | --- |
 | `npm run typecheck` | **通过**，退出码 0，无输出 |
-| `npm test` | **通过**：49 个文件 / 549 个用例，0 失败 0 跳过 |
+| `npm test` | **通过**：51 个文件 / 592 个用例，0 失败 0 跳过 |
 | `npm run build:pages` | **通过**，22 个产物文件；发布构建入口与样式见线上 `build-info.json` |
-| `npm run verify:browser` | **68/68 通过**（新增返回来源、编辑器取消、图谱默认、灵感工作室、长名称关系行断言；原有断言保留） |
+| `npm run verify:browser` | **73/73 通过**（新增返回来源、编辑器取消、图谱默认、灵感工作室、长名称关系行、自由画布五项断言；原有断言保留） |
 | `npm run verify:version` | **通过**，2.38.0 |
 | 线上 `build-info.json` | 部署后由 `npm run verify:deploy` 核对：版本 2.38.0、sprint 48、commit 等于发布提交，22 个文件逐字节一致 |
 

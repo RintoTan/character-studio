@@ -5669,9 +5669,19 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         }, { capture: true, once: true });
         return true;
       })()`);
+      // Sprint 49 changed what one tap means: it selects a node (which is what
+      // makes multi-select and grouping possible), and a second tap inside the
+      // double-tap window opens the character. Both halves are asserted, because
+      // "selection works" is not a reason for the way in to have stopped working.
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 1 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const selected = await cdp.value(
+        `({ page: ${PAGE_IDS}, selected: document.querySelectorAll('.relationship-node[data-selected="true"]').length })`,
+      );
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 2 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 2 });
       await new Promise((resolve) => setTimeout(resolve, 800));
       const opened = await cdp.value(
         `({ page: ${PAGE_IDS}, showsName: document.body.textContent.includes("沈青梧"), tapTarget: window.__tapTarget || "(没有 click 事件)" })`,
@@ -5693,8 +5703,12 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         card.outsideFrame;
 
       return {
-        pass: Boolean(named && pictureDrawn && emojiDrawn && cardOk && opened.page === "preview" && opened.showsName && state.pageOverflow <= 1),
-        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}（视框 ${state.viewBox}、画布宽 ${state.frameWidth}px）、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；点击节点 → ${opened.page}（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
+        pass: Boolean(
+          named && pictureDrawn && emojiDrawn && cardOk &&
+          selected.page === "relationships" && selected.selected === 1 &&
+          opened.page === "preview" && opened.showsName && state.pageOverflow <= 1
+        ),
+        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}（视框 ${state.viewBox}、画布宽 ${state.frameWidth}px）、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；单击 → ${selected.page}（选中 ${selected.selected}）；双击 → ${opened.page}（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
       };
     });
 
@@ -6095,6 +6109,376 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return {
         pass: Boolean(framed && overview && before.inside === before.nodes),
         detail: `聚焦前 节点 ${before.nodes}、在画布内 ${before.inside}、缩放 ${before.zoom}（放大两档后 ${zoomedBefore.zoom}）；搜索「沈砚」${focused.found ? "命中并聚焦" : "未命中"} → 聚焦 ${afterFocus.focused}、未变暗 ${afterFocus.lit} 个、其中在画布内 ${afterFocus.litInside}、缩放 ${afterFocus.zoom}、「${afterFocus.chip}」；退出后 聚焦 ${afterEscape.focused}、在画布内 ${afterEscape.inside}/${afterEscape.nodes}、缩放 ${afterEscape.zoom}`,
+      };
+    });
+
+
+    /* ---------------------------------------------------------------------
+       Sprint 49 — the free relationship canvas.
+
+       One setup helper and one reader, so each check states its own starting
+       point rather than inheriting the previous one's viewport or data.
+       ------------------------------------------------------------------- */
+
+    const OPEN_GRAPH = async (width = 1440, height = 900, mobile = false) => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width,
+        height,
+        deviceScaleFactor: 1,
+        mobile,
+      });
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await cdp.waitFor(`document.querySelectorAll(".relationship-node").length >= 5`, 5000);
+      await cdp.waitFor(`document.querySelectorAll(".relationship-node-name").length > 0`, 4000);
+      return true;
+    };
+
+    const NODE_CENTRE = (id) => `(() => {
+      const node = document.querySelector('.relationship-node[data-character-id="${id}"]');
+      if (!node) return null;
+      const rect = node.querySelector("circle").getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`;
+
+    const CANVAS_STATE = `(() => {
+      const svg = document.querySelector(".relationship-canvas");
+      const transform = svg?.querySelector(":scope > g")?.getAttribute("transform") || "";
+      const match = /translate\\(([-0-9.]+) ([-0-9.]+)\\) scale\\(([-0-9.]+)\\)/.exec(transform);
+      const read = (key) => JSON.parse(localStorage.getItem(key) || "null");
+      return {
+        page: Boolean(document.querySelector(".relationship-page")),
+        layout: read("character-studio.relationship-layout"),
+        relationships: localStorage.getItem("character-studio.relationships"),
+        characters: localStorage.getItem("character-studio.characters"),
+        selected: document.querySelectorAll('.relationship-node[data-selected="true"]').length,
+        groups: document.querySelectorAll(".graph-group-rect").length,
+        preview: (document.querySelector(".graph-edit-bar.preview")?.textContent || "").replace(/\\s+/g, " ").trim(),
+        undo: Boolean([...document.querySelectorAll(".graph-edit-bar button")].find((b) => b.textContent.trim() === "撤销")),
+        zoom: match ? Number(match[3]) : null,
+        pan: match ? { x: Number(match[1]), y: Number(match[2]) } : null,
+        nodes: [...document.querySelectorAll(".relationship-node")].map((node) => ({
+          id: node.getAttribute("data-character-id"),
+          cx: Number(node.querySelector("circle").getAttribute("cx")),
+          cy: Number(node.querySelector("circle").getAttribute("cy")),
+        })),
+        edge: document.querySelector(".relationship-edge.kind-friend path")?.getAttribute("d") || "",
+        overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      };
+    })()`;
+
+    const DRAG = async (from, dx, dy, options = {}) => {
+      const steps = options.steps ?? 8;
+      const hold = options.hold ?? null;
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(from.x), y: Math.round(from.y), buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(from.x), y: Math.round(from.y), button: "left", buttons: 1, clickCount: 1 });
+      for (let step = 1; step <= steps; step += 1) {
+        await cdp.send("Input.dispatchMouseEvent", {
+          type: "mouseMoved",
+          x: Math.round(from.x + (dx * step) / steps),
+          y: Math.round(from.y + (dy * step) / steps),
+          button: "left",
+          buttons: 1,
+        });
+      }
+      if (hold) {
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return hold();
+      }
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(from.x + dx), y: Math.round(from.y + dy), button: "left", buttons: 0, clickCount: 1 });
+      return null;
+    };
+
+    await check("自由画布：拖动时节点与连线实时跟随，松手才写入，刷新后位置不变（Sprint 49）", async () => {
+      await OPEN_GRAPH();
+      const before = await cdp.value(CANVAS_STATE);
+      const centre = await cdp.value(NODE_CENTRE("g-1"));
+      if (!centre) throw new Error("沈青梧 节点缺失");
+
+      const mid = await DRAG(centre, 150, 80, { hold: () => cdp.value(CANVAS_STATE) });
+      const storedDuringDrag = mid.layout;
+      const liveNode = mid.nodes.find((node) => node.id === "g-1");
+      const startNode = before.nodes.find((node) => node.id === "g-1");
+      const edgeFollowed = mid.edge !== before.edge;
+
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x + 150), y: Math.round(centre.y + 80), button: "left", buttons: 0, clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const after = await cdp.value(CANVAS_STATE);
+      const moved = after.layout?.positions?.["g-1"];
+      const othersUnchanged = before.nodes
+        .filter((node) => node.id !== "g-1")
+        .every((node) => {
+          const now = after.layout?.positions?.[node.id];
+          return now && Math.abs(now.x - node.cx) < 0.5 && Math.abs(now.y - node.cy) < 0.5;
+        });
+
+      // Reload: what is drawn must be what was stored.
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await cdp.waitFor(`document.querySelectorAll(".relationship-node").length >= 5`, 5000);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const reloaded = await cdp.value(CANVAS_STATE);
+      const reloadedNode = reloaded.nodes.find((node) => node.id === "g-1");
+      const stored = reloaded.layout?.positions?.["g-1"];
+
+      const pass =
+        storedDuringDrag === null &&
+        liveNode && startNode && Math.abs(liveNode.cx - startNode.cx) > 20 &&
+        edgeFollowed &&
+        Boolean(moved) &&
+        othersUnchanged &&
+        reloadedNode && stored &&
+        Math.abs(reloadedNode.cx - stored.x) < 0.5 &&
+        Math.abs(reloadedNode.cy - stored.y) < 0.5 &&
+        after.relationships === before.relationships &&
+        after.characters === before.characters;
+
+      return {
+        pass: Boolean(pass),
+        detail: `拖动中 存储 ${storedDuringDrag === null ? "未写入" : "已写入"}、节点 cx ${startNode?.cx}→${liveNode?.cx}、连线 ${edgeFollowed ? "跟随" : "未变"}；松手后 g-1 ${JSON.stringify(moved)}、其余 ${before.nodes.length - 1} 个未变 ${othersUnchanged}；刷新后 cx ${reloadedNode?.cx} / 存储 ${stored?.x}；关系与角色存储未变 ${after.relationships === before.relationships && after.characters === before.characters}`,
+      };
+    });
+
+    await check("自由画布：单击选中、双击进档案，平移缩放后重置视角不动坐标（Sprint 49）", async () => {
+      await OPEN_GRAPH();
+      const centre = await cdp.value(NODE_CENTRE("g-2"));
+      if (!centre) throw new Error("陆停云 节点缺失");
+
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const selected = await cdp.value(CANVAS_STATE);
+
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 2 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 2 });
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const opened = await cdp.value(`({ graph: Boolean(document.querySelector(".relationship-page")), name: document.body.textContent.includes("陆停云") })`);
+
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const beforeView = await cdp.value(CANVAS_STATE);
+      const frame = await cdp.value(`(() => { const r = document.querySelector(".graph-canvas-frame").getBoundingClientRect(); return { x: r.x + 30, y: r.y + 30, cx: r.x + r.width / 2, cy: r.y + r.height / 2 }; })()`);
+
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(frame.cx), y: Math.round(frame.cy), deltaX: 0, deltaY: -120 });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const zoomed = await cdp.value(CANVAS_STATE);
+
+      await DRAG(frame, 70, 40);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const panned = await cdp.value(CANVAS_STATE);
+
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "重置视角")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const reset = await cdp.value(CANVAS_STATE);
+
+      const positions = (state) => JSON.stringify(state.layout?.positions ?? {});
+      const pass =
+        selected.page && selected.selected === 1 &&
+        !opened.graph && opened.name &&
+        zoomed.zoom !== beforeView.zoom &&
+        panned.pan && beforeView.pan && (panned.pan.x !== zoomed.pan.x || panned.pan.y !== zoomed.pan.y) &&
+        reset.zoom !== null &&
+        positions(reset) === positions(beforeView) &&
+        reset.relationships === beforeView.relationships;
+
+      return {
+        pass: Boolean(pass),
+        detail: `单击 → 页面 ${selected.page ? "仍在图谱" : "已离开"}、选中 ${selected.selected}；双击 → ${opened.graph ? "仍在图谱" : "进入角色页"}（含姓名 ${opened.name}）；缩放 ${beforeView.zoom}→${zoomed.zoom}；平移 ${JSON.stringify(zoomed.pan)}→${JSON.stringify(panned.pan)}；重置后 ${reset.zoom}，坐标 ${positions(reset) === positions(beforeView) ? "未变" : "被改"}`,
+      };
+    });
+
+    await check("自动整理：预览不落盘、可取消、确认后写入并可撤销，只动所选范围（Sprint 49）", async () => {
+      await OPEN_GRAPH();
+      const before = await cdp.value(CANVAS_STATE);
+
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-arrange-panel")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "关系聚类")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.preview")`, 3000);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const previewing = await cdp.value(CANVAS_STATE);
+      const previewMoved = previewing.nodes.some((node) => {
+        const start = before.nodes.find((item) => item.id === node.id);
+        return start && (Math.abs(start.cx - node.cx) > 1 || Math.abs(start.cy - node.cy) > 1);
+      });
+
+      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const cancelled = await cdp.value(CANVAS_STATE);
+      const cancelledNodes = cancelled.nodes.every((node) => {
+        const start = before.nodes.find((item) => item.id === node.id);
+        return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
+      });
+
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
+      await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "环形布局")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.preview")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.preview button")].find((b) => b.textContent.trim() === "确认应用")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const applied = await cdp.value(CANVAS_STATE);
+
+      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar button")].find((b) => b.textContent.trim() === "撤销")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const undone = await cdp.value(CANVAS_STATE);
+
+      const sameAs = (left, right) =>
+        JSON.stringify(left.layout?.positions ?? {}) === JSON.stringify(right.layout?.positions ?? {});
+      const pass =
+        previewing.preview.includes("节点") && previewMoved &&
+        previewing.layout === null &&
+        !cancelled.preview && cancelledNodes && cancelled.layout === null &&
+        Boolean(applied.layout) && !sameAs(applied, before) && applied.undo &&
+        sameAs(undone, before) && !undone.undo &&
+        applied.relationships === before.relationships &&
+        applied.characters === before.characters;
+
+      return {
+        pass: Boolean(pass),
+        detail: `预览「${previewing.preview}」、画布移位 ${previewMoved}、落盘 ${previewing.layout === null ? "否" : "是"}；取消后复原 ${cancelledNodes}；确认后落盘 ${applied.layout ? Object.keys(applied.layout.positions).length + " 个坐标" : "无"}、撤销入口 ${applied.undo}；撤销后与整理前一致 ${sameAs(undone, before)}；关系与角色未变 ${applied.relationships === before.relationships && applied.characters === before.characters}`,
+      };
+    });
+
+    await check("视觉分组：多选创建、整体移动、取消分组，关系数据不变（Sprint 49）", async () => {
+      await OPEN_GRAPH();
+      const before = await cdp.value(CANVAS_STATE);
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "多选")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      for (const id of ["g-1", "g-2"]) {
+        const centre = await cdp.value(NODE_CENTRE(id));
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 1 });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      const selecting = await cdp.value(CANVAS_STATE);
+
+      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      await cdp.waitFor(`!!document.querySelector('input[aria-label="分组名称"]')`, 3000);
+      await cdp.value(`(() => {
+        const input = document.querySelector('input[aria-label="分组名称"]');
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        setter.call(input, "北境线");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await cdp.value(`([...document.querySelectorAll(".graph-group-form button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const grouped = await cdp.value(CANVAS_STATE);
+
+      const label = await cdp.value(`(() => {
+        const text = document.querySelector(".graph-group-label");
+        if (!text) return null;
+        const rect = text.getBoundingClientRect();
+        return { x: rect.left + 12, y: rect.top + rect.height / 2 };
+      })()`);
+      const beforeMove = grouped.layout?.positions ?? {};
+      if (label) {
+        await DRAG(label, 80, 44);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      const movedState = await cdp.value(CANVAS_STATE);
+      const afterMove = movedState.layout?.positions ?? {};
+      const memberIds = grouped.layout?.groups?.[0]?.characterIds ?? [];
+      const deltas = memberIds.map((id) => ({
+        x: (afterMove[id]?.x ?? 0) - (beforeMove[id]?.x ?? 0),
+        y: (afterMove[id]?.y ?? 0) - (beforeMove[id]?.y ?? 0),
+      }));
+      const groupMoved =
+        memberIds.length === 2 &&
+        deltas.every((delta) => Math.abs(delta.x - deltas[0].x) < 0.5 && Math.abs(delta.y - deltas[0].y) < 0.5) &&
+        Math.hypot(deltas[0].x, deltas[0].y) > 20;
+
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("分组"))).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-group-panel")`, 3000);
+      await cdp.value(`document.querySelector(".graph-group-remove").click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const ungrouped = await cdp.value(CANVAS_STATE);
+
+      const pass =
+        selecting.selected === 2 &&
+        grouped.groups === 1 &&
+        grouped.layout?.groups?.length === 1 &&
+        grouped.layout.groups[0].name === "北境线" &&
+        groupMoved &&
+        ungrouped.groups === 0 &&
+        (ungrouped.layout?.groups?.length ?? 0) === 0 &&
+        JSON.stringify(ungrouped.layout?.positions ?? {}) === JSON.stringify(afterMove) &&
+        ungrouped.relationships === before.relationships &&
+        ungrouped.characters === before.characters;
+
+      return {
+        pass: Boolean(pass),
+        detail: `选中 ${selecting.selected}；分组 ${grouped.groups} 个（${JSON.stringify(grouped.layout?.groups)}）；整体移动 ${groupMoved}（${JSON.stringify(deltas)}）；取消分组后 ${ungrouped.groups} 个、坐标保留 ${JSON.stringify(ungrouped.layout?.positions ?? {}) === JSON.stringify(afterMove)}；关系与角色未变 ${ungrouped.relationships === before.relationships && ungrouped.characters === before.characters}`,
+      };
+    });
+
+    await check("自由画布：移动端手势阈值、删除角色后布局裁剪、无横向溢出（Sprint 49）", async () => {
+      await OPEN_GRAPH(375, 812, true);
+      const centre = await cdp.value(NODE_CENTRE("g-2"));
+      if (!centre) throw new Error("375px 陆停云 节点缺失");
+
+      // A tap selects and goes nowhere.
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: centre.x, y: centre.y }] });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const tapped = await cdp.value(CANVAS_STATE);
+
+      // A 5px wobble is still a tap: below the touch threshold nothing moves.
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: centre.x, y: centre.y }] });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: centre.x + 5, y: centre.y + 2 }] });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const wobbled = await cdp.value(CANVAS_STATE);
+      const wobbleMoved = JSON.stringify(wobbled.layout?.positions ?? {}) !== JSON.stringify(tapped.layout?.positions ?? {});
+
+      // A real drag moves the node and does not open the character.
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: centre.x, y: centre.y }] });
+      for (let step = 1; step <= 5; step += 1) {
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: centre.x + step * 9, y: centre.y + step * 5 }],
+        });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const dragged = await cdp.value(CANVAS_STATE);
+      const draggedMoved = JSON.stringify(dragged.layout?.positions ?? {}) !== JSON.stringify(wobbled.layout?.positions ?? {});
+
+      // A layout that names a deleted character must be pruned, not drawn or crashed on.
+      await cdp.value(`(() => {
+        const layout = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "null") || { schemaVersion: 1, positions: {}, groups: [] };
+        layout.positions.ghost = { x: 10, y: 10 };
+        layout.groups = [{ id: "g-ghost", name: "幽灵组", characterIds: ["g-1", "ghost"] }];
+        localStorage.setItem("character-studio.relationship-layout", JSON.stringify(layout));
+        return true;
+      })()`);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const pruned = await cdp.value(CANVAS_STATE);
+
+      const pass =
+        tapped.page && tapped.selected === 1 &&
+        !wobbleMoved && wobbled.page &&
+        draggedMoved && dragged.page &&
+        !pruned.layout?.positions?.ghost &&
+        !(pruned.layout?.groups ?? []).some((group) => group.id === "g-ghost") &&
+        pruned.groups === 0 &&
+        pruned.overflow <= 1;
+
+      return {
+        pass: Boolean(pass),
+        detail: `375px 轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,
       };
     });
 

@@ -93,6 +93,7 @@
 | `character-studio.dashboard-flags` | 一次性提示的已读标记 |
 | `character-studio.editor-sections` | 编辑器分节折叠状态 |
 | `character-studio.graph-prefs` | 关系网显示设置与导出倍率 |
+| `character-studio.relationship-layout` | 关系画布的节点坐标与视觉分组（`schemaVersion: 1`） |
 | `character-studio.recent-avatars` | 最近使用的头像 |
 | `character-studio.theme` | `system` / `light` / `dark` |
 | `character-studio.about-seen` | About 面板已读 |
@@ -119,14 +120,33 @@ IndexedDB 保存头像素材与角色头像的 Blob；不进 `localStorage`。
 
 ```text
 characters.json      { characters: Character[] }
-workspace.json       { workspaceVersion, relationships, timeline, world }
+workspace.json       { workspaceVersion, relationships, timeline, world, relationshipLayout }
 manifest.json        { schemaVersion, bindings: [{ sourceCharacterId, sourceAssetKey, assetFile, hash, mimeType, size }] }
 backup-info.json     { schemaVersion, exportedAt, appVersion, characterCount, avatarAssetCount, assetTotalSize, exportType, notes, workspaceVersion }
 assets/avatar/*      avatar-1.webp, avatar-2.png, ...
 ```
 
+- `workspace.json` 的 `relationshipLayout` 是画布布局；旧包没有这个字段时按「没有布局」处理，不清空本地画布。
 - 头像绑定**只依据 `manifest.json`**，不按文件名或旧 ID 猜测。
 - `backup-info.json` 的 `appVersion` 目前固定为 `0.1.0`，是历史字段，不代表导出时的应用版本；应用版本以 `src/config/version.ts` 为准。
+
+---
+
+### 3.1 画布布局（`character-studio.relationship-layout`）
+
+```json
+{
+  "schemaVersion": 1,
+  "positions": { "<characterId>": { "x": 0, "y": 0 } },
+  "groups": [{ "id": "group-…", "name": "北境线", "characterIds": ["<characterId>", "…"] }]
+}
+```
+
+- **只是展示数据**：坐标与分组不写入 `Character`，也不写入世界观字段；删除布局不会改变任何角色或关系。
+- 键是角色 ID，不是姓名；改名不影响坐标，删除角色时坐标与分组会被裁剪。
+- 读取经过归一化：单个坏坐标只丢该条，不会整套回退；无法解析时按空布局处理。
+- 没有保存过布局的工作区仍按环形布局显示，首次拖动时才把当前环形坐标落盘，因此第一次编辑不会让其他节点跳动。
+- 新增角色（导入、`显示全部`）在已有画布下方按行列补位，不覆盖已摆放的节点。
 
 ---
 
@@ -151,11 +171,21 @@ assets/avatar/*      avatar-1.webp, avatar-2.png, ...
 
 当保留双方时，包内记录会获得新 ID；关系、时间线与世界观里的 `characterIds` 同步改写，避免引用指向旧 ID。映射在**计划阶段**计算，写入阶段统一应用。
 
-### 4.4 预检与缺失引用
+### 4.4 布局的合并与恢复
+
+| 模式 | 布局处理 |
+| --- | --- |
+| 完全恢复 | 采用备份中的布局；期间发生的 ID 重映射同样应用，缺失角色引用被丢弃 |
+| 合并导入 | 保留本地已有坐标，只补充本地从未摆放过的角色；同名分组另起 ID，成员不重复归属 |
+| 选择性导入 | 只处理本次真正导入的角色 |
+
+没有布局的旧包不会改动本地画布，只给新导入的角色补位。
+
+### 4.5 预检与缺失引用
 
 导入前生成计划并展示：将新增多少、冲突多少、哪些引用找不到对应角色。缺失引用不会被伪造一个角色；导入后这些引用保持缺失，由用户自行决定补人或忽略。
 
-### 4.5 旧备份兼容
+### 4.6 旧备份兼容
 
 - 没有 `workspace.json` 的旧 ZIP：只导入角色与头像，**不覆盖**现有关系 / 时间线 / 世界观。
 - 没有 `manifest.json` 的旧包：按包内文件名与旧 ID 规则回退；失败时明确报告，而不是静默丢头像。

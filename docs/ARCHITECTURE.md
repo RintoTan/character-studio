@@ -146,7 +146,7 @@ main.tsx
 `id`、`name`、`category`（6 种：`location 地点 / faction 势力 / species 种族 / item 物品 / concept 概念 / other 其他`）、`parentId?`、`summary?`、`details?`、`tags[]`、`characterIds[]`、`createdAt`、`updatedAt`。
 `wouldCreateWorldCycle()` 在**每一条写路径**上检查成环，而不是信任调用方。
 
-### 4.2 存储键（21 个：localStorage 20 个 + sessionStorage 1 个）
+### 4.2 存储键（22 个：localStorage 21 个 + sessionStorage 1 个）
 
 统计口径：`grep -rn '"character-studio' src/` 去掉 `exportType` 之类的非键字符串后逐条核对。
 
@@ -159,6 +159,7 @@ main.tsx
 | `character-studio.dashboard-prefs` | `storage/dashboardPrefs.ts` | 搜索词、三个筛选、收藏范围、排序、视图模式 |
 | `character-studio.dashboard-flags` | `storage/dashboardPrefs.ts` | 置顶 id 列表、收藏 id 列表（`flags`） |
 | `character-studio.graph-prefs` | `storage/graphPrefs.ts` | `{ avatarSize, nameSize, exportScale }` |
+| `character-studio.relationship-layout` | `storage/relationshipLayout.ts` | 画布坐标与视觉分组（`schemaVersion: 1`） |
 | `character-studio.editor-sections` | `storage/editorUiState.ts` | 六个分节的折叠状态 |
 | `character-studio.theme` | `App.tsx` | `system` / `light` / `dark` |
 | `character-studio.about-seen` | `App.tsx` | 是否已看首次 About |
@@ -175,7 +176,7 @@ main.tsx
 | `character-studio.ai.max-tokens` | 同上 | |
 | `character-studio.ai.streaming` | 同上 | |
 
-（后 7 个为 AI 设置的键集合；实际键总数为 **22**：上表前 15 个 + AI 的 7 个。）
+（后 7 个为 AI 设置的键集合；实际键总数为 **23**：上表前 16 个 + AI 的 7 个。）
 
 **历史扁平键（仅作一次性迁移输入，不再写入）**：
 `character-studio.settings.compact-mobile`、`.jpg-quality`、`.png-scale`、`.pdf-light`、`.export-footer`、`.export-prompt`、`.export-time`、`character-studio.prompt.external-library`、`.random-missing-fields`、`.complexity`、`.repeat-control`、`.custom-library`。
@@ -194,7 +195,18 @@ main.tsx
 
 **删除语义**：引用数为 0 可直接删；>0 必须二次确认；删除后受影响角色回退 Emoji。
 
-### 4.4 开发者设置（单一真相源）
+### 4.4 画布布局（`relationshipLayout`）
+
+关系画布的位置与分组是**展示数据**，单独存放，不进入 `Character`，也不进入 `WorldEntry`：
+
+- `positions` 以角色 ID 为键，改名不移动；删除角色时 `pruneLayout` 同时清理坐标与分组成员。
+- 读取统一经过 `normalizeLayout`：逐条校验，坏一条只丢一条；整体损坏回退为空布局。
+- 没有布局的工作区仍按 `nodePositions` 的环形显示；第一次拖动才把环形坐标 `materialize` 落盘，避免首拖导致其余节点跳动。
+- `RelationshipGraph` 的 `viewBox` 只在可见角色集合变化时重算；拖动、整理、分组移动都不改变它，所以画布映射稳定。
+- 自动整理是纯函数（`ringLayout` / `clusterLayout`），同输入同输出；预览只改渲染坐标，确认后才写存储，撤销保留上一份布局。
+- 备份写入 `workspace.json` 的 `relationshipLayout`；导入在角色 ID 重映射之后调用 `mergeImportedLayout`。
+
+### 4.5 开发者设置（单一真相源）
 
 `config/developerSettings.ts`（411 行）。统一对象 `DeveloperSettings` 含 12 个分组：
 
