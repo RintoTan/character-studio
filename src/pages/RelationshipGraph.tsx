@@ -125,22 +125,26 @@ function PresetThumb({ presetId }: { presetId: CanvasPresetId }) {
       <circle cx="26" cy="28" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
       <circle cx="70" cy="18" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
       <circle cx="62" cy="42" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
+      {/* Drawn, not typed: an emoji in the swatch would become part of the button's
+          text, and the swatch is decoration for a control whose name is 档案研究. */}
       {preset.node.showAvatars &&
         [
           [26, 28],
           [70, 18],
           [62, 42],
         ].map(([x, y]) => (
-          <text
-            dominantBaseline="central"
-            fontSize={radius}
-            key={`${x}-${y}`}
-            textAnchor="middle"
-            x={x}
-            y={y}
-          >
-            🙂
-          </text>
+          <g key={`${x}-${y}`}>
+            <circle cx={x} cy={y} fill="#fde68a" r={radius * 0.62} />
+            <circle cx={x - radius * 0.22} cy={y - radius * 0.16} fill="#92400e" r={radius * 0.09} />
+            <circle cx={x + radius * 0.22} cy={y - radius * 0.16} fill="#92400e" r={radius * 0.09} />
+            <path
+              d={`M${x - radius * 0.3} ${y + radius * 0.14} q${radius * 0.3} ${radius * 0.34} ${radius * 0.6} 0`}
+              fill="none"
+              stroke="#92400e"
+              strokeLinecap="round"
+              strokeWidth={Math.max(0.8, radius * 0.1)}
+            />
+          </g>
         ))}
     </svg>
   );
