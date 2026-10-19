@@ -212,3 +212,32 @@ assets/avatar/*      avatar-1.webp, avatar-2.png, ...
 3. 导入器不认识的新字段应保留而不是丢弃（除非明确是废弃字段）。
 4. 任何会覆盖用户数据的路径，必须先写快照并可读回。
 5. 修改以上任一规则时，同步更新本文件与 `test/workspaceBackup.test.ts`、`test/importPlan.test.ts`、`test/importExport.test.ts`。
+
+---
+
+## relationship-layout（schemaVersion 2，Sprint 50）
+
+```json
+{
+  "schemaVersion": 2,
+  "positions": { "<characterId>": { "x": 0, "y": 0 } },
+  "groups": [{ "id": "grp-1", "name": "北境线", "characterIds": ["a", "b"] }],
+  "style": {
+    "preset": "classic | archive | portrait | faction | minimal | custom",
+    "node": { "size": 1, "shape": "circle", "showAvatars": true, "showNames": true,
+               "nameScale": 1, "nameInside": false, "borderColor": "", "background": "" },
+    "edge": { "color": "", "byKind": false, "width": 1.4, "dash": "solid",
+               "curve": "curved", "arrowSize": 1, "showLabel": true,
+               "labelSize": 10, "labelBackground": false },
+    "canvas": { "background": "", "grid": "dots", "gridSize": 48, "gridOpacity": 0.5, "snap": false }
+  },
+  "nodeStyles": { "<characterId>": { "borderColor": "#c2410c", "background": "#fff7ed" } },
+  "edgeStyles": { "<relationshipId>": { "color": "#0f766e", "width": 3, "dash": "dashed" } },
+  "bookmarks": [{ "id": "bm-1", "name": "北境线特写", "view": { "k": 1.6, "x": -120, "y": 40 } }]
+}
+```
+
+- `style` / `nodeStyles` / `edgeStyles` / `bookmarks` 在 Sprint 49 的 v1 包中不存在，加载时按经典风格与空覆盖补齐，不报错。
+- 旧字段 `style.node.nameSize`（绝对像素）在加载时换算为 `nameScale = nameSize / 13`，范围 0.8–1.8。
+- 局部覆盖以稳定 id 为键：角色 id、关系 id。合并导入时节点覆盖按角色 id 映射重写；关系线覆盖只保留导入后仍存在的关系 id，找不到直接丢弃，不会挂到别的关系上。
+- 书签只存视角三元组；合并导入保留本地书签，不用别的工作区的坐标覆盖它。

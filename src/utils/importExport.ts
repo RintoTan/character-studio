@@ -932,6 +932,7 @@ function applyImportedLayout(
     incoming: incomingRaw,
     idBySource,
     finalIds,
+    finalEdgeIds: plan.plan.relationships.items.map((relationship) => relationship.id),
     mode: plan.plan.mode,
   });
 

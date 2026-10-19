@@ -501,6 +501,48 @@ describe("canvas appearance", () => {
     expect(normalizeCanvasStyle({ preset: "custom", node: { nameSize: 40 } }).node.nameScale).toBe(1.8);
   });
 
+  it("keeps an imported edge style only when its relationship survived the import", () => {
+    const merged = mergeImportedLayout({
+      current: emptyLayout(),
+      incoming: {
+        positions: {},
+        groups: [],
+        edgeStyles: { r1: { color: "#0f766e", width: 3 }, gone: { color: "#000000" } },
+      },
+      idBySource: new Map(),
+      finalIds: [],
+      finalEdgeIds: ["r1"],
+      mode: "replace",
+    });
+
+    expect(merged.edgeStyles).toEqual({ r1: { color: "#0f766e", width: 3 } });
+  });
+
+  it("never lets an imported line style overwrite a local one on merge", () => {
+    const current = normalizeLayout({
+      positions: {},
+      groups: [],
+      edgeStyles: { r1: { color: "#111111" } },
+      bookmarks: [{ id: "b1", name: "近景", view: { k: 2, x: 0, y: 0 } }],
+    });
+
+    const merged = mergeImportedLayout({
+      current,
+      incoming: {
+        positions: {},
+        groups: [],
+        edgeStyles: { r1: { color: "#eeeeee" }, r2: { color: "#222222" } },
+      },
+      idBySource: new Map(),
+      finalIds: [],
+      finalEdgeIds: ["r1", "r2"],
+      mode: "merge",
+    });
+
+    expect(merged.edgeStyles).toEqual({ r1: { color: "#111111" }, r2: { color: "#222222" } });
+    expect(merged.bookmarks).toEqual(current.bookmarks);
+  });
+
   it("drops a deleted character's local style but keeps the rest", () => {
     const pruned = pruneLayout(
       normalizeLayout({

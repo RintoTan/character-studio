@@ -448,3 +448,14 @@ push 到 main
 
 - 自动快照从「只有角色」扩展到角色 + 关系 + 时间线 + 世界观；头像二进制仍不在快照内。
 - 删除恢复记录保存被删角色与被清理的引用，撤销按 ID 合并回去，重复撤销是幂等的。
+
+---
+
+## 关系画布（Sprint 50 追加）
+
+- 画布只有一棵 SVG 树。工作室内外的差别只是外壳：`section.relationship-page.graph-studio` 变成满视口 flex 容器，顶栏、抽屉与工具坞按 `order` 排列，画布 `flex: 1`。
+- 视图状态（`view = {k,x,y}`）与布局（`relationship-layout`）分离：平移缩放永远不写坐标；拖动只写坐标；`viewBox` 按可见集合计算，拖动过程中不重算，避免坐标在手势中途被重映射。
+- 外观分三层：预设 `style` → 全局字段 → `nodeStyles[id]` / `edgeStyles[id]` 局部覆盖。节点局部颜色通过 CSS 变量 `--node-stroke` / `--node-fill` 传给圆形，选中与 hover 用独立光环元素，避免被覆盖色吃掉。
+- 字号只有一个来源：`nameSize = metrics.nameSize × style.node.nameScale`，`labelsReadable`、`widthOfNames` 与 `<text>` 共用它。
+- 聚光灯、透镜是渲染期过滤：`spotlight-dim` / `lens-dim` 单独成类，退出其中一个不会连带清除另一个，也不会清除搜索聚焦。
+- 导出不重新绘制：克隆实时 `<svg>`，把 `viewBox` 换成目标范围、内层 `transform` 归零、插入底色矩形后序列化。PNG 走 `data:` URL 解码 + canvas，最长边 8192px。

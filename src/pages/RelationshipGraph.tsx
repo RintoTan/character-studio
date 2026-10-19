@@ -65,6 +65,14 @@ import {
   type LayoutPoint,
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
+import {
+  downloadPng,
+  downloadSvg,
+  rasterizeSvg,
+  scopeBounds,
+  type ExportScope,
+  type WorldBounds,
+} from "../utils/canvasExport";
 import { getAvatarAssetDataUrl } from "../utils/avatarAssets";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
@@ -880,6 +888,7 @@ export function RelationshipGraph({
   const [spotlightDepth, setSpotlightDepth] = useState<1 | 2>(1);
   const [lensKinds, setLensKinds] = useState<RelationshipKind[]>([]);
   const [bookmarkDraft, setBookmarkDraft] = useState("");
+  const [exportScope, setExportScope] = useState<ExportScope>("all");
   const [isStyleOpen, setIsStyleOpen] = useState(false);
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
@@ -979,6 +988,7 @@ export function RelationshipGraph({
     const validEdges = relationships.map((relationship) => relationship.id);
     if (relationshipsLoaded) {
       setSelectedEdgeId((current) => (current && !validEdges.includes(current) ? null : current));
+      setSpotlightId((current) => (current && !valid.includes(current) ? null : current));
     }
     setLayout((current) => {
       const pruned = pruneLayout(current, valid, relationshipsLoaded ? validEdges : undefined);
@@ -2184,6 +2194,98 @@ export function RelationshipGraph({
    * view and the forced labels, the second lets the browser lay them out before the
    * capture reads the DOM back.
    */
+  /**
+   * The drawing at the bounds a scope names, as a standalone SVG document.
+   *
+   * It clones the live <svg> instead of re-drawing it: node shape, local colours,
+   * edge dash, arrow heads, labels and group rectangles are all already in that
+   * tree, and a second renderer would drift from the first one the day a style is
+   * added. The clone is then re-framed — its view box becomes the scope's rectangle
+   * and its pan/zoom is reset to identity — so the picture covers the content, not
+   * the window.
+   */
+  function buildExportSvg(scope: ExportScope): { text: string; bounds: WorldBounds } | null {
+    const svg = svgRef.current;
+    if (!svg) {
+      return null;
+    }
+
+    const selectedPoints = visibleCharacters
+      .map((character, index) => ({ id: character.id, point: positions[index] }))
+      .filter((entry) => selectedIds.includes(entry.id))
+      .map((entry) => entry.point);
+
+    const bounds = scopeBounds({
+      scope,
+      allPoints: positions,
+      selectedPoints,
+      viewBox: canvas.viewBox,
+      padding: metrics.radius + metrics.nameDrop + 24,
+    });
+
+    if (!bounds) {
+      return null;
+    }
+
+    const clone = svg.cloneNode(true) as SVGSVGElement;
+    clone.setAttribute("viewBox", `${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`);
+    clone.setAttribute("width", String(Math.round(bounds.width)));
+    clone.setAttribute("height", String(Math.round(bounds.height)));
+    clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+    clone.removeAttribute("class");
+    clone.removeAttribute("aria-hidden");
+
+    const content = Array.from(clone.children).find((child) => child.tagName === "g");
+    content?.setAttribute("transform", "translate(0 0) scale(1)");
+
+    // A transparent PNG has no surface of its own, and an SVG opened in a viewer
+    // that defaults to white would lose a dark canvas. The colour is written in.
+    const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    background.setAttribute("x", String(bounds.x));
+    background.setAttribute("y", String(bounds.y));
+    background.setAttribute("width", String(bounds.width));
+    background.setAttribute("height", String(bounds.height));
+    background.setAttribute("fill", style.canvas.background || surfaceBackground());
+    clone.insertBefore(background, clone.firstChild);
+
+    return { text: new XMLSerializer().serializeToString(clone), bounds };
+  }
+
+  async function runCanvasExport(scope: ExportScope, format: "png" | "svg") {
+    if (exporting) {
+      return;
+    }
+
+    setExporting(true);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    try {
+      const built = buildExportSvg(scope);
+      if (!built) {
+        show(scope === "selection" ? "还没有选中任何角色" : "没有可导出的内容");
+        return;
+      }
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      const label =
+        scope === "view" ? "当前视图" : scope === "selection" ? "选中区域" : "全部内容";
+
+      if (format === "svg") {
+        downloadSvg(built.text, `角色关系网-${label}-${stamp}.svg`);
+        show("SVG 已导出");
+        return;
+      }
+
+      const { blob } = await rasterizeSvg(built.text, built.bounds, prefs.exportScale);
+      downloadPng(blob, `角色关系网-${label}-${stamp}.png`);
+      show("PNG 已导出");
+    } catch (error) {
+      show(exportFailureText(error, format));
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function runExport(format: "jpg" | "png" | "pdf") {
     const frame = frameRef.current;
     if (!frame || exporting) {
@@ -2982,7 +3084,13 @@ export function RelationshipGraph({
               outside the frame for that reason: a card under the pointer is not part of
               the drawing. */}
           <div className="graph-canvas-holder" ref={holderRef}>
-          <div className="graph-canvas-frame" ref={frameRef}>
+          <div
+            className="graph-canvas-frame"
+            ref={frameRef}
+            /* The colour the author picked has to be the colour they see, not only
+               the colour the exported file gets. */
+            style={style.canvas.background ? { background: style.canvas.background } : undefined}
+          >
           <svg
             aria-hidden="true"
             className="relationship-canvas"
@@ -3005,6 +3113,7 @@ export function RelationshipGraph({
                 <path className="graph-grid-dot" d={`M 0 0 L ${style.canvas.gridSize} 0 M 0 0 L 0 ${style.canvas.gridSize}`} fill="none" strokeWidth="0.6" />
               </pattern>
               {prefs.showAvatars &&
+                style.node.showAvatars &&
                 visibleCharacters.map((character, index) =>
                   avatarUrls[character.id] ? (
                     <clipPath id={avatarClipId(character.id)} key={character.id}>
@@ -3084,7 +3193,7 @@ export function RelationshipGraph({
                 (relationship.fromId === activeId || relationship.toId === activeId);
               return (
                 <g
-                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens && inSpotlight ? "" : " dimmed"}`}
+                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens ? "" : " lens-dim"}${inSpotlight ? "" : " spotlight-dim"}`}
                   data-edge-id={relationship.id}
                   key={relationship.id}
                 >
@@ -3134,13 +3243,19 @@ export function RelationshipGraph({
               const labelled =
                 prefs.showNames &&
                 (showLabels || isHovered || isFocused || isNeighbour || isSelected || hubIds.has(character.id));
-              const baseState = isFocused
-                ? "relationship-node active focused"
-                : isHovered
-                  ? "relationship-node active"
-                  : activeId && character.id !== activeId && !isNeighbour
-                    ? "relationship-node dimmed"
-                    : "relationship-node";
+              // Spotlight dimming is its own class. Sharing one with hover made
+              // "I exited the spotlight" and "the pointer is still on a node" look
+              // identical, and it made the exit look broken.
+              const outsideSpotlight = spotlightSet !== null && !spotlightSet.has(character.id);
+              const baseState = outsideSpotlight
+                ? "relationship-node spotlight-dim"
+                : isFocused
+                  ? "relationship-node active focused"
+                  : isHovered
+                    ? "relationship-node active"
+                    : activeId && character.id !== activeId && !isNeighbour
+                      ? "relationship-node dimmed"
+                      : "relationship-node";
               const state = `${baseState}${isSelected ? " selected" : ""}`;
               const avatarUrl = avatarUrls[character.id];
               return (
@@ -3188,7 +3303,7 @@ export function RelationshipGraph({
                       the graph only ever drew `avatarEmoji`, so a character with a
                       photo showed a generic face here and the real one everywhere
                       else — the picture was not broken, it was never asked for. */}
-                  {prefs.showAvatars && avatarUrl && (
+                  {prefs.showAvatars && style.node.showAvatars && avatarUrl && (
                     <image
                       className="relationship-node-image"
                       clipPath={`url(#${avatarClipId(character.id)})`}
@@ -3200,7 +3315,7 @@ export function RelationshipGraph({
                       y={positions[index].y - metrics.radius}
                     />
                   )}
-                  {prefs.showAvatars && !avatarUrl && (
+                  {prefs.showAvatars && style.node.showAvatars && !avatarUrl && (
                     <text
                       className="relationship-node-emoji"
                       style={{ fontSize: `${metrics.emojiSize}px` }}
@@ -3906,21 +4021,57 @@ export function RelationshipGraph({
                     </div>
                   </div>
                   <div className="graph-panel-row">
-                    <span className="graph-control-label">格式</span>
+                    <span className="graph-control-label">范围</span>
                     <div className="graph-segment">
-                      {(["jpg", "png", "pdf"] as const).map((format) => (
+                      {([
+                        ["all", "全部内容"],
+                        ["view", "当前视图"],
+                        ["selection", "选中区域"],
+                      ] as Array<[ExportScope, string]>).map(([scope, label]) => (
                         <button
-                          className="graph-segment-button"
-                          disabled={exporting}
-                          key={format}
-                          onClick={() => void runExport(format)}
+                          aria-pressed={exportScope === scope}
+                          className={exportScope === scope ? "graph-segment-button selected" : "graph-segment-button"}
+                          disabled={scope === "selection" && selectedIds.length === 0}
+                          key={scope}
+                          onClick={() => setExportScope(scope)}
                           type="button"
                         >
-                          {exporting ? "导出中…" : format.toUpperCase()}
+                          {label}
                         </button>
                       ))}
                     </div>
                   </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">格式</span>
+                    <div className="graph-segment">
+                      {([
+                        ["png", "PNG"],
+                        ["svg", "SVG"],
+                        ["jpg", "JPG"],
+                        ["pdf", "PDF"],
+                      ] as Array<[string, string]>).map(([format, label]) => (
+                        <button
+                          className="graph-segment-button"
+                          disabled={exporting}
+                          key={format}
+                          onClick={() =>
+                            format === "png" || format === "svg"
+                              ? void runCanvasExport(exportScope, format)
+                              : void runExport(format as "jpg" | "pdf")
+                          }
+                          type="button"
+                        >
+                          {exporting ? "导出中…" : label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* The two older formats capture the screen; the two new ones
+                      export a rectangle. Saying so is cheaper than a user wondering
+                      why 全部内容 did nothing to their PDF. */}
+                  <p className="muted graph-export-note">
+                    PNG / SVG 按所选范围导出；JPG / PDF 导出当前画面。
+                  </p>
                 </div>
               )}
             </div>

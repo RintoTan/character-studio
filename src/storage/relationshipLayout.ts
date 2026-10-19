@@ -618,6 +618,10 @@ export function mergeImportedLayout(options: {
   /** File id → id in the final library (which is the same id when unchanged). */
   idBySource: Map<string, string>;
   finalIds: Iterable<string>;
+  /** Relationship ids that exist after the import. When given, an imported edge
+   *  style whose relationship did not survive is dropped instead of being stored
+   *  under an id that now belongs to nothing — or, worse, to something else. */
+  finalEdgeIds?: Iterable<string>;
   mode: "merge" | "replace";
 }): CanvasLayout {
   const incoming = normalizeLayout(options.incoming);
@@ -647,13 +651,21 @@ export function mergeImportedLayout(options: {
     }
   }
 
+  const survivingEdgeIds = options.finalEdgeIds ? new Set(options.finalEdgeIds) : null;
+  const mappedEdgeStyles: Record<string, EdgeStylePatch> = {};
+  for (const [edgeId, patch] of Object.entries(incoming.edgeStyles ?? {})) {
+    if (!survivingEdgeIds || survivingEdgeIds.has(edgeId)) {
+      mappedEdgeStyles[edgeId] = patch;
+    }
+  }
+
   if (options.mode === "replace") {
     return normalizeLayout({
       positions,
       groups,
       style: incoming.style,
       nodeStyles: mappedNodeStyles,
-      edgeStyles: incoming.edgeStyles,
+      edgeStyles: mappedEdgeStyles,
       bookmarks: incoming.bookmarks,
     });
   }
@@ -677,7 +689,8 @@ export function mergeImportedLayout(options: {
     groups: [...current.groups, ...additions],
     style: current.style,
     nodeStyles: { ...mappedNodeStyles, ...current.nodeStyles },
-    edgeStyles: { ...incoming.edgeStyles, ...current.edgeStyles },
+    // the local line styles win, exactly as the local node styles do
+    edgeStyles: { ...mappedEdgeStyles, ...current.edgeStyles },
     bookmarks: current.bookmarks ?? [],
   };
 }

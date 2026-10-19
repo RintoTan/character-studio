@@ -102,3 +102,17 @@ pnpm verify:deploy
 ```
 
 如果改动触及导入导出、存储键或备份结构，必须同时更新 `docs/DATA_FORMATS.md` 与相应用例；如果改动触及页面布局，补一条浏览器断言，不要只依赖截图。
+
+---
+
+## Sprint 50 追加
+
+- 新增单测：`test/canvasExport.test.ts`（10 例）覆盖范围矩形、视口解析、像素上限；`test/relationshipCanvasLayout.test.ts` 增加局部覆盖与导入映射用例（48 例）。
+- 浏览器探针（本地脚本，不入库）：
+  - `/tmp/shots-sprint50.mjs`：截图前置断言——视口、无 About 弹窗、无遮罩、画布中心命中、预设签名各不相同、同一视角。
+  - `/tmp/probe-studio.mjs`：进入/退出工作室、画布尺寸、抽屉默认关闭、退出还原视角。
+  - `/tmp/probe-override.mjs`：局部节点/关系样式生效、持久、恢复、互不影响。
+  - `/tmp/probe-name.mjs`：字号倍率与像素标签、名字不重叠。
+  - `/tmp/probe-explore.mjs`：聚光灯层数、透镜多选、书签保存/跳转/重命名/删除、不写业务数据。
+  - `/tmp/probe-export.mjs`：SVG 范围与内容、缩放无关性、PNG 尺寸、导出不改数据。
+- 截图前置条件：`character-studio.about-seen` 必须是字符串 `"true"`；写成 `"1"` 会被产品判为首次访问并弹出 About，遮住整张截图（本轮已确认是脚本问题，不是产品缺陷）。
