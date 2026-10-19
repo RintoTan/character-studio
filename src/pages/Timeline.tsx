@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLightDismiss } from "../hooks/useLightDismiss";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { CharacterPicker } from "../components/CharacterPicker";
 import { Icon } from "../components/Icon";
@@ -130,6 +131,9 @@ export function Timeline({
   const activeFilterCount =
     (filter.year === EVERY_YEAR ? 0 : 1) + (filter.kind === EVERY_KIND ? 0 : 1);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // The filter row is a light layer: outside click and Escape close it, the trigger
+  // toggles it, and the row itself is "inside".
+  const filterWrapRef = useLightDismiss({ open: filtersOpen, onClose: () => setFiltersOpen(false) });
 
   // Which year is being read, for the navigation's own feedback. Measured on scroll
   // rather than stored: the year heading is the only authority on where a year starts.
@@ -296,7 +300,7 @@ export function Timeline({
 
       {/* Search and filtering, once, above the list: the four things a long timeline is
           looked through — a word, a year, a kind and a character are all covered here. */}
-      <div className="timeline-toolbar">
+      <div className="timeline-toolbar" ref={filterWrapRef}>
         <label className="timeline-search">
           <Icon name="search" size={15} />
           <input

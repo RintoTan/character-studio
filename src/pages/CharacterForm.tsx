@@ -1408,22 +1408,44 @@ export function CharacterForm({
         return;
       }
 
+      // One Escape, one layer. Closing every picker at once answered a question the
+      // reader did not ask and, with the avatar menu open over the crop dialog, took
+      // the dialog down with it.
       if (cropDraft) {
         closeCropDialog();
+        return;
       }
-      setIsAssetLibraryOpen(false);
-      setIsAvatarImageMenuOpen(false);
-      setIsAvatarPickerOpen(false);
-      setIsAvatarUrlOpen(false);
-      setAvatarUrlValue("");
-      setHelperSuggestion(null);
-      setIsHelperReplaceConfirmOpen(false);
+      if (isAssetLibraryOpen) {
+        setIsAssetLibraryOpen(false);
+        return;
+      }
+      if (isAvatarImageMenuOpen) {
+        setIsAvatarImageMenuOpen(false);
+        return;
+      }
+      if (isAvatarPickerOpen) {
+        setIsAvatarPickerOpen(false);
+        return;
+      }
+      if (isAvatarUrlOpen) {
+        setIsAvatarUrlOpen(false);
+        setAvatarUrlValue("");
+        return;
+      }
+      if (helperSuggestion) {
+        setHelperSuggestion(null);
+        return;
+      }
+      if (isHelperReplaceConfirmOpen) {
+        setIsHelperReplaceConfirmOpen(false);
+        return;
+      }
       setIsEditorMoreOpen(false);
     }
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [cropDraft]);
+  }, [cropDraft, helperSuggestion, isAssetLibraryOpen, isAvatarImageMenuOpen, isAvatarPickerOpen, isAvatarUrlOpen, isHelperReplaceConfirmOpen]);
 
   // The module rail stacks under the action bar, so it needs the bar's measured
   // height rather than a guess — the bar is one row on a desktop and can wrap.
@@ -2224,6 +2246,7 @@ export function CharacterForm({
                     世界观
                     <div className="combo-field">
                       <input
+                        aria-label="世界观，可直接输入自定义名称"
                         value={formData.worldview}
                         onChange={(event) => updateField("worldview", event.target.value)}
                         placeholder="选择或输入世界观"
@@ -2246,11 +2269,13 @@ export function CharacterForm({
                         ))}
                       </select>
                     </div>
+                    <span className="field-hint">可直接输入自定义名称；选预设只是填入输入框，不会改动世界观条目。</span>
                   </label>
                   <label className="field-cell">
                     视觉风格
                     <div className="combo-field">
                       <input
+                        aria-label="视觉风格，可直接输入自定义名称"
                         value={formData.visualStyle}
                         onChange={(event) => updateField("visualStyle", event.target.value)}
                         placeholder="选择或输入视觉风格"
@@ -2273,6 +2298,7 @@ export function CharacterForm({
                         ))}
                       </select>
                     </div>
+                    <span className="field-hint">可直接输入自定义风格；保存、再次编辑与导入导出都按原文保留。</span>
                   </label>
                 </div>
               </div>

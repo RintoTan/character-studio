@@ -55,7 +55,8 @@
   --duration-fast: 150ms;
   --duration-medium: 190ms;
   --emoji-font: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
-  /* The inline/overlay ladder, low to high. Named by depth rather than by role,
+  
+/* The inline/overlay ladder, low to high. Named by depth rather than by role,
      because the roles kept changing while the depths did not: a card menu and a
      table menu are the same tier even though one is "inside a card". Every value
      here is the literal it replaced, so nothing moved in the stacking order. */
@@ -77,6 +78,7 @@
   --z-modal-overlay: 900;
   --z-modal-content: 910;
   --z-toast: 1000;
+  --z-tooltip: 950;
   /* Layer order, low to high. The inline popover tier is not a mistake to be
      folded into the dialog tier: those layers are opened from different
      surfaces and are meant to sit at different depths.
@@ -129,6 +131,56 @@
   --avatar-tint: rgba(244, 244, 245, 0.08);
   --shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
   --shadow-strong: 0 16px 36px rgba(0, 0, 0, 0.34);
+}
+
+/* The app's only tooltip. Fixed to the viewport, because a tooltip inside a panel
+   with `overflow: hidden` is a tooltip that disappears behind it. Placed under the
+   trigger and flipped above when the bottom of the window is closer than the label. */
+.app-tooltip {
+  position: fixed;
+  z-index: var(--z-tooltip);
+  width: max-content;
+  max-width: min(240px, calc(100vw - 16px));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-soft);
+  box-shadow: var(--shadow);
+  padding: 5px 8px;
+  pointer-events: none;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: normal;
+  animation: tooltip-in 120ms var(--ease-standard);
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.app-tooltip[data-placement="top"] {
+  animation-name: tooltip-in-top;
+}
+
+@keyframes tooltip-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 * {
@@ -1030,41 +1082,6 @@ button:disabled {
 
 .hero-icon-button.primary-icon:hover {
   background: var(--primary-hover);
-}
-
-.hero-icon-button::before,
-.floating-action::before {
-  transition-delay: 300ms;
-}
-
-.hero-icon-button::before {
-  position: absolute;
-  top: calc(100% + 9px);
-  left: 50%;
-  z-index: var(--z-inline-5);
-  width: max-content;
-  max-width: 140px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text-soft);
-  box-shadow: var(--shadow);
-  content: attr(data-tooltip);
-  opacity: 0;
-  padding: 5px 8px;
-  pointer-events: none;
-  transform: translateX(-50%) translateY(-4px);
-  transition:
-    opacity 120ms ease 300ms,
-    transform 120ms ease 300ms;
-  font-size: 12px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.hero-icon-button:hover::before {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
 }
 
 .eyebrow {
@@ -5814,34 +5831,6 @@ kbd {
   box-shadow: var(--focus-ring), var(--shadow-strong);
 }
 
-.floating-action::before {
-  position: absolute;
-  right: calc(100% + 10px);
-  top: 50%;
-  width: max-content;
-  max-width: 120px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text-soft);
-  box-shadow: var(--shadow);
-  content: attr(data-tooltip);
-  opacity: 0;
-  padding: 5px 8px;
-  pointer-events: none;
-  transform: translateY(-50%) translateX(4px);
-  transition:
-    opacity 120ms ease 300ms,
-    transform 120ms ease 300ms;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.floating-action:hover::before {
-  opacity: 1;
-  transform: translateY(-50%) translateX(0);
-}
-
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -5897,6 +5886,50 @@ kbd {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+
+/* One press language for the controls that appear everywhere: a single pixel down,
+   no scale, no bounce. Colour changes were already animated; the press was not. */
+.hero-icon-button,
+.ghost-button,
+.primary-button,
+.preview-action-button,
+.timeline-filter-toggle,
+.world-filter-toggle {
+  transition-property: background, border-color, color, box-shadow, transform;
+  transition-duration: var(--duration-fast);
+  transition-timing-function: var(--ease-standard);
+}
+
+.hero-icon-button:active:not(:disabled),
+.ghost-button:active:not(:disabled),
+.primary-button:active:not(:disabled),
+.preview-action-button:active:not(:disabled),
+.timeline-filter-toggle:active,
+.world-filter-toggle:active {
+  transform: translateY(1px);
+}
+
+/* The filter rows open in the flow rather than over it; the fade is the only cue
+   that the same button now holds the fields. Enter only: a closing animation would
+   keep an outside click waiting, and the click is the point. */
+.dashboard-controls-panel.open,
+.timeline-filter-row.open,
+.world-filter-row.open {
+  animation: layer-down var(--duration-fast) var(--ease-standard);
+}
+
+@keyframes layer-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useLightDismiss } from "../hooks/useLightDismiss";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import {
@@ -113,6 +114,8 @@ export function WorldManager({
   const structuralFilterCount =
     (filter.parent === "any" ? 0 : 1) + (filter.characters === "any" ? 0 : 1);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Same light-layer contract as the timeline filter row.
+  const filterWrapRef = useLightDismiss({ open: filtersOpen, onClose: () => setFiltersOpen(false) });
   const counts = useMemo(() => worldCategoryCounts(entries), [entries]);
   const rows = useMemo(
     () => worldTreeRows(entries, { filter, nameOf, collapsed, isFilterActive: isFiltered }),
@@ -297,7 +300,7 @@ export function WorldManager({
 
       {/* Search and filtering over the whole set, above the two panes: name, summary,
           details, tags and character names, plus the three structural filters. */}
-      <div className="world-toolbar">
+      <div className="world-toolbar" ref={filterWrapRef}>
         <label className="world-search">
           <Icon name="search" size={15} />
           <input

@@ -19,10 +19,18 @@ export function useDashboardLayers(layers: readonly DashboardLayerActions[]) {
   const latest = useRef(layers);
   latest.current = layers;
 
+  // Escape closes the layer on top, not every open one. A filter panel and the menu
+  // that opened beside it are two layers even when they share a screen: one Escape is
+  // one step back, and the second press closes the next one if it is still there.
   const dismiss = useCallback(() => {
-    for (const layer of latest.current) {
-      layer.close();
+    for (let index = latest.current.length - 1; index >= 0; index -= 1) {
+      const layer = latest.current[index];
+      if (layer.open) {
+        layer.close();
+        return layer.id;
+      }
     }
+    return null;
   }, []);
 
   return {

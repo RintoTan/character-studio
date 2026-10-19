@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEscapeDismiss } from "../hooks/useLightDismiss";
 import { CharacterRow, characterDisplayName, matchesCharacterQuery } from "./CharacterRow";
 import { Icon } from "./Icon";
 import type { Character } from "../types/character";
@@ -243,6 +244,10 @@ export function CharacterSelect({ characters, legend, onChange, value }: Charact
     setOpen(false);
     setQuery("");
   }, []);
+
+  // The input handles Escape while it has focus; this covers the rest of the panel,
+  // where focus is on a row rather than in the field.
+  useEscapeDismiss(open, close);
 
   // A list that stays open while the pointer goes elsewhere is a trap.
   useEffect(() => {

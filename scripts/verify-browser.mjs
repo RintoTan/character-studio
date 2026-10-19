@@ -6488,6 +6488,294 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
+
+    await check("轻量弹层：外部点击、同级切换、Escape 与焦点", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 400))`);
+
+      const dashboard = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const q = (selector) => document.querySelector(selector);
+        const filter = () => q('button[aria-label="筛选"]');
+        const more = () => q('button[aria-label="更多操作"]');
+        const tap = (node) => {
+          node.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+          node.click();
+        };
+        const state = {};
+        filter().click(); await sleep(250);
+        state.opened = !!q(".dashboard-controls-panel.open");
+        tap(q("h1")); await sleep(250);
+        state.outsideClosed = !q(".dashboard-controls-panel.open");
+        filter().click(); await sleep(250);
+        tap(q(".dashboard-controls label")); await sleep(200);
+        state.insideKept = !!q(".dashboard-controls-panel.open");
+        more().click(); await sleep(250);
+        state.siblingSwap = !q(".dashboard-controls-panel.open") && !!q(".export-menu");
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(250);
+        state.escapeMenu = !q(".export-menu");
+        state.focusAfterMenu = (document.activeElement && document.activeElement.getAttribute("aria-label")) || "";
+        filter().click(); await sleep(250);
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        await sleep(250);
+        state.escapePanel = !q(".dashboard-controls-panel.open");
+        state.focusAfterPanel = (document.activeElement && document.activeElement.getAttribute("aria-label")) || "";
+        return state;
+      })()`);
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await cdp.value(clickWorkspace("世界观时间线"));
+      const timeline = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const toggle = [...document.querySelectorAll("button")].find((button) => button.textContent.trim().startsWith("筛选"));
+        toggle.click(); await sleep(250);
+        const opened = !!document.querySelector(".timeline-filter-row.open");
+        const title = document.querySelector("h1");
+        title.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        await sleep(250);
+        return { opened, closed: !document.querySelector(".timeline-filter-row.open") };
+      })()`);
+
+      await cdp.value(clickWorkspace("世界观管理"));
+      const world = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const toggle = [...document.querySelectorAll("button")].find((button) => button.textContent.trim().startsWith("筛选"));
+        toggle.click(); await sleep(250);
+        const opened = !!document.querySelector(".world-filter-row.open");
+        const title = document.querySelector("h1");
+        title.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+        await sleep(250);
+        return { opened, closed: !document.querySelector(".world-filter-row.open") };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const pass =
+        dashboard.opened && dashboard.outsideClosed && dashboard.insideKept &&
+        dashboard.siblingSwap && dashboard.escapeMenu && dashboard.escapePanel &&
+        dashboard.focusAfterMenu === "更多操作" && dashboard.focusAfterPanel === "筛选" &&
+        timeline.opened && timeline.closed && world.opened && world.closed;
+
+      return {
+        pass,
+        detail: `Dashboard：打开 ${dashboard.opened}、外部关闭 ${dashboard.outsideClosed}、内部保留 ${dashboard.insideKept}、`
+          + `同级切换 ${dashboard.siblingSwap}、Escape 菜单 ${dashboard.escapeMenu}（焦点 ${dashboard.focusAfterMenu || "无"}）、`
+          + `Escape 面板 ${dashboard.escapePanel}（焦点 ${dashboard.focusAfterPanel || "无"}）；`
+          + `375 时间线 打开 ${timeline.opened} / 外部关闭 ${timeline.closed}；世界观 打开 ${world.opened} / 外部关闭 ${world.closed}`,
+      };
+    });
+
+    await check("Tooltip：贴近触发控件、边缘不溢出、键盘可达", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 320, height: 720, deviceScaleFactor: 2, mobile: true });
+      await cdp.goto(base);
+      await cdp.value(SEED_MANY);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 500))`);
+
+      const hover = async (selector) => {
+        const rect = await cdp.value(`(() => {
+          const node = document.querySelector(${JSON.stringify(selector)});
+          if (!node) return null;
+          const box = node.getBoundingClientRect();
+          return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) };
+        })()`);
+        if (!rect) throw new Error("trigger missing: " + selector);
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: rect.x, y: rect.y, buttons: 0 });
+        await new Promise((resolve) => setTimeout(resolve, 450));
+        return cdp.value(`(() => {
+          const tip = document.querySelector(".app-tooltip");
+          const trigger = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();
+          if (!tip) return null;
+          const box = tip.getBoundingClientRect();
+          return {
+            text: tip.textContent,
+            placement: tip.dataset.placement,
+            gap: Math.round((box.top - trigger.bottom) * 10) / 10,
+            inside: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight,
+            covers: box.left < trigger.right && box.right > trigger.left && box.top < trigger.bottom && box.bottom > trigger.top,
+          };
+        })()`);
+      };
+
+      const toolbar = await hover('button[aria-label="更多操作"]');
+      const keyboard = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const button = document.querySelector('button[aria-label="搜索"]');
+        button.focus();
+        await sleep(250);
+        const tip = document.querySelector(".app-tooltip");
+        return tip ? tip.textContent : "";
+      })()`);
+
+      // The floating action sits at the bottom of the window, so its label has to
+      // flip. It is a desktop affordance; a phone reaches the same place by scrolling.
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 720, deviceScaleFactor: 1, mobile: false });
+      await cdp.value(`window.scrollTo(0, document.documentElement.scrollHeight)`);
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const floating = await hover(".floating-action");
+
+      return {
+        pass: Boolean(
+          toolbar && toolbar.text === "更多操作" && toolbar.placement === "bottom" &&
+          toolbar.gap >= 5 && toolbar.gap <= 8 && toolbar.inside && !toolbar.covers &&
+          keyboard === "搜索" &&
+          Boolean(floating) && floating.placement === "top" && floating.inside && !floating.covers,
+        ),
+        detail: `320px 更多操作：${toolbar ? toolbox(toolbar) : "无提示"}；键盘聚焦搜索：${keyboard || "无提示"}；`
+          + `贴底浮动按钮：${floating ? toolbox(floating) : "未出现"}`,
+      };
+
+      function toolbox(state) {
+        return `「${state.text}」${state.placement}、间距 ${state.gap}px、在视口内 ${state.inside}、遮挡触发 ${state.covers}`;
+      }
+    });
+
+
+    await check("编辑器：世界观与视觉风格可自由填写、保存后回显", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      // Earlier checks leave the dashboard on whichever view they needed; this check
+      // opens a card, so it states the view it depends on instead of inheriting one.
+      await cdp.value(`localStorage.setItem("character-studio.dashboard-prefs", JSON.stringify({
+        searchTerm: "", sortMode: "updated-desc", worldviewFilter: "全部",
+        genderFilter: "全部", visualStyleFilter: "全部", favoriteMode: "all", viewMode: "cards",
+      }))`);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 400))`);
+
+      const save = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const setValue = (node, value) => {
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+          setter.call(node, value);
+          node.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        document.querySelector(".card-title-button").click();
+        await sleep(500);
+        const edit = document.querySelector('button[aria-label="编辑"]');
+        if (!edit) throw new Error("编辑 button missing");
+        edit.click();
+        await sleep(700);
+
+        const world = document.querySelector('input[aria-label="世界观，可直接输入自定义名称"]');
+        const style = document.querySelector('input[aria-label="视觉风格，可直接输入自定义名称"]');
+        if (!world || !style) throw new Error("combo inputs missing");
+        setValue(world, "自定义界域·测试");
+        setValue(style, "自定义风格·测试");
+        await sleep(300);
+
+        const saveButton = [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "保存角色");
+        if (!saveButton) throw new Error("保存角色 button missing");
+        saveButton.click();
+        await sleep(1000);
+
+        const stored = JSON.parse(localStorage.getItem("character-studio.characters") || "[]")
+          .find((entry) => entry.id === "seed-1") || {};
+        return { worldview: stored.worldview || "", visualStyle: stored.visualStyle || "" };
+      })()`);
+
+      const reopened = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const edit = document.querySelector('button[aria-label="编辑"]');
+        if (!edit) throw new Error("编辑 button missing after save");
+        edit.click();
+        await sleep(700);
+        const world = document.querySelector('input[aria-label="世界观，可直接输入自定义名称"]');
+        const style = document.querySelector('input[aria-label="视觉风格，可直接输入自定义名称"]');
+        return {
+          worldview: world ? world.value : "",
+          visualStyle: style ? style.value : "",
+          editable: Boolean(world && !world.disabled && !world.readOnly && style && !style.disabled && !style.readOnly),
+        };
+      })()`);
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const narrow = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const world = document.querySelector('input[aria-label="世界观，可直接输入自定义名称"]');
+        world.scrollIntoView({ block: "center" });
+        await sleep(350);
+        const box = world.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          inside: box.left >= 0 && box.right <= window.innerWidth && box.top >= 0,
+          width: Math.round(box.width),
+          hit: hit === world || Boolean(hit && hit.contains(world)),
+        };
+      })()`);
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const pass =
+        save.worldview === "自定义界域·测试" &&
+        save.visualStyle === "自定义风格·测试" &&
+        reopened.worldview === save.worldview &&
+        reopened.visualStyle === save.visualStyle &&
+        reopened.editable &&
+        narrow.inside && narrow.width >= 80 && narrow.hit;
+
+      return {
+        pass,
+        detail: `保存后存储：世界观「${save.worldview || "空"}」、视觉风格「${save.visualStyle || "空"}」；`
+          + `再次打开：世界观「${reopened.worldview || "空"}」、视觉风格「${reopened.visualStyle || "空"}」、可编辑 ${reopened.editable}；`
+          + `375px 输入框宽 ${narrow.width}px、在视口内 ${narrow.inside}、命中 ${narrow.hit}`,
+      };
+    });
+
+
+    await check("动效：按压反馈存在，prefers-reduced-motion 下不播动画", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 400))`);
+
+      const normal = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const button = document.querySelector('button[aria-label="筛选"]');
+        const transition = getComputedStyle(button).transitionProperty + "/" + getComputedStyle(button).transitionDuration;
+        button.click(); await sleep(60);
+        const panel = document.querySelector(".dashboard-controls-panel.open");
+        return {
+          transition,
+          animation: panel ? getComputedStyle(panel).animationDuration : "",
+        };
+      })()`);
+
+      await cdp.send("Emulation.setEmulatedMedia", {
+        features: [{ name: "prefers-reduced-motion", value: "reduce" }],
+      });
+      const reduced = await cdp.value(`(() => {
+        const panel = document.querySelector(".dashboard-controls-panel.open");
+        const button = document.querySelector('button[aria-label="筛选"]');
+        return {
+          animation: panel ? getComputedStyle(panel).animationDuration : "",
+          transition: getComputedStyle(button).transitionDuration,
+        };
+      })()`);
+      await cdp.send("Emulation.setEmulatedMedia", { features: [] });
+
+      // Computed durations come back in seconds ("0.15s"); the thresholds are in ms.
+      const ms = (value) => {
+        const number = parseFloat(value) || 0;
+        return String(value).trim().endsWith("ms") ? number : number * 1000;
+      };
+      return {
+        pass:
+          normal.transition.includes("transform") &&
+          ms(normal.animation) >= 100 &&
+          ms(normal.animation) <= 250 &&
+          ms(reduced.animation) <= 1 &&
+          ms(reduced.transition) <= 1,
+        detail: `按钮过渡 ${normal.transition}、筛选面板 ${normal.animation}；`
+          + `reduced-motion：面板 ${reduced.animation}、按钮 ${reduced.transition}`,
+      };
+    });
+
     await check("窄屏（375）：后退同样恢复工作区页面", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: 375,

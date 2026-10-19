@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { AiSettingsForm } from "./components/AiSettingsForm";
 import { AvatarDisplay } from "./components/AvatarDisplay";
 import { BottomSheet } from "./components/BottomSheet";
+import { TooltipLayer } from "./components/TooltipLayer";
 import { Icon } from "./components/Icon";
 import { useDialogKeyboard } from "./hooks/useDialogKeyboard";
 import { useMediaQuery } from "./hooks/useMediaQuery";
@@ -1128,6 +1129,9 @@ function App() {
 
   return (
     <main className="app-shell">
+      {/* One tooltip, portalled to the body: it can flip above a control at the
+          bottom of the screen and is never clipped by the panel that holds one. */}
+      <TooltipLayer />
       <nav className="topbar" ref={topbarRef}>
         <button
           className="brand-button"

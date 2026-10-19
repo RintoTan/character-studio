@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { useEscapeDismiss } from "../hooks/useLightDismiss";
 import {
   createRelationship,
   deleteRelationship,
@@ -727,6 +728,10 @@ export function RelationshipGraph({
   // Output is set once and used rarely, so it lives behind its own toggle: the bar
   // keeps 显示设置 and 导出 at one height instead of five controls in a row.
   const [isExportOpen, setIsExportOpen] = useState(false);
+  // Both bar panels close outside already; Escape closes the one on top, and the
+  // last one opened is the one the shared light-layer stack sees first.
+  useEscapeDismiss(isDisplayOpen, () => setIsDisplayOpen(false));
+  useEscapeDismiss(isExportOpen, () => setIsExportOpen(false));
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
   const holderRef = useRef<HTMLDivElement | null>(null);
   const nodeCardRef = useRef<HTMLDivElement | null>(null);

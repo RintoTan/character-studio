@@ -268,6 +268,11 @@ export function Dashboard({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const assetImportInputRef = useRef<HTMLInputElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  // The three triggers, so Escape can hand the keyboard back to the one that opened
+  // the layer it just closed.
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  const moreTriggerRef = useRef<HTMLButtonElement>(null);
   const cardMenuRef = useRef<HTMLDivElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -339,6 +344,7 @@ export function Dashboard({
     { id: "more-menu", open: isMoreMenuOpen, blocksMenus: false, close: () => setIsMoreMenuOpen(false) },
     { id: "card-menu", open: openCardMenuId !== null, blocksMenus: false, close: () => setOpenCardMenuId(null) },
     { id: "search-panel", open: isSearchPanelOpen, blocksMenus: false, close: () => setIsSearchPanelOpen(false) },
+    { id: "search-box", open: isSearchBoxOpen, blocksMenus: false, close: () => setIsSearchBoxOpen(false) },
 
     // Modals.
     { id: "export-target", open: Boolean(exportTarget), blocksMenus: true, close: () => setExportTarget(null) },
@@ -516,6 +522,20 @@ export function Dashboard({
       if (!inSheet && moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setIsMoreMenuOpen(false);
       }
+
+      // The filter panel and the search field are anchored layers too. Their triggers
+      // live inside these wrappers, so a click on the trigger is "inside" and the
+      // click handler stays the one that decides whether to toggle.
+      const target = event.target;
+      const inFilterWrap = target instanceof Element && target.closest(".list-filter-wrap");
+      const inSearchWrap = target instanceof Element && target.closest(".list-search");
+
+      if (isSearchPanelOpen && !inFilterWrap) {
+        setIsSearchPanelOpen(false);
+      }
+      if (isSearchBoxOpen && !inSearchWrap) {
+        setIsSearchBoxOpen(false);
+      }
       if (
         cardMenuRef.current &&
         !cardMenuRef.current.contains(event.target as Node) &&
@@ -530,7 +550,17 @@ export function Dashboard({
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
-        layers.dismiss();
+        const closed = layers.dismiss();
+
+        // Escape is the one exit where the keyboard has nowhere else to go, so the
+        // trigger that opened the layer takes focus back.
+        if (closed === "search-box") {
+          searchTriggerRef.current?.focus();
+        } else if (closed === "search-panel") {
+          filterTriggerRef.current?.focus();
+        } else if (closed === "more-menu") {
+          moreTriggerRef.current?.focus();
+        }
       }
     }
 
@@ -540,8 +570,9 @@ export function Dashboard({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-    // `dismiss` is stable, so this still registers exactly one listener.
-  }, [layers.dismiss]);
+    // `dismiss` is stable; the three booleans are here because the pointer handler
+    // reads them to decide whether an outside click has anything to close.
+  }, [layers.dismiss, isMoreMenuOpen, isSearchBoxOpen, isSearchPanelOpen]);
 
   useEffect(
     () => () => {
@@ -2585,7 +2616,12 @@ export function Dashboard({
               prefs.searchTerm ? "hero-icon-button active" : "hero-icon-button"
             }
             data-tooltip="搜索"
-            onClick={() => setIsSearchBoxOpen((current) => !current)}
+            onClick={() => {
+              setIsSearchPanelOpen(false);
+              setIsMoreMenuOpen(false);
+              setIsSearchBoxOpen((current) => !current);
+            }}
+            ref={searchTriggerRef}
             type="button"
           >
             <Icon name="search" />
@@ -2601,7 +2637,12 @@ export function Dashboard({
                 : "hero-icon-button"
             }
             data-tooltip="筛选"
-            onClick={() => setIsSearchPanelOpen((current) => !current)}
+            onClick={() => {
+              setIsSearchBoxOpen(false);
+              setIsMoreMenuOpen(false);
+              setIsSearchPanelOpen((current) => !current);
+            }}
+            ref={filterTriggerRef}
             type="button"
           >
             <Icon name="filter" />
@@ -2648,7 +2689,12 @@ export function Dashboard({
             className="hero-icon-button"
             data-tooltip="更多操作"
             disabled={loadingAction !== null}
-            onClick={() => setIsMoreMenuOpen((current) => !current)}
+            onClick={() => {
+              setIsSearchBoxOpen(false);
+              setIsSearchPanelOpen(false);
+              setIsMoreMenuOpen((current) => !current);
+            }}
+            ref={moreTriggerRef}
             type="button"
           >
             {loadingAction ? "…" : <Icon name="more" />}
