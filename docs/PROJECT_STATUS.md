@@ -1,6 +1,6 @@
 # Character Studio —— 项目状态总览
 
-> 文档最后核查日期：**2026-10-17** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
+> 文档最后核查日期：**2026-10-19** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
 > 本文只记录**有证据**的结论。凡未验证的，一律显式标注。
 > **位置变更**：本文件原在仓库根目录，2026-10-15 随文档落位规整移入 `docs/`（根目录只保留 `README.md` / `CHANGELOG.md` / `Developer Handbook.md`）。文档索引见 [`README.md`](README.md)。
 
@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.37.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 角色档案 PDF 与复杂工作区；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.37.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 移动端交互与布局专项，2.37.0 的补丁；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **47**（`APP_SPRINT`）—— 文字版档案 PDF、关系网双模式、时间线与世界观布局收尾；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -21,9 +21,9 @@
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
 
-### 移动端专项（2026-10-19，未发布）
+### 移动端专项（2026-10-19，2.37.1）
 
-版本与 Sprint 不变（2.37.0 / 47），只改手机上的导航、弹层与信息密度。
+随 **2.37.1** 发布，Sprint 仍为 47。只改手机上的导航、弹层与 320px 布局，不含新功能。
 
 | 事项 | 实现 | 验证 |
 | --- | --- | --- |
