@@ -11830,3 +11830,478 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Studio mode (Sprint 50).
+
+   The page turns into a shell: a title bar, the drawing, and one dock. Nothing
+   is pinned to the sides by default — a drawer that is always open is a column
+   the canvas pays for on every frame. Both drawers are the same DOM in both
+   viewports; only their geometry changes, so there is no second implementation
+   to keep in step with the first.
+   --------------------------------------------------------------------------- */
+.relationship-page.graph-studio {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay-7);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface);
+}
+
+.graph-studio > .workspace-header,
+.graph-studio .graph-scope-note {
+  display: none;
+}
+
+/* The workspace gutter is a reading margin. The studio is an editor, so its chrome
+   and its drawing run to the edges. */
+.graph-studio > :not(.workspace-header) {
+  margin-inline: 0;
+}
+
+/* Anything already reachable from a drawer steps out of the dock. */
+.graph-studio .hidden-in-studio {
+  display: none !important;
+}
+
+/* The display-settings and export strip is a page footer; in the studio it would
+   be a second permanent row above or below the drawing. */
+.graph-studio > .graph-canvas-bar {
+  display: none;
+}
+
+/* The entry control and the phone's tools trigger are page chrome; inside the
+   studio they would point at the mode they are already in. On a phone the trigger
+   stays: it is the only way to reach multi-select now that the row is a dock. */
+.graph-studio .graph-studio-entry {
+  display: none;
+}
+
+@media (min-width: 721px) {
+  .graph-studio .graph-mobile-tools-trigger {
+    display: none;
+  }
+}
+
+.graph-studio-top {
+  order: 1;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 14px;
+  padding-top: env(safe-area-inset-top, 0px);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.graph-studio-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.graph-studio-exit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: var(--control-height-icon);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface-subtle);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.graph-studio-titles {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.graph-studio-titles strong {
+  font-size: 14px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-studio-titles span {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.graph-studio-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.graph-studio-actions > button {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.graph-studio-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  min-height: var(--control-height-compact);
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.graph-studio-actions > button:disabled {
+  opacity: 0.4;
+}
+
+.graph-studio-toggle[aria-pressed="true"] {
+  border-color: var(--primary);
+  background: var(--primary-soft, color-mix(in srgb, var(--primary) 12%, transparent));
+  color: var(--primary);
+}
+
+/* Saving is automatic, so the state is a word rather than a button. */
+.graph-studio-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.graph-studio-save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success, #3f9d6b);
+}
+
+.graph-studio-save[data-dirty="true"] .graph-studio-save-dot {
+  background: var(--warning, #c98a2f);
+}
+
+/* The drawing gets everything the chrome does not need. */
+.graph-studio .graph-canvas-holder {
+  order: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.graph-studio .graph-canvas-frame {
+  height: 100%;
+  margin: 0;
+}
+
+.graph-studio .relationship-canvas {
+  height: 100%;
+  /* The phone rule caps the drawing at 52vh, which is a page-budget decision.
+     Inside the studio the drawing is the page, so the cap does not apply. */
+  max-height: none;
+}
+
+.graph-studio .graph-canvas-tools {
+  order: 4;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.graph-studio .graph-canvas-tools::-webkit-scrollbar {
+  display: none;
+}
+
+.graph-studio .graph-canvas-tools > * {
+  flex: 0 0 auto;
+}
+
+/* Previews and selection hints float over the drawing instead of shortening it. */
+.graph-studio .graph-edit-slot {
+  order: 3;
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-overlay-3);
+}
+
+.graph-studio .graph-style-panel {
+  position: static;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.graph-studio-drawer {
+  position: fixed;
+  top: 52px;
+  margin: 0;
+  /* Stops above the dock: the zoom and fit controls stay reachable while a
+     drawer is open, instead of being covered by it. */
+  bottom: 59px;
+  z-index: var(--z-overlay-6);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 316px;
+  padding: 12px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+}
+
+.graph-studio-drawer.left {
+  left: 0;
+  border-left: 0;
+}
+
+.graph-studio-drawer.right {
+  right: 0;
+  border-right: 0;
+}
+
+.graph-studio-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.graph-studio-drawer-head button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.graph-studio-section {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.graph-studio-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height-icon);
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+}
+
+.graph-studio-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.graph-studio-list {
+  display: grid;
+  gap: 2px;
+  max-height: 42dvh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.graph-studio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+}
+
+.graph-studio-row.active,
+.graph-studio-row:hover {
+  background: var(--surface-subtle);
+}
+
+.graph-studio-row-state {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.graph-studio-group {
+  display: grid;
+  gap: 6px;
+}
+
+.graph-studio-group-form {
+  display: flex;
+  gap: 6px;
+}
+
+.graph-studio-group-form input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--control-height-compact);
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.graph-studio-group-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-studio-group-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.graph-studio-group-list em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.graph-studio-group-list button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  text-decoration: underline;
+}
+
+.graph-studio-props {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.graph-studio-props dl {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.graph-studio-props dt {
+  color: var(--muted);
+}
+
+.graph-studio-props dd {
+  margin: 0;
+}
+
+.graph-studio-props-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.graph-studio-layouts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (max-width: 720px) {
+  .graph-studio-titles span {
+    display: none;
+  }
+
+  .graph-studio-exit span {
+    display: none;
+  }
+
+  .graph-studio-save {
+    display: none;
+  }
+
+  /* A phone gets a sheet, not a column: the drawing keeps the whole height until
+     something is actually asked for. */
+  .graph-studio-drawer {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 68dvh;
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.18);
+  }
+
+  .graph-studio-list {
+    max-height: 30dvh;
+  }
+}

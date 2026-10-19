@@ -878,6 +878,19 @@ export function RelationshipGraph({
   layoutRef.current = layout;
   const [, setHistoryVersion] = useState(0);
   const [isDirectionHelpOpen, setIsDirectionHelpOpen] = useState(false);
+  // Studio mode is a way of looking at the same canvas, not a second canvas: the
+  // layout, the undo history and the view are the ones above, so leaving the studio
+  // cannot lose a position or a zoom. Neither drawer is open by default, because the
+  // drawing is the reason the studio exists.
+  const [isStudio, setIsStudio] = useState(false);
+  const [isStudioLeftOpen, setIsStudioLeftOpen] = useState(false);
+  const [isStudioRightOpen, setIsStudioRightOpen] = useState(false);
+  const studioViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
+  const studioFitRef = useRef(false);
+  // A drawer is dismissed before anything else: Escape must not leave the studio
+  // while a panel the reader opened is still on top of the drawing.
+  useEscapeDismiss(isStudioLeftOpen, () => setIsStudioLeftOpen(false));
+  useEscapeDismiss(isStudioRightOpen, () => setIsStudioRightOpen(false));
   useEscapeDismiss(isDirectionHelpOpen, () => setIsDirectionHelpOpen(false));
   useEscapeDismiss(isMobileToolsOpen, () => setIsMobileToolsOpen(false));
   // What the dialog opened with, so "has anything been typed" is a fact rather
@@ -1130,6 +1143,26 @@ export function RelationshipGraph({
     return () => observer.disconnect();
   }, [hasCanvas]);
 
+  // The studio is a bigger canvas, so the drawing is fitted once for the room it
+  // now has — and the view that was there is put back on the way out. Either way
+  // this is a view change only: no coordinate is written.
+  useEffect(() => {
+    if (isStudio) {
+      if (studioFitRef.current || screenScale <= 0 || positions.length === 0) {
+        return;
+      }
+      studioFitRef.current = true;
+      resetView();
+      return;
+    }
+
+    if (studioViewRef.current) {
+      const saved = studioViewRef.current;
+      studioViewRef.current = null;
+      setView(saved);
+    }
+  }, [isStudio, screenScale, positions]);
+
   // The canvas fits the nodes it has, not the box that was reserved for them. Once per
   // mount, for the same reason the phone's fit below is once: the author's own zoom and
   // pan are never taken back.
@@ -1187,6 +1220,22 @@ export function RelationshipGraph({
     );
     setPreviousView(view);
     setView(centreOn(center, zoom, canvas.viewBox));
+  }
+
+  // Entering the studio makes the canvas much larger, so the drawing is re-fitted
+  // once for the room it now has. The view that was there is put back on the way
+  // out: changing the chrome must not change where the author was looking.
+  function enterStudio() {
+    studioViewRef.current = view;
+    studioFitRef.current = false;
+    setIsStudio(true);
+    setIsMobileToolsOpen(false);
+  }
+
+  function exitStudio() {
+    setIsStudio(false);
+    setIsStudioLeftOpen(false);
+    setIsStudioRightOpen(false);
   }
 
   function restoreView() {
@@ -2190,8 +2239,82 @@ export function RelationshipGraph({
     onConfirm: confirmDelete,
   });
 
+  // The same panel in both places: an absolute popover beside the accepted toolbar,
+  // and a section of the studio's right drawer. One definition, so a control cannot
+  // mean two different things depending on where it is opened.
+  const stylePanel = (
+            <div className="graph-style-panel" role="group" aria-label="画布外观">
+              <div className="graph-style-presets">
+                {CANVAS_PRESETS.map((preset) => (
+                  <button
+                    className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
+                    key={preset.id}
+                    onClick={() => applyPreset(preset.id)}
+                    title={preset.hint}
+                    type="button"
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+              <div className="graph-style-grid">
+                <label>节点大小
+                  <input max={2} min={0.6} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })} step={0.05} type="range" value={style.node.size} />
+                </label>
+                <label className="graph-style-check">
+                  <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
+                  显示头像
+                </label>
+                <label>连线宽度
+                  <input max={6} min={0.4} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } })} step={0.1} type="range" value={style.edge.width} />
+                </label>
+                <label>线型
+                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
+                    <option value="solid">实线</option>
+                    <option value="dashed">虚线</option>
+                    <option value="dotted">点线</option>
+                  </select>
+                </label>
+                <label>走向
+                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
+                    <option value="curved">曲线</option>
+                    <option value="straight">直线</option>
+                  </select>
+                </label>
+                <label className="graph-style-check">
+                  <input checked={style.edge.byKind} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, byKind: event.target.checked } })} type="checkbox" />
+                  按关系类型着色
+                </label>
+                <label className="graph-style-check">
+                  <input checked={style.edge.showLabel} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })} type="checkbox" />
+                  关系标签
+                </label>
+                <label>画布底色
+                  <input onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
+                </label>
+                <label>网格
+                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
+                    <option value="dots">点阵</option>
+                    <option value="lines">方格</option>
+                    <option value="none">无</option>
+                  </select>
+                </label>
+                <label>网格密度
+                  <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } })} step={4} type="range" value={style.canvas.gridSize} />
+                </label>
+                <label>网格强度
+                  <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } })} step={0.05} type="range" value={style.canvas.gridOpacity} />
+                </label>
+              </div>
+              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复默认外观</button>
+            </div>
+  );
+
   return (
-    <section className="workspace-card relationship-page" id="workspace-relationships">
+    <section
+      className={`workspace-card relationship-page${isStudio ? " graph-studio" : ""}`}
+      id="workspace-relationships"
+    >
       <WorkspaceHeader
         eyebrow="关系网"
         title="角色关系网"
@@ -2273,7 +2396,10 @@ export function RelationshipGraph({
           {/* What acts on the canvas sits with the canvas: finding a character,
               zooming, and what the nodes show. The header keeps what the graph
               contains. */}
-          <div className="graph-canvas-tools">
+          <div className={`graph-canvas-tools${isStudio ? " studio-dock" : ""}`}>
+            {/* In the studio the search lives in the left drawer, where it sits with
+                the list it filters instead of over the drawing. */}
+            {!isStudio && (
             <div className="graph-search" ref={searchWrapRef}>
               <label className="graph-search-field">
                 <Icon name="search" size={15} />
@@ -2321,6 +2447,7 @@ export function RelationshipGraph({
                 </div>
               )}
             </div>
+            )}
 
             {/* Focus is a state of the whole canvas, so it says so and has one obvious
                 way out — the same control the search set it with. */}
@@ -2418,7 +2545,7 @@ export function RelationshipGraph({
                 多选
               </button>
 
-              <div className="graph-tool-wrap">
+              <div className="graph-tool-wrap hidden-in-studio">
                 <button
                   aria-expanded={isGroupsOpen}
                   aria-label="视觉分组"
@@ -2503,7 +2630,7 @@ export function RelationshipGraph({
                 )}
               </div>
 
-              <div className="graph-tool-wrap">
+              <div className="graph-tool-wrap hidden-in-studio">
                 <button
                   aria-expanded={isArrangeOpen}
                   className="graph-tool-button"
@@ -2557,11 +2684,19 @@ export function RelationshipGraph({
 
               <button
                 aria-expanded={isStyleOpen}
-                className="graph-tool-button"
+                className="graph-tool-button hidden-in-studio"
                 onClick={() => setIsStyleOpen((open) => !open)}
                 type="button"
               >
                 外观
+              </button>
+              <button
+                aria-pressed={isStudio}
+                className="graph-tool-button graph-studio-entry"
+                onClick={enterStudio}
+                type="button"
+              >
+                工作室
               </button>
               <button
                 aria-label="重置视角"
@@ -2867,73 +3002,284 @@ export function RelationshipGraph({
           )}
           </div>
 
-          {isStyleOpen && (
-            <div className="graph-style-panel" role="group" aria-label="画布外观">
-              <div className="graph-style-presets">
-                {CANVAS_PRESETS.map((preset) => (
+          {/* ------------------------------------------------------------------
+              Studio mode. Same canvas, same layout store, same undo stack — only the
+              chrome changes: a title bar, two drawers that are closed until asked
+              for, and the drawing taking every pixel it can. Nothing here writes
+              character or relationship data, and leaving restores the accepted page
+              with the view exactly where it was.
+              ------------------------------------------------------------------ */}
+          {isStudio && (
+            <>
+              <div className="graph-studio-top" role="toolbar" aria-label="工作室">
+                <div className="graph-studio-heading">
                   <button
-                    className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
-                    key={preset.id}
-                    onClick={() => applyPreset(preset.id)}
-                    title={preset.hint}
+                    className="graph-studio-exit"
+                    onClick={exitStudio}
                     type="button"
                   >
-                    {preset.name}
+                    <Icon name="arrowLeft" size={16} />
+                    <span>退出工作室</span>
                   </button>
-                ))}
+                  <div className="graph-studio-titles">
+                    <strong>角色关系网</strong>
+                    <span>
+                      {characters.length} 个角色 · {relationships.length} 条关系
+                    </span>
+                  </div>
+                </div>
+                <div className="graph-studio-actions">
+                  <button
+                    aria-label="撤销"
+                    disabled={undoRef.current.length === 0}
+                    onClick={undoLayout}
+                    type="button"
+                  >
+                    ↶
+                  </button>
+                  <button
+                    aria-label="重做"
+                    disabled={redoRef.current.length === 0}
+                    onClick={redoLayout}
+                    type="button"
+                  >
+                    ↷
+                  </button>
+                  {/* A save that happens on its own still has to be visible: the
+                      author needs to know a drag was kept without looking for a
+                      button that does not exist. */}
+                  <span className="graph-studio-save" data-dirty={livePositions ? "true" : undefined}>
+                    <span className="graph-studio-save-dot" />
+                    {livePositions ? "调整中…" : "已保存"}
+                  </span>
+                  <button
+                    aria-pressed={isStudioLeftOpen}
+                    className="graph-studio-toggle"
+                    onClick={() => setIsStudioLeftOpen((open) => !open)}
+                    type="button"
+                  >
+                    角色
+                  </button>
+                  <button
+                    aria-pressed={isStudioRightOpen}
+                    className="graph-studio-toggle"
+                    onClick={() => setIsStudioRightOpen((open) => !open)}
+                    type="button"
+                  >
+                    属性
+                  </button>
+                </div>
               </div>
-              <div className="graph-style-grid">
-                <label>节点大小
-                  <input max={2} min={0.6} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })} step={0.05} type="range" value={style.node.size} />
-                </label>
-                <label className="graph-style-check">
-                  <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
-                  显示头像
-                </label>
-                <label>连线宽度
-                  <input max={6} min={0.4} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } })} step={0.1} type="range" value={style.edge.width} />
-                </label>
-                <label>线型
-                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
-                    <option value="solid">实线</option>
-                    <option value="dashed">虚线</option>
-                    <option value="dotted">点线</option>
-                  </select>
-                </label>
-                <label>走向
-                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
-                    <option value="curved">曲线</option>
-                    <option value="straight">直线</option>
-                  </select>
-                </label>
-                <label className="graph-style-check">
-                  <input checked={style.edge.byKind} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, byKind: event.target.checked } })} type="checkbox" />
-                  按关系类型着色
-                </label>
-                <label className="graph-style-check">
-                  <input checked={style.edge.showLabel} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })} type="checkbox" />
-                  关系标签
-                </label>
-                <label>画布底色
-                  <input onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
-                </label>
-                <label>网格
-                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
-                    <option value="dots">点阵</option>
-                    <option value="lines">方格</option>
-                    <option value="none">无</option>
-                  </select>
-                </label>
-                <label>网格密度
-                  <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } })} step={4} type="range" value={style.canvas.gridSize} />
-                </label>
-                <label>网格强度
-                  <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } })} step={0.05} type="range" value={style.canvas.gridOpacity} />
-                </label>
-              </div>
-              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复默认外观</button>
-            </div>
+
+              {isStudioLeftOpen && (
+                <aside aria-label="角色与分组" className="graph-studio-drawer left">
+                  <div className="graph-studio-drawer-head">
+                    <strong>角色与分组</strong>
+                    <button aria-label="关闭角色面板" onClick={() => setIsStudioLeftOpen(false)} type="button">
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+
+                  <label className="graph-studio-search">
+                    <Icon name="search" size={15} />
+                    <input
+                      aria-label="搜索角色"
+                      onChange={(event) => {
+                        setQuery(event.target.value);
+                        setNotOnCanvas(null);
+                      }}
+                      placeholder="搜索角色名、职业、世界观"
+                      type="search"
+                      value={query}
+                    />
+                    {query && (
+                      <button aria-label="清除搜索" onClick={() => setQuery("")} type="button">
+                        <Icon name="close" size={13} />
+                      </button>
+                    )}
+                  </label>
+
+                  <div className="graph-studio-list" role="listbox" aria-label="角色列表">
+                    {(query.trim() ? searchResults : visibleCharacters).map((character) => (
+                      <button
+                        aria-selected={focusId === character.id}
+                        className={`graph-studio-row${focusId === character.id ? " active" : ""}`}
+                        key={character.id}
+                        onClick={() => focusCharacter(character)}
+                        role="option"
+                        type="button"
+                      >
+                        <CharacterRow character={character} />
+                        <span className="graph-studio-row-state">
+                          {byId.has(character.id) ? "在画布" : "未显示"}
+                        </span>
+                      </button>
+                    ))}
+                    {query.trim() && searchResults.length === 0 && (
+                      <p className="muted">没有匹配的角色。</p>
+                    )}
+                  </div>
+
+                  <div className="graph-studio-group">
+                    <strong className="graph-studio-section">视觉分组</strong>
+                    {groupDraft ? (
+                      <form
+                        className="graph-studio-group-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          saveGroupDraft();
+                        }}
+                      >
+                        <input
+                          aria-label="分组名称"
+                          autoFocus
+                          maxLength={40}
+                          onChange={(event) =>
+                            setGroupDraft((current) =>
+                              current ? { ...current, name: event.target.value } : current,
+                            )
+                          }
+                          placeholder="例如：北境线"
+                          value={groupDraft.name}
+                        />
+                        <button className="primary-button" disabled={!groupDraft.name.trim()} type="submit">
+                          创建
+                        </button>
+                        <button className="ghost-button" onClick={() => setGroupDraft(null)} type="button">
+                          取消
+                        </button>
+                      </form>
+                    ) : (
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length < 2}
+                        onClick={() => setGroupDraft({ name: "", editingId: null })}
+                        type="button"
+                      >
+                        用所选创建分组（{selectedIds.length}）
+                      </button>
+                    )}
+                    {layout.groups.length > 0 && (
+                      <ul className="graph-studio-group-list">
+                        {layout.groups.map((group) => (
+                          <li key={group.id}>
+                            <span>{group.name}</span>
+                            <em>{group.characterIds.length} 人</em>
+                            <button
+                              aria-label={`取消分组 ${group.name}`}
+                              onClick={() => {
+                                commitLayout(removeGroup(layout, group.id));
+                                setArrangeUndo(null);
+                              }}
+                              type="button"
+                            >
+                              取消
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="muted">分组只影响画布，不写入世界观。</p>
+                  </div>
+                </aside>
+              )}
+
+              {isStudioRightOpen && (
+                <aside aria-label="属性与外观" className="graph-studio-drawer right">
+                  <div className="graph-studio-drawer-head">
+                    <strong>属性与外观</strong>
+                    <button aria-label="关闭属性面板" onClick={() => setIsStudioRightOpen(false)} type="button">
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+
+                  <strong className="graph-studio-section">所选对象</strong>
+                  {selectedIds.length === 0 ? (
+                    <p className="muted">在画布上点选角色，这里显示它的属性和局部外观。</p>
+                  ) : selectedIds.length === 1 ? (
+                    (() => {
+                      const chosen = byId.get(selectedIds[0])?.character;
+                      if (!chosen) {
+                        return <p className="muted">这个角色已不在画布中。</p>;
+                      }
+                      return (
+                        <div className="graph-studio-props">
+                          <CharacterRow character={chosen} />
+                          <dl>
+                            <dt>关系</dt>
+                            <dd>{degreeById.get(chosen.id) ?? 0} 条</dd>
+                          </dl>
+                          <div className="graph-studio-props-actions">
+                            <button className="ghost-button" onClick={() => fitSelection()} type="button">
+                              适应选中
+                            </button>
+                            <button
+                              className="ghost-button"
+                              onClick={() => onOpenCharacter(chosen.id)}
+                              type="button"
+                            >
+                              打开角色详情
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="graph-studio-props">
+                      <p className="muted">已选 {selectedIds.length} 个角色。</p>
+                      <div className="graph-studio-props-actions">
+                        <button className="ghost-button" onClick={() => fitSelection()} type="button">
+                          适应选中
+                        </button>
+                        <button className="ghost-button" onClick={() => setIsAlignOpen((open) => !open)} type="button">
+                          对齐与分布
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  <strong className="graph-studio-section">布局</strong>
+                  <div className="graph-scope-switch" role="group" aria-label="整理范围">
+                    <button
+                      aria-pressed={arrangeScope === "visible"}
+                      className={arrangeScope === "visible" ? "active" : ""}
+                      onClick={() => setArrangeScope("visible")}
+                      type="button"
+                    >
+                      当前可见（{visibleCharacters.length}）
+                    </button>
+                    <button
+                      aria-pressed={arrangeScope === "all"}
+                      className={arrangeScope === "all" ? "active" : ""}
+                      onClick={() => setArrangeScope("all")}
+                      type="button"
+                    >
+                      全部（{characters.length}）
+                    </button>
+                  </div>
+                  <div className="graph-studio-layouts">
+                    {([
+                      ["cluster", "关系聚类"],
+                      ["ring", "环形"],
+                      ["grid", "网格"],
+                      ["hierarchy", "层级"],
+                      ["groups", "按分组"],
+                    ] as Array<[ArrangeMode, string]>).map(([mode, label]) => (
+                      <button className="ghost-button" key={mode} onClick={() => proposeArrange(mode)} type="button">
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="muted">先预览，确认后才写入；只移动所选范围，不改关系。</p>
+
+                  <strong className="graph-studio-section">画布外观</strong>
+                  {stylePanel}
+                </aside>
+              )}
+            </>
           )}
+
+          {!isStudio && isStyleOpen && stylePanel}
 
           {/* A fixed slot, so showing a preview or a selection hint does not push
               the canvas down under the pointer that just selected something. */}
