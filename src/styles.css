@@ -11700,3 +11700,46 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
     right: 0;
   }
 }
+
+.graph-history-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.graph-history-button:disabled {
+  opacity: 0.4;
+}
+
+.graph-align-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.graph-align-panel .muted {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+  font-size: 11.5px;
+}
+
+@media (max-width: 720px) {
+  /* Undo/redo stay in the phone's 工具 menu, not the zoom row. */
+  .graph-history-button {
+    display: none;
+  }
+}

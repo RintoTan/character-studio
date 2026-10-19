@@ -284,7 +284,7 @@ export function applyPositions(
   return { ...layout, positions: { ...layout.positions, ...next } };
 }
 
-export type ArrangeMode = "cluster" | "ring";
+export type ArrangeMode = "cluster" | "ring" | "grid" | "hierarchy" | "groups";
 
 /**
  * The ring every canvas starts as, and the shape 环形整理 produces.
@@ -576,4 +576,153 @@ export function mergeImportedLayout(options: {
     positions: { ...positions, ...current.positions },
     groups: [...current.groups, ...additions],
   };
+}
+
+/**
+ * A plain grid. Rows are filled left to right in the given order, which callers
+ * pass as a stable sort, so the same set always lands in the same cells.
+ */
+export function gridLayout(
+  ids: string[],
+  center: LayoutPoint,
+  radius: number,
+  gap = 56,
+): Record<string, LayoutPoint> {
+  const step = radius * 2 + gap;
+  const columns = Math.max(1, Math.ceil(Math.sqrt(ids.length)));
+  const rows = Math.ceil(ids.length / columns);
+  const result: Record<string, LayoutPoint> = {};
+  ids.forEach((id, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    result[id] = {
+      x: Math.round(center.x + (column - (columns - 1) / 2) * step),
+      y: Math.round(center.y + (row - (rows - 1) / 2) * step),
+    };
+  });
+  return result;
+}
+
+/**
+ * Levels from a root, top to bottom.
+ *
+ * The root is whoever has the most connections inside the arrangement (ties by
+ * id), or the caller's choice. This is a drawing decision, not a claim about
+ * who answers to whom — nothing here reads or writes an organisation.
+ */
+export function hierarchyLayout(
+  ids: string[],
+  edges: Array<{ fromId: string; toId: string }>,
+  center: LayoutPoint,
+  radius: number,
+  rootId?: string | null,
+): Record<string, LayoutPoint> {
+  const members = new Set(ids);
+  const adjacency = new Map<string, string[]>();
+  ids.forEach((id) => adjacency.set(id, []));
+  for (const edge of edges) {
+    if (!members.has(edge.fromId) || !members.has(edge.toId) || edge.fromId === edge.toId) {
+      continue;
+    }
+    adjacency.get(edge.fromId)?.push(edge.toId);
+    adjacency.get(edge.toId)?.push(edge.fromId);
+  }
+
+  const degree = (id: string) => adjacency.get(id)?.length ?? 0;
+  const root =
+    rootId && members.has(rootId)
+      ? rootId
+      : [...ids].sort((a, b) => degree(b) - degree(a) || a.localeCompare(b))[0] ?? null;
+
+  const levels: string[][] = [];
+  if (root) {
+    const seen = new Set<string>([root]);
+    let frontier = [root];
+    while (frontier.length) {
+      levels.push(frontier);
+      const next: string[] = [];
+      for (const id of frontier) {
+        for (const neighbour of adjacency.get(id) ?? []) {
+          if (!seen.has(neighbour)) {
+            seen.add(neighbour);
+            next.push(neighbour);
+          }
+        }
+      }
+      frontier = next.sort((a, b) => a.localeCompare(b));
+    }
+    // Components with no path from the root still belong on the canvas.
+    const reached = new Set(levels.flat());
+    const stranded = ids.filter((id) => !reached.has(id));
+    if (stranded.length) {
+      levels.push(stranded.sort((a, b) => a.localeCompare(b)));
+    }
+  }
+
+  const stepX = radius * 2 + 64;
+  const stepY = radius * 2 + 96;
+  const result: Record<string, LayoutPoint> = {};
+  levels.forEach((level, row) => {
+    level.forEach((id, column) => {
+      result[id] = {
+        x: Math.round(center.x + (column - (level.length - 1) / 2) * stepX),
+        y: Math.round(center.y + (row - (levels.length - 1) / 2) * stepY),
+      };
+    });
+  });
+  return result;
+}
+
+/**
+ * Each visual group becomes a block, blocks sit in a row; characters without a
+ * group get their own block at the end. Grouping is presentation only — this never
+ * touches a worldview entry.
+ */
+export function groupedLayout(
+  ids: string[],
+  groups: Array<{ characterIds: string[] }>,
+  center: LayoutPoint,
+  radius: number,
+  gap = 56,
+): Record<string, LayoutPoint> {
+  const members = new Set(ids);
+  const claimed = new Set<string>();
+  const blocks: string[][] = [];
+
+  for (const group of groups) {
+    const block = group.characterIds.filter((id) => members.has(id) && !claimed.has(id));
+    if (block.length) {
+      block.forEach((id) => claimed.add(id));
+      blocks.push(block);
+    }
+  }
+  const rest = ids.filter((id) => !claimed.has(id));
+  if (rest.length) {
+    blocks.push(rest);
+  }
+
+  const step = radius * 2 + gap;
+  const blockWidth = (block: string[]) =>
+    block.length === 1 ? step : Math.ceil(Math.sqrt(block.length)) * step;
+  const widths = blocks.map(blockWidth);
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, blocks.length - 1) * gap;
+  const result: Record<string, LayoutPoint> = {};
+  let cursor = center.x - totalWidth / 2;
+
+  blocks.forEach((block, index) => {
+    const columns = Math.max(1, Math.ceil(Math.sqrt(block.length)));
+    const rows = Math.ceil(block.length / columns);
+    const originX = cursor + widths[index] / 2;
+    block.forEach((id, position) => {
+      const column = position % columns;
+      const row = Math.floor(position / columns);
+      result[id] = {
+        x: Math.round(originX + (column - (columns - 1) / 2) * step),
+        y: Math.round(center.y + (row - (rows - 1) / 2) * step),
+      };
+    });
+    cursor += widths[index] + gap;
+  });
+
+  return result;
 }

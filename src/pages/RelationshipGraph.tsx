@@ -41,6 +41,9 @@ import {
   applyPositions,
   centroid,
   clusterLayout,
+  gridLayout,
+  groupedLayout,
+  hierarchyLayout,
   createGroup,
   emptyLayout,
   groupBounds,
@@ -865,6 +868,13 @@ export function RelationshipGraph({
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+  const [isAlignOpen, setIsAlignOpen] = useState(false);
+  const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
+  const undoRef = useRef<CanvasLayout[]>([]);
+  const redoRef = useRef<CanvasLayout[]>([]);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  const [, setHistoryVersion] = useState(0);
   const [isDirectionHelpOpen, setIsDirectionHelpOpen] = useState(false);
   useEscapeDismiss(isDirectionHelpOpen, () => setIsDirectionHelpOpen(false));
   useEscapeDismiss(isMobileToolsOpen, () => setIsMobileToolsOpen(false));
@@ -1002,6 +1012,7 @@ export function RelationshipGraph({
     startX: number;
     startY: number;
     grab: LayoutPoint;
+    last: LayoutPoint;
     moved: boolean;
     base: CanvasLayout;
   } | null>(null);
@@ -1009,6 +1020,7 @@ export function RelationshipGraph({
     groupId: string;
     pointerId: number;
     start: LayoutPoint;
+    last: LayoutPoint;
     members: string[];
     base: CanvasLayout;
     moved: boolean;
@@ -1142,6 +1154,7 @@ export function RelationshipGraph({
    * around it — so centring on the box keeps the graph where it was.
    */
   function applyFitView() {
+    setPreviousView(view);
     const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
     const zoom = fitZoom(contentBounds(positions, metrics, labelHalfWidth), frameSize, screenScale);
 
@@ -1153,11 +1166,126 @@ export function RelationshipGraph({
     applyFitView();
   }
 
+  /** Frame just the selected nodes, with the same margin the full fit uses. */
+  function fitSelection() {
+    const chosen = visibleCharacters
+      .filter((character) => selectedIds.includes(character.id))
+      .map((character) => layout.positions[character.id] ?? ringPositions[visibleCharacters.indexOf(character)]);
+    if (!chosen.length) {
+      return;
+    }
+    const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
+    const center = centroid(chosen, { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 });
+    const zoom = fitZoom(
+      contentBounds(chosen, metrics, labelHalfWidth),
+      frameSize,
+      screenScale,
+    );
+    setPreviousView(view);
+    setView(centreOn(center, zoom, canvas.viewBox));
+  }
+
+  function restoreView() {
+    if (!previousView) {
+      return;
+    }
+    const restored = previousView;
+    setPreviousView(view);
+    setView(restored);
+  }
+
+  function alignSelection(axis: "x" | "y", mode: "start" | "center" | "end") {
+    const ids = selectedIds.filter((id) => layoutRef.current.positions[id]);
+    if (ids.length < 2) {
+      return;
+    }
+    const base = workingLayout();
+    const values = ids.map((id) => base.positions[id][axis]);
+    const target =
+      mode === "start" ? Math.min(...values) : mode === "end" ? Math.max(...values) : values.reduce((sum, value) => sum + value, 0) / values.length;
+    const positions = { ...base.positions };
+    ids.forEach((id) => {
+      positions[id] = { ...positions[id], [axis]: Math.round(target) };
+    });
+    commitLayout({ ...base, positions });
+  }
+
+  function distributeSelection(axis: "x" | "y") {
+    const ids = selectedIds.filter((id) => layoutRef.current.positions[id]);
+    if (ids.length < 3) {
+      return;
+    }
+    const base = workingLayout();
+    const ordered = [...ids].sort((a, b) => base.positions[a][axis] - base.positions[b][axis]);
+    const first = base.positions[ordered[0]][axis];
+    const last = base.positions[ordered[ordered.length - 1]][axis];
+    const step = (last - first) / (ordered.length - 1);
+    const positions = { ...base.positions };
+    ordered.forEach((id, index) => {
+      positions[id] = { ...positions[id], [axis]: Math.round(first + step * index) };
+    });
+    commitLayout({ ...base, positions });
+  }
+
   /** The only path that writes coordinates. One gesture, one write. */
   function commitLayout(next: CanvasLayout) {
+    if (JSON.stringify(next) !== JSON.stringify(layoutRef.current)) {
+      undoRef.current = [...undoRef.current.slice(-39), layoutRef.current];
+      redoRef.current = [];
+    }
     setLayout(next);
     saveLayout(next);
+    setHistoryVersion((version) => version + 1);
   }
+
+  function undoLayout() {
+    const previous = undoRef.current.pop();
+    if (!previous) {
+      return;
+    }
+    redoRef.current = [...redoRef.current, layoutRef.current];
+    setLayout(previous);
+    saveLayout(previous);
+    setHistoryVersion((version) => version + 1);
+  }
+
+  function redoLayout() {
+    const next = redoRef.current.pop();
+    if (!next) {
+      return;
+    }
+    undoRef.current = [...undoRef.current, layoutRef.current];
+    setLayout(next);
+    saveLayout(next);
+    setHistoryVersion((version) => version + 1);
+  }
+
+  /** Undo/redo on the drawing's own state, never on the character records. */
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) {
+        return;
+      }
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          redoLayout();
+        } else {
+          undoLayout();
+        }
+      } else if (key === "y") {
+        event.preventDefault();
+        redoLayout();
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [layout]);
 
   /**
    * The stored layout with every visible node's current ring slot materialised.
@@ -1202,6 +1330,18 @@ export function RelationshipGraph({
     setLivePositions(null);
   }
 
+  function arrangeLabel(mode: ArrangeMode) {
+    return mode === "ring"
+      ? "环形布局"
+      : mode === "grid"
+        ? "网格布局"
+        : mode === "hierarchy"
+          ? "层级布局"
+          : mode === "groups"
+            ? "按分组整理"
+            : "关系聚类";
+  }
+
   function proposeArrange(mode: ArrangeMode) {
     const ids =
       arrangeScope === "visible"
@@ -1215,7 +1355,13 @@ export function RelationshipGraph({
     const positions =
       mode === "ring"
         ? ringLayout(ids, center, metrics.radius)
-        : clusterLayout(ids, relationships, center, metrics.radius);
+        : mode === "grid"
+          ? gridLayout(ids, center, metrics.radius)
+          : mode === "hierarchy"
+            ? hierarchyLayout(ids, relationships, center, metrics.radius, selectedIds.find((id) => ids.includes(id)))
+            : mode === "groups"
+              ? groupedLayout(ids, layout.groups, center, metrics.radius)
+              : clusterLayout(ids, relationships, center, metrics.radius);
 
     setPreview({ mode, scope: arrangeScope, positions });
     setIsArrangeOpen(false);
@@ -1227,10 +1373,7 @@ export function RelationshipGraph({
     }
 
     const base = workingLayout();
-    setArrangeUndo({
-      layout: base,
-      label: preview.mode === "ring" ? "环形整理" : "关系聚类",
-    });
+    setArrangeUndo({ layout: base, label: arrangeLabel(preview.mode) });
     commitLayout(applyPositions(base, preview.positions));
     setPreview(null);
   }
@@ -1372,6 +1515,7 @@ export function RelationshipGraph({
           startX: event.clientX,
           startY: event.clientY,
           grab: { x: nodePoint.x - world.x, y: nodePoint.y - world.y },
+          last: world,
           moved: false,
           base: workingLayout(),
         };
@@ -1386,6 +1530,7 @@ export function RelationshipGraph({
         groupId,
         pointerId: event.pointerId,
         start: drawingPoint(event.clientX, event.clientY, event.currentTarget),
+        last: drawingPoint(event.clientX, event.clientY, event.currentTarget),
         members: group?.characterIds ?? [],
         base: workingLayout(),
         moved: false,
@@ -1498,6 +1643,20 @@ export function RelationshipGraph({
     setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
   }
 
+  /** A cancelled gesture is not a small drag: it must leave the stored layout alone. */
+  function cancelPan(event: ReactPointerEvent<SVGSVGElement>) {
+    if (nodeDragRef.current?.pointerId === event.pointerId) {
+      nodeDragRef.current = null;
+    }
+    if (groupDragRef.current?.pointerId === event.pointerId) {
+      groupDragRef.current = null;
+    }
+    pointersRef.current.delete(event.pointerId);
+    pressedNodeRef.current = null;
+    setLivePositions(null);
+    stopDragFrame();
+  }
+
   function endPan(event: ReactPointerEvent<SVGSVGElement>) {
     const nodeDrag = nodeDragRef.current;
     const groupDrag = groupDragRef.current;
@@ -1511,7 +1670,10 @@ export function RelationshipGraph({
     if (nodeGesture?.moved) {
       // A fast flick can end before the next animation frame, so the release
       // position is computed here as well. Without this the node snaps back.
-      const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+      // `pointerup` may report (0,0) on touch after a cancel; the last move is the
+      // truthful position. Using the release coordinates blindly is what made a
+      // touch drag jump to the world origin.
+      const world = nodeGesture.last;
       const final = pendingDragRef.current ?? {
         ...nodeGesture.base.positions,
         [nodeGesture.id]: {
@@ -1523,11 +1685,8 @@ export function RelationshipGraph({
       setArrangeUndo(null);
       stopDragFrame();
     } else if (groupGesture?.moved) {
-      const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
-      const delta = {
-        x: world.x - groupGesture.start.x,
-        y: world.y - groupGesture.start.y,
-      };
+      const world = groupGesture.last;
+      const delta = { x: world.x - groupGesture.start.x, y: world.y - groupGesture.start.y };
       const fallback = { ...groupGesture.base.positions };
       for (const id of groupGesture.members) {
         const point = groupGesture.base.positions[id];
@@ -2183,6 +2342,29 @@ export function RelationshipGraph({
               </button>
               {/* Named rather than implied by a percentage: on a phone there is no
                   tooltip, and "back to the whole network" is the way out of any close-up. */}
+              <button
+                aria-label="撤销"
+                className="graph-history-button"
+                disabled={undoRef.current.length === 0}
+                onClick={undoLayout}
+                type="button"
+              >
+                ↶
+              </button>
+              <button
+                aria-label="重做"
+                className="graph-history-button"
+                disabled={redoRef.current.length === 0}
+                onClick={redoLayout}
+                type="button"
+              >
+                ↷
+              </button>
+              {previousView && (
+                <button className="graph-fit-button" onClick={restoreView} type="button">
+                  恢复视角
+                </button>
+              )}
               <button aria-label="适应画布" className="graph-fit-button" onClick={resetView} type="button">
                 <Icon name="grid" size={14} />
                 适应画布
@@ -2345,6 +2527,15 @@ export function RelationshipGraph({
                       <button className="ghost-button" onClick={() => proposeArrange("ring")} type="button">
                         环形布局
                       </button>
+                      <button className="ghost-button" onClick={() => proposeArrange("grid")} type="button">
+                        网格布局
+                      </button>
+                      <button className="ghost-button" onClick={() => proposeArrange("hierarchy")} type="button">
+                        层级布局
+                      </button>
+                      <button className="ghost-button" onClick={() => proposeArrange("groups")} type="button">
+                        按分组整理
+                      </button>
                     </div>
                     <p className="muted">只移动所选范围的节点，不改角色资料与关系。</p>
                   </div>
@@ -2410,7 +2601,7 @@ export function RelationshipGraph({
           <svg
             aria-hidden="true"
             className="relationship-canvas"
-            onPointerCancel={endPan}
+            onPointerCancel={cancelPan}
             onPointerDown={beginPan}
             onPointerMove={movePan}
             onPointerUp={endPan}
@@ -2631,7 +2822,7 @@ export function RelationshipGraph({
           {preview && (
             <div className="graph-edit-bar preview" role="status">
               <span>
-                预览：{preview.mode === "ring" ? "环形布局" : "关系聚类"} ·{" "}
+                预览：{arrangeLabel(preview.mode)} ·{" "}
                 {Object.keys(preview.positions).length} 个节点（
                 {preview.scope === "visible" ? "当前可见" : "全部角色"}）
               </span>
@@ -2661,6 +2852,18 @@ export function RelationshipGraph({
             <div className="graph-edit-bar selection" role="status">
               <span>已选 {selectedIds.length} 个角色</span>
               <div className="graph-edit-bar-actions">
+                <button className="ghost-button" onClick={fitSelection} type="button">
+                  适应选中
+                </button>
+                <button
+                  aria-expanded={isAlignOpen}
+                  className="ghost-button"
+                  disabled={selectedIds.length < 2}
+                  onClick={() => setIsAlignOpen((open) => !open)}
+                  type="button"
+                >
+                  排列
+                </button>
                 <button
                   className="ghost-button"
                   disabled={selectedIds.length < 2}
@@ -2676,6 +2879,20 @@ export function RelationshipGraph({
                   清除选择
                 </button>
               </div>
+            </div>
+          )}
+
+          {isAlignOpen && selectedIds.length >= 2 && !preview && (
+            <div className="graph-align-panel" role="group" aria-label="对齐与分布">
+              <button className="graph-tool-button" onClick={() => alignSelection("x", "start")} type="button">左对齐</button>
+              <button className="graph-tool-button" onClick={() => alignSelection("x", "center")} type="button">水平居中</button>
+              <button className="graph-tool-button" onClick={() => alignSelection("x", "end")} type="button">右对齐</button>
+              <button className="graph-tool-button" onClick={() => alignSelection("y", "start")} type="button">顶对齐</button>
+              <button className="graph-tool-button" onClick={() => alignSelection("y", "center")} type="button">垂直居中</button>
+              <button className="graph-tool-button" onClick={() => alignSelection("y", "end")} type="button">底对齐</button>
+              <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("x")} type="button">水平等距</button>
+              <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("y")} type="button">垂直等距</button>
+              <p className="muted">等距需要三个以上节点。对齐只改坐标，不改关系。</p>
             </div>
           )}
 

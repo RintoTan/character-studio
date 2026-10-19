@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   applyPositions,
   clusterLayout,
+  gridLayout,
+  groupedLayout,
+  hierarchyLayout,
   connectedComponents,
   createGroup,
   emptyLayout,
@@ -400,5 +403,50 @@ describe("mergeImportedLayout", () => {
 
     expect(merged.positions).toEqual({});
     expect(merged.groups).toEqual([]);
+  });
+});
+
+
+describe("additional arrangements", () => {
+  it("fills a centred grid, row by row, without collisions", () => {
+    const points = gridLayout(["a", "b", "c", "d", "e"], { x: 0, y: 0 }, 30);
+    expect(Object.keys(points)).toHaveLength(5);
+    expect(points.a.y).toBe(points.b.y);
+    expect(points.d.y).toBeGreaterThan(points.a.y);
+    expect(points.a.x).toBeLessThan(0);
+    expect(points.c.x).toBeGreaterThan(0);
+    const keys = new Set(Object.values(points).map((p) => `${p.x},${p.y}`));
+    expect(keys.size).toBe(5);
+  });
+
+  it("puts the best-connected node on the first level and children below", () => {
+    const edges = [
+      { fromId: "a", toId: "b" },
+      { fromId: "b", toId: "c" },
+    ];
+    const points = hierarchyLayout(["a", "b", "c"], edges, { x: 0, y: 0 }, 30);
+    expect(points.b.y).toBeLessThan(points.a.y);
+    expect(points.a.y).toBe(points.c.y);
+    expect(points.a.x).toBeLessThan(points.c.x);
+  });
+
+  it("keeps every node of a group in one block and puts ungrouped nodes last", () => {
+    const points = groupedLayout(
+      ["a", "b", "c", "d"],
+      [{ characterIds: ["a", "b"] }, { characterIds: ["c"] }],
+      { x: 0, y: 0 },
+      30,
+    );
+    expect(points.a.y).toBe(points.b.y);
+    expect(points.a.x).toBeLessThan(points.b.x);
+    expect(points.c.x).toBeGreaterThan(points.b.x);
+    expect(points.d.x).toBeGreaterThan(points.c.x);
+  });
+
+  it("is deterministic for the same input", () => {
+    const edges = [{ fromId: "a", toId: "b" }];
+    expect(hierarchyLayout(["b", "a", "c"], edges, { x: 10, y: 20 }, 28)).toEqual(
+      hierarchyLayout(["b", "a", "c"], edges, { x: 10, y: 20 }, 28),
+    );
   });
 });

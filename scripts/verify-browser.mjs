@@ -6822,6 +6822,127 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
+
+    await check("画布可靠性：异常释放不跳动、撤销重做、对齐与适应选中（Sprint 50）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 1440,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await OPEN_GRAPH();
+      const centre = async (id) => cdp.value(`(() => {
+        const g = document.querySelector('.relationship-node[data-character-id="${id}"]');
+        const c = g && g.querySelector("circle");
+        if (!c) return null;
+        const b = c.getBoundingClientRect();
+        return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+      })()`);
+      const cx = async (id) => cdp.value(`(() => {
+        const c = document.querySelector('.relationship-node[data-character-id="${id}"] circle');
+        return c ? Number(c.getAttribute("cx")) : null;
+      })()`);
+      const dragTo = async (from, dx, dy, releaseAt) => {
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(from.x), y: Math.round(from.y) });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(from.x), y: Math.round(from.y), button: "left", buttons: 1, clickCount: 1 });
+        for (let i = 1; i <= 5; i += 1) {
+          await cdp.send("Input.dispatchMouseEvent", {
+            type: "mouseMoved",
+            x: Math.round(from.x + (dx * i) / 5),
+            y: Math.round(from.y + (dy * i) / 5),
+            button: "left",
+            buttons: 1,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const end = releaseAt || { x: from.x + dx, y: from.y + dy };
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(end.x), y: Math.round(end.y), button: "left", buttons: 1, clickCount: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      };
+
+      // A release reported at (0,0) — what some touch stacks send after a cancel —
+      // must not teleport the node to the world origin.
+      const start = await centre("g-2");
+      const startWorld = await cx("g-2");
+      await dragTo(start, 120, 60, { x: 0, y: 0 });
+      const afterOddRelease = await cx("g-2");
+      const scale = await cdp.value(`(() => {
+        const c = document.querySelector('.relationship-node[data-character-id="g-2"] circle');
+        return c.getScreenCTM().a;
+      })()`);
+      const expected = await cdp.value(`(() => {
+        const raw = JSON.parse(localStorage.getItem("character-studio.relationship-layout"));
+        return raw.positions["g-2"].x;
+      })()`);
+      const oddReleaseOk = Number.isFinite(afterOddRelease) && Math.abs(afterOddRelease - expected) < 0.5;
+
+      const undoEnabled = await cdp.value(`!document.querySelector('button[aria-label="撤销"]').disabled`);
+      await cdp.value(`document.querySelector('button[aria-label="撤销"]').click()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const afterUndo = await cx("g-2");
+      await cdp.value(`document.querySelector('button[aria-label="重做"]').click()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const afterRedo = await cx("g-2");
+      const historyOk =
+        undoEnabled && Math.abs(afterUndo - startWorld) < 1 && Math.abs(afterRedo - expected) < 1;
+
+      // Align two selected nodes to the same top edge.
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "多选")).click()`);
+      for (const id of ["g-1", "g-2"]) {
+        const point = await centre(id);
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(point.x), y: Math.round(point.y) });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(point.x), y: Math.round(point.y), button: "left", buttons: 1, clickCount: 1 });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(point.x), y: Math.round(point.y), button: "left", buttons: 1, clickCount: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "排列")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await cdp.value(`([...document.querySelectorAll(".graph-align-panel button")].find((b) => b.textContent.trim() === "顶对齐")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const aligned = await cdp.value(`(() => {
+        const y = (id) => {
+          const c = document.querySelector('.relationship-node[data-character-id="' + id + '"] circle');
+          return Number(c.getAttribute("cy"));
+        };
+        return { a: y("g-1"), b: y("g-2") };
+      })()`);
+
+      const beforeFit = await cx("g-1");
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "适应选中")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const afterFit = await cx("g-1");
+
+      // The three new arrangements exist and preview without writing.
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const modes = await cdp.value(`[...document.querySelectorAll(".graph-arrange-actions button")].map((b) => b.textContent.trim())`);
+      const beforeGrid = await cx("g-1");
+      await cdp.value(`([...document.querySelectorAll(".graph-arrange-actions button")].find((b) => b.textContent.trim() === "网格布局")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const gridPreview = await cdp.value(`(document.querySelector(".graph-edit-bar.preview") || {}).textContent || ""`);
+      const storedDuringPreview = await cdp.value(`localStorage.getItem("character-studio.relationship-layout")`);
+      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const afterCancel = await cx("g-1");
+
+      const pass =
+        oddReleaseOk &&
+        historyOk &&
+        Math.abs(aligned.a - aligned.b) < 1 &&
+        Math.abs(afterFit - beforeFit) < 0.5 &&
+        modes.includes("网格布局") &&
+        modes.includes("层级布局") &&
+        modes.includes("按分组整理") &&
+        gridPreview.includes("网格布局") &&
+        Boolean(storedDuringPreview) &&
+        Math.abs(afterCancel - beforeGrid) < 0.5;
+
+      return {
+        pass,
+        detail: `异常释放 世界x=${afterOddRelease} 期望=${expected}（${oddReleaseOk ? "未跳" : "跳动"}）；撤销回 ${Math.round(afterUndo)} / 起始 ${Math.round(startWorld)}；重做 ${Math.round(afterRedo)} / ${Math.round(expected)}（${historyOk}）；顶对齐 cy ${aligned.a.toFixed(1)}/${aligned.b.toFixed(1)}；适应选中改坐标 ${Math.abs(afterFit - beforeFit) < 0.5 ? "否" : "是"}；布局模式 ${modes.join("、")}；网格预览 ${gridPreview.includes("网格布局")}；取消后回到 ${Math.abs(afterCancel - beforeGrid) < 0.5}`,
+      };
+    });
+
     // Not a check: an opt-in capture, so the result of a visual change can be looked
     // at rather than only asserted. Runs only with SHOTS=1 so CI writes no files.
     if (process.env.SHOTS) {
