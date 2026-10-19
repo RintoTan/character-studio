@@ -21,6 +21,17 @@
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
 
+### Sprint 48（开发中，未发布版本）
+
+角色灵感工作室 2.0：本地结构化灵感库 + 规则生成 + 上下文参考 + 用户挑选后写入草稿。应用版本仍为 **2.37.2**，待视觉验收后再决定版本号。
+
+| 事项 | 位置 | 验证 |
+| --- | --- | --- |
+| 灵感库（七类） | `src/data/inspirationLibrary.ts` | 类型检查；引擎单测 11 例 |
+| 生成与合并 | `src/inspiration/engine.ts` | 同种子确定、同批不重复、重抽避让、追加/替换/标签去重 |
+| 工作室 UI | `src/components/InspirationStudio.tsx` | 1440 侧栏 460px、375 全屏、无溢出、Escape 关闭 |
+| 编辑器接入 | `CharacterForm` 的「灵感工作室」 | 只改草稿；localStorage 在保存前不变 |
+
 ### UX 一致性与布局（2026-10-19，2.37.2）
 
 随 **2.37.2** 发布，Sprint 仍为 47。八项维护，不含新功能；存储协议与导入导出格式未变。

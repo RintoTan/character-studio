@@ -6314,6 +6314,116 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       });
     }
 
+
+    await check("灵感工作室：生成、挑选、重抽、预览与安全应用", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.value(`localStorage.setItem("character-studio.dashboard-prefs", JSON.stringify({ ...(JSON.parse(localStorage.getItem("character-studio.dashboard-prefs") || "{}")), viewMode: "cards" }))`);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 500))`);
+
+      const result = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const out = {};
+
+        document.querySelector(".card-title-button").click();
+        await sleep(500);
+        [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "编辑").click();
+        await sleep(700);
+
+        const section = [...document.querySelectorAll("section")].find((s) => s.textContent.includes("外貌设定"));
+        const studioButton = [...section.querySelectorAll("button")].find((b) => b.textContent.trim() === "灵感工作室");
+        out.button = Boolean(studioButton);
+        studioButton.click();
+        await sleep(500);
+
+        const panel = document.querySelector(".inspiration-panel");
+        const rect = panel.getBoundingClientRect();
+        out.panel = { width: Math.round(rect.width), right: Math.round(innerWidth - rect.right), full: Math.round(rect.height) };
+        out.cards = document.querySelectorAll(".inspiration-card").length;
+        out.context = document.querySelector(".inspiration-context").textContent.trim();
+
+        const firstText = document.querySelector(".inspiration-card p").textContent;
+        document.querySelector(".inspiration-card .ghost-button").click();
+        await sleep(250);
+        out.selected = document.querySelectorAll(".inspiration-card.selected").length;
+
+        const cards = [...document.querySelectorAll(".inspiration-card")];
+        cards[1].querySelectorAll(".ghost-button")[1].click();
+        await sleep(250);
+        out.rerollKeptSelection = document.querySelectorAll(".inspiration-card.selected").length === 1;
+        out.rerollChanged = document.querySelectorAll(".inspiration-card")[1].querySelector("p").textContent !== cards[1].querySelector("p").textContent;
+
+        document.querySelector(".inspiration-tabs button:nth-child(2)").click();
+        await sleep(300);
+        out.categorySwitched = document.querySelector(".inspiration-tabs .active").textContent.trim() === "性格";
+
+        [...document.querySelectorAll(".inspiration-pending button")].find((b) => b.textContent.trim() === "预览应用").click();
+        await sleep(350);
+        out.previewRows = document.querySelectorAll(".inspiration-diff > li").length;
+        out.previewText = document.querySelector(".inspiration-preview").textContent;
+
+        const before = localStorage.getItem("character-studio.characters");
+        [...document.querySelectorAll(".inspiration-preview button")].find((b) => b.textContent.trim() === "应用到草稿").click();
+        await sleep(500);
+
+        const sectionAfter = [...document.querySelectorAll("section")].find((s) => s.textContent.includes("外貌设定"));
+        const area = sectionAfter.querySelector("textarea");
+        out.appliedToDraft = Boolean(area && area.value.trim().length > 0);
+        out.storedUnchanged = localStorage.getItem("character-studio.characters") === before;
+        out.studioClosed = !document.querySelector(".inspiration-panel");
+        return out;
+      })()`);
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await sleep(400);
+      const mobile = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const section = [...document.querySelectorAll("section")].find((s) => s.textContent.includes("外貌设定"));
+        [...section.querySelectorAll("button")].find((b) => b.textContent.trim() === "灵感工作室").click();
+        await sleep(400);
+        const panel = document.querySelector(".inspiration-panel");
+        const rect = panel.getBoundingClientRect();
+        return {
+          width: Math.round(rect.width),
+          full: Math.round(rect.height),
+          viewport: innerWidth,
+          scrollable: document.querySelector(".inspiration-body").scrollHeight >= document.querySelector(".inspiration-body").clientHeight,
+          overflow: document.documentElement.scrollWidth - innerWidth,
+        };
+      })()`);
+
+      const pass =
+        result.button &&
+        result.panel.width >= 400 &&
+        result.panel.width <= 470 &&
+        result.panel.right <= 12 &&
+        result.cards === 3 &&
+        result.context.includes("参考") &&
+        result.selected === 1 &&
+        result.rerollKeptSelection &&
+        result.rerollChanged &&
+        result.categorySwitched &&
+        result.previewRows === 1 &&
+        result.previewText.includes("当前") &&
+        result.previewText.includes("建议") &&
+        result.appliedToDraft &&
+        result.storedUnchanged &&
+        result.studioClosed &&
+        mobile.width === mobile.viewport &&
+        mobile.overflow === 0;
+
+      return {
+        pass,
+        detail:
+          `桌面：按钮 ${result.button}、面板 ${result.panel.width}px 贴右 ${result.panel.right}、候选 ${result.cards}、已选 ${result.selected}、` +
+          `重抽保留 ${result.rerollKeptSelection}/变化 ${result.rerollChanged}、类别切换 ${result.categorySwitched}；` +
+          `预览 ${result.previewRows} 行、写入草稿 ${result.appliedToDraft}、localStorage 未变 ${result.storedUnchanged}、关闭 ${result.studioClosed}；` +
+          `移动：面板 ${mobile.width}/${mobile.viewport}、高 ${mobile.full}、可滚动 ${mobile.scrollable}、溢出 ${mobile.overflow}`,
+      };
+    });
+
     await check("头像：列表里的 Emoji、图片与默认头像都与容器同心", async () => {
       // Four rows, three appearances: an emoji, a picture, the default emoji and a
       // second emoji with different metrics. Measured in the dashboard's list view and
