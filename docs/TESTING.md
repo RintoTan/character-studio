@@ -20,7 +20,7 @@
 
 ---
 
-## 2. 单元测试（`test/`，48 个文件 / 538 个用例）
+## 2. 单元测试（`test/`，49 个文件 / 549 个用例）
 
 环境：vitest 3 + happy-dom + fake-indexeddb，不需要真实浏览器。
 
@@ -44,7 +44,7 @@
 
 ---
 
-## 3. 浏览器回归（`scripts/verify-browser.mjs`，59 项）
+## 3. 浏览器回归（`scripts/verify-browser.mjs`，68 项）
 
 脚本通过 Chrome DevTools Protocol 驱动**本机 Chrome**（不是 Playwright），注入确定性种子数据后操作真实 DOM。
 
