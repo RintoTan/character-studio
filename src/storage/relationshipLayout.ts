@@ -448,7 +448,7 @@ export function clusterLayout(
 export function groupBounds(
   layout: CanvasLayout,
   group: CanvasGroup,
-  padding = 58,
+  padding = 72,
 ): { x: number; y: number; width: number; height: number } | null {
   const points = group.characterIds
     .map((id) => layout.positions[id])

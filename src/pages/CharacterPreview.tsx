@@ -447,18 +447,6 @@ export function CharacterPreview({
                     {loadingAction ? "…" : <Icon name="download" size={16} />}
                   </span>
                 </button>
-                <button
-                  aria-label="返回"
-                  className="ghost-button preview-action-button"
-                  data-tooltip="返回"
-                  onClick={onBack}
-                  type="button"
-                >
-                  <span className="desktop-label">返回</span>
-                  <span className="mobile-icon">
-                    <Icon name="arrowLeft" size={16} />
-                  </span>
-                </button>
               </>
             )}
           </div>

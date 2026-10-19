@@ -5693,7 +5693,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", clickCount: 2 });
       await new Promise((resolve) => setTimeout(resolve, 800));
       const opened = await cdp.value(
-        `({ page: ${PAGE_IDS}, showsName: document.body.textContent.includes("沈青梧"), tapTarget: window.__tapTarget || "(没有 click 事件)" })`,
+        `({ page: ${PAGE_IDS}, showsName: document.body.textContent.includes("沈青梧"), tapTarget: window.__tapTarget || "(没有 click 事件)", backButtons: [...document.querySelectorAll('button[aria-label="返回"]')].length })`,
       );
 
       // Every character on the canvas is named at fit view, and the four fields the card
@@ -5715,9 +5715,9 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         pass: Boolean(
           named && pictureDrawn && emojiDrawn && cardOk &&
           selected.page === "relationships" && selected.selected === 1 &&
-          opened.page === "preview" && opened.showsName && state.pageOverflow <= 1
+          opened.page === "preview" && opened.showsName && opened.backButtons === 1 && state.pageOverflow <= 1
         ),
-        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}（视框 ${state.viewBox}、画布宽 ${state.frameWidth}px）、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；单击 → ${selected.page}（选中 ${selected.selected}）；双击 → ${opened.page}（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
+        detail: `节点 ${state.nodeCount} 个、显示名称 ${state.names.join("/")}；图片头像 ${state.imageCount} 个（clipPath ${state.clipCount}、href ${state.imageHref}…）、Emoji 头像 ${state.emojiCount} 个；字号 ${state.nameFontPx}、适配 ${state.zoom}（视框 ${state.viewBox}、画布宽 ${state.frameWidth}px）、横向溢出 ${state.pageOverflow}px；悬停卡片 ${card.present ? "有" : "无"}：${card.text}（框内 ${!card.overflowsLeft && !card.overflowsRight}、不在截图内 ${card.outsideFrame}）；单击 → ${selected.page}（选中 ${selected.selected}）；双击 → ${opened.page}、返回按钮 ${opened.backButtons} 个（显示角色名 ${opened.showsName}、click 目标 ${opened.tapTarget}）`,
       };
     });
 
@@ -6480,6 +6480,27 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
     await check("自由画布：移动端手势阈值、删除角色后布局裁剪、无横向溢出（Sprint 49）", async () => {
       await OPEN_GRAPH(375, 812, true);
+      const shelf = await cdp.value(`(() => ({
+        toolbar: Math.round(document.querySelector(".graph-canvas-tools").getBoundingClientRect().height),
+        frame: Math.round(document.querySelector(".graph-canvas-frame").getBoundingClientRect().height),
+        names: document.querySelectorAll(".relationship-node-name").length,
+        truncated: [...document.querySelectorAll(".relationship-node-name")].some((node) => node.textContent.includes("…")),
+        toolsHidden: getComputedStyle(document.querySelector(".graph-edit-tools")).display === "none",
+      }))()`);
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "工具")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const menu = await cdp.value(`({
+        open: document.querySelector(".graph-edit-tools").classList.contains("open"),
+        items: [...document.querySelectorAll(".graph-edit-tools .graph-tool-button")].map((b) => b.textContent.trim()).filter((t) => t && t !== "工具"),
+        coversCanvas: (() => {
+          const tools = document.querySelector(".graph-edit-tools").getBoundingClientRect();
+          const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+          return tools.height > frame.height;
+        })(),
+      })`);
+      await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const menuClosed = await cdp.value(`!document.querySelector(".graph-edit-tools").classList.contains("open")`);
       const centre = await cdp.value(NODE_CENTRE("g-2"));
       if (!centre) throw new Error("375px 陆停云 节点缺失");
 
@@ -6526,18 +6547,42 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await new Promise((resolve) => setTimeout(resolve, 400));
       const pruned = await cdp.value(CANVAS_STATE);
 
+      // A long name has to be shortened on the drawing but complete once selected.
+      await cdp.value(`(() => {
+        const stored = JSON.parse(localStorage.getItem("character-studio.characters"));
+        stored.find((item) => item.id === "g-2").name = "亚历山大".repeat(6);
+        localStorage.setItem("character-studio.characters", JSON.stringify(stored));
+        return true;
+      })()`);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const longShown = await cdp.value(`[...document.querySelectorAll(".relationship-node-name")].some((node) => node.textContent.includes("…"))`);
+      const longCentre = await cdp.value(NODE_CENTRE("g-2"));
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: longCentre.x, y: longCentre.y }] });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const longFull = await cdp.value(`(() => {
+        const node = document.querySelector('.relationship-node[data-character-id="g-2"]');
+        return { selected: node?.getAttribute("data-selected") === "true", full: node?.querySelector(".relationship-node-name")?.textContent?.startsWith("亚历山大亚历山大") && !node?.querySelector(".relationship-node-name")?.textContent?.includes("…") };
+      })()`);
+
       const pass =
         tapped.page && tapped.selected === 1 &&
+        longShown && longFull.selected && longFull.full &&
         !wobbleMoved && wobbled.page &&
         draggedMoved && dragged.page &&
         !pruned.layout?.positions?.ghost &&
         !(pruned.layout?.groups ?? []).some((group) => group.id === "g-ghost") &&
         pruned.groups === 0 &&
-        pruned.overflow <= 1;
+        pruned.overflow <= 1 &&
+        shelf.toolbar <= 110 && shelf.names >= 4 && shelf.toolsHidden &&
+        menu.open && menu.items.length === 4 && !menu.coversCanvas && menuClosed;
 
       return {
         pass: Boolean(pass),
-        detail: `375px 轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,
+        detail: `375px 工具栏 ${shelf.toolbar}px / 画布 ${shelf.frame}px、名称 ${shelf.names} 个、长名截断 ${longShown} / 选中显示完整 ${longFull.full}、工具默认收起 ${shelf.toolsHidden}、菜单 ${menu.items.length} 项 ${menu.open} / Escape 关闭 ${menuClosed}；轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,
       };
     });
 

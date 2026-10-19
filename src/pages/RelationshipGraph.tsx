@@ -864,8 +864,10 @@ export function RelationshipGraph({
   const [arrangeUndo, setArrangeUndo] = useState<{ layout: CanvasLayout; label: string } | null>(null);
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
+  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
   const [isDirectionHelpOpen, setIsDirectionHelpOpen] = useState(false);
   useEscapeDismiss(isDirectionHelpOpen, () => setIsDirectionHelpOpen(false));
+  useEscapeDismiss(isMobileToolsOpen, () => setIsMobileToolsOpen(false));
   // What the dialog opened with, so "has anything been typed" is a fact rather
   // than a guess about which fields count.
   const draftBaselineRef = useRef("");
@@ -1050,7 +1052,13 @@ export function RelationshipGraph({
   // An export is the fitted graph with every name on it, not whatever corner the
   // canvas happens to be zoomed into. The author's own switch still wins: names turned
   // off are off in the picture too.
-  const showLabels = prefs.showNames && (exporting || labelsFit);
+  // On a phone the drawn area is small enough that "every name fits" is the wrong
+  // test: a handful of nodes at reading scale have room for their names even when a
+  // hundred would not. Above that, the density rules below still apply.
+  const compactViewport = frameSize.width > 0 && frameSize.width <= 720;
+  const showLabels =
+    prefs.showNames &&
+    (exporting || labelsFit || (compactViewport && visibleCharacters.length <= 12));
 
   // When not every name fits, a few still do: the nodes the most edges meet at are the
   // ones that make the shape legible ("the two clusters meet at 沈砚"), and the rest
@@ -2179,11 +2187,25 @@ export function RelationshipGraph({
                 <Icon name="grid" size={14} />
                 适应画布
               </button>
+              {/* Phones keep zoom and fit on the row and put the rest behind one
+                  button, instead of spending a third row on four controls. */}
+              <button
+                aria-expanded={isMobileToolsOpen}
+                className="graph-tool-button graph-mobile-tools-trigger"
+                onClick={() => setIsMobileToolsOpen((current) => !current)}
+                type="button"
+              >
+                工具
+              </button>
             </div>
 
             {/* Free placement, arranging and grouping. They act on the drawing, so
                 they sit with it, in the same strip as search and zoom. */}
-            <div aria-label="画布编辑" className="graph-edit-tools" role="group">
+            <div
+              aria-label="画布编辑"
+              className={`graph-edit-tools${isMobileToolsOpen ? " open" : ""}`}
+              role="group"
+            >
               <button
                 aria-pressed={selectMode}
                 className={`graph-tool-button${selectMode ? " active" : ""}`}
@@ -2194,6 +2216,7 @@ export function RelationshipGraph({
                     }
                     return !current;
                   });
+                  setIsMobileToolsOpen(false);
                 }}
                 type="button"
               >
@@ -2335,6 +2358,7 @@ export function RelationshipGraph({
                   setFocusId(null);
                   setSelectedIds([]);
                   resetView();
+                  setIsMobileToolsOpen(false);
                 }}
                 type="button"
               >
@@ -2431,7 +2455,7 @@ export function RelationshipGraph({
                   x={rect.x}
                   y={rect.y}
                 />
-                <text className="graph-group-label" x={rect.x + 18} y={rect.y + 24}>
+                <text className="graph-group-label" x={rect.x + 20} y={rect.y + 30}>
                   {group.name}
                 </text>
               </g>
@@ -2485,9 +2509,10 @@ export function RelationshipGraph({
               // The focused node and its direct connections keep their labels whatever
               // the zoom: without that, searching for somebody in a large roster would
               // highlight circles whose names are not being drawn.
+              const isSelected = selectedIds.includes(character.id);
               const labelled =
                 prefs.showNames &&
-                (showLabels || isHovered || isFocused || isNeighbour || hubIds.has(character.id));
+                (showLabels || isHovered || isFocused || isNeighbour || isSelected || hubIds.has(character.id));
               const baseState = isFocused
                 ? "relationship-node active focused"
                 : isHovered
@@ -2495,7 +2520,6 @@ export function RelationshipGraph({
                   : activeId && character.id !== activeId && !isNeighbour
                     ? "relationship-node dimmed"
                     : "relationship-node";
-              const isSelected = selectedIds.includes(character.id);
               const state = `${baseState}${isSelected ? " selected" : ""}`;
               const avatarUrl = avatarUrls[character.id];
               return (
@@ -2552,7 +2576,15 @@ export function RelationshipGraph({
                       x={positions[index].x}
                       y={positions[index].y + metrics.nameDrop}
                     >
-                      {characterDisplayName(character)}
+                      {(() => {
+                        const name = characterDisplayName(character);
+                        // A phone cannot draw twenty characters of name without
+                        // covering its neighbours. The selected node always shows the
+                        // whole name; the rest are shortened for legibility.
+                        return compactViewport && !isSelected && name.length > 9
+                          ? `${name.slice(0, 8)}…`
+                          : name;
+                      })()}
                     </text>
                   )}
                 </g>

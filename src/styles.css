@@ -11259,6 +11259,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   stroke-dasharray: 6 4;
 }
 
+.graph-mobile-tools-trigger {
+  display: none;
+}
+
 .graph-edit-tools {
   display: inline-flex;
   align-items: center;
@@ -11515,24 +11519,43 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 @media (max-width: 720px) {
-  /* On a phone the edit controls take their own row under the zoom, and a panel
-     opens to the frame's width rather than pushing past it. */
-  .graph-edit-tools {
-    flex: 1 1 100%;
-    justify-content: center;
+  /* One row for zoom + fit + 工具. The rest live behind that button: four
+     controls on their own row cost height the drawing needs more. */
+  .graph-mobile-tools-trigger {
+    display: inline-flex;
+    flex: 0 0 auto;
   }
 
-  .graph-tool-button {
-    flex: 1 1 0;
-    justify-content: center;
+  .graph-edit-tools {
+    position: absolute;
+    z-index: var(--z-inline-5, 40);
+    top: calc(100% + 6px);
+    right: 8px;
+    display: none;
+    flex-direction: column;
+    align-items: stretch;
+    width: min(240px, calc(100vw - 32px));
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    box-shadow: var(--shadow-strong);
+  }
+
+  .graph-edit-tools.open {
+    display: flex;
+  }
+
+  .graph-edit-tools .graph-tool-button {
+    justify-content: flex-start;
+    width: 100%;
     min-height: var(--control-height-compact);
-    padding: 0 8px;
-    font-size: 12.5px;
+    padding: 0 10px;
+    font-size: 13px;
   }
 
   .graph-tool-wrap {
-    flex: 1 1 0;
-    display: flex;
+    display: block;
   }
 
   .graph-tool-wrap > .graph-tool-button {
@@ -11543,6 +11566,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   .graph-panel.graph-group-panel {
     left: 0;
     right: 0;
+    top: calc(100% + 4px);
     width: auto;
   }
 
