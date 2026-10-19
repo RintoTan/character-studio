@@ -240,7 +240,7 @@
 
 | 动作 | 文件 |
 | --- | --- |
-| 新增 | `PROJECT_STATUS.md`、`docs/PROJECT_OVERVIEW.md`、`docs/ARCHITECTURE.md`、`docs/FEATURES.md`、`docs/ROADMAP.md`、`docs/KNOWN_ISSUES.md`、`docs/DEVELOPMENT_LOG.md`、`docs/UI_AUDIT.md`、`docs/UI_DESIGN_HANDOFF.md`、`docs/CHATGPT_REVIEW_PACKAGE.md` |
+| 新增 | `PROJECT_STATUS.md`、`docs/archive/PROJECT_OVERVIEW.md`、`docs/ARCHITECTURE.md`、`docs/FEATURES.md`、`docs/ROADMAP.md`、`docs/KNOWN_ISSUES.md`、`docs/DEVELOPMENT_LOG.md`、`docs/archive/UI_AUDIT.md`、`docs/archive/UI_DESIGN_HANDOFF.md`、`docs/archive/CHATGPT_REVIEW_PACKAGE.md` |
 | 更新 | `README.md`（版本、功能、结构、文档索引、已知限制）、`CHANGELOG.md`（新增文档治理条目）、`Developer Handbook.md`（更正第 8 节列出的 5 处过期事实） |
 
 ### 本轮实际执行的检查
@@ -268,7 +268,7 @@
 | 移动 | `PROJECT_STATUS.md` → `docs/PROJECT_STATUS.md`；`DEBUG_STRESS_TEST_PLAN.md` → `docs/DEBUG_STRESS_TEST_PLAN.md`（`git mv` / 常规移动后 `git add`，**内容不变**） |
 | 不动的 | `Developer Handbook.md` **留在根目录且不改名** —— 应用内有 7 处链接指向 `blob/main/Developer%20Handbook.md`（`App.tsx` ×3、`Dashboard.tsx` ×2、`DeveloperCenter.tsx` ×2），移动或改名会打断线上入口。这条约束已写进 `docs/README.md` 的落位规则 |
 | 新增 | `docs/README.md` —— 文档总索引：落位规则、文档清单、按「我要做什么」导航、口径原则、维护规则 |
-| 更新引用 | `README.md`、`Developer Handbook.md`、`docs/ROADMAP.md`、`docs/CHATGPT_REVIEW_PACKAGE.md`、`docs/KNOWN_ISSUES.md`、`docs/PROJECT_STATUS.md` 中指向旧路径的位置。`CHANGELOG.md` **只新增本轮条目**，旧条目未动（见文末「没有改的东西」） |
+| 更新引用 | `README.md`、`Developer Handbook.md`、`docs/ROADMAP.md`、`docs/archive/CHATGPT_REVIEW_PACKAGE.md`、`docs/KNOWN_ISSUES.md`、`docs/PROJECT_STATUS.md` 中指向旧路径的位置。`CHANGELOG.md` **只新增本轮条目**，旧条目未动（见文末「没有改的东西」） |
 | 版本口径 | `package.json` 的 `version` 由 `1.0.0` 改为 `2.27.0`，与 `src/config/version.ts` 的 `APP_VERSION` 一致（关闭原 **KI-07**）。`pnpm-lock.yaml` 不含项目版本，`--frozen-lockfile` 不受影响 |
 | 补齐台账 | 新增 **KI-13**（ZIP 备份 `appVersion` 硬编码 `0.1.0`，P3）与 **KI-14**（CSV 关系行按名解析、重名时映射被导入角色覆盖，P2）—— 这两条上一轮只写进了 `CHANGELOG.md`，未进 `docs/KNOWN_ISSUES.md`，索引因此与台账不一致 |
 | 修正矛盾 | `docs/KNOWN_ISSUES.md` 开头写「没有 P0 与 P1 级的已知问题」，而 `KI-12` 就是 P0（上一轮加 KI-12 时漏改这句）；`docs/PROJECT_STATUS.md` 第 6 节的摘要漏列 KI-11、KI-12，只列到 KI-10 |

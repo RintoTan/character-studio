@@ -2053,7 +2053,7 @@
 - **预期**：
   1. 同类操作**文案与位置一致**（例如确认按钮都在右侧、都用 `确认××` 格式）。
   2. 破坏性操作统一是「中性填充 + 危险色文字」的按钮语言，不用大红块。
-  3. 不一致之处**逐条记录**（这是 UI 审计的输入，见 `docs/UI_AUDIT.md`）
+  3. 不一致之处**逐条记录**（这是 UI 审计的输入，见 `docs/archive/UI_AUDIT.md`）
 - **实际结果**：待执行｜**状态**：待执行｜**执行方式**：人工
 - **证据**：—｜**破坏性**：否｜**清理**：—
 
@@ -4507,7 +4507,7 @@ process.stdout.write(JSON.stringify({ exportedAt: new Date().toISOString(), char
 | `docs/FEATURES.md` | 每个功能的入口与数据依赖；本文件用例的「前置」多取自它 |
 | `docs/ARCHITECTURE.md` | 存储键、数据模型、导入导出结构、部署流程；本文件附录 C 是它的精简版 |
 | `docs/KNOWN_ISSUES.md` | 已确认问题台账；本文件 `REG-*` 与 `ERR-CLEAR-*` 直接对应其中的条目（尤其 **KI-05** 与 **KI-12**） |
-| `docs/UI_AUDIT.md` | UI 现状与已确认问题；`RESP-*` 与 `UI-CONSIST-010` 是它的验证手段 |
+| `docs/archive/UI_AUDIT.md` | UI 现状与已确认问题；`RESP-*` 与 `UI-CONSIST-010` 是它的验证手段 |
 | `docs/ROADMAP.md` | 任务与验收标准；本文件的执行结果应作为 R-01 / R-02 / R-03 等任务的**验收证据** |
 | `CHANGELOG.md` | 每个版本的实测与未验证边界；第 15 节的回归项全部来自它 |
 
