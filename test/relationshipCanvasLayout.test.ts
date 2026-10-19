@@ -494,6 +494,27 @@ describe("canvas appearance", () => {
     expect(style.canvas.gridOpacity).toBe(0.8);
   });
 
+  it("materialising missing positions keeps the appearance that was already there", () => {
+    // Applying a preset goes through this function; if it only rebuilds positions
+    // and groups, local colours, line styles and bookmarks are silently lost.
+    const layout = normalizeLayout({
+      positions: { a: { x: 1, y: 2 } },
+      groups: [],
+      style: styleForPreset("minimal"),
+      nodeStyles: { a: { borderColor: "#c2410c" } },
+      edgeStyles: { r1: { color: "#0f766e" } },
+      bookmarks: [{ id: "b1", name: "近景", view: { k: 2, x: 0, y: 0 } }],
+    });
+
+    const materialised = materializeLayout(layout, ["a", "b"], [{ x: 10, y: 20 }, { x: 30, y: 40 }]);
+
+    expect(materialised.positions.b).toEqual({ x: 30, y: 40 });
+    expect(materialised.style).toEqual(layout.style);
+    expect(materialised.nodeStyles).toEqual(layout.nodeStyles);
+    expect(materialised.edgeStyles).toEqual(layout.edgeStyles);
+    expect(materialised.bookmarks).toEqual(layout.bookmarks);
+  });
+
   it("reads a Sprint 50 absolute name size as the ratio it now means", () => {
     // 13px was "medium" when the field was absolute, so a stored 13 must mean 1x.
     expect(normalizeCanvasStyle({ preset: "custom", node: { nameSize: 13 } }).node.nameScale).toBe(1);

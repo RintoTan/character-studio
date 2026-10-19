@@ -331,7 +331,19 @@ export function materializeLayout(
     }
   });
 
-  return { schemaVersion: LAYOUT_SCHEMA_VERSION, positions, groups: layout.groups };
+  // Everything else travels with the positions. Rebuilding the record from
+  // positions and groups alone is how applying a preset used to erase every local
+  // node colour, every line style and every bookmark: the caller wrote the whole
+  // layout back, and those fields were simply not in it.
+  return {
+    schemaVersion: LAYOUT_SCHEMA_VERSION,
+    positions,
+    groups: layout.groups,
+    style: layout.style,
+    nodeStyles: layout.nodeStyles,
+    edgeStyles: layout.edgeStyles,
+    bookmarks: layout.bookmarks,
+  };
 }
 
 export function setPosition(layout: CanvasLayout, characterId: string, point: LayoutPoint): CanvasLayout {
