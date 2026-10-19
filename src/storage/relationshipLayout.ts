@@ -19,6 +19,8 @@ import {
 // The layout is versioned on its own so a later shape can migrate rather than
 // guess, and every reader goes through `normalizeLayout`, so a hand-edited or
 // half-written record degrades to an empty canvas instead of a broken one.
+export type { CanvasBookmark } from "./canvasStyle";
+
 export const RELATIONSHIP_LAYOUT_KEY = "character-studio.relationship-layout";
 
 export const LAYOUT_SCHEMA_VERSION = 2;

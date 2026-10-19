@@ -59,6 +59,7 @@ import {
   setPosition,
   translatePositions,
   type ArrangeMode,
+  type CanvasBookmark,
   type CanvasGroup,
   type CanvasLayout,
   type LayoutPoint,
@@ -873,6 +874,12 @@ export function RelationshipGraph({
   // One edge at a time: an edge has no box to marquee and its properties are a
   // different set from a node's, so it is its own selection.
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  // Exploration state. None of it is data: a spotlight, a lens and a bookmark are
+  // ways of looking, so they never touch a character or a relationship.
+  const [spotlightId, setSpotlightId] = useState<string | null>(null);
+  const [spotlightDepth, setSpotlightDepth] = useState<1 | 2>(1);
+  const [lensKinds, setLensKinds] = useState<RelationshipKind[]>([]);
+  const [bookmarkDraft, setBookmarkDraft] = useState("");
   const [isStyleOpen, setIsStyleOpen] = useState(false);
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
@@ -1065,9 +1072,36 @@ export function RelationshipGraph({
 
   // Hover and focus are the same highlight. Focus wins while it is set, so hovering a
   // different node does not quietly drop the character the author searched for.
-  const activeId = focusId ?? hoveredId;
+  const activeId = spotlightId ?? focusId ?? hoveredId;
+
+  /** Everything within `spotlightDepth` hops of the spotlight, or null when off. */
+  const spotlightSet = useMemo(() => {
+    if (!spotlightId) {
+      return null;
+    }
+    const seen = new Set<string>([spotlightId]);
+    let frontier = [spotlightId];
+    for (let depth = 0; depth < spotlightDepth && frontier.length > 0; depth += 1) {
+      const next: string[] = [];
+      for (const relationship of relationships) {
+        if (frontier.includes(relationship.fromId) && !seen.has(relationship.toId)) {
+          seen.add(relationship.toId);
+          next.push(relationship.toId);
+        }
+        if (frontier.includes(relationship.toId) && !seen.has(relationship.fromId)) {
+          seen.add(relationship.fromId);
+          next.push(relationship.fromId);
+        }
+      }
+      frontier = next;
+    }
+    return seen;
+  }, [spotlightId, spotlightDepth, relationships]);
 
   const neighbours = useMemo(() => {
+    if (spotlightSet) {
+      return spotlightSet;
+    }
     const ids = new Set<string>();
     if (!activeId) {
       return ids;
@@ -1077,7 +1111,13 @@ export function RelationshipGraph({
       if (relationship.toId === activeId) ids.add(relationship.fromId);
     }
     return ids;
-  }, [activeId, relationships]);
+  }, [activeId, relationships, spotlightSet]);
+
+  const lensActive = lensKinds.length > 0;
+  const presentKinds = useMemo(
+    () => [...new Set(relationships.map((relationship) => relationship.kind))],
+    [relationships],
+  );
 
   // Unmeasured is not the same as scale 1: while the frame's size is unknown a label's
   // rendered size is unknown too, and guessing generously is how a hundred-character
@@ -1311,6 +1351,27 @@ export function RelationshipGraph({
 
   function applyPreset(id: CanvasPresetId) {
     patchStyle(styleForPreset(id));
+  }
+
+  // Bookmarks are view state kept beside the layout. They are written directly
+  // rather than through the undo stack: undoing a camera position would be a
+  // strange thing to offer, and it would bury the last real edit.
+  function writeBookmarks(next: CanvasBookmark[]) {
+    const updated = { ...layoutRef.current, bookmarks: next.slice(0, 30) };
+    setLayout(updated);
+    saveLayout(updated);
+  }
+
+  function saveBookmark(name: string) {
+    const trimmed = name.trim().slice(0, 40);
+    if (!trimmed) {
+      return;
+    }
+    writeBookmarks([
+      ...(layoutRef.current.bookmarks ?? []),
+      { id: `bm-${Date.now().toString(36)}`, name: trimmed, view },
+    ]);
+    setBookmarkDraft("");
   }
 
   function undoLayout() {
@@ -3009,6 +3070,11 @@ export function RelationshipGraph({
               const edgeWidth = localEdge?.width ?? style.edge.width;
               const edgeDash = localEdge?.dash ?? style.edge.dash;
               const isEdgeSelected = selectedEdgeId === relationship.id;
+              // A lens and a spotlight are filters on the view: the edge keeps its
+              // data, its kind and its endpoints, and only its ink changes.
+              const inLens = !lensActive || lensKinds.includes(relationship.kind);
+              const inSpotlight =
+                !spotlightSet || spotlightSet.has(relationship.fromId) || spotlightSet.has(relationship.toId);
               const edgePath =
                 style.edge.curve === "straight"
                   ? `M ${from.x} ${from.y} L ${to.x} ${to.y}`
@@ -3018,7 +3084,7 @@ export function RelationshipGraph({
                 (relationship.fromId === activeId || relationship.toId === activeId);
               return (
                 <g
-                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}`}
+                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens && inSpotlight ? "" : " dimmed"}`}
                   data-edge-id={relationship.id}
                   key={relationship.id}
                 >
@@ -3047,6 +3113,7 @@ export function RelationshipGraph({
                       names it; the word appears when a node is pointed at, or when the
                       graph is small enough for every word to have room. */}
                   {style.edge.showLabel &&
+                    inLens &&
                     (visibleCharacters.length <= EDGE_LABEL_LIMIT || touchesHovered) && (
                     <text style={{ fontSize: `${style.edge.labelSize}px` }} x={geometry.labelX} y={geometry.labelY}>
                       {relationshipKindLabel(relationship.kind)}
@@ -3476,6 +3543,129 @@ export function RelationshipGraph({
                     ))}
                   </div>
                   <p className="muted">先预览，确认后才写入；只移动所选范围，不改关系。</p>
+
+                  <strong className="graph-studio-section">探索</strong>
+                  <div className="graph-studio-props">
+                    <div className="graph-spotlight">
+                      <button
+                        className="ghost-button"
+                        disabled={selectedIds.length !== 1 || spotlightId === selectedIds[0]}
+                        onClick={() => selectedIds.length === 1 && setSpotlightId(selectedIds[0])}
+                        type="button"
+                      >
+                        聚光灯
+                      </button>
+                      <div className="graph-scope-switch" role="group" aria-label="聚光灯层数">
+                        {[1, 2].map((depth) => (
+                          <button
+                            aria-pressed={spotlightDepth === depth}
+                            className={spotlightDepth === depth ? "active" : ""}
+                            key={depth}
+                            onClick={() => setSpotlightDepth(depth as 1 | 2)}
+                            type="button"
+                          >
+                            {depth} 层
+                          </button>
+                        ))}
+                      </div>
+                      {spotlightId && (
+                        <button className="ghost-button" onClick={() => setSpotlightId(null)} type="button">
+                          退出聚光灯
+                        </button>
+                      )}
+                    </div>
+                    <p className="muted">
+                      {spotlightId
+                        ? `高亮 ${spotlightSet?.size ?? 0} 个角色，其余淡出；只改显示，不改关系。`
+                        : "选中一个角色后开启，查看它的直接关系或两层关系。"}
+                    </p>
+
+                    <strong className="graph-studio-section">关系类型透镜</strong>
+                    <div className="graph-lens">
+                      {presentKinds.map((kind) => (
+                        <button
+                          aria-pressed={lensKinds.includes(kind)}
+                          className="graph-lens-chip"
+                          key={kind}
+                          onClick={() =>
+                            setLensKinds((current) =>
+                              current.includes(kind)
+                                ? current.filter((entry) => entry !== kind)
+                                : [...current, kind],
+                            )
+                          }
+                          type="button"
+                        >
+                          {relationshipKindLabel(kind)}
+                        </button>
+                      ))}
+                      {lensKinds.length > 0 && (
+                        <button className="ghost-button" onClick={() => setLensKinds([])} type="button">
+                          看全部
+                        </button>
+                      )}
+                    </div>
+                    <p className="muted">透镜只让其它类型淡出，不删除任何关系。</p>
+                  </div>
+
+                  <strong className="graph-studio-section">视角书签</strong>
+                  <form
+                    className="graph-bookmark-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      saveBookmark(bookmarkDraft);
+                    }}
+                  >
+                    <input
+                      aria-label="书签名称"
+                      maxLength={40}
+                      onChange={(event) => setBookmarkDraft(event.target.value)}
+                      placeholder="例如：北境线特写"
+                      value={bookmarkDraft}
+                    />
+                    <button className="ghost-button" disabled={!bookmarkDraft.trim()} type="submit">
+                      存下视角
+                    </button>
+                  </form>
+                  {(layout.bookmarks ?? []).length > 0 && (
+                    <ul className="graph-bookmarks">
+                      {(layout.bookmarks ?? []).map((bookmark) => (
+                        <li key={bookmark.id}>
+                          <input
+                            aria-label={`书签 ${bookmark.name}`}
+                            maxLength={40}
+                            onChange={(event) =>
+                              writeBookmarks(
+                                (layoutRef.current.bookmarks ?? []).map((entry) =>
+                                  entry.id === bookmark.id
+                                    ? { ...entry, name: event.target.value.slice(0, 40) }
+                                    : entry,
+                                ),
+                              )
+                            }
+                            value={bookmark.name}
+                          />
+                          <button onClick={() => setView(bookmark.view)} type="button">
+                            跳转
+                          </button>
+                          <button
+                            aria-label={`删除书签 ${bookmark.name}`}
+                            onClick={() =>
+                              writeBookmarks(
+                                (layoutRef.current.bookmarks ?? []).filter(
+                                  (entry) => entry.id !== bookmark.id,
+                                ),
+                              )
+                            }
+                            type="button"
+                          >
+                            删除
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="muted">书签只记录视角，不复制任何角色数据。</p>
 
                   <strong className="graph-studio-section">画布外观</strong>
                   {stylePanel}
