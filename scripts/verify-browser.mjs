@@ -5642,6 +5642,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_GRAPH);
+      // A saved canvas is a legitimate starting point, but these checks are about
+      // what a gesture writes; mix in a leftover layout and "unchanged during drag"
+      // would only prove the old file is still there.
+      await cdp.value(`localStorage.removeItem("character-studio.relationship-layout")`);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
@@ -6127,6 +6131,9 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         deviceScaleFactor: 1,
         mobile,
       });
+      // Without this Chrome injects the touch points but never turns them into the
+      // pointer events the canvas listens to, so a "drag" would look like a tap.
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: mobile, maxTouchPoints: 5 });
       await cdp.goto(base);
       await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
@@ -6245,15 +6252,23 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
     await check("自由画布：单击选中、双击进档案，平移缩放后重置视角不动坐标（Sprint 49）", async () => {
       await OPEN_GRAPH();
+      const selectCentre = await cdp.value(NODE_CENTRE("g-3"));
       const centre = await cdp.value(NODE_CENTRE("g-2"));
-      if (!centre) throw new Error("陆停云 节点缺失");
+      if (!centre || !selectCentre) throw new Error("节点缺失");
 
+      // One tap selects. Read after the double-tap window has closed, so this tap
+      // cannot be mistaken for the first half of an opening gesture.
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(selectCentre.x), y: Math.round(selectCentre.y), buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(selectCentre.x), y: Math.round(selectCentre.y), button: "left", buttons: 1, clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(selectCentre.x), y: Math.round(selectCentre.y), button: "left", buttons: 0, clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      const selected = await cdp.value(CANVAS_STATE);
+
+      // Two taps inside 350ms open the character. Sent back to back: an evaluate
+      // round trip between them is enough to fall outside the window.
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 1 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 1 });
-      await new Promise((resolve) => setTimeout(resolve, 350));
-      const selected = await cdp.value(CANVAS_STATE);
-
       await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 2 });
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 2 });
       await new Promise((resolve) => setTimeout(resolve, 900));
@@ -6296,6 +6311,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
     await check("自动整理：预览不落盘、可取消、确认后写入并可撤销，只动所选范围（Sprint 49）", async () => {
       await OPEN_GRAPH();
       const before = await cdp.value(CANVAS_STATE);
+      const beforePreview = JSON.stringify(before.layout);
 
       await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-arrange-panel")`, 3000);
@@ -6303,6 +6319,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.preview")`, 3000);
       await new Promise((resolve) => setTimeout(resolve, 250));
       const previewing = await cdp.value(CANVAS_STATE);
+      const previewWroteNothing = JSON.stringify(previewing.layout) === beforePreview;
       const previewMoved = previewing.nodes.some((node) => {
         const start = before.nodes.find((item) => item.id === node.id);
         return start && (Math.abs(start.cx - node.cx) > 1 || Math.abs(start.cy - node.cy) > 1);
@@ -6329,18 +6346,25 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       const sameAs = (left, right) =>
         JSON.stringify(left.layout?.positions ?? {}) === JSON.stringify(right.layout?.positions ?? {});
+      // Undo restores the drawing that was on screen, which for a never-arranged
+      // canvas is the ring that was materialised on confirm — storage was empty
+      // before, so comparing files would ask undo to delete coordinates it needs.
+      const sameDrawing = undone.nodes.every((node) => {
+        const start = before.nodes.find((item) => item.id === node.id);
+        return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
+      });
       const pass =
         previewing.preview.includes("节点") && previewMoved &&
-        previewing.layout === null &&
-        !cancelled.preview && cancelledNodes && cancelled.layout === null &&
+        previewWroteNothing &&
+        !cancelled.preview && cancelledNodes && JSON.stringify(cancelled.layout) === beforePreview &&
         Boolean(applied.layout) && !sameAs(applied, before) && applied.undo &&
-        sameAs(undone, before) && !undone.undo &&
+        sameDrawing && !undone.undo &&
         applied.relationships === before.relationships &&
         applied.characters === before.characters;
 
       return {
         pass: Boolean(pass),
-        detail: `预览「${previewing.preview}」、画布移位 ${previewMoved}、落盘 ${previewing.layout === null ? "否" : "是"}；取消后复原 ${cancelledNodes}；确认后落盘 ${applied.layout ? Object.keys(applied.layout.positions).length + " 个坐标" : "无"}、撤销入口 ${applied.undo}；撤销后与整理前一致 ${sameAs(undone, before)}；关系与角色未变 ${applied.relationships === before.relationships && applied.characters === before.characters}`,
+        detail: `预览「${previewing.preview}」、画布移位 ${previewMoved}、落盘 ${previewWroteNothing ? "未变" : "被改"}；取消后复原 ${cancelledNodes}；确认后落盘 ${applied.layout ? Object.keys(applied.layout.positions).length + " 个坐标" : "无"}、撤销入口 ${applied.undo}；撤销后与整理前一致 ${sameDrawing}；关系与角色未变 ${applied.relationships === before.relationships && applied.characters === before.characters}`,
       };
     });
 
@@ -6359,7 +6383,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       }
       const selecting = await cdp.value(CANVAS_STATE);
 
-      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      if (selecting.selected !== 2) {
+        return {
+          pass: false,
+          detail: `多选后选中 ${selecting.selected}/${selecting.nodes.length}（多选按钮存在 ${await cdp.value(`Boolean([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "多选"))`)}）`,
+        };
+      }
+
+      await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.selection")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.selection button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
       await cdp.waitFor(`!!document.querySelector('input[aria-label="分组名称"]')`, 3000);
       await cdp.value(`(() => {
         const input = document.querySelector('input[aria-label="分组名称"]');
@@ -6374,10 +6406,18 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const grouped = await cdp.value(CANVAS_STATE);
 
       const label = await cdp.value(`(() => {
-        const text = document.querySelector(".graph-group-label");
-        if (!text) return null;
-        const rect = text.getBoundingClientRect();
-        return { x: rect.left + 12, y: rect.top + rect.height / 2 };
+        const rect = document.querySelector(".graph-group-rect");
+        if (!rect) return null;
+        const box = rect.getBoundingClientRect();
+        const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+        // Inside the padded bottom band: clear of every node, clear of the caption,
+        // and always within the frame.
+        return {
+          x: box.left + box.width / 2,
+          y: box.bottom - 12,
+          frame: { top: frame.top, bottom: frame.bottom, left: frame.left, right: frame.right },
+          box: { top: box.top, bottom: box.bottom, left: box.left, right: box.right },
+        };
       })()`);
       const beforeMove = grouped.layout?.positions ?? {};
       if (label) {
@@ -6396,9 +6436,22 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         deltas.every((delta) => Math.abs(delta.x - deltas[0].x) < 0.5 && Math.abs(delta.y - deltas[0].y) < 0.5) &&
         Math.hypot(deltas[0].x, deltas[0].y) > 20;
 
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("分组"))).click()`);
-      await cdp.waitFor(`!!document.querySelector(".graph-group-panel")`, 3000);
-      await cdp.value(`document.querySelector(".graph-group-remove").click()`);
+      // Creating a group opens this panel; toggling blindly would close it again.
+      await cdp.value(`(() => {
+        if (document.querySelector(".graph-group-panel")) return true;
+        [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("分组")).click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-group-remove")`, 3000);
+      const removed = await cdp.value(`(() => {
+        const button = document.querySelector(".graph-group-remove");
+        if (!button) return "missing";
+        button.click();
+        return "clicked";
+      })()`);
+      if (removed !== "clicked") {
+        return { pass: false, detail: `取消分组按钮 ${removed}；分组存储 ${JSON.stringify(grouped.layout?.groups)}` };
+      }
       await new Promise((resolve) => setTimeout(resolve, 350));
       const ungrouped = await cdp.value(CANVAS_STATE);
 
@@ -6416,7 +6469,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(pass),
-        detail: `选中 ${selecting.selected}；分组 ${grouped.groups} 个（${JSON.stringify(grouped.layout?.groups)}）；整体移动 ${groupMoved}（${JSON.stringify(deltas)}）；取消分组后 ${ungrouped.groups} 个、坐标保留 ${JSON.stringify(ungrouped.layout?.positions ?? {}) === JSON.stringify(afterMove)}；关系与角色未变 ${ungrouped.relationships === before.relationships && ungrouped.characters === before.characters}`,
+        detail: `选中 ${selecting.selected}；分组 ${grouped.groups} 个（${JSON.stringify(grouped.layout?.groups)}）；拖动点 ${JSON.stringify(label)}；整体移动 ${groupMoved}（${JSON.stringify(deltas)}）；取消分组后 ${ungrouped.groups} 个、坐标保留 ${JSON.stringify(ungrouped.layout?.positions ?? {}) === JSON.stringify(afterMove)}；关系与角色未变 ${ungrouped.relationships === before.relationships && ungrouped.characters === before.characters}`,
       };
     });
 
@@ -6437,7 +6490,8 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       await new Promise((resolve) => setTimeout(resolve, 350));
       const wobbled = await cdp.value(CANVAS_STATE);
-      const wobbleMoved = JSON.stringify(wobbled.layout?.positions ?? {}) !== JSON.stringify(tapped.layout?.positions ?? {});
+      const nodeCx = (state) => state.nodes.find((node) => node.id === "g-2")?.cx;
+      const wobbleMoved = nodeCx(wobbled) !== nodeCx(tapped);
 
       // A real drag moves the node and does not open the character.
       await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: centre.x, y: centre.y }] });
@@ -6451,7 +6505,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       await new Promise((resolve) => setTimeout(resolve, 400));
       const dragged = await cdp.value(CANVAS_STATE);
-      const draggedMoved = JSON.stringify(dragged.layout?.positions ?? {}) !== JSON.stringify(wobbled.layout?.positions ?? {});
+      const draggedMoved = nodeCx(dragged) !== nodeCx(wobbled);
 
       // A layout that names a deleted character must be pruned, not drawn or crashed on.
       await cdp.value(`(() => {

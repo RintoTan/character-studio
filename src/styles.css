@@ -11445,6 +11445,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-group-rect {
+  /* The interior is a drag handle, not only its outline: `visiblePainted` would
+     leave the pale fill dead in any browser that resolves it to a near-transparent
+     paint, and the group could only be grabbed by its caption. */
+  pointer-events: all;
   fill: color-mix(in srgb, var(--primary) 5%, transparent);
   stroke: color-mix(in srgb, var(--primary) 28%, transparent);
   stroke-width: 1.5;
@@ -11516,11 +11520,12 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 
 /* A reserved strip for the arrange/selection bar: its height never changes, so
    selecting a node cannot shift the canvas under the next tap. */
+/* Below the drawing, so a bar appearing never moves the canvas under the
+   pointer that just selected something. */
 .graph-edit-slot {
   display: flex;
   align-items: flex-start;
-  min-height: 44px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .graph-edit-slot .graph-edit-bar {
@@ -11528,8 +11533,3 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   width: 100%;
 }
 
-@media (max-width: 720px) {
-  .graph-edit-slot {
-    min-height: 40px;
-  }
-}

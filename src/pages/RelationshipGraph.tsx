@@ -2313,62 +2313,6 @@ export function RelationshipGraph({
             </div>
           </div>
 
-          {/* A fixed slot, so showing a preview or a selection hint does not push
-              the canvas down under the pointer that just selected something. */}
-          <div className="graph-edit-slot">
-          {preview && (
-            <div className="graph-edit-bar preview" role="status">
-              <span>
-                预览：{preview.mode === "ring" ? "环形布局" : "关系聚类"} ·{" "}
-                {Object.keys(preview.positions).length} 个节点（
-                {preview.scope === "visible" ? "当前可见" : "全部角色"}）
-              </span>
-              <div className="graph-edit-bar-actions">
-                <button className="ghost-button" onClick={() => setPreview(null)} type="button">
-                  取消
-                </button>
-                <button className="primary-button" onClick={applyArrange} type="button">
-                  确认应用
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!preview && arrangeUndo && (
-            <div className="graph-edit-bar" role="status">
-              <span>已应用{arrangeUndo.label}</span>
-              <div className="graph-edit-bar-actions">
-                <button className="ghost-button" onClick={undoArrange} type="button">
-                  撤销
-                </button>
-              </div>
-            </div>
-          )}
-
-          {selectedIds.length > 0 && !preview && (
-            <div className="graph-edit-bar selection" role="status">
-              <span>已选 {selectedIds.length} 个角色</span>
-              <div className="graph-edit-bar-actions">
-                <button
-                  className="ghost-button"
-                  disabled={selectedIds.length < 2}
-                  onClick={() => {
-                    setGroupDraft({ name: "", editingId: null });
-                    setIsGroupsOpen(true);
-                  }}
-                  type="button"
-                >
-                  创建分组
-                </button>
-                <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
-                  清除选择
-                </button>
-              </div>
-            </div>
-          )}
-
-          </div>
-
           {!showAll && visibleCharacters.length < connectedIds.size && (
             <p className="graph-scope-note" role="status">
               画布显示 {visibleCharacters.length} / {connectedIds.size} 个有连接的角色（共{" "}
@@ -2617,6 +2561,62 @@ export function RelationshipGraph({
               <span className="graph-node-card-hint">点击打开角色详情</span>
             </div>
           )}
+          </div>
+
+          {/* A fixed slot, so showing a preview or a selection hint does not push
+              the canvas down under the pointer that just selected something. */}
+          <div className="graph-edit-slot">
+          {preview && (
+            <div className="graph-edit-bar preview" role="status">
+              <span>
+                预览：{preview.mode === "ring" ? "环形布局" : "关系聚类"} ·{" "}
+                {Object.keys(preview.positions).length} 个节点（
+                {preview.scope === "visible" ? "当前可见" : "全部角色"}）
+              </span>
+              <div className="graph-edit-bar-actions">
+                <button className="ghost-button" onClick={() => setPreview(null)} type="button">
+                  取消
+                </button>
+                <button className="primary-button" onClick={applyArrange} type="button">
+                  确认应用
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!preview && arrangeUndo && (
+            <div className="graph-edit-bar" role="status">
+              <span>已应用{arrangeUndo.label}</span>
+              <div className="graph-edit-bar-actions">
+                <button className="ghost-button" onClick={undoArrange} type="button">
+                  撤销
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectedIds.length > 0 && !preview && (
+            <div className="graph-edit-bar selection" role="status">
+              <span>已选 {selectedIds.length} 个角色</span>
+              <div className="graph-edit-bar-actions">
+                <button
+                  className="ghost-button"
+                  disabled={selectedIds.length < 2}
+                  onClick={() => {
+                    setGroupDraft({ name: "", editingId: null });
+                    setIsGroupsOpen(true);
+                  }}
+                  type="button"
+                >
+                  创建分组
+                </button>
+                <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                  清除选择
+                </button>
+              </div>
+            </div>
+          )}
+
           </div>
 
           {/* Output, under the drawing it exports. The node's own appearance moved
