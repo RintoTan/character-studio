@@ -11,6 +11,9 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Icon } from "../components/Icon";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
+import { InspirationStudio } from "../components/InspirationStudio";
+import { mergeSuggestions } from "../inspiration/engine";
+import type { ApplyItem } from "../inspiration/types";
 import { DEFAULT_AVATAR_EMOJI, avatarCategories } from "../data/avatarCategories";
 import type { DeleteRequestResult } from "../storage/deleteRecovery";
 import { defaultCollapseState, type EditorSectionId } from "../storage/editorUiState";
@@ -1273,6 +1276,7 @@ export function CharacterForm({
     inspiration: string;
     tip: string;
   } | null>(null);
+  const [isInspirationStudioOpen, setIsInspirationStudioOpen] = useState(false);
   const [isHelperReplaceConfirmOpen, setIsHelperReplaceConfirmOpen] = useState(false);
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false);
@@ -1739,6 +1743,15 @@ export function CharacterForm({
     void saveCurrentCharacter();
   }
 
+  // The studio returns choices; this is the only place they touch the form. It writes
+  // the draft exactly as typing would, so the existing save path, dirty check and
+  // unsaved-changes prompt all still apply.
+  function applyInspiration(items: ApplyItem[]) {
+    if (items.length === 0) return;
+    setFormData((current) => mergeSuggestions(current, items));
+    showToast("已写入草稿，保存后生效");
+  }
+
   // One action row for every section that has one. The personality section used to
   // carry its own hand-written copy of this markup - and put it below its field,
   // where the other sections put it above.
@@ -1763,8 +1776,16 @@ export function CharacterForm({
           >
             随机灵感
           </button>
-          <button className="ghost-button" disabled type="button">
-            AI 创作 🚧
+          <button
+            className="ghost-button"
+            onClick={() => {
+              closeAvatarOverlays();
+              setIsAssetLibraryOpen(false);
+              setIsInspirationStudioOpen(true);
+            }}
+            type="button"
+          >
+            灵感工作室
           </button>
         </div>
         <button
@@ -1780,6 +1801,18 @@ export function CharacterForm({
 
   // Rendered from both editor modes: the preview offers 删除角色, so the confirmation
   // it raises has to exist there too rather than only inside the form.
+  const inspirationContext = {
+    occupation: formData.occupation,
+    worldview: formData.worldview,
+    personalityTags: formData.personalityTags,
+    appearanceDescription: formData.appearanceDescription,
+    backstory: formData.backstory,
+    habits: formData.habits,
+    likes: formData.likes,
+    importantItems: formData.importantItems,
+    characterKeywords: formData.characterKeywords,
+  };
+
   function renderFormActionDialog() {
     if (!pendingFormAction) {
       return null;
@@ -3058,6 +3091,14 @@ export function CharacterForm({
         {renderFooterActions()}
         </div>
       </form>
+
+      <InspirationStudio
+        context={inspirationContext}
+        onApply={applyInspiration}
+        onClose={() => setIsInspirationStudioOpen(false)}
+        open={isInspirationStudioOpen}
+        values={formData}
+      />
     </section>
   );
 }
