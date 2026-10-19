@@ -253,10 +253,10 @@ docs/                 # 技术文档、状态、路线图、截图
 
 ## 项目状态
 
-- 当前版本：**v2.37.1**（Sprint 47 补丁）
+- 当前版本：**v2.37.2**（Sprint 47 维护）
 - 阶段：核心功能已可用，处于持续迭代与移动端完善阶段
 - 线上产物：由 GitHub Actions 构建并部署到 GitHub Pages
-- 最近一轮：移动端交互与布局专项（底部抽屉、首屏密度、320px 工具栏 / 时间线 / 分组定位）
+- 最近一轮：交互一致性与布局维护（列表头像、轻量弹层关闭、Tooltip 定位、编辑器自定义字段、移动端筛选、时间线与世界观桌面布局）
 
 详细状态、已知问题与下一步见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 与 [docs/ROADMAP.md](docs/ROADMAP.md)。
 

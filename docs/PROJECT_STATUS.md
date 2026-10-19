@@ -10,16 +10,31 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.37.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 移动端交互与布局专项，2.37.0 的补丁；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.37.2**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 交互一致性与布局维护，2.37.1 的补丁；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **47**（`APP_SPRINT`）—— 文字版档案 PDF、关系网双模式、时间线与世界观布局收尾；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
-| 审计基线提交 | `86af316`（2.37.1 发布提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
+| 审计基线提交 | `87488f3`（2.37.2 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
 | 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
 | 工作区状态 | **干净**（`git status --porcelain` 无输出） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### UX 一致性与布局（2026-10-19，2.37.2）
+
+随 **2.37.2** 发布，Sprint 仍为 47。八项维护，不含新功能；存储协议与导入导出格式未变。
+
+| 事项 | 实现 | 验证 |
+| --- | --- | --- |
+| 列表头像居中 | 修掉 `.settings-check span` 的 1px 内边距命中，以及残留选择器把 `.table-avatar` 变成无居中 flex 的问题 | 列表/弹窗、浅色/深色下偏差 0；行高不变 |
+| 轻量弹层关闭 | `useLightDismiss` / `useEscapeDismiss`：外部点击、触发按钮、Escape、同级互斥、焦点归还 | Dashboard、时间线、世界观、关系网、选择器均有断言 |
+| Tooltip | `TooltipLayer` portal：下方 6px、空间不足翻转、左右夹边、hover/focus/长按 | 320 与 1440 下贴控件、在视口内、不遮挡触发 |
+| 动效 | 按压 1px、面板 150ms 淡入，沿用菜单/抽屉动画 | `reduced-motion` 下 0.001s |
+| 编辑器字段 | 输入框 + 预设下拉，补 `aria-label` 与说明 | 保存、回显、375px 可编辑 |
+| 移动端筛选 | 打开面板同步展开字段 | 375px 字段直接可见 |
+| 时间线布局 | 880px 列 `margin-inline: auto`，页头同列 | 1440/1920 左右 120/120 |
+| 世界观布局 | 树 52vh/520、间距 20、正文 40em | 详情下方空白 181→19px，正文约 40 字/行 |
 
 ### 移动端专项（2026-10-19，2.37.1）
 
@@ -136,16 +151,16 @@
 
 ## 5. 验证等级与最近一次验证结果
 
-### 5.1 最近一次执行（2026-10-19，2.37.1）
+### 5.1 最近一次执行（2026-10-19，2.37.2）
 
 | 命令 | 结果 |
 | --- | --- |
 | `npm run typecheck` | **通过**，退出码 0，无输出 |
 | `npm test` | **通过**：48 个文件 / 538 个用例，0 失败 0 跳过 |
-| `npm run build:pages` | **通过**，22 个产物文件；入口 `index-BRAiUqUH.js`、样式 `index-B-v4juP6.css` |
-| `npm run verify:browser` | **59/59 通过**（含 320 / 375 / 390 / 430 移动端断言） |
-| `npm run verify:version` | **通过**，2.37.1 |
-| 线上 `build-info.json` | `version 2.37.1`、`sprint 47`、`commit 86af316`；`verify:deploy` 比对 22 个文件逐字节一致 |
+| `npm run build:pages` | **通过**，22 个产物文件；入口 `index-DD5Sjs_1.js`、样式 `index-h235v4yu.css` |
+| `npm run verify:browser` | **65/65 通过**（新增头像、轻量弹层、Tooltip、编辑器字段、动效与布局六项断言） |
+| `npm run verify:version` | **通过**，2.37.2 |
+| 线上 `build-info.json` | 部署后由 `npm run verify:deploy` 核对：版本 2.37.2、sprint 47、commit 等于发布提交，22 个文件逐字节一致 |
 
 ### 5.2 各模块的验证等级
 
