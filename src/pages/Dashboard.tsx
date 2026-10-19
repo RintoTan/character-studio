@@ -2638,9 +2638,17 @@ export function Dashboard({
             }
             data-tooltip="筛选"
             onClick={() => {
+              const next = !isSearchPanelOpen;
               setIsSearchBoxOpen(false);
               setIsMoreMenuOpen(false);
-              setIsSearchPanelOpen((current) => !current);
+              setIsSearchPanelOpen(next);
+              // On a phone the fields live behind a second disclosure inside this
+              // popover. Opening the panel and then showing an empty box whose only
+              // content is another button reads as a panel that failed to load, so
+              // the first open also unfolds the fields.
+              if (next && isNarrowScreen) {
+                setIsAdvancedOpen(true);
+              }
             }}
             ref={filterTriggerRef}
             type="button"
