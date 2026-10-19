@@ -469,6 +469,196 @@ button:disabled {
   animation: menu-in 120ms ease-out;
 }
 
+/* The phone's sheet: navigation and the dashboard's "more" both live here, because a
+   dropdown anchored to a button cannot stay inside a 375px column. Sized in dvh so the
+   browser's own bars and the keyboard change its height instead of hiding its foot. */
+.sheet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-overlay-6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(15 18 24 / 46%);
+  animation: sheet-fade 140ms ease-out;
+}
+
+.sheet-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(86dvh, 720px);
+  border-radius: 18px 18px 0 0;
+  background: var(--surface);
+  box-shadow: 0 -12px 40px rgb(15 18 24 / 22%);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: sheet-up 180ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+
+.sheet-grip {
+  width: 40px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 999px;
+  background: var(--border-strong, var(--border));
+  flex: 0 0 auto;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.sheet-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.sheet-head p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-subtle);
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.sheet-body {
+  /* A flex child defaults to min-height:auto and refuses to shrink, which pushes the
+     panel past the viewport instead of scrolling inside it. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 12px 14px;
+}
+
+/* Rows in a sheet are full-width targets: 48px tall, one verb each. */
+.sheet-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.sheet-row:hover,
+.sheet-row:focus-visible {
+  background: var(--surface-subtle);
+}
+
+.sheet-row.selected {
+  background: var(--control-fill);
+  box-shadow: inset 2px 0 0 var(--primary);
+  font-weight: 650;
+}
+
+.sheet-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.sheet-row svg {
+  flex: 0 0 auto;
+}
+
+/* A dropdown's rows, reused inside a sheet: the positioning and the shadow belong to
+   the sheet now, the rows keep their own type and spacing. */
+/* Scoped to the sheet body: `.export-menu` is defined later in this file and sets
+   position: absolute, which took the rows out of flow and collapsed the panel to its
+   header. */
+.sheet-body .sheet-menu {
+  position: static;
+  width: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  animation: none;
+}
+
+.sheet-body .sheet-menu button {
+  min-height: 48px;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.sheet-body .sheet-menu .export-menu-group {
+  padding: 10px 12px 4px;
+}
+
+.sheet-group {
+  margin: 10px 12px 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.sheet-state {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(14px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .workspace-menu-group {
   margin: 0;
   padding: 6px 10px 4px;
@@ -5766,7 +5956,6 @@ kbd {
     font-size: 19px;
   }
 
-  .topbar,
   .intro-panel,
   .section-title,
   .preview-hero {
@@ -5774,31 +5963,137 @@ kbd {
     flex-direction: column;
   }
 
+  /* The bar stays one row. Stacked, the brand took a line and the workspace switch
+     another, which is where the first 270px of a phone screen went. The name is in the
+     mark alone at this width; every other control is still here. */
   .topbar {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 12px;
   }
 
-  .brand-button {
-    font-size: 18px;
+  /* Two-class selectors: an older block further down still says 18px, and a phone bar
+     that names the app in full has no room left for the controls that switch it. */
+  .topbar .brand-button {
+    flex: 0 0 auto;
+    font-size: 0;
+    gap: 0;
+    padding: 2px;
   }
 
-  .nav-actions,
+  .topbar .brand-mark {
+    width: 26px;
+    height: 30px;
+  }
+
+  .nav-actions {
+    flex: 1 1 auto;
+    width: auto;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .nav-actions > * {
+    flex: 0 0 auto;
+  }
+
+  /* The workspace switch is the one item allowed to shrink, and it keeps room for the
+     theme control and the settings menu beside it. */
+  .workspace-menu-wrap {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: calc(100% - 124px);
+  }
+
+  .workspace-switch {
+    width: 100%;
+    min-width: 0;
+    justify-content: space-between;
+  }
+
+  .workspace-switch-label {
+    max-width: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .form-actions,
   .preview-actions,
-  .dashboard-actions,
   .dashboard-action-groups,
   .bulk-actions {
     width: 100%;
+  }
+
+  /* 「更多」 is a toolbar button, not a form action: stretched to the full width it
+     became a 300px grey bar with one ellipsis in the middle of the toolbar. */
+  .dashboard-actions {
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .nav-actions button,
   .form-actions button,
   .card-actions button,
   .preview-actions button,
-  .dashboard-actions button,
   .dashboard-action-groups button,
   .bulk-actions button {
     flex: 1;
+  }
+
+  /* The dashboard's first screen belongs to the roster. The head band keeps its
+     scope counts; the eyebrow and the sentence under the title are the part that can
+     wait, and the list's own heading is already said by the count line under it. */
+  /* Below 720 every workspace header stacks: side by side, the actions sat beside the
+     eyebrow and the title dropped under them, which read as two half-headers. */
+  .workspace-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .workspace-header-actions {
+    justify-content: flex-start;
+  }
+
+  /* The band itself is gone on a phone: its title repeated the workspace name in the
+     bar above, and its counts now sit directly above the list they filter. */
+  .dashboard-head-card {
+    display: none;
+  }
+
+  .list-section-title h2 {
+    display: none;
+  }
+
+  .list-section-title {
+    margin-bottom: 6px;
+  }
+
+  /* search | filter | create | more, one line: the primary action grows, the icon
+     controls keep their 44px target, and an open search field takes the row. */
+  .list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .list-toolbar .list-search {
+    flex: 0 0 auto;
+  }
+
+  .list-toolbar .list-search.open {
+    flex: 1 1 100%;
+  }
+
+  .list-toolbar .list-create-button {
+    flex: 1 1 auto;
+    min-width: 132px;
+  }
+
+  .bulk-select-button {
+    display: none;
   }
 
   .desktop-label {
@@ -7279,6 +7574,12 @@ kbd {
   color: var(--muted);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+/* On the selected half the count sits on the primary colour; muted grey on purple read
+   as a smudge at 320px. */
+.graph-segment-button.selected .relationship-mode-count {
+  color: color-mix(in srgb, var(--on-primary) 82%, transparent);
 }
 
 /* --- Relationship management: a table that behaves like a list ---------------- */

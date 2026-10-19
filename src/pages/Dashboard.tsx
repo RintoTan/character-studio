@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { AiSettingsForm } from "../components/AiSettingsForm";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import { BottomSheet } from "../components/BottomSheet";
 import { Icon } from "../components/Icon";
 import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
@@ -497,10 +498,12 @@ export function Dashboard({
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
-      if (
-        moreMenuRef.current &&
-        !moreMenuRef.current.contains(event.target as Node)
-      ) {
+      // The sheet is portalled, so a tap inside it is outside this ref even though it
+      // is inside the menu. Treat it as inside.
+      const inSheet =
+        event.target instanceof Element && event.target.closest("[data-sheet-root]");
+
+      if (!inSheet && moreMenuRef.current && !moreMenuRef.current.contains(event.target as Node)) {
         setIsMoreMenuOpen(false);
       }
       if (
@@ -1549,10 +1552,11 @@ export function Dashboard({
         <div className="section-title list-section-title">
           <div>
             <h2>{listTitle}</h2>
+            {isNarrowScreen && renderScopeTabs()}
             {/* How many characters the list holds. How many are *selected* is stated
                 once, on the selection bar beside the actions that use it, rather than
                 twice on the same screen. */}
-            <span>{visibleCharacters.length} 个角色</span>
+            {!isNarrowScreen && <span>{visibleCharacters.length} 个角色</span>}
           </div>
           {/* The toolbar and the bulk actions are one right-hand group. Left as two
               separate children of the header they were spread apart by
@@ -2376,19 +2380,13 @@ export function Dashboard({
   }
 
 
-  function renderIntroPanel() {
+  /**
+   * The three scopes. On a desktop they sit in the head band; on a phone that band
+   * is gone, and they sit directly above the list they filter — one row, no repeated
+   * page title.
+   */
+  function renderScopeTabs() {
     return (
-      <>
-      {/* A band, not a hero: the same header every other workspace opens with, sized so
-          the roster is visible in the first screenful. The counts stayed here because
-          they are also the scope control for the list below. */}
-      <div className="panel dashboard-head-card">
-        <WorkspaceHeader
-          compact
-          eyebrow="角色库"
-          title={heroCopy.title}
-          summary={heroCopy.description}
-          actions={
             <div className="dashboard-stats">
             <button
               className={prefs.favoriteMode === "all" ? "active" : ""}
@@ -2412,7 +2410,22 @@ export function Dashboard({
               草稿{dashboardSettings?.showDraftCount !== false ? ` ${stats.draftCount}` : ""}
             </button>
             </div>
-          }
+    );
+  }
+
+  function renderIntroPanel() {
+    return (
+      <>
+      {/* A band, not a hero: the same header every other workspace opens with, sized so
+          the roster is visible in the first screenful. The counts stayed here because
+          they are also the scope control for the list below. */}
+      <div className="panel dashboard-head-card">
+        <WorkspaceHeader
+          compact
+          eyebrow="角色库"
+          title={heroCopy.title}
+          summary={heroCopy.description}
+           actions={isNarrowScreen ? null : renderScopeTabs()}
         />
       </div>
       </>
@@ -2427,6 +2440,98 @@ export function Dashboard({
    * 生成 the same controls a row away from the list they change. The order here is
    * the order they are reached for: search, filter, view, create, everything else.
    */
+  /**
+   * The rows behind 「更多」. One list, rendered in a desktop dropdown and in the
+   * phone's sheet: two copies would let one layout offer an action the other lost.
+   */
+  function renderMoreMenuItems() {
+    return (
+      <>
+              {/* Grouped by what the row does: the workspaces that used to open this
+                  menu now live in the global navigation, so what is left is the
+                  character list's own business. The grouping control is a switch with
+                  its state spelled out — as a plain row it read as navigation. */}
+              <p className="export-menu-group">角色管理</p>
+              <button
+                aria-pressed={prefs.favoriteMode === "drafts"}
+                onClick={() =>
+                  updatePrefs({
+                    favoriteMode: prefs.favoriteMode === "drafts" ? "all" : "drafts",
+                  })
+                }
+                type="button"
+              >
+                <Icon name="file" size={16} />
+                {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
+                <span className="export-menu-count">{stats.draftCount}</span>
+              </button>
+              <button
+                aria-pressed={prefs.favoriteMode === "favorites"}
+                onClick={() =>
+                  updatePrefs({
+                    favoriteMode: prefs.favoriteMode === "favorites" ? "all" : "favorites",
+                  })
+                }
+                type="button"
+              >
+                <Icon name="heart" size={16} />
+                {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
+                <span className="export-menu-count">{stats.favoriteCount}</span>
+              </button>
+              <p className="export-menu-group">显示与布局</p>
+              {/* Phone-only: these two were row-level buttons competing with 新建角色
+                  for the same line. In the sheet they keep their place in the order
+                  without pushing the roster off the first screen. */}
+              {isNarrowScreen && (
+                <button
+                  onClick={() =>
+                    updatePrefs({ viewMode: prefs.viewMode === "cards" ? "list" : "cards" })
+                  }
+                  type="button"
+                >
+                  <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} size={16} />
+                  {prefs.viewMode === "cards" ? "切换为列表视图" : "切换为卡片视图"}
+                  <span className="export-menu-state">
+                    {prefs.viewMode === "cards" ? "卡片" : "列表"}
+                  </span>
+                </button>
+              )}
+              {isNarrowScreen && (
+                <button
+                  onClick={() => {
+                    setIsMoreMenuOpen(false);
+                    enterBulkMode();
+                  }}
+                  type="button"
+                >
+                  <Icon name="checkSquare" size={16} />
+                  批量管理
+                </button>
+              )}
+              {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
+                <button
+                  aria-pressed={groupedCards}
+                  onClick={() => setIsGroupedCards((current) => !current)}
+                  type="button"
+                >
+                  <Icon name="grid" size={16} />
+                  按世界观分组
+                  <span className="export-menu-state">{isGroupedCards ? "已开启" : "已关闭"}</span>
+                </button>
+              )}
+              <p className="export-menu-group">数据管理</p>
+              <button onClick={() => openImport("merge")} type="button">
+                <Icon name="upload" size={16} />
+                导入数据（JSON/ZIP/CSV）
+              </button>
+              <button onClick={() => openCharacterExportDialog("all")} type="button">
+                <Icon name="package" size={16} />
+                导出角色数据
+              </button>
+      </>
+    );
+  }
+
   function renderListToolbar() {
     return (
       <div className="list-toolbar">
@@ -2484,6 +2589,7 @@ export function Dashboard({
           </button>
           {renderSearchControls()}
         </div>
+        {!isNarrowScreen && (
         <button
           aria-label={prefs.viewMode === "cards" ? "切换列表视图" : "切换卡片视图"}
           className="hero-icon-button"
@@ -2497,6 +2603,7 @@ export function Dashboard({
         >
           <Icon name={prefs.viewMode === "cards" ? "list" : "grid"} />
         </button>
+        )}
         {/* While a selection is being made, the two controls that leave the list
             behind — creating a character and the import/export menu — are what made
             the header say two things at once. They come back with the selection. */}
@@ -2527,62 +2634,21 @@ export function Dashboard({
           >
             {loadingAction ? "…" : <Icon name="more" />}
           </button>
-          {isMoreMenuOpen && (
-            <div className="export-menu">
-              {/* Grouped by what the row does: the workspaces that used to open this
-                  menu now live in the global navigation, so what is left is the
-                  character list's own business. The grouping control is a switch with
-                  its state spelled out — as a plain row it read as navigation. */}
-              <p className="export-menu-group">角色管理</p>
-              <button
-                aria-pressed={prefs.favoriteMode === "drafts"}
-                onClick={() =>
-                  updatePrefs({
-                    favoriteMode: prefs.favoriteMode === "drafts" ? "all" : "drafts",
-                  })
-                }
-                type="button"
-              >
-                <Icon name="file" size={16} />
-                {prefs.favoriteMode === "drafts" ? "退出草稿箱" : "草稿箱"}
-                <span className="export-menu-count">{stats.draftCount}</span>
-              </button>
-              <button
-                aria-pressed={prefs.favoriteMode === "favorites"}
-                onClick={() =>
-                  updatePrefs({
-                    favoriteMode: prefs.favoriteMode === "favorites" ? "all" : "favorites",
-                  })
-                }
-                type="button"
-              >
-                <Icon name="heart" size={16} />
-                {prefs.favoriteMode === "favorites" ? "退出收藏夹" : "收藏夹"}
-                <span className="export-menu-count">{stats.favoriteCount}</span>
-              </button>
-              <p className="export-menu-group">显示与布局</p>
-              {visibleCharacters.length > LARGE_ROSTER && prefs.viewMode === "cards" && (
-                <button
-                  aria-pressed={groupedCards}
-                  onClick={() => setIsGroupedCards((current) => !current)}
-                  type="button"
-                >
-                  <Icon name="grid" size={16} />
-                  按世界观分组
-                  <span className="export-menu-state">{isGroupedCards ? "已开启" : "已关闭"}</span>
-                </button>
-              )}
-              <p className="export-menu-group">数据管理</p>
-              <button onClick={() => openImport("merge")} type="button">
-                <Icon name="upload" size={16} />
-                导入数据（JSON/ZIP/CSV）
-              </button>
-              <button onClick={() => openCharacterExportDialog("all")} type="button">
-                <Icon name="package" size={16} />
-                导出角色数据
-              </button>
-            </div>
-          )}
+          {isMoreMenuOpen && (isNarrowScreen ? (
+            <BottomSheet
+              open
+              onClose={() => setIsMoreMenuOpen(false)}
+              testId="more-sheet"
+              title="更多操作"
+            >
+              {/* The same rows as the desktop dropdown. On a phone the panel is
+                  a sheet, so a menu taller than the screen scrolls instead of
+                  running off the bottom edge. */}
+              <div className="export-menu sheet-menu">{renderMoreMenuItems()}</div>
+            </BottomSheet>
+          ) : (
+            <div className="export-menu">{renderMoreMenuItems()}</div>
+          ))}
         </div>
         )}
       </div>
