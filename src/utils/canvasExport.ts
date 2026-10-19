@@ -164,3 +164,123 @@ export async function rasterizeSvg(
 
   return { blob, width: size.width, height: size.height };
 }
+
+// What a serialised drawing needs to keep looking like the drawing.
+//
+// The canvas is painted mostly by the stylesheet: a node's fill, its border, the
+// dash of a line and the vertical centring of an emoji all live in CSS. An SVG
+// opened in a viewer — or loaded into an `<img>` for rasterising — has no access to
+// that stylesheet, so every one of those properties falls back to the SVG default:
+// `fill: black`, no stroke, and a glyph sitting on its baseline. That is exactly
+// the black disc with the emoji floating above its centre.
+const PRESENTATION_PROPERTIES = [
+  "fill",
+  "fill-opacity",
+  "fill-rule",
+  "stroke",
+  "stroke-width",
+  "stroke-dasharray",
+  "stroke-linecap",
+  "stroke-linejoin",
+  "stroke-opacity",
+  "opacity",
+  "font-size",
+  "font-family",
+  "font-weight",
+  "font-style",
+  "text-anchor",
+  "dominant-baseline",
+  "letter-spacing",
+  "paint-order",
+];
+
+/**
+ * Copy the computed presentation of every element onto its clone.
+ *
+ * The two trees have the same shape by construction (the clone is a deep clone), so
+ * they are walked in the same order. Values are written as inline declarations, which
+ * is the only kind of style an `<img>`-loaded SVG is guaranteed to honour.
+ */
+export function inlineSvgPresentation(clone: SVGSVGElement) {
+  // Measured from the clone, not from the live canvas. The live nodes still carry
+  // the hover and selection classes — that is how "the pointer was over this node"
+  // leaked into an export as a faded graph — and the clone has already had them
+  // removed. To let the stylesheet apply to the clone it has to be in the document,
+  // so it is parked off-screen for the duration of the measurement.
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText =
+    "position:absolute;left:-99999px;top:0;width:0;height:0;overflow:hidden;pointer-events:none";
+  host.appendChild(clone);
+  document.body.appendChild(host);
+
+  try {
+    const elements = [clone, ...Array.from(clone.querySelectorAll("*"))];
+    for (const element of elements) {
+      const computed = getComputedStyle(element);
+      const target = element as SVGElement;
+
+      for (const property of PRESENTATION_PROPERTIES) {
+        const value = computed.getPropertyValue(property);
+        if (!value || value === "normal" || value === "auto") {
+          continue;
+        }
+        target.style.setProperty(property, value);
+      }
+    }
+  } finally {
+    host.removeChild(clone);
+    host.remove();
+  }
+}
+
+/**
+ * Keep only what the selection scope is about.
+ *
+ * A line whose other end is outside the selection would be a stroke running to the
+ * edge of the picture and stopping there, which reads as a mistake. Group rectangles
+ * are dropped for the same reason: a box drawn around part of its members is a claim
+ * the selection does not make.
+ */
+export function pruneToSelection(clone: SVGSVGElement, selectedIds: Iterable<string>) {
+  const keep = new Set(selectedIds);
+
+  clone.querySelectorAll<SVGGElement>(".relationship-node").forEach((node) => {
+    const id = node.getAttribute("data-character-id");
+    if (!id || !keep.has(id)) {
+      node.remove();
+    }
+  });
+
+  clone.querySelectorAll<SVGGElement>(".relationship-edge").forEach((edge) => {
+    const from = edge.getAttribute("data-from-id");
+    const to = edge.getAttribute("data-to-id");
+    if (!from || !to || !keep.has(from) || !keep.has(to)) {
+      edge.remove();
+    }
+  });
+
+  clone.querySelectorAll(".graph-group").forEach((group) => group.remove());
+}
+
+/**
+ * Remove the marks of an interaction from a copy of the drawing.
+ *
+ * A selection ring and a pointer hover are things the author is doing, not things
+ * the graph is: a picture exported while the pointer happened to rest on a node
+ * should not carry a faded copy of it. Lens and spotlight dimming are left alone —
+ * those are filters the author asked for and can see.
+ */
+export function stripTransientState(clone: SVGSVGElement) {
+  // Classes only: removing them changes no element counts, so this can run before
+  // the computed styles are copied across. The rings are removed afterwards, by
+  // removeTransientMarks, because that does change the shape of the tree.
+  clone.querySelectorAll(".selected, .active, .dimmed").forEach((el) => {
+    el.classList.remove("selected", "active", "dimmed");
+  });
+}
+
+/** Drop the selection ring and the edge halo — they belong to the interaction. */
+export function removeTransientMarks(clone: SVGSVGElement) {
+  clone.querySelectorAll(".relationship-node-ring, .relationship-edge-halo").forEach((el) => el.remove());
+}

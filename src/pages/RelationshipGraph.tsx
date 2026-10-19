@@ -68,7 +68,11 @@ import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import {
   downloadPng,
   downloadSvg,
+  inlineSvgPresentation,
+  pruneToSelection,
   rasterizeSvg,
+  stripTransientState,
+  removeTransientMarks,
   scopeBounds,
   type ExportScope,
   type WorldBounds,
@@ -2235,6 +2239,18 @@ export function RelationshipGraph({
     clone.removeAttribute("class");
     clone.removeAttribute("aria-hidden");
 
+    // Inlining first, while the clone still mirrors the live tree element for
+    // element: pruning and stripping remove nodes, and the walk is positional.
+    // Classes first (no elements leave), then computed styles, then the marks that
+    // do remove elements: rings, out-of-scope nodes, partial groups.
+    stripTransientState(clone);
+    inlineSvgPresentation(clone);
+    removeTransientMarks(clone);
+
+    if (scope === "selection") {
+      pruneToSelection(clone, selectedIds);
+    }
+
     const content = Array.from(clone.children).find((child) => child.tagName === "g");
     content?.setAttribute("transform", "translate(0 0) scale(1)");
 
@@ -3195,6 +3211,8 @@ export function RelationshipGraph({
                 <g
                   className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens ? "" : " lens-dim"}${inSpotlight ? "" : " spotlight-dim"}`}
                   data-edge-id={relationship.id}
+                  data-from-id={relationship.fromId}
+                  data-to-id={relationship.toId}
                   key={relationship.id}
                 >
                   {/* A selection halo under the line: an inline colour must not be
