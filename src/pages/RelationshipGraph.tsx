@@ -699,11 +699,9 @@ export function RelationshipGraph({
       // No stored choice: fall through to the width-based default.
     }
 
-    // 191 edges are a list on a phone; a 24-node wheel in 325px is not where an author
-    // starts. The drawing is one tap away, and a saved choice always wins over this.
-    return typeof window !== "undefined" && window.matchMedia("(max-width: 720px)").matches
-      ? "manage"
-      : "graph";
+    // No saved choice: the drawing is what this workspace is for, on a phone as well.
+    // Management is one tap away and, once chosen, is remembered like any preference.
+    return "graph";
   });
   const [manageQuery, setManageQuery] = useState("");
   const [manageKind, setManageKind] = useState<"all" | RelationshipKind>("all");
@@ -2199,7 +2197,7 @@ export function RelationshipGraph({
                     <col style={{ width: "130px" }} />
                     <col style={{ width: "18%" }} />
                     <col />
-                    <col style={{ width: "132px" }} />
+                    <col style={{ width: "152px" }} />
                   </colgroup>
                   <thead>
                     <tr>

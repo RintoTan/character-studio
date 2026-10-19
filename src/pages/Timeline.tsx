@@ -520,6 +520,7 @@ export function Timeline({
           >
             <h2>{draft.id ? "编辑事件" : "新建事件"}</h2>
 
+            <div className="timeline-dialog-body">
             {/* Grouped by the question each field answers: what happened, when, what it
                 was, and who was there. */}
             <fieldset className="dialog-section">
@@ -615,8 +616,11 @@ export function Timeline({
               />
             )}
 
-            {/* Pinned to the foot of the dialog: with a long description and a list of
-                chosen characters the way out must not be a scroll away. */}
+            </div>
+
+            {/* Outside the scrolling body: with a long description and a character
+                list the way out must not be a scroll away, and the list must not be
+                hidden behind it. */}
             <div className="form-actions timeline-dialog-actions">
               <button className="ghost-button" onClick={() => setDraft(null)} type="button">
                 取消

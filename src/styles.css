@@ -5783,6 +5783,12 @@ kbd {
   display: none;
 }
 
+/* Any modal — including page-level dialogs this component does not own — takes the
+   floating bar out of the picture. */
+body:has([aria-modal="true"]) .floating-actions {
+  display: none;
+}
+
 .floating-actions {
   position: fixed;
   right: 18px;
@@ -7720,6 +7726,13 @@ kbd {
 
 /* Fixed layout with stated widths: auto layout let a long note run underneath the
    action buttons, which then sat on top of the words they were meant to follow. */
+/* Fixed layout and wrapping cells mean this table always fits its wrapper. The 1px
+   that layout rounding leaves behind was enough for the browser to draw a full-width
+   scrollbar under the rows, which read as a broken table. */
+.relationship-table-wrap {
+  overflow-x: hidden;
+}
+
 .relationship-table.manage-table {
   table-layout: fixed;
 }
@@ -7751,14 +7764,22 @@ kbd {
 }
 
 .relationship-table.manage-table .relationship-col-actions {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 4px;
-  justify-content: flex-end;
-  /* Pinned: the shared rule reserves 1% for one delete button, which three actions
-     and their labels cannot share. */
-  width: 132px;
+  display: table-cell;
+  white-space: nowrap;
+  vertical-align: middle;
+  text-align: right;
+  /* The column width is stated once, in the table's colgroup; repeating it on the
+     cell added its own padding on top and pushed the table 21px wider than its
+     wrapper. A table cell stays a table cell: making it a flex container took it out
+     of the row, so a long name could grow the row while the buttons kept their own
+     height and sat on the divider. */
   padding-left: 0;
+  padding-right: 0;
+}
+
+.relationship-table.manage-table .relationship-col-actions .relationship-row-action {
+  display: inline-flex;
+  margin-left: 4px;
 }
 
 .relationship-table.manage-table .relationship-row-action {
@@ -8476,11 +8497,34 @@ kbd {
 }
 
 .timeline-dialog {
+  display: flex;
+  flex-direction: column;
   width: min(600px, 100%);
   /* dvh rather than vh: on a phone vh includes the browser chrome, so 88vh is
      taller than what actually fits on screen. */
   max-height: min(88dvh, 720px);
-  overflow: auto;
+  overflow: hidden;
+}
+
+/* Head, rolling body, fixed foot. The footer used to be sticky inside the scroll
+   container, which let the last field sit under it and let a long character list run
+   behind the buttons. */
+.timeline-dialog > h2 {
+  flex: 0 0 auto;
+}
+
+.timeline-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+  overscroll-behavior: contain;
+}
+
+.timeline-dialog .timeline-dialog-actions {
+  position: static;
+  flex: 0 0 auto;
+  margin-top: 8px;
 }
 
 /* The event dialog's groups: what happened, when, the description, and who. Each one
