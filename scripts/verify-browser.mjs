@@ -3473,6 +3473,208 @@ async function main() {
       };
     });
 
+    await check("移动端 320：工具栏一行四项、时间线操作不落单、分组导航有边缘提示", async () => {
+      // Nine groups make the jump row wider than a 320px card, and the long event
+      // titles are here so the header fix is measured against text that really wraps.
+      const seed = `(() => {
+        const now = new Date().toISOString();
+        const worlds = ["白塔城", "盐脊", "塔群", "雾海", "锈湾", "潮下城", "雾外", "北境", "云港"];
+        const characters = [];
+        worlds.forEach((worldview, group) => {
+          for (let index = 0; index < 4; index += 1) {
+            characters.push({
+              id: "polish-" + group + "-" + index,
+              name: "角色" + group + "-" + index,
+              occupation: "调查员",
+              worldview,
+              avatarEmoji: "🙂",
+              createdAt: now,
+              updatedAt: now,
+            });
+          }
+        });
+        const event = (id, title, date, kind, era) => ({
+          id, title, date, kind, era, description: title + "的经过与影响。",
+          location: "白塔城", characterIds: [], createdAt: now, updatedAt: now,
+        });
+        const timeline = [
+          event("polish-ev-1", "北境第一座潮汐站并网与旧时代研究塔扩建的联合记录", "2001-03-01", "origin", "雾海历 812 年"),
+          event("polish-ev-2", "盐脊商道首次贯通", "2002-05-06", "turning", "雾海历 813 年"),
+          event("polish-ev-3", "四十人会盟", "2003-07-08", "bond", "雾海历 814 年"),
+          event("polish-ev-4", "旧灯塔熄灯", "2004-09-10", "loss", "雾海历 815 年"),
+          event("polish-ev-5", "潮汐纹成为工程标准", "2005-11-12", "conflict", "雾海历 816 年"),
+          event("polish-ev-6", "云港船坞落成", "2006-01-14", "other", "雾海历 817 年"),
+        ];
+        localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+        localStorage.setItem("character-studio.relationships", JSON.stringify([]));
+        localStorage.setItem("character-studio.timeline", JSON.stringify(timeline));
+        localStorage.setItem("character-studio.world", JSON.stringify([]));
+        localStorage.removeItem("character-studio.dashboard-prefs");
+        localStorage.setItem("character-studio.about-seen", "true");
+        return true;
+      })()`;
+
+      const widths = [320, 375, 390, 430];
+      const toolbar = {};
+      let timeline = null;
+      let chips = null;
+      let sheet = null;
+
+      for (const width of widths) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", {
+          width,
+          height: 812,
+          deviceScaleFactor: 2,
+          mobile: true,
+        });
+        await cdp.goto(base);
+        if (width === widths[0]) {
+          await cdp.value(seed);
+          await cdp.goto(base);
+        }
+        await cdp.waitFor(`!!document.querySelector(".list-toolbar")`, 8000);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        toolbar[width] = await cdp.value(`(() => {
+          const box = (node) => node.getBoundingClientRect();
+          const bar = document.querySelector(".list-toolbar");
+          const barBox = box(bar);
+          const kids = [...bar.children].filter((node) => getComputedStyle(node).display !== "none");
+          const controls = ["搜索", "筛选", "更多操作"].map((label) => {
+            const node = bar.querySelector('button[aria-label="' + label + '"]');
+            const rect = node ? box(node) : null;
+            return {
+              label,
+              w: rect ? Math.round(rect.width) : 0,
+              h: rect ? Math.round(rect.height) : 0,
+              inside: rect ? rect.right <= barBox.right + 1 : false,
+            };
+          });
+          const create = [...bar.querySelectorAll("button")].find((node) => node.textContent.includes("新建角色"));
+          const createBox = create ? box(create) : null;
+          controls.push({
+            label: "新建角色",
+            w: createBox ? Math.round(createBox.width) : 0,
+            h: createBox ? Math.round(createBox.height) : 0,
+            inside: createBox ? createBox.right <= barBox.right + 1 : false,
+            labelFits: create ? create.scrollWidth <= create.clientWidth + 1 : false,
+          });
+          return {
+            width: Math.round(barBox.width),
+            height: Math.round(barBox.height),
+            rows: new Set(kids.map((node) => Math.round(box(node).top))).size,
+            controls,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          };
+        })()`);
+
+        if (width === 320) {
+          await cdp.value(clickWorkspace("世界观时间线"));
+          await cdp.waitFor(`!!document.querySelector(".timeline-card")`, 8000);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          timeline = await cdp.value(`(() => {
+            const box = (node) => node.getBoundingClientRect();
+            return [...document.querySelectorAll(".timeline-card")].slice(0, 8).map((card) => {
+              const head = card.querySelector(".timeline-card-head");
+              const meta = card.querySelector(".timeline-card-meta");
+              const actions = card.querySelector(".timeline-actions");
+              const title = card.querySelector(".timeline-card-title");
+              const line = parseFloat(getComputedStyle(title).lineHeight) || 20;
+              return {
+                headTop: Math.round(box(head).top),
+                actionTop: Math.round(box(actions).top),
+                actionLeft: Math.round(box(actions).left),
+                metaRight: Math.round(box(meta).right),
+                cardRight: Math.round(box(card).right),
+                titleLength: title.textContent.length,
+                titleLines: Math.round(box(title).height / line),
+                titleClipped: title.scrollWidth > title.clientWidth + 1,
+              };
+            });
+          })()`);
+
+          await cdp.value(clickWorkspace("角色创作工作台"));
+          await cdp.waitFor(`!!document.querySelector(".card-group-index-chips")`, 8000);
+          await new Promise((resolve) => setTimeout(resolve, 350));
+          chips = await cdp.value(`(async () => {
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            const node = document.querySelector(".card-group-index-chips");
+            const mask = () => getComputedStyle(node).maskImage || getComputedStyle(node).webkitMaskImage;
+            const start = { cls: node.className, mask: mask(), left: node.scrollLeft, max: node.scrollWidth - node.clientWidth };
+            node.scrollLeft = node.scrollWidth;
+            await sleep(300);
+            const box = node.getBoundingClientRect();
+            const last = node.querySelector(".card-group-chip:last-child").getBoundingClientRect();
+            return {
+              start,
+              end: { cls: node.className, mask: mask(), left: Math.round(node.scrollLeft) },
+              inside: box.left >= -1 && box.right <= window.innerWidth + 1,
+              lastFullyVisible: last.right <= box.right + 1,
+            };
+          })()`);
+
+          // The nav sheet is the smallest-width regression to watch: the toolbar and
+          // the cards changed, the navigation did not.
+          await cdp.value(`document.querySelector(".workspace-switch").click()`);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          sheet = await cdp.value(`(() => {
+            const root = document.querySelector('[data-testid="workspace-sheet"]');
+            const panel = root?.querySelector(".sheet-panel");
+            const box = panel?.getBoundingClientRect();
+            return {
+              present: Boolean(root),
+              rows: root ? root.querySelectorAll(".sheet-row").length : 0,
+              inViewport: box ? box.top >= -1 && box.bottom <= window.innerHeight + 1 : false,
+            };
+          })()`);
+          await cdp.value(`document.querySelector('[data-testid="workspace-sheet"] .sheet-scrim').dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          sheet.closed = await cdp.value(`!document.querySelector('[data-testid="workspace-sheet"]')`);
+        }
+      }
+
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+
+      const rowCounts = widths.map((width) => toolbar[width].rows);
+      const toolbarOk = widths.every((width) => {
+        const state = toolbar[width];
+        const four = state.controls.length === 4 && state.controls.every((control) => control.w > 0 && control.h >= 40 && control.inside);
+        const fits = state.controls.find((control) => control.label === "新建角色")?.labelFits !== false;
+        return state.rows === 1 && four && fits && state.overflow <= 1;
+      });
+      const timelineOk =
+        timeline !== null &&
+        timeline.length >= 5 &&
+        timeline.every((card) => Math.abs(card.actionTop - card.headTop) <= 1 && card.actionLeft > card.metaRight && card.cardRight >= card.actionLeft) &&
+        timeline
+          .filter((card) => card.titleLength > 16)
+          .every((card) => card.titleLines >= 2 && !card.titleClipped);
+      const chipsOk =
+        chips !== null &&
+        chips.start.max > 1 &&
+        chips.start.mask.includes("gradient") &&
+        chips.start.cls.includes("has-overflow-end") &&
+        chips.end.mask !== chips.start.mask &&
+        Math.abs(chips.end.left - chips.start.max) <= 1 &&
+        chips.inside &&
+        chips.lastFullyVisible;
+      const sheetOk = sheet !== null && sheet.present && sheet.rows === 4 && sheet.inViewport && sheet.closed;
+
+      const failing = Object.entries({ toolbarOk, timelineOk, chipsOk, sheetOk })
+        .filter(([, ok]) => !ok)
+        .map(([name]) => name);
+
+      return {
+        pass: failing.length === 0,
+        detail: `${widths.map((width) => `${width}px 工具栏 ${toolbar[width].rows} 行/高 ${toolbar[width].height}px/溢出 ${toolbar[width].overflow}px`).join("；")}`
+          + `；320 控件 ${toolbar[320].controls.map((control) => `${control.label} ${control.w}×${control.h}`).join("、")}`
+          + `；320 时间线 ${timeline ? timeline.length : 0} 张，操作与头部同排 ${timeline ? timeline.filter((card) => Math.abs(card.actionTop - card.headTop) <= 1).length : 0}、长标题换行 ${timeline ? timeline.filter((card) => card.titleLength > 16 && card.titleLines >= 2 && !card.titleClipped).length : 0}`
+          + `；分组导航可滚 ${chips ? chips.start.max : 0}px、起始提示 ${chips?.start.cls || "无"}、滚到末端提示 ${chips?.end.cls || "无"}、末端完整可见 ${chips?.lastFullyVisible || false}`
+          + `；320 抽屉 ${sheet?.present ? "打开" : "未打开"}、${sheet?.rows ?? 0} 项、视口内 ${sheet?.inViewport}、遮罩关闭 ${sheet?.closed}`
+          + (failing.length ? `；未通过：${failing.join("/")}` : ""),
+      };
+    });
+
     await check("浮动栏：手机端不显示，桌面端让位且不压住控件", async () => {
       // A 56px floating control cannot be given a seat on a 375px column of text: every
       // seat it found was over a row it could not see (buttons were avoided, prose was
