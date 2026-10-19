@@ -5522,9 +5522,14 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         const rect = node.getBoundingClientRect();
         const actions = document.querySelector(".timeline-dialog-actions").getBoundingClientRect();
         const area = document.querySelector(".timeline-dialog textarea");
+        const body = document.querySelector(".timeline-dialog-body") || node;
         return {
           inside: rect.left >= -1 && rect.right <= window.innerWidth + 1,
-          scrollable: node.scrollHeight > node.clientHeight,
+          // The dialog no longer scrolls as one box: the body inside it does, so the
+          // footer can stay put. Same question — can the content scroll? — asked of the
+          // element that now owns the scrolling.
+          scrollable: body.scrollHeight > body.clientHeight,
+          footerOutsideBody: !body.contains(document.querySelector(".timeline-dialog-actions")),
           actionsInside: actions.right <= window.innerWidth + 1 && actions.left >= -1,
           descriptionRows: area ? area.rows : 0,
           textareaInside: area ? area.getBoundingClientRect().right <= window.innerWidth + 1 : false,
@@ -5938,7 +5943,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
-    await check("关系网：375px 首次落在管理视图，切到图谱是一屏能看全的视图", async () => {
+    await check("关系网：375px 首次落在图谱，管理视图仍可切换，图谱一屏能看全", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", {
         width: 375,
         height: 812,
@@ -5955,6 +5960,14 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         canvas: Boolean(document.querySelector(".relationship-canvas")),
         table: Boolean(document.querySelector(".manage-table")),
       }))()`);
+
+      // The other half of the rule: management is still one tap away.
+      await cdp.value(`(() => {
+        [...document.querySelectorAll(".graph-segment-button")].find((button) => button.textContent.trim().startsWith("管理")).click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".manage-table")`, 8000);
+      const manageVisible = await cdp.value(`Boolean(document.querySelector(".manage-table"))`);
 
       await cdp.value(`(() => {
         [...document.querySelectorAll(".graph-segment-button")].find((button) => button.textContent.trim() === "图谱").click();
@@ -5983,9 +5996,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const refitted = await cdp.value(GRAPH_MOBILE_VIEW);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-      // A phone opens the list, because 45 edges are a list there; the drawing is one tap
-      // away. Once in the drawing, every node is inside the canvas — not just the middle.
-      const entered = first.mode.includes("管理") && first.table && !first.canvas;
+      // No saved preference: the drawing opens, on a phone as well. The list is still a
+      // tap away and remembers the choice. Once in the drawing, every node is inside the
+      // canvas — not just the middle.
+      const entered = first.mode.includes("图谱") && first.canvas && !first.table;
       // A small drawing fits at natural size, so "fitted" means 100% or less, never more:
       // the opening view may not be a close-up.
       const fits =
@@ -5999,8 +6013,8 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         fitted.fitButton;
 
       return {
-        pass: Boolean(entered && fits && zoomsBack && fitted.overflow <= 1),
-        detail: `首次进入 模式「${first.mode}」（画布 ${first.canvas} / 表格 ${first.table}）；切到图谱 节点 ${fitted.nodes}、在画布内 ${fitted.inside}、缩放 ${fitted.zoom}、画布 ${fitted.frame?.join("x")} / 视口 ${fitted.viewport}、溢出 ${fitted.overflow}px、说明「${fitted.scopeNote}」；放大两档 → ${zoomed.zoom}（在画布内 ${zoomed.inside}/${zoomed.nodes}）；按「适应画布」→ ${refitted.zoom}（在画布内 ${refitted.inside}/${refitted.nodes}）`,
+        pass: Boolean(entered && manageVisible && fits && zoomsBack && fitted.overflow <= 1),
+        detail: `首次进入 模式「${first.mode}」（画布 ${first.canvas} / 表格 ${first.table}）、可切到管理 ${manageVisible}；切到图谱 节点 ${fitted.nodes}、在画布内 ${fitted.inside}、缩放 ${fitted.zoom}、画布 ${fitted.frame?.join("x")} / 视口 ${fitted.viewport}、溢出 ${fitted.overflow}px、说明「${fitted.scopeNote}」；放大两档 → ${zoomed.zoom}（在画布内 ${zoomed.inside}/${zoomed.nodes}）；按「适应画布」→ ${refitted.zoom}（在画布内 ${refitted.inside}/${refitted.nodes}）`,
       };
     });
 
@@ -6314,6 +6328,217 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       });
     }
 
+
+
+
+    await check("关系管理：超长中英文名称与备注不破坏行布局", async () => {
+      const measure = `(() => {
+        const rows = [...document.querySelectorAll(".manage-table tbody tr")].slice(0, 3);
+        const report = rows.map((row) => {
+          const cells = [...row.children].map((cell) => cell.getBoundingClientRect());
+          const actions = row.querySelector(".relationship-col-actions");
+          const actionsRect = actions.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          return {
+            sameTop: Math.max(...cells.map((r) => r.top)) - Math.min(...cells.map((r) => r.top)) <= 1,
+            inside: actionsRect.left >= rowRect.left - 1 && actionsRect.right <= rowRect.right + 1 &&
+              actionsRect.top >= rowRect.top - 1 && actionsRect.bottom <= rowRect.bottom + 1,
+            buttons: [...actions.querySelectorAll("button")].map((button) => {
+              const rect = button.getBoundingClientRect();
+              return rect.width > 10 && rect.height > 10 && rect.top >= rowRect.top - 1 && rect.bottom <= rowRect.bottom + 1;
+            }),
+            height: Math.round(rowRect.height),
+          };
+        });
+        const wrap = document.querySelector(".relationship-table-wrap");
+        return {
+          rows: report,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          wrapOverflow: wrap ? wrap.scrollWidth - wrap.clientWidth : 0,
+          sizes: wrap ? { table: document.querySelector(".manage-table").offsetWidth, wrap: wrap.clientWidth } : null,
+        };
+      })()`;
+
+      const results = [];
+      for (const width of [1440, 375, 320]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: width < 600 ? 812 : 900, deviceScaleFactor: width < 600 ? 2 : 1, mobile: width < 600 });
+        await cdp.goto(base);
+        await cdp.value(SEED);
+        await cdp.value(`(() => {
+          const now = "2026-01-01T00:00:00.000Z";
+          localStorage.setItem("character-studio.characters", JSON.stringify([
+            { id: "seed-1", name: "被潮水抹去姓氏的第七码头记账人", occupation: "记账人", createdAt: now, updatedAt: now },
+            { id: "seed-2", name: "Alexanderthegreatwithoutanyspacesatall", occupation: "译者", createdAt: now, updatedAt: now },
+            { id: "seed-3", name: "林雾 Lindiwe 混合名称测试", occupation: "抄写员", createdAt: now, updatedAt: now },
+          ]));
+          localStorage.setItem("character-studio.relationships", JSON.stringify([
+            { id: "rel-1", fromId: "seed-1", toId: "seed-2", kind: "friend", note: "在旧码头认识，后来因为一批账目各执一词，关系时好时坏。".repeat(2), createdAt: now, updatedAt: now },
+            { id: "rel-2", fromId: "seed-3", toId: "seed-1", kind: "mentor", note: "短备注", createdAt: now, updatedAt: now },
+          ]));
+        })()`);
+        await cdp.goto(base);
+        await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 600))`);
+        await cdp.value(`(async () => {
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          const trigger = document.querySelector(".workspace-switch");
+          trigger.click();
+          await sleep(400);
+          const rows = [...document.querySelectorAll('[data-testid="workspace-sheet"] .sheet-row')];
+          const items = rows.length > 0 ? rows : [...document.querySelectorAll('button[role="menuitem"]')];
+          items.find((button) => button.textContent.includes("角色关系网")).click();
+          await sleep(800);
+          const manage = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("管理"));
+          if (manage) manage.click();
+          await sleep(400);
+          return true;
+        })()`);
+        results.push({ width, ...(await cdp.value(measure)) });
+      }
+
+      // Below 720px the same markup becomes a grid of stacked rows: cells no longer
+      // share a top edge by design, so the table-specific check only applies to the
+      // desktop layout. Both widths still have to keep every button inside its row.
+      const pass = results.every((result) =>
+        result.rows.length === 2 &&
+        result.rows.every((row) => row.inside && row.buttons.every(Boolean)) &&
+        (result.width < 720 || result.rows.every((row) => row.sameTop)) &&
+        result.overflow === 0 &&
+        result.wrapOverflow <= 1
+      );
+
+      return {
+        pass,
+        detail: results.map((result) =>
+          `${result.width}px：行高 ${result.rows.map((r) => r.height).join("/")}、同名顶 ${result.rows.every((r) => r.sameTop)}、` +
+          `按钮在行内 ${result.rows.every((r) => r.inside && r.buttons.every(Boolean))}、溢出 ${result.overflow}/${result.wrapOverflow}、宽 ${JSON.stringify(result.sizes)}`
+        ).join("；"),
+      };
+    });
+
+    await check("导航：返回来源正确、编辑取消不留在历史里、图谱默认", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED);
+      await cdp.value(`localStorage.removeItem("character-studio.relationship-view")`);
+      await cdp.value(`localStorage.setItem("character-studio.dashboard-prefs", JSON.stringify({ ...(JSON.parse(localStorage.getItem("character-studio.dashboard-prefs") || "{}")), viewMode: "cards" }))`);
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 600))`);
+
+      const flow = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const byLabel = (label) => [...document.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === label);
+        const byText = (text) => [...document.querySelectorAll("button")].find((b) => b.textContent.trim() === text);
+        const out = { steps: [] };
+
+        for (let i = 0; i < 20 && !document.querySelector(".card-title-button"); i += 1) await sleep(200);
+        out.titleButton = Boolean(document.querySelector(".card-title-button"));
+        if (!out.titleButton) {
+          out.head = document.body.innerText.slice(0, 60);
+          return out;
+        }
+
+        document.querySelector(".card-title-button").click();
+        await sleep(600);
+        out.preview = Boolean(document.querySelector(".preview-hero"));
+
+        const back = byLabel("返回");
+        out.hasBack = Boolean(back);
+        if (back) back.click();
+        await sleep(600);
+        out.backToDashboard = Boolean(document.querySelector(".list-toolbar")) && !document.querySelector(".preview-hero");
+
+        const titleAgain = document.querySelector(".card-title-button");
+        if (!titleAgain) return { ...out, stop: "second title missing" };
+        titleAgain.click();
+        await sleep(600);
+        const edit = byText("编辑");
+        out.hasEdit = Boolean(edit);
+        if (edit) edit.click();
+        await sleep(800);
+        out.editor = Boolean(document.querySelector("form"));
+
+        const cancel = byText("取消");
+        out.hasCancel = Boolean(cancel);
+        if (cancel) cancel.click();
+        await sleep(800);
+        out.cancelToPreview = Boolean(document.querySelector(".preview-hero")) && !document.querySelector("form");
+        return out;
+      })()`);
+
+      // First entry with no saved preference must be the drawing. The default no longer
+      // changes with width, so this covers the phone entry as well.
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 700))`);
+      const probe = await cdp.value(`({ path: location.pathname, hasSwitch: Boolean(document.querySelector(".workspace-switch")), head: document.body.innerText.slice(0, 40) })`);
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const trigger = document.querySelector(".workspace-switch");
+        if (!trigger) return "no-switch";
+        trigger.click();
+        await sleep(400);
+        const rows = [...document.querySelectorAll('[data-testid="workspace-sheet"] .sheet-row')];
+        const items = rows.length > 0 ? rows : [...document.querySelectorAll('button[role="menuitem"]')];
+        const item = items.find((button) => button.textContent.includes("角色关系网"));
+        if (!item) return "no-item";
+        item.click();
+        await sleep(800);
+        return "ok";
+      })()`);
+
+      const graph = await cdp.value(`(() => {
+        const out = {};
+        out.canvas = Boolean(document.querySelector(".relationship-canvas"));
+        out.manage = Boolean(document.querySelector(".manage-table"));
+        const manage = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("管理"));
+        out.hasManage = Boolean(manage);
+        return out;
+      })()`);
+
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const manage = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("管理"));
+        if (!manage) return "no-manage";
+        manage.click();
+        await sleep(300);
+        return true;
+      })()`);
+      const stored = await cdp.value(`localStorage.getItem("character-studio.relationship-view")`);
+
+      await cdp.goto(base);
+      await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 700))`);
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const trigger = document.querySelector(".workspace-switch");
+        if (!trigger) return "no-switch";
+        trigger.click();
+        await sleep(400);
+        const rows = [...document.querySelectorAll('[data-testid="workspace-sheet"] .sheet-row')];
+        const items = rows.length > 0 ? rows : [...document.querySelectorAll('button[role="menuitem"]')];
+        const item = items.find((button) => button.textContent.includes("角色关系网"));
+        if (!item) return "no-item";
+        item.click();
+        await sleep(800);
+        return "ok";
+      })()`);
+      const remembered = await cdp.value(`Boolean(document.querySelector(".manage-table"))`);
+      await cdp.value(`localStorage.removeItem("character-studio.relationship-view")`);
+
+      return {
+        pass:
+          flow.preview &&
+          flow.backToDashboard &&
+          flow.editor &&
+          flow.cancelToPreview &&
+          graph.canvas &&
+          !graph.manage &&
+          graph.hasManage &&
+          stored === "manage" &&
+          remembered,
+        detail: `预览 ${flow.preview}、返回 Dashboard ${flow.backToDashboard}、编辑 ${flow.editor}、取消回预览 ${flow.cancelToPreview}；` +
+          `${JSON.stringify(flow)} 首次图谱 ${graph.canvas}/管理 ${graph.manage}；切换后存储 ${stored}、重载保留 ${remembered}；探针 ${JSON.stringify(probe)}`,
+      };
+    });
 
     await check("灵感工作室：生成、挑选、重抽、预览与安全应用", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
