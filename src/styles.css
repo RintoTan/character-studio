@@ -12454,3 +12454,69 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .relationship-edge.spotlight-dim {
   opacity: 0.16;
 }
+
+/* Pass A: the design panel opens with swatches, not names. */
+.graph-preset-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.graph-preset-cards .graph-preset {
+  display: grid;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.graph-preset-cards .graph-preset.active {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.graph-preset-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+}
+
+.graph-preset-cards .graph-preset > span {
+  font-size: 12px;
+}
+
+.graph-studio-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.graph-studio-tabs button {
+  flex: 1;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.graph-studio-tabs button.active {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+/* One job per panel: the tab that is not selected is not rendered. */
+.graph-studio-drawer[data-tab="explore"]
+  > :not(.graph-studio-drawer-head):not(.graph-studio-tabs):not(.graph-explore-section) {
+  display: none;
+}
+
+.graph-studio-drawer[data-tab="design"] .graph-explore-section {
+  display: none;
+}

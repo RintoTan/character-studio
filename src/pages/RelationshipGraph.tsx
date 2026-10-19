@@ -84,6 +84,68 @@ import { useMediaQuery } from "../hooks/useMediaQuery";
 import { CharacterSelect } from "../components/CharacterPicker";
 import { CharacterRow, characterDisplayName, matchesCharacterQuery } from "../components/CharacterRow";
 
+/**
+ * A miniature of what a preset actually does — node size and fill, border, edge
+ * width, colour, dash, and whether faces are drawn. A row of five words asks the
+ * author to remember which is which; a swatch answers it.
+ */
+function PresetThumb({ presetId }: { presetId: CanvasPresetId }) {
+  const preset = styleForPreset(presetId);
+  const radius = 9 * preset.node.size;
+  const stroke = preset.edge.byKind
+    ? `hsl(${kindHue("friend")} 42% 48%)`
+    : preset.edge.color || "#98a2b3";
+  const dash =
+    preset.edge.dash === "dashed" ? "5 3" : preset.edge.dash === "dotted" ? "1.5 3" : undefined;
+  const fill = preset.node.background || "#f9fafb";
+  const border = preset.node.borderColor || "#d1d5db";
+  const lineWidth = Math.max(1, preset.edge.width);
+
+  return (
+    <svg aria-hidden="true" className="graph-preset-thumb" viewBox="0 0 96 56">
+      <rect fill={preset.canvas.background || "transparent"} height="56" rx="8" width="96" />
+      <line
+        stroke={stroke}
+        strokeDasharray={dash}
+        strokeWidth={lineWidth}
+        x1="26"
+        x2="70"
+        y1="28"
+        y2="18"
+      />
+      <line
+        stroke={stroke}
+        strokeDasharray={dash}
+        strokeWidth={Math.max(1, lineWidth * 0.8)}
+        x1="26"
+        x2="62"
+        y1="28"
+        y2="42"
+      />
+      <circle cx="26" cy="28" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
+      <circle cx="70" cy="18" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
+      <circle cx="62" cy="42" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
+      {preset.node.showAvatars &&
+        [
+          [26, 28],
+          [70, 18],
+          [62, 42],
+        ].map(([x, y]) => (
+          <text
+            dominantBaseline="central"
+            fontSize={radius}
+            key={`${x}-${y}`}
+            textAnchor="middle"
+            x={x}
+            y={y}
+          >
+            🙂
+          </text>
+        ))}
+    </svg>
+  );
+}
+
 type RelationshipGraphProps = {
   characters: Character[];
   onBack: () => void;
@@ -908,6 +970,9 @@ export function RelationshipGraph({
   const [isStudio, setIsStudio] = useState(false);
   const [isStudioLeftOpen, setIsStudioLeftOpen] = useState(false);
   const [isStudioRightOpen, setIsStudioRightOpen] = useState(false);
+  // Two jobs live in one panel, so only one panel is ever open: 设计 and 探索 are tabs
+  // of the same drawer, and 角色 is the other drawer.
+  const [studioTab, setStudioTab] = useState<"design" | "explore">("design");
   const studioViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
   const studioFitRef = useRef(false);
   // A drawer is dismissed before anything else: Escape must not leave the studio
@@ -2579,16 +2644,18 @@ export function RelationshipGraph({
                   })()}
                 </div>
               )}
-              <div className="graph-style-presets">
+              <div className="graph-style-presets graph-preset-cards">
                 {CANVAS_PRESETS.map((preset) => (
                   <button
+                    aria-pressed={style.preset === preset.id}
                     className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
                     key={preset.id}
                     onClick={() => applyPreset(preset.id)}
                     title={preset.hint}
                     type="button"
                   >
-                    {preset.name}
+                    <PresetThumb presetId={preset.id} />
+                    <span>{preset.name}</span>
                   </button>
                 ))}
               </div>
@@ -3460,18 +3527,37 @@ export function RelationshipGraph({
                   <button
                     aria-pressed={isStudioLeftOpen}
                     className="graph-studio-toggle"
-                    onClick={() => setIsStudioLeftOpen((open) => !open)}
+                    onClick={() => {
+                      setIsStudioLeftOpen((open) => !open);
+                      setIsStudioRightOpen(false);
+                    }}
                     type="button"
                   >
                     角色
                   </button>
                   <button
-                    aria-pressed={isStudioRightOpen}
+                    aria-pressed={isStudioRightOpen && studioTab === "design"}
                     className="graph-studio-toggle"
-                    onClick={() => setIsStudioRightOpen((open) => !open)}
+                    onClick={() => {
+                      setStudioTab("design");
+                      setIsStudioRightOpen((open) => (studioTab === "design" ? !open : true));
+                      setIsStudioLeftOpen(false);
+                    }}
                     type="button"
                   >
-                    属性
+                    设计
+                  </button>
+                  <button
+                    aria-pressed={isStudioRightOpen && studioTab === "explore"}
+                    className="graph-studio-toggle"
+                    onClick={() => {
+                      setStudioTab("explore");
+                      setIsStudioRightOpen((open) => (studioTab === "explore" ? !open : true));
+                      setIsStudioLeftOpen(false);
+                    }}
+                    type="button"
+                  >
+                    探索
                   </button>
                 </div>
               </div>
@@ -3590,11 +3676,36 @@ export function RelationshipGraph({
               )}
 
               {isStudioRightOpen && (
-                <aside aria-label="属性与外观" className="graph-studio-drawer right">
+                <aside
+                  aria-label="设计面板"
+                  className="graph-studio-drawer right"
+                  data-tab={studioTab}
+                >
                   <div className="graph-studio-drawer-head">
-                    <strong>属性与外观</strong>
+                    <strong>{studioTab === "design" ? "设计" : "探索"}</strong>
                     <button aria-label="关闭属性面板" onClick={() => setIsStudioRightOpen(false)} type="button">
                       <Icon name="close" size={14} />
+                    </button>
+                  </div>
+
+                  <div className="graph-studio-tabs" role="tablist" aria-label="面板">
+                    <button
+                      aria-selected={studioTab === "design"}
+                      className={studioTab === "design" ? "active" : ""}
+                      onClick={() => setStudioTab("design")}
+                      role="tab"
+                      type="button"
+                    >
+                      设计
+                    </button>
+                    <button
+                      aria-selected={studioTab === "explore"}
+                      className={studioTab === "explore" ? "active" : ""}
+                      onClick={() => setStudioTab("explore")}
+                      role="tab"
+                      type="button"
+                    >
+                      探索
                     </button>
                   </div>
 
@@ -3677,6 +3788,7 @@ export function RelationshipGraph({
                   </div>
                   <p className="muted">先预览，确认后才写入；只移动所选范围，不改关系。</p>
 
+                  <div className="graph-explore-section">
                   <strong className="graph-studio-section">探索</strong>
                   <div className="graph-studio-props">
                     <div className="graph-spotlight">
@@ -3799,6 +3911,7 @@ export function RelationshipGraph({
                     </ul>
                   )}
                   <p className="muted">书签只记录视角，不复制任何角色数据。</p>
+                  </div>
 
                   <strong className="graph-studio-section">画布外观</strong>
                   {stylePanel}
