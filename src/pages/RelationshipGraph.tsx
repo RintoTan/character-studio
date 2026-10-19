@@ -862,6 +862,13 @@ export function RelationshipGraph({
   // One step of undo for a whole arrange, which is the only operation that moves
   // every node at once. A drag is undone by dragging back; an arrange is not.
   const [arrangeUndo, setArrangeUndo] = useState<{ layout: CanvasLayout; label: string } | null>(null);
+  const [pendingDiscard, setPendingDiscard] = useState(false);
+  const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
+  const [isDirectionHelpOpen, setIsDirectionHelpOpen] = useState(false);
+  useEscapeDismiss(isDirectionHelpOpen, () => setIsDirectionHelpOpen(false));
+  // What the dialog opened with, so "has anything been typed" is a fact rather
+  // than a guess about which fields count.
+  const draftBaselineRef = useRef("");
   useEscapeDismiss(isArrangeOpen, () => setIsArrangeOpen(false));
   useEscapeDismiss(isGroupsOpen, () => setIsGroupsOpen(false));
   useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
@@ -1768,23 +1775,27 @@ export function RelationshipGraph({
   }, [hoveredId, byId, view, canvas.viewBox, metrics]);
 
   function openDraft() {
-    setEditingId(null);
-    setDraft({
+    const next = {
       fromId: characters[0]?.id ?? "",
       toId: characters[1]?.id ?? characters[0]?.id ?? "",
-      kind: "friend",
+      kind: "friend" as RelationshipKind,
       note: "",
-    });
+    };
+    draftBaselineRef.current = JSON.stringify(next);
+    setEditingId(null);
+    setDraft(next);
   }
 
   function openEdit(relationship: Relationship) {
-    setEditingId(relationship.id);
-    setDraft({
+    const next = {
       fromId: relationship.fromId,
       toId: relationship.toId,
       kind: relationship.kind,
       note: relationship.note ?? "",
-    });
+    };
+    draftBaselineRef.current = JSON.stringify(next);
+    setEditingId(relationship.id);
+    setDraft(next);
   }
 
   /** Management hands the canvas one character; the drawing does the rest. */
@@ -1964,15 +1975,34 @@ export function RelationshipGraph({
     : undefined;
   const draftDuplicateReversed =
     draft && draftDuplicate ? draftDuplicate.fromId === draft.toId : false;
+  const draftDirty = Boolean(draft) && JSON.stringify(draft) !== draftBaselineRef.current;
+
+  function closeDraftNow() {
+    setDraft(null);
+    setEditingId(null);
+    setPendingDiscard(false);
+  }
+
+  /** Every way out of the relationship dialog passes through here. */
+  function requestCloseDraft() {
+    if (draftDirty) {
+      setPendingDiscard(true);
+      return;
+    }
+    closeDraftNow();
+  }
+
   // Both dialogs take the keyboard: Escape cancels, Enter saves, focus moves in.
   const draftDialogRef = useDialogKeyboard({
-    active: Boolean(draft),
-    onClose: () => {
-      setDraft(null);
-      setEditingId(null);
-    },
+    active: Boolean(draft) && !pendingDiscard,
+    onClose: requestCloseDraft,
     onConfirm: submitDraft,
     confirmDisabled: Boolean(draft) && (draft!.fromId === draft!.toId || Boolean(draftDuplicate)),
+  });
+  const discardDialogRef = useDialogKeyboard({
+    active: pendingDiscard,
+    onClose: () => setPendingDiscard(false),
+    onConfirm: closeDraftNow,
   });
   const deleteDialogRef = useDialogKeyboard({
     active: Boolean(pendingDelete),
@@ -2857,6 +2887,21 @@ export function RelationshipGraph({
                 <option value="recent">按更新时间</option>
               </select>
             </label>
+            <div className="relationship-direction-help">
+              <button
+                aria-expanded={isDirectionHelpOpen}
+                className="ghost-button relationship-direction-button"
+                onClick={() => setIsDirectionHelpOpen((current) => !current)}
+                type="button"
+              >
+                方向说明
+              </button>
+              {isDirectionHelpOpen && (
+                <div className="graph-panel relationship-direction-panel" role="note">
+                  <p>→ 方向由左指向右（师承方在前）；↔ 互为关系。点「定位」在图谱中放大该角色。</p>
+                </div>
+              )}
+            </div>
             <span aria-live="polite" className="timeline-count">
               {manageRows.length} / {relationships.length} 条
             </span>
@@ -2911,7 +2956,33 @@ export function RelationshipGraph({
                             </span>
                           </td>
                           <td className="manage-name">{toName}</td>
-                          <td className="relationship-table-note">{relationship.note || "—"}</td>
+                          <td className="relationship-table-note">
+                            <span
+                              className={
+                                expandedNotes.includes(relationship.id)
+                                  ? "relationship-note-text expanded"
+                                  : "relationship-note-text"
+                              }
+                            >
+                              {relationship.note || "—"}
+                            </span>
+                            {relationship.note && relationship.note.length > 24 && (
+                              <button
+                                className="relationship-note-toggle"
+                                aria-expanded={expandedNotes.includes(relationship.id)}
+                                onClick={() =>
+                                  setExpandedNotes((current) =>
+                                    current.includes(relationship.id)
+                                      ? current.filter((id) => id !== relationship.id)
+                                      : [...current, relationship.id],
+                                  )
+                                }
+                                type="button"
+                              >
+                                {expandedNotes.includes(relationship.id) ? "收起" : "展开"}
+                              </button>
+                            )}
+                          </td>
                           <td className="relationship-col-actions">
                             <button
                               aria-label={`编辑 ${fromName} 与 ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
@@ -2968,8 +3039,7 @@ export function RelationshipGraph({
               </div>
 
               <p className="muted manage-hint">
-                → 方向由左指向右（师承方在前）；↔ 互为关系。点「定位」在图谱中放大该角色。
-              </p>
+                  </p>
             </>
           )}
         </>
@@ -2982,15 +3052,24 @@ export function RelationshipGraph({
       )}
 
       {draft && (
-        <div className="modal-backdrop" role="presentation">
+        <div
+          className="modal-backdrop"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              requestCloseDraft();
+            }
+          }}
+          role="presentation"
+        >
           <div
-            className="confirm-dialog"
+            className="confirm-dialog relationship-dialog"
             ref={draftDialogRef}
             role="dialog"
             aria-modal="true"
             aria-label={editingId ? "编辑关系" : "新建关系"}
           >
             <h2>{editingId ? "编辑关系" : "新建关系"}</h2>
+            <div className="relationship-dialog-body">
             {/* The ends and the kind are labelled for the kind chosen: a symmetric
                 relationship has two equal sides, a 师承 edge has a direction. The two
                 ends are pickers rather than dropdowns, because a hundred names in a
@@ -3038,15 +3117,10 @@ export function RelationshipGraph({
                   : "同一方向再记一条是重复的。"}
               </p>
             )}
-            <div className="form-actions">
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  setDraft(null);
-                  setEditingId(null);
-                }}
-                type="button"
-              >
+            </div>
+
+            <div className="form-actions relationship-dialog-actions">
+              <button className="ghost-button" onClick={requestCloseDraft} type="button">
                 取消
               </button>
               <button
@@ -3056,6 +3130,29 @@ export function RelationshipGraph({
                 type="button"
               >
                 {editingId ? "保存修改" : "保存关系"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDiscard && (
+        <div className="modal-backdrop" role="presentation">
+          <div
+            aria-label="放弃未保存的修改"
+            aria-modal="true"
+            className="confirm-dialog"
+            ref={discardDialogRef}
+            role="dialog"
+          >
+            <h2>放弃未保存的修改？</h2>
+            <p>这条关系还没有保存，关闭后刚才填写的内容会丢失。</p>
+            <div className="form-actions">
+              <button className="ghost-button" onClick={() => setPendingDiscard(false)} type="button">
+                继续编辑
+              </button>
+              <button className="primary-button" onClick={closeDraftNow} type="button">
+                放弃修改
               </button>
             </div>
           </div>

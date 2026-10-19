@@ -195,6 +195,16 @@ main.tsx
 
 **删除语义**：引用数为 0 可直接删；>0 必须二次确认；删除后受影响角色回退 Emoji。
 
+### 4.3 复杂表单弹窗的结构
+
+时间线、世界观与关系弹窗共用同一种三段结构，而不是各自处理滚动：
+
+- 根节点 `display: flex; flex-direction: column; max-height: min(88dvh, …); overflow: hidden`。
+- 标题与底栏 `flex: 0 0 auto`；正文 `flex: 1 1 auto; min-height: 0; overflow-y: auto`。
+- 底栏**在滚动容器之外**，因此不需要 `position: sticky`，也不可能盖住最后一个字段。
+- 弹窗内的角色选择器自己是一个有限高度的纵向滚动区（`max-height: 264px`），与外层正文滚动互不干扰。
+- 未保存保护由关系弹窗的脏检查统一处理：遮罩、Escape、取消都先经过 `requestCloseDraft`。
+
 ### 4.4 画布布局（`relationshipLayout`）
 
 关系画布的位置与分组是**展示数据**，单独存放，不进入 `Character`，也不进入 `WorldEntry`：

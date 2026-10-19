@@ -561,6 +561,10 @@ export function WorldManager({
           >
             <h2>{draft.id ? "编辑条目" : "新建条目"}</h2>
 
+            {/* Head, rolling body, fixed foot — the same shape the timeline dialog
+                uses. The footer used to be sticky inside the dialog's own scroll
+                container, which is exactly why it sat on top of the character list. */}
+            <div className="world-dialog-body">
             <fieldset className="dialog-section">
               <legend>条目</legend>
               <div className="field-row">
@@ -669,6 +673,8 @@ export function WorldManager({
                 selectedIds={draft.characterIds}
               />
             )}
+
+            </div>
 
             <div className="form-actions world-dialog-actions">
               <button className="ghost-button" onClick={() => setDraft(null)} type="button">

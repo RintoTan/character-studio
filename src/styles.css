@@ -8674,7 +8674,10 @@ body:has([aria-modal="true"]) .floating-actions {
   max-height: 264px;
   border-radius: var(--control-radius);
   background: color-mix(in srgb, var(--text) 4%, var(--surface));
+  /* Vertical only. A row that cannot fit must wrap its name, not widen the list. */
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
 }
 
@@ -8737,18 +8740,32 @@ body:has([aria-modal="true"]) .floating-actions {
   padding: 0;
 }
 
+/* Name over context, both in the same column beside the face. They used to be two
+   siblings on one line, with the context pushed right by `margin-left: auto`: a long
+   name was ellipsised to make room, and a long occupation/worldview pair widened the
+   row until the list scrolled sideways. Stacking them gives the name the full width
+   and lets the secondary line be the one that gives way. */
+.character-row-text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 1px;
+  min-width: 0;
+}
+
 .character-row-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  white-space: normal;
 }
 
 .character-row-meta {
-  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-style: normal;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -9475,9 +9492,34 @@ body:has([aria-modal="true"]) .floating-actions {
 }
 
 .world-dialog {
+  display: flex;
+  flex-direction: column;
   width: min(600px, 100%);
-  max-height: min(90vh, 760px);
-  overflow: auto;
+  /* dvh, because on a phone vh includes browser chrome. */
+  max-height: min(88dvh, 760px);
+  overflow: hidden;
+}
+
+.world-dialog > h2 {
+  flex: 0 0 auto;
+}
+
+.world-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+/* In this dialog the actions are outside the scroll container, so they need no
+   pinning and can no longer cover the last field or the picker. */
+.world-dialog .world-dialog-actions {
+  position: static;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+  padding-top: 12px;
 }
 
 /* Mobile pass for the graph page and the pages that carry the floating cluster.
@@ -11533,3 +11575,104 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   width: 100%;
 }
 
+
+/* Relationship dialog: same head / rolling body / fixed foot as the timeline and
+   world dialogs. A hundred-character picker inside a fixed-height dialog is the
+   case this exists for. */
+.relationship-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(88dvh, 760px);
+  overflow: hidden;
+}
+
+.relationship-dialog > h2 {
+  flex: 0 0 auto;
+}
+
+.relationship-dialog-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+
+.relationship-dialog-actions {
+  position: static;
+  flex: 0 0 auto;
+  margin-top: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+/* A management row's note is a summary, not the reading view: one line, with an
+   explicit way to see the rest. Truncating without that way loses information. */
+.relationship-note-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.relationship-note-text.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+}
+
+.relationship-note-toggle {
+  margin-top: 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.relationship-note-toggle:hover {
+  color: var(--text);
+}
+
+.relationship-direction-help {
+  position: relative;
+}
+
+.relationship-direction-button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.graph-panel.relationship-direction-panel {
+  position: absolute;
+  z-index: var(--z-inline-5, 40);
+  top: calc(100% + 6px);
+  right: 0;
+  bottom: auto;
+  width: min(320px, calc(100vw - 40px));
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.graph-panel.relationship-direction-panel p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .graph-panel.relationship-direction-panel {
+    left: auto;
+    right: 0;
+  }
+}

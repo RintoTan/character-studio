@@ -5322,7 +5322,12 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         const actions = document.querySelector(".world-dialog-actions").getBoundingClientRect();
         const dialog = {
           inside: rect.left >= -1 && rect.right <= window.innerWidth + 1,
-          scrollable: node.scrollHeight > node.clientHeight,
+          // The dialog itself no longer scrolls; its body does, so head and foot stay
+          // put. Same promise — a long entry is reachable — checked at the right node.
+          scrollable: (() => {
+            const body = node.querySelector(".world-dialog-body");
+            return body ? body.scrollHeight > body.clientHeight : node.scrollHeight > node.clientHeight;
+          })(),
           actionsInside: actions.right <= window.innerWidth + 1 && actions.left >= -1,
           sections: [...document.querySelectorAll(".world-dialog legend")].map((item) => item.textContent.trim()),
         };
@@ -6533,6 +6538,242 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return {
         pass: Boolean(pass),
         detail: `375px 轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,
+      };
+    });
+
+
+    /* ---------------------------------------------------------------------
+       Sprint 49 supplement — shared form dialogs and the management table.
+       ------------------------------------------------------------------- */
+
+    const SEED_FORMS = `(() => {
+      const now = "2026-01-01T00:00:00.000Z";
+      const characters = Array.from({ length: 100 }, (_, index) => ({
+        id: "c" + index,
+        name: index === 3 ? "亚历山大".repeat(8) : index === 7 ? "Alexanderthegreatwithoutanyspacesatall" : "角色" + String(index).padStart(2, "0"),
+        occupation: index === 3 ? "很长很长的职业名称".repeat(3) : "职业" + (index % 7),
+        worldview: index % 3 === 0 ? "北境" : "云海",
+        avatarEmoji: "🙂",
+        createdAt: now,
+        updatedAt: now,
+      }));
+      const relationships = Array.from({ length: 191 }, (_, index) => ({
+        id: "r" + index,
+        fromId: "c" + (index % 100),
+        toId: "c" + ((index * 3 + 1) % 100),
+        kind: ["friend", "mentor", "family", "colleague", "rival"][index % 5],
+        note: index === 0 ? "在旧码头认识，后来因为一批账目各执一词，关系时好时坏。".repeat(3) : "备注 " + index,
+        createdAt: now,
+        updatedAt: now,
+      }));
+      const world = Array.from({ length: 20 }, (_, index) => ({
+        id: "w" + index,
+        name: "条目" + index,
+        category: "region",
+        parentId: "",
+        summary: "简介" + index,
+        details: "详细设定".repeat(40),
+        tags: "",
+        characterIds: ["c0", "c1", "c2"],
+        createdAt: now,
+        updatedAt: now,
+      }));
+      localStorage.setItem("character-studio.characters", JSON.stringify(characters));
+      localStorage.setItem("character-studio.relationships", JSON.stringify(relationships));
+      localStorage.setItem("character-studio.world", JSON.stringify(world));
+      localStorage.setItem("character-studio.timeline", "[]");
+      localStorage.setItem("character-studio.about-seen", "true");
+      localStorage.setItem("character-studio.theme", "light");
+      return true;
+    })()`;
+
+    const RECTS = `(() => {
+      const box = (element) => {
+        if (!element) return null;
+        const rect = element.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, left: rect.left, right: rect.right, height: rect.height };
+      };
+      return {
+        dialog: box(document.querySelector(".world-dialog, .relationship-dialog")),
+        body: box(document.querySelector(".world-dialog-body, .relationship-dialog-body")),
+        foot: box(document.querySelector(".world-dialog-actions, .relationship-dialog-actions")),
+        picker: box(document.querySelector(".character-picker-list")),
+        lastOption: box(document.querySelector(".character-picker .settings-check:last-child")),
+        overflow: (() => {
+          const list = document.querySelector(".character-picker-list");
+          return list ? list.scrollWidth - list.clientWidth : null;
+        })(),
+        bodyScroll: (() => {
+          const body = document.querySelector(".world-dialog-body, .relationship-dialog-body");
+          return body ? { top: body.scrollTop, height: body.scrollHeight, client: body.clientHeight } : null;
+        })(),
+      };
+    })()`;
+
+    await check("复杂表单：角色选择器不再横向滚动，世界观底栏不遮挡最后一项（Sprint 49 补充）", async () => {
+      const results = [];
+      for (const [width, height, mobile] of [[1440, 900, false], [1024, 800, false], [375, 812, true], [320, 720, true]]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile });
+        await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: mobile, maxTouchPoints: 5 });
+        await cdp.goto(base);
+        await cdp.value(SEED_FORMS);
+        await cdp.goto(base);
+        await cdp.value(clickWorkspace("世界观管理"));
+        await cdp.waitFor(`Boolean([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "新建条目"))`, 6000);
+        await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "新建条目")).click()`);
+        await cdp.waitFor(`!!document.querySelector(".world-dialog")`, 4000);
+
+        const top = await cdp.value(RECTS);
+        // Two nested scrollers, both have to be at the end before "the last row is
+        // reachable" means anything: the dialog body, then the picker's own list.
+        await cdp.value(`(() => {
+          const body = document.querySelector(".world-dialog-body");
+          body.scrollTop = body.scrollHeight;
+          const list = document.querySelector(".character-picker-list");
+          if (list) list.scrollTop = list.scrollHeight;
+          return true;
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const bottom = await cdp.value(RECTS);
+
+        const rowHeights = await cdp.value(`[...document.querySelectorAll(".character-picker .settings-check")].slice(0, 3).map((row) => Math.round(row.getBoundingClientRect().height))`);
+        const nameWraps = await cdp.value(`(() => {
+          const row = [...document.querySelectorAll(".character-picker .settings-check")].find((item) => item.textContent.includes("亚历山大"));
+          const name = row?.querySelector(".character-row-name");
+          if (!name) return null;
+          return { lines: Math.round(name.getBoundingClientRect().height / parseFloat(getComputedStyle(name).lineHeight)), clipped: name.scrollWidth > name.clientWidth + 1 };
+        })()`);
+
+        const footerClear = bottom.foot && bottom.lastOption
+          ? bottom.foot.top >= bottom.lastOption.bottom - 1
+          : false;
+        const lastReachable = bottom.body && bottom.lastOption
+          ? bottom.lastOption.top >= bottom.body.top - 1 && bottom.lastOption.bottom <= bottom.body.bottom + 1
+          : false;
+        const scrollable = bottom.bodyScroll && bottom.bodyScroll.height > bottom.bodyScroll.client;
+        const noHorizontal = top.overflow === 0 && width >= 320;
+        const footerInside = bottom.foot && bottom.dialog ? bottom.foot.bottom <= bottom.dialog.bottom + 1 : false;
+
+        results.push({ width, footerClear, lastReachable, scrollable, noHorizontal, footerInside, rowHeights, nameWraps });
+      }
+
+      const pass = results.every((item) =>
+        item.footerClear &&
+        item.lastReachable &&
+        item.scrollable &&
+        item.noHorizontal &&
+        item.footerInside &&
+        item.nameWraps && item.nameWraps.lines >= 2 && !item.nameWraps.clipped
+      );
+
+      return {
+        pass,
+        detail: results.map((item) =>
+          `${item.width}px 底栏不压末项 ${item.footerClear}、末项可达 ${item.lastReachable}、正文可滚 ${item.scrollable}、横向溢出 ${item.noHorizontal ? 0 : "有"}、底栏在框内 ${item.footerInside}、行高 ${item.rowHeights.join("/")}、长名 ${item.nameWraps?.lines} 行且未裁切 ${!item.nameWraps?.clipped}`
+        ).join("；"),
+      };
+    });
+
+    await check("关系弹窗：未保存确认、Escape 逐层关闭、焦点返回，管理列表无横向滚动（Sprint 49 补充）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false, maxTouchPoints: 1 });
+      await cdp.goto(base);
+      await cdp.value(SEED_FORMS);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("管理"))).click()`);
+      await cdp.waitFor(`!!document.querySelector(".manage-table")`, 5000);
+
+      const widths = [];
+      for (const width of [1440, 1024]) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        widths.push(await cdp.value(`(() => {
+          const wrap = document.querySelector(".relationship-table-wrap");
+          const note = document.querySelector(".relationship-note-text");
+          const toggle = document.querySelector(".relationship-note-toggle");
+          return { width: innerWidth, overflow: wrap.scrollWidth - wrap.clientWidth, clamped: note ? Math.round(note.getBoundingClientRect().height) : 0, hasToggle: Boolean(toggle) };
+        })()`));
+      }
+
+      const noteBefore = await cdp.value(`Math.round(document.querySelector(".relationship-note-text")?.getBoundingClientRect().height ?? 0)`);
+      await cdp.value(`document.querySelector(".relationship-note-toggle").click()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const expand = await cdp.value(`(() => {
+        const toggle = document.querySelector(".relationship-note-toggle");
+        const note = document.querySelector(".relationship-note-text");
+        return { before: ${noteBefore}, after: note ? Math.round(note.getBoundingClientRect().height) : 0, expanded: toggle?.getAttribute("aria-expanded") };
+      })()`);
+
+      const help = await cdp.value(`(() => {
+        const button = document.querySelector(".relationship-direction-button");
+        return { button: Boolean(button), table: Boolean(document.querySelector(".manage-table")), mode: document.querySelector(".relationship-mode")?.textContent?.trim().slice(0, 12) };
+      })()`);
+      if (help.button) {
+        await cdp.value(`document.querySelector(".relationship-direction-button").click()`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const helpPanel = await cdp.value(`Boolean(document.querySelector(".relationship-direction-panel"))`);
+
+      await cdp.value(`([...document.querySelectorAll(".relationship-direction-panel button")].length ? true : true)`);
+      await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+
+      await cdp.value(`(() => {
+        const trigger = document.querySelector(".relationship-row-action");
+        window.__relationshipTrigger = trigger;
+        trigger.focus();
+        trigger.click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".relationship-dialog")`, 4000);
+      const triggerLabel = await cdp.value(`document.activeElement?.textContent?.trim().slice(0, 12)`);
+      await cdp.value(`(() => {
+        const input = [...document.querySelectorAll(".relationship-dialog input")].find((item) => item.placeholder === "可选");
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        setter.call(input, "临时备注");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const firstEscape = await cdp.value(`({
+        discard: Boolean([...document.querySelectorAll("h2")].find((h) => h.textContent.includes("放弃未保存"))),
+        draft: Boolean(document.querySelector(".relationship-dialog")),
+      })`);
+
+      await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const secondEscape = await cdp.value(`({
+        discard: Boolean([...document.querySelectorAll("h2")].find((h) => h.textContent.includes("放弃未保存"))),
+        draft: Boolean(document.querySelector(".relationship-dialog")),
+      })`);
+
+      await cdp.value(`([...document.querySelectorAll(".relationship-dialog-actions button")].find((b) => b.textContent.trim() === "取消")).click()`);
+      await cdp.waitFor(`Boolean([...document.querySelectorAll("h2")].find((h) => h.textContent.includes("放弃未保存")))`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".confirm-dialog button")].find((b) => b.textContent.trim() === "放弃修改")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const closed = await cdp.value(`({
+        draft: Boolean(document.querySelector(".relationship-dialog")),
+        discard: Boolean([...document.querySelectorAll("h2")].find((h) => h.textContent.includes("放弃未保存"))),
+        focusReturned: document.activeElement === window.__relationshipTrigger,
+        focused: document.activeElement?.textContent?.trim().slice(0, 12),
+      })`);
+
+      const noOverflow = widths.every((item) => item.overflow <= 1);
+      const pass =
+        noOverflow &&
+        expand && expand.after > expand.before + 5 && expand.expanded === "true" &&
+        helpPanel &&
+        firstEscape.discard && firstEscape.draft &&
+        !secondEscape.discard && secondEscape.draft &&
+        !closed.draft && !closed.discard && closed.focusReturned;
+
+      return {
+        pass: Boolean(pass),
+        detail: `表格 ${widths.map((item) => `${item.width}px 溢出 ${item.overflow}`).join("、")}；备注 ${expand ? `${Math.round(expand.before)}→${Math.round(expand.after)}px` : "无"}、展开标记 ${expand?.expanded}；方向说明 按钮 ${help.button} / 可见 ${help.table} / 面板 ${helpPanel}；修改后 Escape → 确认 ${firstEscape.discard} 且弹窗保留 ${firstEscape.draft}；再次 Escape → 确认关闭 ${!secondEscape.discard}、弹窗仍在 ${secondEscape.draft}；放弃后全部关闭 ${!closed.draft && !closed.discard}、焦点回到触发按钮 ${closed.focusReturned}（${closed.focused}）`,
       };
     });
 

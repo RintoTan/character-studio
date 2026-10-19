@@ -41,8 +41,10 @@ export function CharacterRow({ character }: { character: Character }) {
         emoji={character.avatarEmoji || DEFAULT_AVATAR_EMOJI}
         label={characterDisplayName(character)}
       />
-      <span className="character-row-name">{characterDisplayName(character)}</span>
-      {meta && <em className="character-row-meta">{meta}</em>}
+      <span className="character-row-text">
+        <span className="character-row-name">{characterDisplayName(character)}</span>
+        {meta && <em className="character-row-meta">{meta}</em>}
+      </span>
     </>
   );
 }
