@@ -1,165 +1,220 @@
 # Character Studio
 
-> **线上发布状态：v2.37.1**（Sprint 47 补丁）—— 移动端交互与布局专项：主导航与「更多操作」改为底部抽屉，Dashboard 首屏上移，320px 工具栏、时间线卡片与分组定位收尾；桌面端结构与视觉未变。
-> 上一版：v2.37.0（Sprint 47）—— 角色档案 PDF 与复杂工作区：档案 PDF 支持中文文本层，关系网分为图谱与管理双模式，手机端图谱首次进入即可看全。
-> 上一版：v2.36.0（Sprint 46）—— 数据资产管理与导入导出 2.0：导入先生成计划、ID 重映射与缺失引用说明，写入前保存恢复点。
+> 面向 OC / 原创角色创作者的**本地优先**角色与世界观管理工作台。
 
+[![Deploy](https://github.com/RintoTan/character-studio/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/RintoTan/character-studio/actions/workflows/deploy-pages.yml)
+![Version](https://img.shields.io/github/package-json/v/RintoTan/character-studio)
+![Stack](https://img.shields.io/badge/React%2018-TypeScript%20%C2%B7%20Vite-3178c6)
 
-**Character Studio** 是一个面向 OC（Original Character，原创角色）创作的本地优先角色工作台。
-
-它用于创建、编辑、管理、预览、备份和导出角色设定，适合小说、插画、跑团、乙游企划、世界观创作和 AI 绘图 Prompt 整理。
-
-当前版本采用纯前端架构，不需要登录、不接入服务器、不上传角色数据。角色资料保存在浏览器本地，头像素材保存在 IndexedDB 中。
+**[在线使用 →](https://rintotan.github.io/character-studio/)**　不需要注册，不连接服务器，角色资料保存在当前浏览器。
 
 ---
 
-## 核心特性
+## 项目介绍
 
-### Dashboard 角色管理
+写 OC 的人常常同时维护三类东西：角色卡、人物关系、以及他们所处的世界。它们散落在文档、表格和聊天记录里，改一处就要同步三处；想备份，只能手动复制。
 
-- 角色卡片视图与列表视图
-- 搜索角色名、职业、世界观、性格标签
-- 按最近编辑、创建时间、名称排序
-- 按世界观、性别、视觉风格筛选
-- 收藏夹视图
-- 草稿箱视图
-- 置顶角色
-- 批量选择、复制、删除、收藏、导出
-- 删除撤销（10 秒，角色与被清理的关联一起恢复；单删 / 批删 / 编辑器删除同一机制）
-- Empty State 与搜索无结果状态
-- Light / Dark / Follow System 主题
+Character Studio 把这三件事放进同一个工作台：
 
-### Character Editor 角色创作工作台
+- **角色**有一个可分节填写、可自动保存、可导出档案的编辑器；
+- **关系**是一张可缩放、可搜索、可管理的图，而不是散落的备注；
+- **时间线**和**世界观**各自成库，并与角色互相引用；
+- 所有数据**只存在本机浏览器**，可随时导出 JSON / ZIP 备份或迁移。
 
-- 六个分节：基础信息 → 外貌设定 → 性格设定 → 个人偏好 → 能力设定 → 背景故事 → AI Prompt
-- 左侧模块导航 + 完成度进度 + 「跳到下一个未完成」（到末尾绕回）
-- 折叠记忆（按作者的工作习惯持久化）
-- Emoji 头像与上传头像
-- 头像裁剪、压缩、本地保存
-- 从头像素材库选择头像
-- 性格标签（含自定义；独立的「角色标签」系统已在 6.4 删除）
-- 随机生成角色
-- 本地规则生成中文人物关键词
-- 本地规则生成英文 AI 绘图 Prompt
-- 自动保存草稿、临时保存
-- 编辑 / 预览切换
-- 创作辅助：示例、随机灵感、写作提示
-- `Ctrl / Cmd + S` 保存
+主要面向小说、插画、跑团、企划和 AI 绘图 Prompt 的作者。当前版本是纯前端应用，没有账号体系，也没有云端同步。
 
-### Character Preview 展示页
+---
 
-同一个页面有两种用法，**由打开它的入口决定**：
+## 界面预览
 
-| 入口 | 工具栏 |
+[[![角色创作工作台](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)](docs/screenshots/dashboard.png)
+
+| 角色编辑器 | 角色预览 |
 | --- | --- |
-| 从主页「预览」进入，或保存后的落点 | `编辑` · `收藏` · `导出` · `返回` |
-| 从编辑工作台切到预览进入 | `返回编辑` · `保存草稿` · `删除角色` · `保存角色` |
+| [[![角色编辑器](docs/screenshots/character-editor.png)](docs/screenshots/character-editor.png)](docs/screenshots/character-editor.png) | [![角色预览](docs/screenshots/character-preview.png)](docs/screenshots/character-preview.png) |
+| **角色关系网** | **关系管理** |
+| [[![角色关系网](docs/screenshots/relationship-graph.png)](docs/screenshots/relationship-graph.png)](docs/screenshots/relationship-graph.png) | [![关系管理](docs/screenshots/relationship-manage.png)](docs/screenshots/relationship-manage.png) |
+| **世界观时间线** | **世界观管理** |
+| [[![世界观时间线](docs/screenshots/timeline.png)](docs/screenshots/timeline.png)](docs/screenshots/timeline.png) | [![世界观管理](docs/screenshots/world.png)](docs/screenshots/world.png) |
 
-共同能力：
+| 手机端工作台 | 手机端导航抽屉 |
+| --- | --- |
+| [[![手机端工作台](docs/screenshots/mobile-dashboard.png)](docs/screenshots/mobile-dashboard.png)](docs/screenshots/mobile-dashboard.png) | [![手机端导航](docs/screenshots/mobile-navigation.png)](docs/screenshots/mobile-navigation.png) |
 
-- 头像、基础资料、性格标签、视觉风格、外貌、能力、背景故事、个人偏好、中文关键词、英文 Prompt
-- 点击头像查看大图
-- 浏览模式下可导出 JSON / PDF / JPG / PNG
-- 导出为图片 / PDF 时，页面上的操作按钮会被排除出画面
+> 截图使用虚构测试数据（100 个角色 / 191 条关系 / 50 个事件 / 20 个世界观条目），不含任何真实用户资料。关系网一张取同一数据集中连接最密的 7 个角色，否则 191 条边在页面尺寸内无法看清标签。
 
-**复制完整设定与复制 Prompt 的按钮已移除**：那两个字段在编辑器里本来就有复制，导出也统一在主页按范围与格式选择（一屏一职）。
+---
 
-### 世界观工作区（关系网 / 时间线 / 世界观管理）
+## 核心功能
 
-从顶栏的**工作区切换**进入。三者各自是独立的数据集合，都可以与角色一起备份与恢复。
+### 角色创作与管理
 
-**角色关系网** —— 以图为载体建立与查看角色之间的连接。
+- 卡片与列表两种视图，可按名称、职业、世界观、性格标签搜索
+- 按最近编辑 / 创建时间 / 名称排序，按世界观、性别、视觉风格筛选
+- 收藏、草稿箱、置顶；批量选择、复制、删除、收藏、导出
+- 删除后 10 秒内可撤销，连同被清理的关系与引用一起恢复
+- 角色较多时按世界观分组，并提供分组定位条
 
-- 8 种关系类型：亲属 / 师承 / 友人 / 对手 / 敌对 / 同僚 / 情感 / 其他
-- **方向有语义**：互为类（亲属、友人、情感等）不画箭头、列表读作 `↔`；师承画箭头、读作 `→`，字段名变为「师承方 / 学习方」
-- 重复关系在保存前被拒绝并说明原因（而不是静默无反应）
-- 径向布局：一个角色居中、两个水平并排、三个以上成环，环半径随人数增长
-- 缩放（滚轮 / 按钮 / 双指）、拖拽平移、悬停高亮邻居、点击节点进入该角色
-- 默认只画参与关系的角色，可一键切到全部
-- 头像与名称尺寸（小中大）；导出分辨率 **1x / 2x / 3x**
-- 导出 JPG / PNG / PDF；同一份数据同时提供图形与表格两种读法
+### 角色编辑
 
-**世界观时间线** —— 按时间组织世界与角色的关键事件。
+- 六个分节：基础信息、外貌设定、性格设定、能力设定、背景故事、AI Prompt
+- 完成度进度与「跳到下一个未完成」；分节折叠状态按习惯记住
+- Emoji 头像、上传并裁剪头像、从本地头像素材库选择
+- 本地规则生成中文关键词与英文绘图 Prompt，不调用外部模型
+- 自动保存草稿、临时保存、`Ctrl / Cmd + S` 保存
 
-- 事件含标题、日期、可选**纪年显示**（支持架空历法，如「光历 318 年」）、类型（起源/转折/羁绊/冲突/失去/其他）、地点、描述、关联角色
-- 日期接受 `2026` / `2026-05` / `2026-05-01`，读取时补齐；**排序永不依赖纪年标签**
-- 按年份分组、按日期升序，与录入顺序无关
+### 角色预览与导出
 
-**世界观管理** —— 地点 / 势力 / 种族 / 物品 / 概念的分层条目。
+- 同一页面有两种工具栏：浏览入口提供 `编辑 / 收藏 / 导出 / 返回`，编辑入口提供 `返回编辑 / 保存草稿 / 删除角色 / 保存角色`
+- 点击头像查看大图；导出 JSON / PDF / JPG / PNG 时会排除页面按钮
+- 角色档案 PDF 为**可选中、可搜索的中文文本**，而不是整页截图
 
-- 支持层级（国家下辖城市），最多渲染 6 层；每层可折叠
-- 每类可打标签、可关联角色
-- 删除父级时**子级脱离为顶层**，不会一起消失
+### 角色关系网络
 
-### 头像素材库
+- 8 种关系：亲属、师承、友人、对手、敌对、同僚、情感、其他
+- **方向有语义**：师承画箭头、读作 `A → B`；互为类不画箭头、读作 `A ↔ B`
+- 重复关系在保存前拒绝并说明原因，不会静默失败
+- 径向布局、缩放、拖拽平移、悬停高亮；点击节点进入该角色
+- 默认只画参与关系的角色，并明确写出「已画 / 有连接 / 总数」；可一键显示全部
+- 搜索任意角色可定位并聚焦，包括默认未画出的角色
+- 「管理」模式提供表格：搜索双方与备注、按类型 / 角色筛选、排序、每页 20 条；编辑与删除同步回图谱
+- 可导出 JPG / PNG / 截图式 PDF，分辨率 1x / 2x / 3x
 
-头像素材库用于管理当前浏览器中的本地头像资源。
+### 故事时间线
 
-- 浏览头像素材
-- 查看素材数量与占用空间
-- 查看素材是否被角色引用
-- 导入头像素材 JSON
-- 导出头像素材 JSON
-- 多选、全选、批量删除
-- 清理未使用素材
-- 删除被引用素材时自动提示影响角色
+- 事件包含标题、日期、可选纪年显示（如「光历 318 年」）、类型、地点、描述、关联角色
+- 日期接受 `2026` / `2026-05` / `2026-05-01`；排序只依据真实日期，不依赖纪年标签
+- 年份导航、按年份分组、按日期升序；支持搜索与按年份 / 类型筛选
+- 事件可新建、编辑、删除，关联角色随角色库同步
 
-图片素材不会存入 localStorage，而是存入 IndexedDB。角色数据只保存头像引用 ID。
+### 世界观条目
 
-### 导入 / 导出
+- 六类：地点、势力、种族、物品、概念、其他
+- 树形层级（城市隶属于国家），可折叠；删除父级时子级**脱离为顶层**，不会一起消失
+- 每个条目可写简介与详细设定、打标签、关联角色
+- 桌面端为「树 + 详情」双栏；手机端在列表与详情之间切换，并提供返回入口
 
-Character Studio 支持多种导入导出方式：
+### 跨模块关联
 
-| 类型 | 用途 | 是否包含头像图片 | 是否可重新导入 |
-| --- | --- | --- | --- |
-| 单角色 JSON | 分享单个角色 | 如有上传头像，会包含头像数据 | 是 |
-| 角色 JSON | 轻量备份所有角色文字资料 | 否 | 是 |
-| 完整备份 ZIP | 跨设备迁移角色和头像 | 是 | 是 |
-| 头像素材 JSON | 独立备份头像素材库 | 是 | 是 |
-| CSV | 纯文字表格，可在 Excel / Numbers 里编辑后导回 | 否 | 是 |
-| PDF | 展示和归档 | 显示当前头像 | 否 |
-| JPG / PNG | 图片分享 | 显示当前头像 | 否 |
+角色的预览页会汇总与它相关的关系、时间线事件和世界观条目；关系、事件与条目的删除或改名都会反映到相关视图。删除角色时，指向它的引用会被清理，撤销时按 **ID** 恢复。
 
-完整备份 ZIP 包含：
+### 数据管理与备份
+
+- 单角色 JSON、角色库 JSON、完整备份 ZIP、头像素材 JSON、CSV 导入导出
+- 完整备份包含角色、头像文件、关系、时间线、世界观
+- 导入前显示预检结果（新增 / 冲突 / 缺失引用），确认后才写入
+- 导入失败不会留下半套数据；写入前自动保存一份恢复快照
+
+### 移动端
+
+- 主工作区切换使用**底部抽屉**：四项工作区齐全、当前项明确、点选即切换
+- 「更多操作」在手机上同样是抽屉，视图切换与批量管理放在其中
+- 工具栏在 320 / 375 / 390 / 430px 保持单行，不隐藏「新建角色」
+- 分组定位条保留横向滚动，并用边缘渐隐提示还有内容
+- 关系网在手机上自动适配初始缩放；世界观与时间线按单列阅读
+
+### 规划中（尚未实现）
+
+以下方向**尚未实现**，仅作为路线图记录：
+
+- 角色人生轨迹（按阶段串联事件与状态变化）
+- 动态人物关系（关系随时间变化，而不只是一条当前状态）
+- 世界观与故事的联动视图
+
+---
+
+## 数据与安全
+
+**存储位置**
+
+| 数据 | 位置 |
+| --- | --- |
+| 角色、关系、时间线、世界观、界面偏好 | `localStorage` |
+| 上传的头像与头像素材（二进制） | `IndexedDB` |
+| 自动恢复快照 | `localStorage`，单槽位 |
+
+**需要理解的边界**
+
+- 这是**浏览器本地存储**，不是云端，也不是永久备份。清除站点数据、换浏览器或换设备，本地数据不会自动跟过去。
+- 唯一可靠的跨设备方式是导出 **完整备份 ZIP** 并妥善保存。
+- 自动恢复快照只保留**最近一次**破坏性操作前的角色与三个工作区数据；**不包含头像二进制**。
+- 撤销只在当前页面会话内有效（10 秒）。
+
+**导入与导出**
+
+| 格式 | 内容 | 可重新导入 |
+| --- | --- | --- |
+| 单角色 JSON | 一个角色的文字资料与内嵌头像 | 是 |
+| 角色库 JSON | 全部角色文字资料，不含头像文件 | 是 |
+| 完整备份 ZIP | 角色 + 头像 + 关系 + 时间线 + 世界观 | 是 |
+| 头像素材 JSON | 素材库中的图片 | 是 |
+| CSV | 角色的文字列，可在表格软件中编辑 | 是（不含头像） |
+| PDF / JPG / PNG | 阅读与分享 | 否 |
+
+**完整备份 ZIP 结构**
 
 ```text
-characters.json
-manifest.json
-backup-info.json
-assets/avatar/*
+characters.json      # { characters: Character[] }
+workspace.json       # { workspaceVersion, relationships, timeline, world }
+manifest.json        # 角色 → 头像文件的绑定、MIME、大小
+backup-info.json     # 导出时间、数量、格式说明
+assets/avatar/*      # 头像图片
 ```
 
-导入角色时会先显示导入预览，确认后才写入本地数据。
+**导入规则**
+
+- **合并**：保留现有数据，按 ID 判断冲突；**替换**：导入包成为完整角色库。
+- 冲突可选「保留现有 / 用导入替换 / 作为副本导入」；副本会获得新 ID。
+- 合并时若 ID 冲突且需要保留双方，会**重映射 ID**，并同步改写关系、时间线与世界观里的引用。
+- 缺失引用不会凭空补一个角色，而是在预检里列出；导入后这些引用保持缺失状态。
+- 旧备份若没有 `workspace.json`，只导入角色与头像，不覆盖现有工作区数据。
+- `backup-info.json` 中的 `appVersion` 是历史字段，目前固定为 `0.1.0`，不代表实际版本。
 
 ---
 
-## Local First
+## 快速开始
 
-Character Studio 当前是 Local First 应用。
+**直接使用**：[rintotan.github.io/character-studio](https://rintotan.github.io/character-studio/)
 
-- 角色文字数据保存在 `localStorage`
-- 上传头像和头像素材保存在 `IndexedDB`
-- 不需要账号
-- 不依赖服务器
-- 不上传角色资料
-- 可通过 JSON / ZIP 完成备份和迁移；CSV 仅承载表格中的文字列，不含头像
+**本地开发**（Node.js 22+，包管理器使用 pnpm）：
 
-请注意：清除浏览器缓存或站点数据可能导致本地数据丢失。建议定期导出角色 JSON 或完整备份 ZIP。
+```bash
+pnpm install
+pnpm dev          # 本地开发
+pnpm typecheck    # TypeScript 检查
+pnpm test         # 单元测试（48 个文件 / 538 个用例）
+pnpm build:pages  # 按 GitHub Pages 子路径构建
+pnpm verify:browser  # 真实浏览器回归（59 项）
+```
+
+`package.json` 中的全部命令：
+
+| 命令 | 作用 |
+| --- | --- |
+| `dev` | 启动 Vite 开发服务器 |
+| `build` | 类型检查并按根路径构建 |
+| `build:pages` | 按 `/character-studio/` 构建，并写入 `build-info.json` |
+| `preview` | 预览构建结果 |
+| `typecheck` | `tsc -b` |
+| `test` | vitest 单元测试 |
+| `verify:browser` | 通过 CDP 驱动本机 Chrome 的端到端检查 |
+| `verify:version` | 校验 `version.ts` 与 `package.json` 版本一致 |
+| `verify:deploy` | 校验线上产物与本地构建逐字节一致 |
 
 ---
 
-## 技术栈
+## 技术说明
 
 | 技术 | 用途 |
 | --- | --- |
-| React | 前端 UI |
-| TypeScript | 类型约束 |
-| Vite | 开发与构建 |
-| html2canvas | 展示页与关系网截图导出（动态 import） |
-| jsPDF | PDF 导出（动态 import） |
-| vitest + happy-dom + fake-indexeddb | 单元测试（36 个文件 / 401 个用例，不需要浏览器） |
-| localStorage | 角色文字数据与偏好 |
-| IndexedDB | 头像素材 Blob 存储 |
+| React 18 + TypeScript 5.7 | 界面与类型约束 |
+| Vite 6 | 开发与构建 |
+| vitest 3 + happy-dom + fake-indexeddb | 单元测试，不需要真实浏览器 |
+| jsPDF | 角色档案文本 PDF，动态加载 |
+| html2canvas | 预览页与关系网的图片 / 截图式 PDF，动态加载 |
+| localStorage / IndexedDB | 文字数据 / 头像二进制 |
+
+应用没有路由库：页面由 7 个值的 `Page` 联合类型与 History API 管理；部署在 GitHub Pages 的 `/character-studio/` 子路径下。
 
 ---
 
@@ -167,288 +222,68 @@ Character Studio 当前是 Local First 应用。
 
 ```text
 src/
-├── App.tsx                    # 应用外壳、页面调度、全局弹窗、浮动栏
-├── main.tsx
-├── styles.css                 # 唯一样式表（约 7177 行，含全部设计令牌）
-├── components/                # AvatarDisplay / Icon(42 个图标) / CharacterPicker / AiSettingsForm
-├── hooks/                     # 状态域：保存、头像、分节、身份字段、图层、偏好、消息、媒体查询、弹窗键盘
-├── config/
-│   ├── developerSettings.ts    # 统一设置对象（单一真相源）+ 应用到 CSS 变量
-│   ├── themeTokens.ts
-│   └── version.ts              # 版本号 + 构建时注入的 commit / 时间戳
-├── content/defaultContent.ts
-├── data/                      # avatarCategories、external-inspiration-library.txt（懒加载词库）
-├── lib/developerStorage.ts
-├── pages/
-│   ├── Dashboard.tsx           # 主页（静态入首屏）
-│   ├── CharacterForm.tsx       # 编辑工作台（懒加载）
-│   ├── CharacterPreview.tsx    # 预览页，双模式 browse / editing（懒加载）
-│   ├── DeveloperCenter.tsx     # 开发者中心（懒加载，唯一有真实 URL 的路由）
-│   ├── RelationshipGraph.tsx   # 角色关系网（懒加载）
-│   ├── Timeline.tsx            # 世界观时间线（懒加载）
-│   ├── WorldManager.tsx        # 世界观管理（懒加载）
-│   ├── dashboard/layers.ts     # 仪表盘弹窗/浮层的一份声明
-│   └── editor/sections.ts      # 六个分节的元数据与完成度规则
-├── storage/                   # 每个数据集一个模块：键名、类型、归一化、读写
-├── types/                     # character / relationship / timeline / world / app
-└── utils/                     # 纯逻辑：裁剪几何、批量编辑、年龄、CSV、导入导出、颜色降级、懒加载恢复
-
-test/                          # 36 个文件 / 401 个用例（vitest + happy-dom + fake-indexeddb）
-
-scripts/
-├── build-identity.mjs         # 构建身份（环境变量优先，缺省从 git 推导，脏树标 -dirty）
-├── build-info.mjs             # 产出 build-info.json / 404.html / .nojekyll
-└── verify-deploy.mjs          # 校验线上产物与本地构建一致
-```
-
-### 页面与数据流
-
-`App.tsx` 是唯一的调度者：页面之间**互不引用**。角色集合由 `App.tsx` 独占所有权，页面通过 `onSave` / `onImport` / `onDelete` 等回调请求写入；关系网 / 时间线 / 世界观各自拥有自己的存储模块。
-
-完整的模块边界、数据模型、持久化与导入导出架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
-
-### 首屏与按需加载
-
-`Dashboard` 静态打入首屏包（它是落地页，走二次请求反而更慢）；`CharacterForm`、
-`CharacterPreview`、`DeveloperCenter`、`RelationshipGraph`、`Timeline`、`WorldManager`
-六条路由通过 `React.lazy` 拆分，只在真正打开时下载。
-词库文件 `external-inspiration-library.txt`（37 KB）因此也移出了首屏。
-
-懒加载的块带内容哈希，而 GitHub Pages 部署会整体替换目录 —— **已打开的标签页持旧入口，第一次懒加载就要一个已删除的块**。这类失败由 `utils/lazyImport.ts` 自愈（只在「块取不到」时刷新一次）。
-
-| 产物 | 优化前 | 优化后 |
-| --- | --- | --- |
-| 首屏 JS | 417.3 KB（gzip 131.8 KB） | 265.5 KB（gzip 78.5 KB） |
-| 首屏 CSS | 81.9 KB（gzip 14.7 KB） | 82.5 KB（gzip 14.9 KB） |
-| 按需加载 | html2canvas、jsPDF | 另加编辑器 67.1 KB、开发者中心 37.4 KB、展示页 10.8 KB、词库 37.3 KB |
-
-更完整的架构、历史和维护说明请阅读：
-
-```text
-Developer Handbook.md
+├── pages/            # Dashboard、编辑器、预览、关系网、时间线、世界观、开发者中心
+├── components/       # 共享组件（底部抽屉、头像、角色选择器、工作区标题等）
+├── hooks/            # 键盘、媒体查询、保存、分节、滚动提示等
+├── storage/          # localStorage / IndexedDB 读写与迁移
+├── utils/            # 导入导出、PDF、头像、关系布局等纯逻辑
+├── types/            # Character / Relationship / Timeline / World / App
+├── config/           # 版本号与开发者设置
+├── assets/fonts/     # PDF 使用的中文字体子集与 OFL 许可证
+└── styles.css        # 设计令牌与全部样式
+test/                 # vitest 单元测试（48 个文件）
+scripts/              # 构建身份、版本校验、部署校验、浏览器回归
+docs/                 # 技术文档、状态、路线图、截图
+.github/workflows/    # GitHub Pages 部署
 ```
 
 ---
 
-## 安装与运行
+## 开发与贡献
 
-```bash
-npm install
-```
+1. 改代码前先读 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md)。
+2. 保持数据兼容：存储键与备份格式的变更必须提供迁移，不允许静默丢弃旧数据。
+3. 改动后至少运行 `pnpm typecheck`、`pnpm test`；涉及布局或交互时再运行 `pnpm verify:browser`。
+4. 提交信息说明「为什么」，并在 [CHANGELOG.md](CHANGELOG.md) 记录验证边界。
+5. 文档入口与职责划分见 [docs/README.md](docs/README.md)。
 
-启动开发服务器：
-
-```bash
-npm run dev
-```
-
-构建生产版本：
-
-```bash
-npm run build
-```
-
-本地预览生产构建：
-
-```bash
-npm run preview
-```
-
-其他脚本：
-
-```bash
-npm run test             # 单元测试（vitest）
-npm run typecheck        # 仅类型检查
-npm run build:pages      # 构建 GitHub Pages 版本（带子路径与构建信息）
-npm run verify:deploy    # 比对线上产物与本地构建
-npm run verify:version   # APP_VERSION 与 package.json 的 version 必须一致（不一致退出码 1）
-npm run verify:browser   # 真实 Chrome 跑后退导航与「快照失败不清空」等 6 项（需先 build:pages）
-```
+本项目目前由个人维护，没有公开的贡献流程或行为准则；提交 Issue 前请先确认问题能在最新版本复现。
 
 ---
 
-## 部署
+## 项目状态
 
-线上地址：<https://rintotan.github.io/character-studio/>（唯一正式地址）
+- 当前版本：**v2.37.1**（Sprint 47 补丁）
+- 阶段：核心功能已可用，处于持续迭代与移动端完善阶段
+- 线上产物：由 GitHub Actions 构建并部署到 GitHub Pages
+- 最近一轮：移动端交互与布局专项（底部抽屉、首屏密度、320px 工具栏 / 时间线 / 分组定位）
 
-> 历史：项目曾部署在 `character-studio-nine.vercel.app`。该 Vercel 项目已于 2026-10-14 删除，
-> 域名返回 `DEPLOYMENT_NOT_FOUND`，Git 集成同步解除，Pages 现在是唯一的发布目标。
-> 注意应用数据按 origin 隔离，旧域名下的 `localStorage` / `IndexedDB` 不会迁移过来。
-
-发布流程由 [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml) 驱动：
-推送到 `main` 触发 `pnpm install --frozen-lockfile` → `typecheck` → `build:pages`
-→ `upload-pages-artifact` → `deploy-pages`。本地不再需要手工发布。
-
-几个容易踩的点：
-
-- **子路径**：站点发布在 `/character-studio/` 而不是域名根目录，所有资源 URL 都依赖
-  `vite build --base=/character-studio/`。开发与 `vite preview` 仍跑在根路径。
-- **深链接**：`/character-studio/developer` 在静态托管上会 404，因此构建时把 `index.html`
-  复制为 `404.html`；应用启动时读取 URL 决定进入哪个页面。页面路由 URL 由
-  `import.meta.env.BASE_URL` 推导，不写死 `/developer`。
-- **版本漂移**：只靠手写的 `version.ts` 标签无法证明线上跑的是哪个提交。构建会把
-  commit 与时间戳注入前端（About 面板可见），同时产出 `build-info.json`；
-  `npm run verify:deploy` 会校验线上入口包、样式表、文件字节数和 commit 是否与本地构建一致，
-  不一致就以非零码退出。
-
----
-
-## 快捷键
-
-| 快捷键 | 功能 |
-| --- | --- |
-| `N` | 新建角色 |
-| `/` | 打开**搜索框**（注意不是筛选面板） |
-| `Esc` | 关闭弹窗、菜单、搜索框（在破坏性确认框上等于「取消」） |
-| `Enter` | 打开第一个搜索结果 |
-| `Ctrl / Cmd + K` | 打开 Command Palette |
-| `Ctrl / Cmd + S` | 在编辑工作台中保存角色 |
-| `Tab` | 切换输入焦点 |
-
-输入框、文本域和选择控件聚焦时，快捷键不会干扰正常输入。
-
----
-
-## 主题与响应式
-
-Character Studio 支持：
-
-- Light
-- Dark
-- Follow System
-
-Dashboard、Editor、Preview、Settings、About、头像素材库、Dialog、Toast、Tooltip 均适配深色模式。
-
-移动端会自动收敛部分按钮和信息，优先保证角色卡片、菜单、导出弹窗和编辑区域可用。
-
----
-
-## 当前状态
-
-当前版本已经具备完整的本地角色创作与管理闭环：
-
-- 角色 CRUD
-- 草稿箱、收藏夹、置顶
-- 搜索、筛选、排序（4 种）
-- 批量选择、批量编辑、批量收藏 / 复制 / 导出 / 删除
-- 卡片视图（>30 角色时按世界观分组）与列表视图（可逐行选择）
-- 六模块编辑工作台：折叠记忆、完成度、跳到下一个未完成、自动保存草稿、随机生成、创作辅助
-- Emoji / Image Avatar，含裁剪与本地素材库
-- 本地头像素材库（IndexedDB，含引用提示与批量管理）
-- 角色关系网、世界观时间线、世界观管理三个独立工作区
-- JSON / CSV / ZIP 导入；JSON / ZIP / CSV / PDF / JPG / PNG 导出
-- Preview 展示页（浏览 / 编辑入口双模式）
-- Light / Dark / Follow System
-- 基础 Design System 控件（令牌化的颜色、圆角、控件高度与层序）
-- Developer Center（版本/品牌/设计系统/文案/Prompt/应用配置/导出/工具/实验开关）
-- 36 个测试文件 / 401 个用例；CI 在构建前执行类型检查与测试
-
-### 可访问性
-
-已在真实渲染层（而非只看样式表）核对过 Dashboard、Editor、Developer Center 的
-浅色与深色两套主题，以及 375px 窄视口：
-
-- 正文与辅助文字对比度均达到 WCAG AA
-- 可缩放：viewport 不再声明 `user-scalable=no` / `maximum-scale=1`，允许双指放大
-- 开关控件带 `role="switch"` 与 `aria-checked`，状态可被读屏识别
-- 无无名可聚焦控件、无缺 `alt` 图片、375px 无横向滚动
-
-主按钮文字颜色不再硬编码：强调色可在 Developer Center 修改，`--on-primary`
-会按对比度自动在白色与近黑之间取值。
-
----
-
-## Roadmap
-
-已交付（原先列在这里的三项，随 1.1.0 / 1.2.0 / 2.0.0 上线）：
-
-- ~~Character Relationship：角色关系网~~（v1.1.0）
-- ~~Timeline：角色和世界事件时间线~~（v1.2.0）
-- ~~World Manager：世界观管理~~（v2.0.0）
-
-未来可能扩展：
-
-- Faction / Organization：阵营与组织
-- Map / Location：地图与地点
-- Multi-version Character：多版本角色
-- AI Assistant：AI 创作辅助
-- Cloud Sync：云同步
-- Plugin System：插件与模板系统
-
-**以上只是方向，没有排期，也没有任何代码实现。** 带优先级、前置条件、验收标准与当前状态的完整路线图见 [docs/ROADMAP.md](docs/ROADMAP.md)。
-
-### 已知限制与未完成
-
-**产品层面的限制（当前版本刻意不做）**
-
-- **没有账号、没有服务器、没有云同步。** 数据只存在于当前浏览器：换设备、换浏览器或换域名都看不到原来的数据。站点地址变更会导致数据「看不见」（浏览器的存储按 origin 隔离）。
-- **没有 AI 助手。** 所有随机生成、关键词与 Prompt 都是**本地词库与规则**的产物，不发起任何网络请求。
-- **Preview 导出的 PDF / JPG / PNG 不能再导入回来**（它们是展示稿，不是数据格式）；能重新导入的是 JSON / ZIP / CSV。
-- **CSV 不携带角色 id**，重建时会生成新 id；关系通过角色**名称**建立，因此重名会解析到第一个匹配项。
-- **没有 i18n**：界面全中文，英文只出现在 AI Prompt 的生成结果里。
-
-**内部质量项（按当前优先级）**
-
-- **把 Dashboard 与 CharacterForm 的 JSX 拆成容器 / 展示组件。** 两个页面各约 3600 / 3000 行，
-  纯逻辑（筛选排序、完成度规则、区块元数据、保存流程、头像域）已经抽出并可单测，剩下的巨型渲染函数尚未拆。
-  这不是「顺手改改」的一批：卡片与编辑器区块承载拖拽、批量选择、弹窗与自动保存，
-  需要先补齐针对这些交互的探针再做，否则是用回归风险换行数。
-- **设置弹窗**未加宽 / 未中文化 / 未折叠尚未发布的功能（P2）。
-- **编辑页六个分节**的设计语言未统一（P2，仅操作栏的玻璃效果已做）。
-- **`useDialogKeyboard` 的键盘行为**已有 10 条单测（含 Escape、Enter 的三种豁免、焦点归还），但**真实浏览器与真机仍未验证**（P2）。
-- **删除恢复记录只保留最近一次**（KI-17 的剩余部分）：三个删除入口现在都会先写记录再删，撤销会把角色与被清理的关联一并恢复；但记录是**单槽位**，与角色快照同一设计 —— 再删一次会替换掉上一份，更早的删除无法恢复。
-- **自动快照只覆盖角色记录**：头像素材、关系网、时间线、世界观与设置不在其中，清空后无法用它找回（确认文案已如实说明；扩大范围需改存储协议）。
-- **约 140 处硬编码颜色字面量**、74 组共用声明体的 CSS 未合并（P3，需逐条判断层叠位置）。
-- **三档视口下的关系网重排、深色主题目视检查、导出分辨率 3x 的实际字节数**均未验证。
-- **Apple 设备的日期控件与 Windows 的 Emoji 显示**需要真机验收。
-
-当前阶段仍以本地优先、数据安全、导入导出稳定和 UI 一致性为主。
-完整的任务清单、优先级、前置条件与验收标准见 [docs/ROADMAP.md](docs/ROADMAP.md)；
-已确认问题与证据见 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)。
+详细状态、已知问题与下一步见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 与 [docs/ROADMAP.md](docs/ROADMAP.md)。
 
 ---
 
 ## 项目文档
 
-仓库根目录只保留 GitHub 约定文件与应用内硬引用的手册（`README.md`、`CHANGELOG.md`、`Developer Handbook.md` —— 后者被页面里 7 处链接指向 `blob/main/Developer%20Handbook.md`），其余文档统一收在 [docs/](docs/) 下。
-**不知道该读哪一份时，先打开 [docs/README.md](docs/README.md)**：它按「我要做什么」组织导航。
-
-| 文档 | 职责 |
+| 文档 | 内容 |
 | --- | --- |
-| [docs/README.md](docs/README.md) | **文档总索引**：落位规则、文档清单、按目的导航、口径原则、维护规则 |
-| [README.md](README.md) | 本文件：项目定位、版本、功能、技术栈、运行方式、文档索引 |
-| [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | **当前状态总览**：版本与提交、已完成 / 部分完成 / 未完成、验证等级、已知问题摘要、下一步重点 |
-| [CHANGELOG.md](CHANGELOG.md) | 每个发布版本的变更与**验证边界**（哪些实测、哪些未验证） |
-| [Developer Handbook.md](Developer%20Handbook.md) | 面向开发者与 AI 协作者的长期手册：历史、架构、数据结构、UI 与开发规范、路线图 |
-| [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) | 项目定位、用户流程、模块边界、核心功能与总体架构 |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 技术栈、路由、组件关系、数据模型、数据流、持久化、导入导出、测试与部署、高风险区域 |
-| [docs/FEATURES.md](docs/FEATURES.md) | 全部实际功能的清单（状态 / 入口 / 数据依赖 / 验证情况 / 遗留问题） |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | 近期 / 中期 / 长期计划，含优先级、前置条件、验收标准与状态 |
-| [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) | 已确认问题（复现条件 / 影响 / 优先级 / 证据 / 建议方向）+ 待验证的设计假设 |
-| [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) | 可确认的开发阶段、重要决策、关键修复、回退与口径更正 |
-| [docs/UI_AUDIT.md](docs/UI_AUDIT.md) | UI 现状审计：页面结构、设计令牌、组件模式、交互行为、响应式与主题、已确认的 UI 问题 |
-| [docs/DEBUG_STRESS_TEST_PLAN.md](docs/DEBUG_STRESS_TEST_PLAN.md) | **可执行的 Debug / 压力测试规范**：294 条用例（含 34 条历史回归）、11 条端到端旅程、测试环境与安全规则、结果与缺陷模板、自动化转化路径 |
-| [docs/UI_DESIGN_HANDOFF.md](docs/UI_DESIGN_HANDOFF.md) | **交给其他设计智能体的独立任务输入**（定位、页面清单、设计系统、必须保留的行为、限制、交付要求） |
-| [docs/CHATGPT_REVIEW_PACKAGE.md](docs/CHATGPT_REVIEW_PACKAGE.md) | **交给 ChatGPT 独立审查的项目资料入口**（概况、状态、架构与 UI 摘要、关键文件索引、待决策问题） |
-
-> 数据与功能状态以**源码**为准；文档与实现冲突时，以代码为当前实现证据（冲突记录见 `docs/DEVELOPMENT_LOG.md` 第 8 节）。
+| [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) | 当前版本、完成度、验证情况、已知问题摘要 |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 路由、组件、状态域、存储与部署 |
+| [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md) | 角色 / 关系 / 时间线 / 世界观字段与备份格式 |
+| [docs/FEATURES.md](docs/FEATURES.md) | 功能清单与实现状态 |
+| [docs/TESTING.md](docs/TESTING.md) | 单元测试与浏览器回归的范围和运行方式 |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 构建、发布、回滚与线上校验 |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | 近期与长期计划 |
+| [CHANGELOG.md](CHANGELOG.md) | 逐版本变更与验证边界 |
+| [Developer Handbook.md](Developer%20Handbook.md) | 长期开发手册（应用内也有入口） |
 
 ---
 
-## Credits
+## 许可证
 
-Designed & developed by **RINTO**.
+本仓库**没有附开源许可证文件**，因此默认保留所有权利（All rights reserved）。未经作者许可，不得复制、分发或用于商业用途。
 
-Built with:
-
-- React
-- TypeScript
-- Vite
-- html2canvas
-- jsPDF
+仓库内 `src/assets/fonts/NotoSansSC-CS.ttf` 是 Noto Sans SC 的子集，按 **SIL Open Font License 1.1** 授权，许可证全文见 [src/assets/fonts/OFL.txt](src/assets/fonts/OFL.txt)。该许可只覆盖字体文件本身。
 
 ---
 
-## License
-
-当前仓库未声明开源许可证。使用、分发或二次开发前请先确认授权方式。
+<sub>Character Studio · 本地优先的角色与世界观工作台 · [在线使用](https://rintotan.github.io/character-studio/)</sub>
