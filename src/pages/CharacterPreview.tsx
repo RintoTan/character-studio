@@ -391,6 +391,18 @@ export function CharacterPreview({
               </>
             ) : (
               <>
+                <button
+                  aria-label="返回"
+                  className="ghost-button preview-action-button"
+                  data-tooltip="返回"
+                  onClick={onBack}
+                  type="button"
+                >
+                  <span className="desktop-label">返回</span>
+                  <span className="mobile-icon">
+                    <Icon name="arrowLeft" size={16} />
+                  </span>
+                </button>
                 {onEdit && (
                   <button
                     aria-label="编辑"

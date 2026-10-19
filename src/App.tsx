@@ -259,6 +259,9 @@ function App() {
   // this — rather than against a "was that a popstate?" flag — is what tells a real
   // navigation apart from a re-render, including Back/Forward between two entries of
   // the same page.
+  const scrollMemoryRef = useRef<Record<string, number>>({});
+  const navStackRef = useRef<Array<{ page: Page; target: PageTarget | null }>>([]);
+  const navModeRef = useRef<"push" | "replace">("push");
   const committedEntryRef = useRef<{ page: Page; target: PageTarget | null } | null>(null);
 
   // Escape belongs to the settings dialog, but not while one of its own
@@ -699,6 +702,7 @@ function App() {
       window.location.href,
     );
     committedEntryRef.current = { page: initialPage, target: null };
+    navStackRef.current = [{ page: initialPage, target: null }];
 
     function handlePopState(event: PopStateEvent) {
       // This used to name three pages and send every other value to the dashboard.
@@ -716,6 +720,10 @@ function App() {
       // makes Forward rebuild the screen instead of showing the workspace with
       // nothing focused.
       committedEntryRef.current = { page: landedPage, target: nextTarget };
+      // Browser Back/Forward is its own transport. The in-app stack starts again from
+      // where the reader landed, so a later "返回" cannot walk into entries this app
+      // no longer owns.
+      navStackRef.current = [{ page: landedPage, target: nextTarget }];
       setPage(landedPage);
       setPageTarget(nextTarget);
       setIsAppAboutOpen(false);
@@ -727,6 +735,21 @@ function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
+
+  // One scroll position per screen, kept for this visit only. Returning to a long
+  // timeline should not drop the reader at the top; a fresh visit still starts there.
+  useEffect(() => {
+    const restorable = page === "dashboard" || page === "timeline" || page === "world" || page === "relationships";
+    const saved = scrollMemoryRef.current[page] || 0;
+
+    if (restorable) {
+      window.requestAnimationFrame(() => window.scrollTo({ top: saved, left: 0, behavior: "auto" }));
+    }
+
+    return () => {
+      scrollMemoryRef.current[page] = window.scrollY;
+    };
+  }, [page]);
 
   useEffect(() => {
     const target = pendingTargetRef.current;
@@ -741,7 +764,31 @@ function App() {
       return;
     }
 
+    // A "replace" navigation closes a panel or returns: it must not leave the screen
+    // it just left in the browser's Back stack, which is what used to make
+    // preview → 编辑 → 取消 → 返回 come back to the editor.
+    if (navModeRef.current === "replace") {
+      navModeRef.current = "push";
+      committedEntryRef.current = { page, target };
+      window.history.replaceState(
+        { characterStudioPage: page, characterStudioTarget: target },
+        "",
+        page === "developer" ? DEVELOPER_PATH : window.location.href,
+      );
+      const stack = navStackRef.current;
+      const top = stack[stack.length - 1];
+      if (top && top.page === page && (top.target?.id || null) === (target?.id || null)) {
+        stack[stack.length - 1] = { page, target };
+      } else if (top && top.page === page && !target) {
+        stack[stack.length - 1] = { page, target };
+      } else {
+        stack.push({ page, target });
+      }
+      return;
+    }
+
     committedEntryRef.current = { page, target };
+    navStackRef.current.push({ page, target });
     window.history.pushState(
       { characterStudioPage: page, characterStudioTarget: target },
       "",
@@ -787,17 +834,51 @@ function App() {
     setPage(kind);
   }
 
+  /** Opening a character from a workspace remembers that workspace's focus, so its
+   *  own "返回" lands on the same node rather than a reset canvas. */
+  function openCharacterFromWorkspace(characterId: string) {
+    const target = characters.find((entry) => entry.id === characterId);
+    if (!target) return;
+
+    const stack = navStackRef.current;
+    const top = stack[stack.length - 1];
+    if (top?.page === "relationships") {
+      top.target = { kind: "relationships", id: characterId };
+    }
+
+    setSelectedCharacter(target);
+    setPage("preview");
+  }
+
   function handlePageTargetHandled() {
     setPageTarget(null);
   }
 
-  function goBack() {
-    if (window.history.state?.characterStudioPage && window.history.length > 1) {
-      window.history.back();
+  /** True when this "返回" could actually move somewhere in-app. */
+  function canGoBack() {
+    return navStackRef.current.length > 1;
+  }
+
+  /**
+   * The one "return" used by preview and the editor's cancel. It walks the app's own
+   * record of where the reader came from, and restores the screen by replacing the
+   * current entry — the panel being closed should not become a Back destination.
+   */
+  function goBack(fallback: Page = "dashboard") {
+    const stack = navStackRef.current;
+
+    if (stack.length > 1) {
+      stack.pop();
+      const previous = stack[stack.length - 1];
+      navModeRef.current = "replace";
+      setPageTarget(previous.target);
+      setPage(previous.page);
       return;
     }
 
-    setPage("dashboard");
+    navModeRef.current = "replace";
+    setPageTarget(null);
+    setPage(fallback);
   }
 
   function handleSave(character: Character) {
@@ -1350,7 +1431,7 @@ function App() {
           onRequestDashboardFilterReset={(favoriteMode) =>
             setDashboardFiltersReset((current) => ({ signal: current.signal + 1, favoriteMode }))
           }
-          onCancel={() => setPage("dashboard")}
+          onCancel={() => goBack("dashboard")}
         />
       )}
 
@@ -1361,7 +1442,7 @@ function App() {
             ...developerSettings.exportDefaults,
             footerText: developerSettings.content.footerText,
           }}
-          onBack={() => setPage("dashboard")}
+          onBack={() => goBack("dashboard")}
           onEdit={() => handleEdit(selectedCharacter)}
           onOpenEntry={(entryId) => openWorkspace("world", entryId)}
           onOpenEvent={(eventId) => openWorkspace("timeline", eventId)}
@@ -1389,13 +1470,7 @@ function App() {
           focusEntryId={pageTarget?.kind === "world" ? pageTarget.id : null}
           onBack={() => setPage("dashboard")}
           onFocusHandled={handlePageTargetHandled}
-          onOpenCharacter={(characterId) => {
-            const target = characters.find((entry) => entry.id === characterId);
-            if (target) {
-              setSelectedCharacter(target);
-              setPage("preview");
-            }
-          }}
+          onOpenCharacter={(characterId) => openCharacterFromWorkspace(characterId)}
         />
       )}
       {page === "timeline" && (
@@ -1404,13 +1479,7 @@ function App() {
           focusEventId={pageTarget?.kind === "timeline" ? pageTarget.id : null}
           onBack={() => setPage("dashboard")}
           onFocusHandled={handlePageTargetHandled}
-          onOpenCharacter={(characterId) => {
-            const target = characters.find((entry) => entry.id === characterId);
-            if (target) {
-              setSelectedCharacter(target);
-              setPage("preview");
-            }
-          }}
+          onOpenCharacter={(characterId) => openCharacterFromWorkspace(characterId)}
         />
       )}
       {page === "relationships" && (
@@ -1419,13 +1488,7 @@ function App() {
           onFocusHandled={handlePageTargetHandled}
           characters={characters}
           onBack={() => setPage("dashboard")}
-          onOpenCharacter={(characterId) => {
-            const target = characters.find((entry) => entry.id === characterId);
-            if (target) {
-              setSelectedCharacter(target);
-              setPage("preview");
-            }
-          }}
+          onOpenCharacter={(characterId) => openCharacterFromWorkspace(characterId)}
         />
       )}
       {page === "developer" && (
