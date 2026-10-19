@@ -1,8 +1,10 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { AiSettingsForm } from "./components/AiSettingsForm";
 import { AvatarDisplay } from "./components/AvatarDisplay";
+import { BottomSheet } from "./components/BottomSheet";
 import { Icon } from "./components/Icon";
 import { useDialogKeyboard } from "./hooks/useDialogKeyboard";
+import { useMediaQuery } from "./hooks/useMediaQuery";
 import {
   applyDeveloperSettings,
   defaultDeveloperSettings,
@@ -160,6 +162,14 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
   const [isWorkspaceMenuOpen, setIsWorkspaceMenuOpen] = useState(false);
+  // Which way the workspace list opens is a decision about the screen, not about how
+  // it looks: a dropdown anchored in the top-right cannot stay inside 375px.
+  const isNarrowNav = useMediaQuery("(max-width: 720px)");
+  const workspaceTriggerRef = useRef<HTMLButtonElement | null>(null);
+  // The Escape handler below is registered once and cannot read state; this mirror lets
+  // it tell "Escape while the sheet is open" from every other Escape.
+  const workspaceOpenRef = useRef(false);
+  workspaceOpenRef.current = isWorkspaceMenuOpen;
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isFirstAboutOpen, setIsFirstAboutOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
@@ -345,7 +355,13 @@ function App() {
         setIsThemeMenuOpen(false);
       }
 
-      if (workspaceMenuRef.current && !workspaceMenuRef.current.contains(event.target as Node)) {
+      // The phone's sheet is portalled to body, so it is never inside the trigger's
+      // wrapper. Without this, the first tap on a row would close the sheet before the
+      // row's click landed — a real finger does that; a synthetic click does not.
+      const inSheet =
+        event.target instanceof Element && event.target.closest("[data-sheet-root]");
+
+      if (!inSheet && workspaceMenuRef.current && !workspaceMenuRef.current.contains(event.target as Node)) {
         setIsWorkspaceMenuOpen(false);
       }
     }
@@ -353,7 +369,13 @@ function App() {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setIsThemeMenuOpen(false);
-        setIsWorkspaceMenuOpen(false);
+        // Closing from the keyboard puts focus back on the switch, the same as closing
+        // it with the close button or the scrim.
+        if (workspaceOpenRef.current) {
+          closeWorkspaceMenu();
+        } else {
+          setIsWorkspaceMenuOpen(false);
+        }
         setIsAppAboutOpen(false);
         setIsFirstAboutOpen(false);
         setIsAppAssetLibraryOpen(false);
@@ -1050,6 +1072,60 @@ function App() {
     }
   }, [floatingLift, isAppOverlayOpen, isPageScrolling, showQuickBackToTop, showQuickToBottom]);
 
+  // One list, two presentations: the desktop dropdown and the phone's sheet render the
+  // same entries, so a workspace cannot exist in one and be missing from the other.
+  const workspaceEntries = [
+    {
+      id: "dashboard",
+      label: "角色创作工作台",
+      hint: "角色列表、编辑与预览",
+      icon: "grid" as const,
+      active: page === "dashboard",
+      onSelect: () => goDashboard(),
+    },
+    ...(developerSettings.featureFlags.experimentalRelationshipGraph
+      ? [
+          {
+            id: "relationships",
+            label: "角色关系网",
+            hint: "角色之间的连接",
+            icon: "link" as const,
+            active: page === "relationships",
+            onSelect: () => setPage("relationships"),
+          },
+        ]
+      : []),
+    ...(developerSettings.featureFlags.experimentalTimeline
+      ? [
+          {
+            id: "timeline",
+            label: "世界观时间线",
+            hint: "发生过的节点",
+            icon: "clock" as const,
+            active: page === "timeline",
+            onSelect: () => setPage("timeline"),
+          },
+        ]
+      : []),
+    ...(developerSettings.featureFlags.worldManager
+      ? [
+          {
+            id: "world",
+            label: "世界观管理",
+            hint: "设定与派系",
+            icon: "globe" as const,
+            active: page === "world",
+            onSelect: () => setPage("world"),
+          },
+        ]
+      : []),
+  ];
+
+  function closeWorkspaceMenu() {
+    setIsWorkspaceMenuOpen(false);
+    window.requestAnimationFrame(() => workspaceTriggerRef.current?.focus());
+  }
+
   return (
     <main className="app-shell">
       <nav className="topbar" ref={topbarRef}>
@@ -1075,86 +1151,67 @@ function App() {
           <div className="workspace-menu-wrap" ref={workspaceMenuRef}>
             <button
               aria-expanded={isWorkspaceMenuOpen}
-              aria-haspopup="menu"
+              aria-haspopup={isNarrowNav ? "dialog" : "menu"}
               className={isWorkspaceMenuOpen ? "workspace-switch active" : "workspace-switch"}
               onClick={() => setIsWorkspaceMenuOpen((current) => !current)}
+              ref={workspaceTriggerRef}
               type="button"
             >
               <Icon name="grid" size={16} />
               <span className="workspace-switch-label">{workspaceLabel}</span>
               <Icon name="chevronDown" size={15} />
             </button>
-            {isWorkspaceMenuOpen && (
+            {isWorkspaceMenuOpen && (isNarrowNav ? (
+              <BottomSheet
+                description="切换角色创作、关系网、时间线与世界观"
+                onClose={closeWorkspaceMenu}
+                open
+                testId="workspace-sheet"
+                title="工作区"
+              >
+                {workspaceEntries.map((entry) => (
+                  <button
+                    aria-current={entry.active ? "page" : undefined}
+                    className={entry.active ? "sheet-row selected" : "sheet-row"}
+                    key={entry.id}
+                    onClick={() => {
+                      closeWorkspaceMenu();
+                      entry.onSelect();
+                    }}
+                    type="button"
+                  >
+                    <Icon name={entry.icon} size={18} />
+                    <span>
+                      <strong>{entry.label}</strong>
+                      <small>{entry.hint}</small>
+                    </span>
+                    {entry.active ? <span className="sheet-state">当前</span> : null}
+                  </button>
+                ))}
+              </BottomSheet>
+            ) : (
               <div className="workspace-menu" role="menu">
                 <p className="workspace-menu-group">工作区</p>
-                <button
-                  className={page === "dashboard" ? "selected" : ""}
-                  onClick={() => {
-                    setIsWorkspaceMenuOpen(false);
-                    goDashboard();
-                  }}
-                  role="menuitem"
-                  type="button"
-                >
-                  <Icon name="grid" size={16} />
-                  <span>
-                    <strong>角色创作工作台</strong>
-                    <small>角色列表、编辑与预览</small>
-                  </span>
-                </button>
-                {developerSettings.featureFlags.experimentalRelationshipGraph && (
+                {workspaceEntries.map((entry) => (
                   <button
-                    className={page === "relationships" ? "selected" : ""}
+                    className={entry.active ? "selected" : ""}
+                    key={entry.id}
                     onClick={() => {
-                      setIsWorkspaceMenuOpen(false);
-                      setPage("relationships");
+                      closeWorkspaceMenu();
+                      entry.onSelect();
                     }}
                     role="menuitem"
                     type="button"
                   >
-                    <Icon name="link" size={16} />
+                    <Icon name={entry.icon} size={16} />
                     <span>
-                      <strong>角色关系网</strong>
-                      <small>角色之间的连接</small>
+                      <strong>{entry.label}</strong>
+                      <small>{entry.hint}</small>
                     </span>
                   </button>
-                )}
-                {developerSettings.featureFlags.experimentalTimeline && (
-                  <button
-                    className={page === "timeline" ? "selected" : ""}
-                    onClick={() => {
-                      setIsWorkspaceMenuOpen(false);
-                      setPage("timeline");
-                    }}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <Icon name="clock" size={16} />
-                    <span>
-                      <strong>世界观时间线</strong>
-                      <small>发生过的节点</small>
-                    </span>
-                  </button>
-                )}
-                {developerSettings.featureFlags.worldManager && (
-                  <button
-                    className={page === "world" ? "selected" : ""}
-                    onClick={() => {
-                      setIsWorkspaceMenuOpen(false);
-                      setPage("world");
-                    }}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <Icon name="globe" size={16} />
-                    <span>
-                      <strong>世界观管理</strong>
-                      <small>设定与派系</small>
-                    </span>
-                  </button>
-                )}
+                ))}
               </div>
-            )}
+            ))}
           </div>
           <div className="theme-menu-wrap" ref={themeMenuRef}>
             <div className="theme-combo" aria-label="主题控制">
