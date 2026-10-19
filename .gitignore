@@ -2,3 +2,22 @@ node_modules
 dist
 .DS_Store
 .vscode
+
+# Build and test output
+*.tsbuildinfo
+.vite/
+coverage/
+test-results/
+playwright-report/
+*.log
+
+# Local browser profiles and temporary capture output
+.tmp/
+tmp/
+screenshots-tmp/
+.character-studio-fixture-*/
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example

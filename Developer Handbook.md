@@ -1,5 +1,7 @@
 # Character Studio Developer Handbook
 
+> **文档状态**：本手册记录长期设计取舍与早期实现，其中页面结构、组件名、版本号与命令可能早于当前代码。当前架构见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)，数据格式见 [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md)，项目状态见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md)。
+
 ## 1. 项目简介
 
 Character Studio 是一个面向 OC（Original Character，原创角色）创作的本地优先角色工作台。它不是单纯的表单工具，也不是云端角色数据库，而是一个在浏览器中运行、以本地数据为核心的创作软件原型。
@@ -1827,9 +1829,9 @@ Asset Library 可继续扩展：
 | `docs/ROADMAP.md` | 要知道下一步做什么、优先级与验收标准 |
 | `docs/KNOWN_ISSUES.md` | 要修缺陷，或想确认某个观感是否已被证实 |
 | `docs/DEVELOPMENT_LOG.md` | 想查某个决定/回退的来由，以及踩过的坑 |
-| `docs/UI_AUDIT.md` | 要做 UI 改动或设计评审 |
-| `docs/UI_DESIGN_HANDOFF.md` | 要把 UI 工作交给其他设计智能体 |
-| `docs/CHATGPT_REVIEW_PACKAGE.md` | 要让外部审查者（如 ChatGPT）快速了解项目 |
+| `docs/archive/UI_AUDIT.md` | 要做 UI 改动或设计评审 |
+| `docs/archive/UI_DESIGN_HANDOFF.md` | 要把 UI 工作交给其他设计智能体 |
+| `docs/archive/CHATGPT_REVIEW_PACKAGE.md` | 要让外部审查者（如 ChatGPT）快速了解项目 |
 | `docs/DEBUG_STRESS_TEST_PLAN.md` | 要执行系统测试，或把测试交给测试智能体 |
 
 **口径原则**：数据与功能状态以源码为准；文档与实现冲突时以代码为当前实现证据，冲突记录见 `docs/DEVELOPMENT_LOG.md` 第 8 节。

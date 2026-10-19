@@ -14,8 +14,8 @@
 | Sprint | **47**（`APP_SPRINT`）—— 文字版档案 PDF、关系网双模式、时间线与世界观布局收尾；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
-| 审计基线提交 | `bccec24843e0ccdae0c97c8ab7d3d0484267e550`（短号 `bccec24`）—— 本文与 `docs/ARCHITECTURE.md` 等文档中的代码行号均以此为基准 |
-| 文档提交 | `f94f321`（重建文档体系）→ `3445979`（外部审查入口）→ `36b1cd6`（更正用例数）→ 本轮「文档落位规整与版本口径统一」（提交号见 `CHANGELOG.md` 对应条目） |
+| 审计基线提交 | `86af316`（2.37.1 发布提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
+| 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
 | 工作区状态 | **干净**（`git status --porcelain` 无输出） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
@@ -35,6 +35,20 @@
 | 320px 时间线卡片 | 卡片头两列 grid：类型+日期一列、编辑/删除固定右列 | 8 张卡片操作与头部同排；长标题 2 行且不裁切 |
 | 分组定位滚动提示 | `useHorizontalScrollHint` + `mask-image` 渐隐，只留在仍被裁切的一侧 | 起始 `has-overflow-end`、滚到末端变 `has-overflow-start`、末端完整可见 |
 
+### 项目整理（2026-10-19，未发布应用版本）
+
+只动文档与仓库卫生，不改应用行为、存储协议与版本号（仍为 2.37.1）。
+
+| 事项 | 结果 |
+| --- | --- |
+| README | 重写为对外主页：定位、8 张真实界面截图、按任务组织的功能、数据边界、快速开始、状态、许可证 |
+| 截图 | `docs/screenshots/` 新增 9 张，全部使用 CS-FIXTURE-100-V1 的虚构数据 |
+| 历史资料 | `PROJECT_OVERVIEW` / `UI_AUDIT` / `UI_DESIGN_HANDOFF` / `CHATGPT_REVIEW_PACKAGE` 移入 `docs/archive/`，附归档说明 |
+| 新文档 | `DATA_FORMATS.md`、`TESTING.md`、`DEPLOYMENT.md` |
+| 索引 | `docs/README.md` 重写为职责表与「按目的找文档」 |
+| 仓库卫生 | `.gitignore` 补充日志、临时 profile、构建缓存与本地环境文件；仓库内无已跟踪的构建产物 |
+| 代码 | 未改；`typecheck` / 538 用例 / `build:pages` / 59 项浏览器检查均通过 |
+
 ### Sprint 47（2.37.0）
 
 已随 2.37.0 发布。
@@ -43,16 +57,14 @@
 | --- | --- | --- |
 | 角色档案 PDF（文字版，可选中/检索） | `src/utils/characterSheetPdf.ts`（642 行）、`src/utils/characterSheetExport.ts`、`src/utils/fontGlyphCoverage.ts`、`src/assets/fonts/NotoSansSC-CS.ttf` | pypdf 抽取中文文本；4 份样本 1–3 页、63–80 ms |
 | 缺字形不静默丢失 | 同上 `safe()` / `findUnsupportedCharacters` | `test/characterSheetPdf.test.ts` 8 例；`special-chars-sheet.pdf` 15 个字符呈 □ |
-| 关系网图谱 / 管理双模式 | `src/pages/RelationshipGraph.tsx`（2366 行） | 191 条关系分 10 页、姓名+备注搜索、类型/角色筛选、编辑删除定位；375px 条目化 |
+| 关系网图谱 / 管理双模式 | `src/pages/RelationshipGraph.tsx`（2414 行） | 191 条关系分 10 页、姓名+备注搜索、类型/角色筛选、编辑删除定位；375px 条目化 |
 | 工作区容器内距与阅读宽度 | `src/styles.css` 的 `--workspace-inset`、`.timeline-page` 880px、`.world-detail` 720px | 1440/375 无横向溢出；容器贴近卡片边缘的问题消失 |
-| 时间线年份导航 | `src/pages/Timeline.tsx`（649 行） | 单行滚动、当前年入视野、点年份避开吸顶栏 |
+| 时间线年份导航 | `src/pages/Timeline.tsx`（654 行） | 单行滚动、当前年入视野、点年份避开吸顶栏 |
 | 世界观主从边界与移动端切换 | `src/pages/WorldManager.tsx`（706 行） | 手机一次一屏、返回列表左向 chevron、详情模式隐藏列表工具栏 |
 
 **浏览器检查**：`npm run verify:browser` 59/59（新增管理视图、手机图谱适配、浮动栏新行为、移动端导航抽屉与首屏两组、320px 工具栏/时间线/分组提示）。**单元测试**：48 文件 / 538 用例。
 
-**版本号口径已统一（原 KI-07，2026-10-15 修复）**：`package.json` 的 `version` 已由 `1.0.0` 改为 **`2.27.0`**，与 `src/config/version.ts` 的 `APP_VERSION` 一致。
-应用内所有版本显示仍然只读 `version.ts`；`package.json` 的版本号是包元数据，不参与界面与构建产物（`scripts/build-info.mjs` 从 `version.ts` 取值）。
-两处尚未合并为单一来源 —— 见 `docs/ROADMAP.md` 的 R-13。
+**版本号口径**：`src/config/version.ts` 的 `APP_VERSION` 与 `package.json` 的 `version` 保持同值，由 `npm run verify:version` 在本地与 CI 中守卫。界面与构建产物只读 `version.ts`；`package.json` 是包元数据。
 
 ### 运行方式（from `package.json` scripts）
 
@@ -87,13 +99,13 @@
 | 角色档案 PDF 导出（文字版 / 截图版） | `utils/characterSheetPdf.ts` + `utils/characterSheetExport.ts` + `utils/fontGlyphCoverage.ts` + `assets/fonts/` | 已实现 |
 | 开发者中心 | `src/pages/DeveloperCenter.tsx`（1199 行）+ `config/developerSettings.ts` | 已实现 |
 | 头像（Emoji + 图片上传 / 裁剪 / 压缩） | `hooks/useAvatarEditing.ts`（433 行）、`utils/cropGeometry.ts`、`components/AvatarDisplay.tsx` | 已实现 |
-| 头像素材库（IndexedDB） | `utils/avatarAssets.ts`（374 行） | 已实现 |
-| 导入 / 导出 / 备份 / 恢复 | `utils/importExport.ts`（1881 行）、`storage/workspaceBackup.ts`、`storage/backup.ts` | 已实现 |
+| 头像素材库（IndexedDB） | `utils/avatarAssets.ts`（389 行） | 已实现 |
+| 导入 / 导出 / 备份 / 恢复 | `utils/importExport.ts`（2184 行）、`storage/workspaceBackup.ts`、`storage/backup.ts` | 已实现 |
 | 主题（浅色 / 深色 / 跟随系统） | `App.tsx` 主题 effect + `styles.css` 令牌 | 已实现 |
 | 弹窗键盘控制 | `hooks/useDialogKeyboard.ts`（90 行） | 已实现 |
 | 懒加载块自愈 | `utils/lazyImport.ts`（83 行） | 已实现 |
 | 构建身份与部署校验 | `scripts/build-identity.mjs`、`build-info.mjs`、`verify-deploy.mjs`、`.github/workflows/deploy-pages.yml` | 已实现 |
-| 单元测试 | `test/` **31 个文件 / 360 个用例** | 已实现 |
+| 单元测试 | `test/` **48 个文件 / 538 个用例** | 已实现 |
 
 ---
 
@@ -124,46 +136,41 @@
 
 ## 5. 验证等级与最近一次验证结果
 
-### 5.1 最近一次执行（2026-10-16，Sprint 38.2 后）
+### 5.1 最近一次执行（2026-10-19，2.37.1）
 
 | 命令 | 结果 |
 | --- | --- |
-| `npm run typecheck`（`tsc -b`） | **通过**，退出码 0，无输出 |
-| `npm test`（`vitest run`） | **通过**：`Test Files 38 passed (38)`、`Tests 417 passed (417)`，0 失败 0 跳过（Sprint 38.2 后的实测值；Sprint 38.1 后为 36 / 401，Sprint 38 后为 35 / 385，Sprint 38 开始前为 31 / 360） |
-| `npm run build`（`tsc -b && vite build`） | 见 `docs/DEVELOPMENT_LOG.md` 的「本轮验证」一节 |
-| 线上 `build-info.json` | `commit: bccec24…`、`version: 2.27.0`、`entry: index-CJaOoWIX.js`、`stylesheet: index-C1wTYI6I.css`、列出 **19 个文件**（描述的是**线上站点**，即上一轮部署；本轮未推送，因此本地 HEAD 与它不同） |
+| `npm run typecheck` | **通过**，退出码 0，无输出 |
+| `npm test` | **通过**：48 个文件 / 538 个用例，0 失败 0 跳过 |
+| `npm run build:pages` | **通过**，22 个产物文件；入口 `index-BRAiUqUH.js`、样式 `index-B-v4juP6.css` |
+| `npm run verify:browser` | **59/59 通过**（含 320 / 375 / 390 / 430 移动端断言） |
+| `npm run verify:version` | **通过**，2.37.1 |
+| 线上 `build-info.json` | `version 2.37.1`、`sprint 47`、`commit 86af316`；`verify:deploy` 比对 22 个文件逐字节一致 |
 
 ### 5.2 各模块的验证等级
 
 | 等级 | 含义 | 覆盖的模块 |
 | --- | --- | --- |
-| **已测试** | 有单测覆盖，且本轮 `vitest run` 通过 | 存储层（角色 / 关系 / 时间线 / 世界观 / 备份 / 引用清理 / 恢复快照 / 仪表盘偏好 / 图偏好 / 编辑器 UI 状态 / 最近头像）、纯逻辑（批量编辑 / 裁剪几何 / 年龄 / 文本片段 / CSV / 导入导出 / 图层声明 / 关系语义与布局 / 分节规则） |
-| **仅静态检查** | 只有类型检查保证，无单测、无真实交互证据 | `useDialogKeyboard` 的键盘行为（Escape / Enter / 焦点）、`lazyImport` 之外的部署路径、Developer Center 的多数控件回调 |
-| **未验证** | 既无单测也无实测记录 | 三档视口下的关系网重排、深色主题目视检查、导出分辨率 3x 的实际字节数、编辑页六节设计语言、设置弹窗的加宽/中文化方案 |
+| **已测试** | 有单测覆盖，且 `vitest run` 通过 | 存储层（角色 / 关系 / 时间线 / 世界观 / 备份 / 引用清理 / 恢复快照 / 偏好）、纯逻辑（批量编辑 / 裁剪几何 / 年龄 / CSV / 导入导出 / 导入计划 / 关系语义与布局 / 分节规则）、PDF 文本结构、删除恢复、版本一致性 |
+| **已测试（浏览器）** | `verify:browser` 覆盖真实 DOM 与交互 | 七个页面的进入与历史恢复、Dashboard 全流程、关系网双模式、时间线与世界观、导入预检、移动端抽屉与 320px 布局 |
+| **需真机** | 桌面 Chrome 无法给出结论 | iPhone Safari 地址栏与安全区、软键盘、触控手感、Safari 渲染性能 |
+| **未验证** | 无单测、无实测记录 | Developer Center 的多数控件回调、导出分辨率 3x 的实际文件大小 |
 
-历史实测证据（真实浏览器、CDP 探针）记录在 `CHANGELOG.md` 与 `docs/DEVELOPMENT_LOG.md`，本文不重复。
+历史实测证据记录在 `CHANGELOG.md` 与 `docs/DEVELOPMENT_LOG.md`，本文不重复。
 
 ---
 
 ## 6. 已知问题
 
-完整清单见 **`docs/KNOWN_ISSUES.md`**。摘要（按优先级）：
+完整清单与复现条件见 **`docs/KNOWN_ISSUES.md`**。当前摘要：
 
-- **KI-12（P0，数据安全）** App 设置里的「清空本地数据」直接 `localStorage.clear()` + 清空 IndexedDB 头像素材，**不写快照**；而主页同名入口会先写快照并在清空后写回。两条同名入口的安全等级不同，App 那条路径不可恢复。**仅记录，未修复。**
-- **KI-01**（P2）设置弹窗未加宽 / 未中文化 / 未折叠未发布项。
-- **KI-02**（P2）编辑页六个分节设计语言未统一。
-- **KI-03**（P2，阻塞）浮动栏「贴近主栏」需求含义未确认，无法安全实施。
-- **KI-05**（P2）`useDialogKeyboard` 的键盘行为无有效验证证据。
-- **KI-14**（P2）CSV 的关系行按角色名解析，重名时映射被导入角色覆盖 → 关系可能连到错误角色（静默）。
-- **KI-10**（P2，需真机）Apple 设备日期控件、Windows Emoji 显示未在真机验收。
-- **KI-04**（P3）Developer Center 有 4 组不可达分节渲染分支（`ai` / `debug` / `data` / `update`）。
-- **KI-06**（P3）`compactMobileEditor` 开关写入 `data-compact-mobile-editor`，而样式表**无任何规则读取它**。
-- **KI-08**（P3）`styles.css` 仍有约 140 处硬编码颜色字面量。
-- **KI-09**（P3）Developer Center 中 7 个文案字段与若干导出选项标注「暂未应用」。
-- **KI-11**（P3）三档视口下的关系网重排未实测。
-- **KI-13**（P3）完整备份 ZIP 的 `backup-info.json` 里 `appVersion` 硬编码 `0.1.0`。
+- **KI-18（P3）** 完整备份 ZIP 的 `backup-info.json` 中 `appVersion` 固定为 `0.1.0`，与实际版本无关。
+- **KI-19（P3）** PDF 字体是子集，极少数生僻字会以 `□` 呈现；导出后会提示具体字符，不会静默丢字。
+- **KI-20（P3）** 手机端底部抽屉没有拖拽关闭手势，只支持遮罩、关闭按钮与 Escape。
+- **KI-21（P3）** 软键盘弹起时未做 `visualViewport` 适配；目前依赖浏览器自身滚动。
+- **KI-22（P2，需真机）** iPhone Safari 的地址栏收放、安全区与渲染性能未经真机验收。
 
-**已修复（2026-10-15）**：**KI-07** —— `package.json` 的 `version` 已由 `1.0.0` 统一为 `2.27.0`，与应用版本号一致。
+早期台账中的 KI-01 – KI-17 已随 2.28 – 2.37 修复，过程见 `CHANGELOG.md`。
 
 ---
 
@@ -171,20 +178,18 @@
 
 | 类型 | 内容 |
 | --- | --- |
-| 需用户决策 | 浮动栏「贴近主栏」的「主栏」指吸顶顶栏还是编辑页操作栏（KI-03） |
-| 需用户决策 | 英文 AI Prompt 中自由文本的处理策略（音译 / 保留中文并标注 / 仅翻译预设值）——当前实现为「保留原文 + 一行语言说明」 |
-| 需真机 | Apple 设备的日期控件渲染、Windows 的 Emoji 字体回退 |
-| 无技术阻塞 | 构建、测试、类型检查、部署流程当前全部可用且一致 |
+| 需真机 | iPhone Safari 的视口、安全区、软键盘与性能 |
+| 产品边界 | 不引入账号与云端同步；跨设备只能依赖导出的完整备份 |
+| 无技术阻塞 | 构建、测试、类型检查、部署流程当前均可用且一致 |
 
 ---
 
 ## 8. 下一阶段的重点
 
-1. **UI 设计交接**：`docs/UI_DESIGN_HANDOFF.md` 已可作为独立任务输入交给设计智能体。
-2. **设置弹窗与编辑页设计语言**（KI-01 / KI-02）——两者都属于「不改数据与业务逻辑」的纯呈现层工作，风险低、收益直观。
-3. **把「暂未应用」的配置项收敛**（KI-06 / KI-09）——围绕「设置不能承诺它做不到的事」这条既有原则。
-4. **补 `useDialogKeyboard` 的有效验证**（KI-05）——它是全站键盘可达性的唯一入口，当前只有类型检查。
-5. 长期：`docs/ROADMAP.md` 的中期 / 长期项。
+1. **Sprint 48 规划**：角色人生轨迹、动态人物关系、世界观与故事联动（均为规划中，见 `docs/ROADMAP.md`）。
+2. **真机验收**：在 iPhone Safari 上过一遍导航抽屉、长列表与软键盘场景。
+3. **补齐验证缺口**：3x 关系网导出的实际体积；Developer Center 的控件回调。
+4. 文档维护：本轮已把 README、状态、架构、数据格式、测试与部署拆分为各自负责的文档。
 
 ---
 

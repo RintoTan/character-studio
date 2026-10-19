@@ -1,6 +1,6 @@
 # Character Studio —— 技术架构
 
-> 文档最后核查日期：2026-10-15 ｜ 依据：当前源码逐文件核对（行号见正文）｜ 不确定处均已标注
+> 文档最后核查日期：2026-10-19 ｜ 依据：2.37.1 源码逐文件核对 ｜ 2.30–2.37 的结构增补见第 10 节
 
 ---
 
@@ -17,7 +17,7 @@
 | 包管理 | pnpm（锁文件 `pnpm-lock.yaml`；CI 用 pnpm 10 + Node 22） | `.github/workflows/deploy-pages.yml` |
 | 应用入口 | `index.html` → `src/main.tsx` → `src/App.tsx` | `src/main.tsx`（10 行） |
 
-`src/main.tsx` 只做一件事：把 `App` 挂到 `#root`。**所有应用逻辑都在 `App.tsx`**（1671 行）。
+`src/main.tsx` 只做一件事：把 `App` 挂到 `#root`。**所有应用逻辑都在 `App.tsx`**（2048 行）。
 
 ---
 
@@ -83,6 +83,10 @@ main.tsx
 | `components/Icon.tsx` | 290 | 42 个线性 SVG 图标，24×24 网格，`strokeWidth 1.7`，`currentColor` | 三个图标带光学重心补偿：`heart`、`sparkles`、`tool` |
 | `components/CharacterPicker.tsx` | 127 | 时间线 / 世界观共用的角色多选器：>12 个角色时出现搜索、已选置顶、`已选 N / 共 M`、全选结果 / 清空 | 角色数 ≤12 时不显示这些控件 |
 | `components/AiSettingsForm.tsx` | 113 | AI 设置表单（App 与 Dashboard 两处引用同一实现） | 只存配置，**不发起任何请求**；API Key 输入框 `disabled` |
+| `components/BottomSheet.tsx` | 92 | 手机端底部抽屉：Portal 到 `body`、遮罩、Escape、滚动锁、安全区 | 必须挂在 `body` 上（放在顶栏内会以顶栏为定位基准）；外点判定靠 `data-sheet-root` |
+| `components/WorkspaceHeader.tsx` | 137 | 工作区标题与操作区的统一结构 | 手机端纵向排布由样式层处理，不复制标题 |
+| `components/CharacterRow.tsx` | 288 | 列表视图的单行角色 | 与卡片共享同一份数据与操作语义 |
+| `components/CharacterRelatedInfo.tsx` | 214 | 预览页的跨模块关联（关系 / 事件 / 世界观） | 关联跳转通过页面回调，不直接读存储 |
 
 图标名（42）：`arrowDown, arrowLeft, arrowUp, beaker, chart, check, checkSquare, chevronDown, chevronRight, clock, close, component, contrast, copy, download, eye, file, filter, gear, globe, grid, heart, home, image, link, list, monitor, moon, more, minus, package, pencil, pin, plus, refresh, search, sparkles, square, sun, tool, trash, upload`
 
@@ -98,7 +102,8 @@ main.tsx
 | `useDashboardLayers` | 33 | 把 22 项图层声明接到状态上，给出 `dismiss()` 与 `blockingSignature` | Dashboard | `dashboardLayers.test.ts`（9 例） |
 | `useDialogKeyboard` | 90 | Escape 关闭、Enter 确认、打开时焦点进入、关闭后焦点回到原处 | Dashboard + 关系网 / 时间线 / 世界观（6 个弹窗） | **无**（见 KI-05） |
 | `useTransientMessage` | 44 | 单一计时器的短暂消息（1.8s） | Dashboard、编辑器、关系网、预览 | `useTransientMessage.test.ts`（5 例） |
-| `useMediaQuery` | 23 | 媒体查询状态（折叠是渲染内容变化，纯 CSS 表达不了） | Dashboard | — |
+| `useMediaQuery` | 23 | 媒体查询状态（折叠是渲染内容变化，纯 CSS 表达不了） | Dashboard、App | — |
+| `useHorizontalScrollHint` | 54 | 横向滚动容器的边缘状态（是否还有被裁切的内容） | Dashboard 分组定位条 | 浏览器回归（320px 渐隐换边） |
 
 ### 3.3 纯规则模块（无 React 依赖，可单测）
 
@@ -335,9 +340,9 @@ assets/avatar/*      # 头像图片
 | 项 | 值 |
 | --- | --- |
 | 框架 | vitest 3 + happy-dom + fake-indexeddb |
-| 规模 | **31 个文件 / 360 个用例**（本轮 `npm test` 实测） |
-| 覆盖对象 | 存储层往返与容错、纯逻辑（裁剪几何 / 批量补丁 / 年龄 / CSV / 导入导出 / 颜色降级 / 懒加载恢复 / 图层声明 / 关系语义与布局 / 编辑器分节 / 图偏好） |
-| 未覆盖 | `useDialogKeyboard` 的键盘行为、Developer Center 的控件回调、绝大多数渲染 |
+| 规模 | **48 个文件 / 538 个用例**（2.37.1 `npm test` 实测） |
+| 覆盖对象 | 存储层往返与容错、纯逻辑（裁剪几何 / 批量补丁 / 年龄 / CSV / 导入导出 / 导入计划 / 懒加载恢复 / 图层声明 / 关系语义与布局 / 编辑器分节 / 图偏好）、PDF 文本结构、删除恢复、版本一致性 |
+| 未覆盖 | Developer Center 的控件回调、绝大多数渲染与真实布局（由 `verify:browser` 补足） |
 
 设置里没有 `setupFiles` 之外的环境配置；测试**不需要浏览器**（happy-dom 提供 DOM，fake-indexeddb 提供 IndexedDB）。
 
@@ -383,8 +388,41 @@ push 到 main
 
 | 区域 | 风险 |
 | --- | --- |
-| `Dashboard.tsx`（3623 行）/ `CharacterForm.tsx`（3008 行） | 两个巨型渲染体，承载拖拽、批量选择、弹窗与自动保存；未拆分的部分改动只能靠回归探针保护 |
-| `utils/importExport.ts`（1881 行） | 备份结构、manifest 绑定、截图导出三条线交织；任何一处改动都可能让旧备份打不开 |
-| `styles.css`（7177 行） | 层叠位置敏感：合并声明体会改变层叠顺序；`.relationship-table td` 这类「类+元素」选择器会盖过单类规则 |
+| `Dashboard.tsx`（4273 行）/ `CharacterForm.tsx`（3037 行） | 两个巨型渲染体，承载拖拽、批量选择、弹窗与自动保存；未拆分的部分改动只能靠回归探针保护 |
+| `utils/importExport.ts`（2184 行） | 备份结构、manifest 绑定、截图导出三条线交织；任何一处改动都可能让旧备份打不开 |
+| `styles.css`（10759 行） | 层叠位置敏感：合并声明体会改变层叠顺序；`.relationship-table td` 这类「类+元素」选择器会盖过单类规则 |
 | 吸顶体系 | 依赖 `body` 的 `overflow` 与 `--topbar-height` / `--editor-bar-height` 两个运行时测量的变量 |
 | IndexedDB 素材与角色的引用完整性 | 悬空 `avatarAssetId`、被引用素材的删除都需要二次确认与回退 |
+
+---
+
+## 10. 2.30 – 2.37 的结构增补
+
+这一段只记录**结构上新增或改变了行为边界**的部分；逐版本细节见 `CHANGELOG.md`。
+
+### 10.1 角色档案 PDF（2.33 – 2.35）
+
+- `utils/characterSheetPdf.ts` 负责排版：逐行测量、分页、中文标点避头尾；`characterSheetExport.ts` 负责加载字体、绘制头像、触发下载。
+- 字体是 `src/assets/fonts/NotoSansSC-CS.ttf`（Noto Sans SC 的可变字体按 `wght=400` 实例化后，用 GB2312 + Latin + 假名 + 排印标点子集化），由 `utils/fontGlyphCoverage.ts` 提供 `hasGlyph`。
+- 缺字形不静默丢字：渲染为 `□`，并在导出后提示具体字符。`INVISIBLE` 规则避免把变体选择符误报为缺失。
+- PDF 是可选中文本（`Identity-H` / `CIDFontType`），不是整页截图；关系网导出的 PDF 才是画布截图。两者不要混用同一套描述。
+
+### 10.2 关系网双模式（2.36 – 2.37）
+
+- 图谱与管理共用一个页面的两套呈现；`boardMode` 是视图状态，写入 `character-studio.relationship-view`。
+- 默认只画核心视图（`CORE_VIEW_LIMIT` 40，手机上 24；`CORE_VIEW_DEGREE` 2），文案明确写出「已画 / 有连接 / 总数」。
+- 搜索会聚焦默认未画出的角色：`focusExtraIds` 把命中角色临时并入画布，而不是只提示「不在画布中」。
+- 管理表格分页 20 条，编辑 / 删除走同一份存储，返回图谱即同步。
+
+### 10.3 移动端导航与弹层（2.37.1）
+
+- `App.tsx` 用 `useMediaQuery("(max-width: 720px)")` 决定工作区列表的呈现：桌面是 `.workspace-menu` 下拉，手机是 `BottomSheet`（`testId="workspace-sheet"`）。两者共用同一个 `workspaceEntries` 数组，避免一边有、一边没有。
+- Dashboard 的「更多操作」同样是一份 `renderMoreMenuItems()`、两种呈现（`.export-menu` / `BottomSheet testId="more-sheet"`）。
+- 抽屉 Portal 到 `body`，外点处理通过 `[data-sheet-root]` 放行；Escape 与焦点恢复由 `useDialogKeyboard` 负责。
+- 手机端工具栏不再给「新建角色」设 132px 下限；≤360px 使用 8px 间距与 8px 内边距，保证四个控件同一行。
+- 分组定位条保留横向滚动，`useHorizontalScrollHint` 依据滚动位置加 `has-overflow-start/end`，由 `mask-image` 渐隐；内容放得下时不出现。
+
+### 10.4 恢复范围（2.36）
+
+- 自动快照从「只有角色」扩展到角色 + 关系 + 时间线 + 世界观；头像二进制仍不在快照内。
+- 删除恢复记录保存被删角色与被清理的引用，撤销按 ID 合并回去，重复撤销是幂等的。
