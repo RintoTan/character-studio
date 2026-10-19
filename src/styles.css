@@ -2337,6 +2337,36 @@ h2 {
   scrollbar-width: thin;
 }
 
+/* The row keeps scrolling; the fade is how it admits there is more. Classes come
+   from the scroll position, so the hint sits only on the side that is still cut
+   off and disappears once that end is reached. */
+.card-group-index-chips.has-overflow-end {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 26px), transparent);
+}
+
+.card-group-index-chips.has-overflow-start {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 26px);
+  mask-image: linear-gradient(to right, transparent, #000 26px);
+}
+
+.card-group-index-chips.has-overflow-start.has-overflow-end {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 26px,
+    #000 calc(100% - 26px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 26px,
+    #000 calc(100% - 26px),
+    transparent
+  );
+}
+
 .card-group-chip {
   display: inline-flex;
   align-items: center;
@@ -6087,9 +6117,12 @@ kbd {
     flex: 1 1 100%;
   }
 
+  /* The primary action takes what is left rather than holding a 132px floor: at
+     320px the row has 252px between the card's edges, and that floor was the reason
+     「更多」 dropped onto a line of its own. It still grows on wider phones. */
   .list-toolbar .list-create-button {
     flex: 1 1 auto;
-    min-width: 132px;
+    min-width: 0;
   }
 
   .bulk-select-button {
@@ -8096,11 +8129,24 @@ kbd {
   overflow-wrap: anywhere;
 }
 
+/* Two columns, not a wrapped row: the kind and the date share the left column and
+   wrap between themselves when a long era name needs it, while 编辑/删除 keep the
+   right edge. Wrapped as one row, the actions were the item that overflowed first,
+   so a 320px card ended with two lone text buttons under its own header. */
 .timeline-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.timeline-card-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .timeline-card-head time {
@@ -10347,6 +10393,27 @@ kbd {
     grid-auto-flow: column;
     right: 12px;
     gap: 2px;
+  }
+}
+
+/* --- 320–360: one row of four ------------------------------------------------ */
+
+/* The row has 252px between the card's edges at 320. Three 42px icon controls plus
+   the phone gap leave 102px for 新建角色; at the larger gap, and with the filter's
+   -8px nudge grouping it to search, that was two pixels short of its label — which is
+   exactly how 「更多」 ended up alone on a second line. Below 360 the row uses one
+   even gap and the primary action gives up padding instead of text. */
+@media (max-width: 360px) {
+  .list-toolbar {
+    gap: 8px;
+  }
+
+  .list-toolbar > .list-filter-wrap {
+    margin-left: 0;
+  }
+
+  .list-toolbar .list-create-button {
+    padding-inline: 8px;
   }
 }
 

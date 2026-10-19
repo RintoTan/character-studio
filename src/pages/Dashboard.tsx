@@ -58,6 +58,7 @@ import {
   type CharacterBulkPatch,
 } from "../utils/bulkEdit";
 import { useMediaQuery } from "../hooks/useMediaQuery";
+import { useHorizontalScrollHint } from "../hooks/useHorizontalScrollHint";
 import { useDashboardLayers } from "../hooks/useDashboardLayers";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { useDashboardPrefs } from "../hooks/useDashboardPrefs";
@@ -440,6 +441,15 @@ export function Dashboard({
   const everyVisibleSelected =
     visibleCharacters.length > 0 &&
     visibleCharacters.every((character) => selectedIds.includes(character.id));
+
+  // The group index is a scrolling row: at 320 the last chip is cut in half, which
+  // looks like a layout bug until the row says it continues. The fade follows the
+  // scroll rather than sitting on both edges for good.
+  const groupChipsKey = cardGroups
+    .map((entry) => `${entry.group}:${entry.count}`)
+    .join("|");
+  const { ref: groupChipsRef, edges: groupChipEdges } =
+    useHorizontalScrollHint<HTMLDivElement>(groupChipsKey);
 
   /** One time affordance for both places a card shows it (the footer while
    *  browsing, the meta corner while selecting), so the two cannot drift. */
@@ -1945,7 +1955,16 @@ export function Dashboard({
             {cardGroups.length > 1 && (
               <div className="card-group-index" role="group" aria-label="分组定位">
                 <span className="card-group-index-label">分组定位</span>
-                <div className="card-group-index-chips">
+                <div
+                  className={[
+                    "card-group-index-chips",
+                    groupChipEdges.start ? "has-overflow-start" : "",
+                    groupChipEdges.end ? "has-overflow-end" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  ref={groupChipsRef}
+                >
                   {cardGroups.map((entry) => (
                     <button
                       className={

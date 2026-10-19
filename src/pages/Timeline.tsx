@@ -445,10 +445,15 @@ export function Timeline({
                             actions sit on the same row but read as text, so the row is
                             not two buttons with a title beside them. */}
                         <div className="timeline-card-head">
-                          <span className={`timeline-kind-chip kind-${event.kind}`}>
-                            {timelineEventKindLabel(event.kind)}
+                          {/* Kind and date are one block, so the two actions keep their
+                              own column on a narrow card instead of being pushed under
+                              the date as a second line of the header. */}
+                          <span className="timeline-card-meta">
+                            <span className={`timeline-kind-chip kind-${event.kind}`}>
+                              {timelineEventKindLabel(event.kind)}
+                            </span>
+                            <time dateTime={event.date}>{formatTimelineDate(event)}</time>
                           </span>
-                          <time dateTime={event.date}>{formatTimelineDate(event)}</time>
                           <span className="timeline-actions">
                             <button className="timeline-action" onClick={() => startEdit(event)} type="button">
                               编辑
