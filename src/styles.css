@@ -14412,3 +14412,67 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .relationship-table-note .relationship-note-text.expanded {
   -webkit-line-clamp: 3;
 }
+
+/* ---------------------------------------------------------------------------
+   The studio's tools sit in the bottom-left corner, where a hand already is and
+   where the drawing's centre is not. The page keeps its top strip.
+   ------------------------------------------------------------------------- */
+.graph-studio .graph-canvas-tools.studio-dock {
+  justify-self: start;
+  justify-content: flex-start;
+  padding-right: 14px;
+  padding-left: 14px;
+}
+
+.graph-more-menu.opens-up {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+.graph-export-size {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.graph-export-size em {
+  font-size: 11px;
+  font-weight: 400;
+  font-style: normal;
+  color: var(--muted);
+}
+
+/* The character drawer opens on the right like every other one. The studio keeps a
+   left column for nothing else, so the drawer is simply placed in the right area and
+   the left column collapses to zero — same markup, same state, one side. */
+.graph-studio .graph-studio-drawer.left {
+  grid-area: right;
+  border-right: 0;
+  border-left: 1px solid var(--border);
+}
+
+/* The dock sits in the corner: margin-right:auto is what moves a flex item to the
+   start, since justify-self has no effect inside the flex bar. */
+.graph-studio .graph-canvas-tools.studio-dock {
+  margin-right: auto;
+  margin-left: 14px;
+}
+
+/* A kind chip is one word: it must never break into a vertical stack when the
+   relation column gets tight. */
+.relationship-kind-chip {
+  white-space: nowrap;
+}
+
+/* The management table reads as a column of sentences, so it is centred in the space
+   it has instead of hugging the left edge of a wide card. */
+.relationship-table-wrap {
+  max-width: 1180px;
+  margin-right: auto;
+  margin-left: auto;
+}

@@ -286,3 +286,29 @@ export function removeTransientMarks(clone: SVGSVGElement) {
     .querySelectorAll(".relationship-node-ring, .relationship-edge-halo, .relationship-node-badge")
     .forEach((el) => el.remove());
 }
+
+/**
+ * The drawing's bounds grown to a target aspect ratio, centred on the content.
+ *
+ * A ratio is a frame, not a crop: widening the short side keeps every node, label
+ * and arrow inside the picture, and the extra room is the canvas background. This is
+ * why choosing 16:9 cannot cut the top off a tall wheel.
+ */
+export function aspectBounds(bounds: WorldBounds, ratio: number): WorldBounds {
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return bounds;
+  }
+
+  const current = bounds.width / bounds.height;
+  if (Math.abs(current - ratio) < 0.001) {
+    return bounds;
+  }
+
+  if (current < ratio) {
+    const width = bounds.height * ratio;
+    return { ...bounds, x: bounds.x - (width - bounds.width) / 2, width };
+  }
+
+  const height = bounds.width / ratio;
+  return { ...bounds, y: bounds.y - (height - bounds.height) / 2, height };
+}

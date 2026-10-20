@@ -1641,7 +1641,7 @@ const GRAPH_DISPLAY_AND_EXPORT = `
 
     const messages = [];
     for (const format of ["JPG", "PNG", "PDF"]) {
-      const button = [...document.querySelectorAll(".graph-canvas-bar button")].find(
+      const button = [...document.querySelectorAll(".graph-panel button")].find(
         (candidate) => candidate.textContent.trim() === format,
       );
       if (!button) throw new Error("export button missing: " + format);
@@ -5850,7 +5850,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
-      await cdp.waitFor(`!!document.querySelector(".graph-canvas-bar")`, 8000);
+      await cdp.waitFor(`[...document.querySelectorAll(".workspace-header button")].some((b) => b.textContent.trim() === "导出")`, 8000);
       await cdp.waitFor(`document.querySelectorAll(".relationship-node-name").length > 0`, 4000);
       const state = await cdp.value(GRAPH_DISPLAY_AND_EXPORT);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
@@ -6319,7 +6319,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const beforeView = await cdp.value(CANVAS_STATE);
       const frame = await cdp.value(`(() => { const r = document.querySelector(".graph-canvas-frame").getBoundingClientRect(); return { x: r.x + 30, y: r.y + 30, cx: r.x + r.width / 2, cy: r.y + r.height / 2 }; })()`);
 
-      await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(frame.cx), y: Math.round(frame.cy), deltaX: 0, deltaY: -120 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(frame.cx), y: Math.round(frame.cy), deltaX: 0, deltaY: -120, modifiers: 2 });
       await new Promise((resolve) => setTimeout(resolve, 300));
       const zoomed = await cdp.value(CANVAS_STATE);
 
@@ -6579,7 +6579,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const beforeView = await cdp.value(CANVAS_STATE);
       const frame = await cdp.value(`(() => { const r = document.querySelector(".graph-canvas-frame").getBoundingClientRect(); return { x: r.x + 30, y: r.y + 30, cx: r.x + r.width / 2, cy: r.y + r.height / 2 }; })()`);
 
-      await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(frame.cx), y: Math.round(frame.cy), deltaX: 0, deltaY: -120 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(frame.cx), y: Math.round(frame.cy), deltaX: 0, deltaY: -120, modifiers: 2 });
       await new Promise((resolve) => setTimeout(resolve, 300));
       const zoomed = await cdp.value(CANVAS_STATE);
 

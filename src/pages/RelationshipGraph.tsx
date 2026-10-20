@@ -31,12 +31,14 @@ import {
 } from "../types/relationship";
 import {
   AVATAR_SIZES,
+  EXPORT_RATIOS,
   EXPORT_SCALES,
   NAME_SIZES,
   graphMetrics,
   loadGraphPrefs,
   saveGraphPrefs,
   type GraphMetrics,
+  type GraphExportRatio,
   type GraphPrefs,
 } from "../storage/graphPrefs";
 import {
@@ -89,6 +91,8 @@ import {
   type AlignMode,
 } from "../utils/canvasAlign";
 import {
+  aspectBounds,
+  exportPixelSize,
   downloadPng,
   downloadSvg,
   inlineSvgPresentation,
@@ -1309,6 +1313,12 @@ export function RelationshipGraph({
   // The small menus: 更多 and 对齐/分布. They are popovers, not surfaces, because they
   // hold one press each and close on the next click anywhere.
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  // Which way the 更多 menu opens. The studio's toolbar sits on the bottom edge, so a
+  // menu that always opened downwards would be clipped by the window; the page's
+  // toolbar sits at the top, so the same menu has to open down there. Measured on
+  // open rather than guessed from the mode.
+  const [morePlacement, setMorePlacement] = useState<"up" | "down">("down");
+  const moreWrapRef = useRef<HTMLDivElement | null>(null);
   const [isAlignOpen, setIsAlignOpen] = useState(false);
   // One edge at a time: an edge has no box to marquee and its properties are a
   // different set from a node's, so it is its own selection.
@@ -1320,6 +1330,9 @@ export function RelationshipGraph({
   const [lensKinds, setLensKinds] = useState<RelationshipKind[]>([]);
   const [bookmarkDraft, setBookmarkDraft] = useState("");
   const [exportScope, setExportScope] = useState<ExportScope>("all");
+  // The output frame. Local, not a preference: a visitor trying 16:9 for one poster
+  // should not find the next export already framed that way.
+  const [exportRatio, setExportRatio] = useState<GraphExportRatio>("canvas");
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
   // Which slider run the last style write belongs to, so a drag is one undo step.
@@ -1369,8 +1382,30 @@ export function RelationshipGraph({
   // of these, the two small menus sit above it, and a bookmark's own menu above them.
   // One key press therefore never closes a drawer and a popover together.
   useEscapeDismiss(surface !== "none", () => setSurface("none"));
+  useEffect(() => {
+    if (!isMoreOpen) {
+      return;
+    }
+    const rect = moreWrapRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMorePlacement(window.innerHeight - rect.bottom < 280 ? "up" : "down");
+    }
+  }, [isMoreOpen]);
   useEscapeDismiss(Boolean(manageMenuId), () => setManageMenuId(null));
   useEscapeDismiss(isMoreOpen, () => setIsMoreOpen(false));
+
+  // Which way 更多 opens, measured from where its trigger actually is: the studio's
+  // toolbar sits on the bottom edge, the page's at the top, and the same menu has to
+  // serve both without a fixed side.
+  useEffect(() => {
+    if (!isMoreOpen) {
+      return;
+    }
+    const rect = moreWrapRef.current?.getBoundingClientRect();
+    if (rect) {
+      setMorePlacement(window.innerHeight - rect.bottom < 280 ? "up" : "down");
+    }
+  }, [isMoreOpen]);
   useEscapeDismiss(isAlignOpen, () => setIsAlignOpen(false));
   useEscapeDismiss(Boolean(bookmarkMenuId), () => setBookmarkMenuId(null));
   useEffect(() => {
@@ -2579,13 +2614,18 @@ export function RelationshipGraph({
   }
 
   /**
-   * The wheel zooms the canvas and does not also scroll the page.
+   * Ctrl+wheel zooms about the pointer; a plain wheel scrolls as it always did.
    *
-   * React attaches `onWheel` passively, so `preventDefault()` inside a React handler
-   * is ignored — which is why a wheel over the drawing used to zoom it *and* send the
-   * page off somewhere. A native listener registered with `passive: false` is the
-   * only way to refuse the scroll, and it is re-registered when the view box changes
-   * so it always zooms about the current box.
+   * The canvas used to take every wheel event, which meant a reader could not scroll
+   * past a full-height drawing without zooming it by accident. The accelerator is now
+   * the only thing that zooms: it is the gesture people already know from maps, and
+   * leaving the bare wheel alone keeps the page and the open drawer scrollable.
+   *
+   * React attaches `onWheel` passively, so `preventDefault()` inside a React handler is
+   * ignored — a native listener with `passive: false` is the only way to stop the
+   * browser's own page zoom, and it is re-registered when the view box changes so it
+   * always zooms about the current box. The listener hangs off the <svg>, so a pointer
+   * over the search field, a slider or the drawer never reaches it.
    */
   useEffect(() => {
     const svg = svgRef.current;
@@ -2595,8 +2635,18 @@ export function RelationshipGraph({
     }
 
     function onWheel(event: WheelEvent) {
+      if (!event.ctrlKey && !event.metaKey) {
+        // Not ours: page scroll, drawer scroll and trackpad pans stay untouched.
+        return;
+      }
+
+      // The browser would zoom the whole page. Refuse only here, and only now.
       event.preventDefault();
-      zoomAround(svg as SVGSVGElement, event.clientX, event.clientY, event.deltaY < 0 ? 1.15 : 1 / 1.15);
+
+      // A notch is ~100; a trackpad sends a stream of small deltas, so an exponential
+      // step keeps both smooth and bounded in one gesture.
+      const factor = Math.exp(-event.deltaY * 0.002);
+      zoomAround(svg as SVGSVGElement, event.clientX, event.clientY, factor);
     }
 
     svg.addEventListener("wheel", onWheel, { passive: false });
@@ -3342,18 +3392,14 @@ export function RelationshipGraph({
    * and its pan/zoom is reset to identity — so the picture covers the content, not
    * the window.
    */
-  function buildExportSvg(scope: ExportScope): { text: string; bounds: WorldBounds } | null {
-    const svg = svgRef.current;
-    if (!svg) {
-      return null;
-    }
-
+  /** The rectangle a scope covers, before any output ratio is applied. */
+  function exportBounds(scope: ExportScope): WorldBounds | null {
     const selectedPoints = visibleCharacters
       .map((character, index) => ({ id: character.id, point: positions[index] }))
       .filter((entry) => selectedIds.includes(entry.id))
       .map((entry) => entry.point);
 
-    const bounds = scopeBounds({
+    return scopeBounds({
       scope,
       allPoints: positions,
       selectedPoints,
@@ -3364,10 +3410,23 @@ export function RelationshipGraph({
         style.node.form === "card" ? CARD_HEIGHT / 2 + 24 : 0,
       ),
     });
+  }
 
-    if (!bounds) {
+  function buildExportSvg(scope: ExportScope, ratio = 0): { text: string; bounds: WorldBounds } | null {
+    const svg = svgRef.current;
+    if (!svg) {
       return null;
     }
+
+    const base = exportBounds(scope);
+
+    if (!base) {
+      return null;
+    }
+
+    // The ratio is a frame around the content, never a crop: `aspectBounds` only grows
+    // the short side, so no node, label or arrow can fall outside it.
+    const bounds = ratio > 0 ? aspectBounds(base, ratio) : base;
 
     const clone = svg.cloneNode(true) as SVGSVGElement;
     clone.setAttribute("viewBox", `${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`);
@@ -3414,7 +3473,7 @@ export function RelationshipGraph({
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     try {
-      const built = buildExportSvg(scope);
+      const built = buildExportSvg(scope, exportRatioValue);
       if (!built) {
         show(scope === "selection" ? "还没有选中任何角色" : "没有可导出的内容");
         return;
@@ -4167,6 +4226,18 @@ export function RelationshipGraph({
   // The name the appearance drawer puts in its title. It has to be the object the
   // controls underneath will change, so a node uses its own name and nothing else
   // stands in for it.
+  const exportRatioValue = EXPORT_RATIOS.find((entry) => entry.value === exportRatio)?.ratio ?? 0;
+  // What the file will measure, computed from the same rectangle the export uses, so
+  // the number beside the controls is the number in the file.
+  const exportSize = (() => {
+    const base = exportBounds(exportScope);
+    if (!base) {
+      return null;
+    }
+    const framed = exportRatioValue > 0 ? aspectBounds(base, exportRatioValue) : base;
+    return exportPixelSize(framed, prefs.exportScale);
+  })();
+
   const appearanceSelection = appearanceTarget(selectedIds, selectedEdgeId);
   const appearanceLabel = (() => {
     if (appearanceSelection.kind === "node") {
@@ -4187,6 +4258,115 @@ export function RelationshipGraph({
     selectedCount: selectedIds.length,
     canUndo: Boolean(arrangeUndo),
   });
+
+  // One export panel, two homes: the page header and the studio's top bar. It used
+  // to hang under the drawing, which meant the entry sat below the fold on a phone
+  // and duplicated the header's output actions.
+  const exportMenu = (
+            <div className="graph-display-wrap graph-export-wrap" ref={exportWrapRef}>
+              <button
+                aria-expanded={isExportOpen}
+                className={isExportOpen ? "graph-toggle active" : "graph-toggle"}
+                onClick={() => setIsExportOpen((current) => !current)}
+                type="button"
+              >
+                <Icon name="download" size={15} />
+                导出
+              </button>
+              {isExportOpen && (
+                <div aria-label="导出关系网" className="graph-panel" role="group">
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">比例</span>
+                    <div className="graph-segment">
+                      {EXPORT_RATIOS.map((entry) => (
+                        <button
+                          aria-pressed={exportRatio === entry.value}
+                          className={exportRatio === entry.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={entry.value}
+                          onClick={() => setExportRatio(entry.value)}
+                          type="button"
+                        >
+                          {entry.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">分辨率</span>
+                    <div className="graph-segment">
+                      {EXPORT_SCALES.map((scale) => (
+                        <button
+                          aria-pressed={prefs.exportScale === scale.value}
+                          className={prefs.exportScale === scale.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={scale.value}
+                          onClick={() => updatePrefs({ exportScale: scale.value })}
+                          type="button"
+                        >
+                          {scale.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">范围</span>
+                    <div className="graph-segment">
+                      {([
+                        ["all", "全部内容"],
+                        ["view", "当前视图"],
+                        ["selection", "选中区域"],
+                      ] as Array<[ExportScope, string]>).map(([scope, label]) => (
+                        <button
+                          aria-pressed={exportScope === scope}
+                          className={exportScope === scope ? "graph-segment-button selected" : "graph-segment-button"}
+                          disabled={scope === "selection" && selectedIds.length === 0}
+                          key={scope}
+                          onClick={() => setExportScope(scope)}
+                          type="button"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">格式</span>
+                    <div className="graph-segment">
+                      {([
+                        ["png", "PNG"],
+                        ["svg", "SVG"],
+                        ["jpg", "JPG"],
+                        ["pdf", "PDF"],
+                      ] as Array<[string, string]>).map(([format, label]) => (
+                        <button
+                          className="graph-segment-button"
+                          disabled={exporting}
+                          key={format}
+                          onClick={() =>
+                            format === "png" || format === "svg"
+                              ? void runCanvasExport(exportScope, format)
+                              : void runExport(format as "jpg" | "pdf")
+                          }
+                          type="button"
+                        >
+                          {exporting ? "导出中…" : label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* The two older formats capture the screen; the two new ones
+                      export a rectangle. Saying so is cheaper than a user wondering
+                      why 全部内容 did nothing to their PDF. */}
+                  <p className="graph-export-size" data-testid="export-size">
+                    {exportSize ? `${exportSize.width} × ${exportSize.height} px` : "—"}
+                    <em>SVG 保持矢量，倍率只作用于位图</em>
+                  </p>
+                  <p className="muted graph-export-note">
+                    PNG / SVG 按所选范围导出；JPG / PDF 导出当前画面。
+                  </p>
+                </div>
+              )}
+            </div>
+  );
 
   return (
     <section
@@ -4229,6 +4409,9 @@ export function RelationshipGraph({
               </div>
             </div>
             <div className="toolbar-group">
+              {/* Output sits with the page's other main action; the entry under the
+                  drawing is gone. */}
+              {!isStudio && exportMenu}
               <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
                 新建关系
               </button>
@@ -4454,7 +4637,7 @@ export function RelationshipGraph({
                 </button>
               )}
 
-              <div className="graph-more-wrap">
+              <div className="graph-more-wrap" ref={moreWrapRef}>
                 <button
                   aria-expanded={isMoreOpen}
                   aria-label="更多工具"
@@ -4466,7 +4649,7 @@ export function RelationshipGraph({
                   <Icon name="more" size={16} />
                 </button>
                 {isMoreOpen && (
-                  <div aria-label="更多工具" className="graph-more-menu" role="menu">
+                  <div aria-label="更多工具" className={`graph-more-menu${morePlacement === "up" ? " opens-up" : ""}`} role="menu">
                     {!isStudio && (
                       <button
                         className="graph-more-item"
@@ -5252,6 +5435,9 @@ export function RelationshipGraph({
                     <span>探索</span>
                   </button>
                   </div>
+
+                  <span aria-hidden="true" className="graph-studio-sep" />
+                  {exportMenu}
                 </div>
               </div>
 
@@ -5776,92 +5962,6 @@ export function RelationshipGraph({
               segmented button of the same height and radius, so the bar still reads as
               one group and one output. It lives outside the frame, so it never ends up
               in an export. */}
-          <div className="graph-canvas-bar">
-            <div className="graph-display-wrap graph-export-wrap" ref={exportWrapRef}>
-              <button
-                aria-expanded={isExportOpen}
-                className={isExportOpen ? "graph-toggle active" : "graph-toggle"}
-                onClick={() => setIsExportOpen((current) => !current)}
-                type="button"
-              >
-                <Icon name="download" size={15} />
-                导出
-              </button>
-              {isExportOpen && (
-                <div aria-label="导出关系网" className="graph-panel" role="group">
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">分辨率</span>
-                    <div className="graph-segment">
-                      {EXPORT_SCALES.map((scale) => (
-                        <button
-                          aria-pressed={prefs.exportScale === scale.value}
-                          className={prefs.exportScale === scale.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={scale.value}
-                          onClick={() => updatePrefs({ exportScale: scale.value })}
-                          type="button"
-                        >
-                          {scale.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">范围</span>
-                    <div className="graph-segment">
-                      {([
-                        ["all", "全部内容"],
-                        ["view", "当前视图"],
-                        ["selection", "选中区域"],
-                      ] as Array<[ExportScope, string]>).map(([scope, label]) => (
-                        <button
-                          aria-pressed={exportScope === scope}
-                          className={exportScope === scope ? "graph-segment-button selected" : "graph-segment-button"}
-                          disabled={scope === "selection" && selectedIds.length === 0}
-                          key={scope}
-                          onClick={() => setExportScope(scope)}
-                          type="button"
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">格式</span>
-                    <div className="graph-segment">
-                      {([
-                        ["png", "PNG"],
-                        ["svg", "SVG"],
-                        ["jpg", "JPG"],
-                        ["pdf", "PDF"],
-                      ] as Array<[string, string]>).map(([format, label]) => (
-                        <button
-                          className="graph-segment-button"
-                          disabled={exporting}
-                          key={format}
-                          onClick={() =>
-                            format === "png" || format === "svg"
-                              ? void runCanvasExport(exportScope, format)
-                              : void runExport(format as "jpg" | "pdf")
-                          }
-                          type="button"
-                        >
-                          {exporting ? "导出中…" : label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* The two older formats capture the screen; the two new ones
-                      export a rectangle. Saying so is cheaper than a user wondering
-                      why 全部内容 did nothing to their PDF. */}
-                  <p className="muted graph-export-note">
-                    PNG / SVG 按所选范围导出；JPG / PDF 导出当前画面。
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
         </>
       ) : (
         <>

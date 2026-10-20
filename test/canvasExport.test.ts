@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_EXPORT_SIDE,
+  aspectBounds,
   boundsOfPoints,
   exportPixelSize,
   parseViewBox,
@@ -125,5 +126,31 @@ describe("canvas export pixel size", () => {
     expect(size.width).toBeGreaterThanOrEqual(1);
     expect(size.height).toBeGreaterThanOrEqual(1);
     expect(size.scale).toBeGreaterThan(0);
+  });
+});
+
+describe("aspectBounds", () => {
+  const wide = { x: 0, y: 0, width: 400, height: 200 };
+
+  it("leaves the drawing alone when no ratio is asked for", () => {
+    expect(aspectBounds(wide, 0)).toEqual(wide);
+  });
+
+  it("grows the short side to reach a taller frame, and keeps the centre", () => {
+    const framed = aspectBounds(wide, 1);
+    expect(framed.width / framed.height).toBeCloseTo(1, 3);
+    expect(framed.x + framed.width / 2).toBeCloseTo(wide.x + wide.width / 2, 3);
+    expect(framed.y + framed.height / 2).toBeCloseTo(wide.y + wide.height / 2, 3);
+  });
+
+  it("grows the width for a wider frame without cropping height", () => {
+    const framed = aspectBounds(wide, 16 / 9);
+    expect(framed.width / framed.height).toBeCloseTo(16 / 9, 3);
+    expect(framed.height).toBeGreaterThanOrEqual(wide.height);
+  });
+
+  it("does not shrink a frame that already matches", () => {
+    const square = { x: 10, y: 10, width: 300, height: 300 };
+    expect(aspectBounds(square, 1)).toEqual(square);
   });
 });

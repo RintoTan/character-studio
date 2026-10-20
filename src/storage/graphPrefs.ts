@@ -32,6 +32,20 @@ export const EXPORT_SCALES: Array<{ value: GraphExportScale; label: string }> = 
   { value: 3, label: "3x" },
 ];
 
+/**
+ * Export shape. "canvas" keeps the drawing's own proportions; the rest frame the
+ * content to a fixed ratio by growing the short side, so nothing is cropped.
+ */
+export type GraphExportRatio = "canvas" | "1:1" | "4:3" | "16:9" | "9:16";
+
+export const EXPORT_RATIOS: Array<{ value: GraphExportRatio; label: string; ratio: number }> = [
+  { value: "canvas", label: "画布", ratio: 0 },
+  { value: "1:1", label: "1:1", ratio: 1 },
+  { value: "4:3", label: "4:3", ratio: 4 / 3 },
+  { value: "16:9", label: "16:9", ratio: 16 / 9 },
+  { value: "9:16", label: "9:16", ratio: 9 / 16 },
+];
+
 /** Everything the drawing needs, flattened from the two choices. */
 export type GraphMetrics = {
   /** Node circle radius, in drawing units. */
