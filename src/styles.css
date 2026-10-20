@@ -3792,6 +3792,18 @@ input[type="number"]::-webkit-inner-spin-button {
   .graph-dock-value {
     min-width: 42px;
   }
+
+  /* At 320 the two labelled actions become their icons, with the name kept for
+     screen readers and for the tooltip. Still 44 wide, still 40 tall. */
+  .graph-dock-button {
+    gap: 0;
+    width: 44px;
+    padding: 0;
+  }
+
+  .graph-studio-dock .graph-dock-label {
+    display: none;
+  }
 }
 
 @media (max-width: 720px) {
@@ -7569,6 +7581,41 @@ body:has([aria-modal="true"]) .floating-actions {
 .relationship-node-name {
   fill: var(--text);
   text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-linejoin: round;
+  stroke-width: 3px;
+}
+
+/* A card is the third form a node can take: enough room for a name and one line of
+   context, and a border light enough that ten of them do not read as table cells. */
+.relationship-node-card {
+  fill: var(--node-fill, var(--surface));
+  stroke: var(--node-stroke, var(--border-strong));
+  stroke-width: 1.5;
+}
+
+.relationship-node:hover .relationship-node-card,
+.relationship-node:focus-visible .relationship-node-card {
+  stroke: var(--primary);
+}
+
+.relationship-node[data-local-border="true"] .relationship-node-card {
+  stroke: var(--node-stroke);
+}
+
+.relationship-node-card-name {
+  fill: var(--text);
+  font-weight: 600;
+}
+
+.relationship-node-card-meta {
+  fill: var(--muted);
+}
+
+/* The kind label is knocked out of the lines it crosses, the way a name already is:
+   in a graph with crossings, a word with a stroke through it is not a word. */
+.relationship-edge text {
   paint-order: stroke;
   stroke: var(--surface);
   stroke-linejoin: round;
@@ -12202,7 +12249,12 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-dock-button {
+  gap: 6px;
   padding: 0 var(--studio-ctl-pad);
+}
+
+.graph-dock-label {
+  display: inline;
 }
 
 .graph-dock-tools {

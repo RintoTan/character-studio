@@ -7,6 +7,13 @@
 export type CanvasPresetId = "classic" | "archive" | "portrait" | "faction" | "minimal";
 
 export type NodeShape = "circle" | "square";
+
+/**
+ * How much of a person a node shows. Not a size: a compact node answers "who is
+ * connected to whom", a card answers "who is this". An old layout has no value here
+ * and keeps the avatar node it was drawn with.
+ */
+export type NodeForm = "avatar" | "compact" | "card";
 export type GridKind = "none" | "dots" | "lines";
 export type EdgeDash = "solid" | "dashed" | "dotted";
 export type EdgeCurve = "curved" | "straight";
@@ -15,6 +22,7 @@ export type CanvasStyle = {
   preset: CanvasPresetId | "custom";
   node: {
     size: number; // multiplier of the base radius
+    form: NodeForm;
     shape: NodeShape;
     showAvatars: boolean;
     showNames: boolean;
@@ -67,6 +75,7 @@ const BASE: CanvasStyle = {
   preset: "classic",
   node: {
     size: 1,
+    form: "avatar",
     shape: "circle",
     showAvatars: true,
     showNames: true,
@@ -99,22 +108,22 @@ const BASE: CanvasStyle = {
 const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
   classic: {},
   archive: {
-    node: { size: 0.92, showAvatars: false, nameScale: 1, borderColor: "#b6a899", background: "#fffdf8" },
+    node: { size: 0.92, form: "compact", showAvatars: false, nameScale: 1, borderColor: "#b6a899", background: "#fffdf8" },
     edge: { color: "#7a6a58", width: 1, showLabel: true, labelBackground: true },
     canvas: { background: "#f7f2e8", grid: "lines", gridSize: 40, gridOpacity: 0.35 },
   },
   portrait: {
-    node: { size: 1.35, nameScale: 1.2, showAvatars: true },
+    node: { size: 1.35, form: "avatar", nameScale: 1.2, showAvatars: true },
     edge: { width: 1.2, labelSize: 11, showLabel: false },
     canvas: { grid: "none" },
   },
   faction: {
-    node: { size: 1, shape: "circle" },
+    node: { size: 1, form: "avatar", shape: "circle" },
     edge: { byKind: true, width: 2.4, curve: "straight", arrowSize: 1.35, labelSize: 10.5 },
     canvas: { grid: "dots", gridSize: 56, gridOpacity: 0.35 },
   },
   minimal: {
-    node: { size: 0.9, showAvatars: false, nameScale: 0.95 },
+    node: { size: 0.9, form: "compact", showAvatars: false, nameScale: 0.95 },
     edge: { width: 0.8, arrowSize: 0.6, showLabel: false },
     canvas: { grid: "none", background: "" },
   },
@@ -165,6 +174,7 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
     preset,
     node: {
       size: num(node.size, base.node.size, 0.6, 2),
+      form: node.form === "compact" || node.form === "card" ? node.form : "avatar",
       shape: node.shape === "square" ? "square" : "circle",
       showAvatars: typeof node.showAvatars === "boolean" ? node.showAvatars : base.node.showAvatars,
       showNames: typeof node.showNames === "boolean" ? node.showNames : base.node.showNames,

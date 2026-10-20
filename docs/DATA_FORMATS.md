@@ -218,6 +218,7 @@ assets/avatar/*      avatar-1.webp, avatar-2.png, ...
 ## relationship-layout（schemaVersion 2，Sprint 50）
 
 ```json
+// style.node.form: "avatar" | "compact" | "card"（缺省按 avatar；局部覆盖写在 nodeStyles[id].form）
 {
   "schemaVersion": 2,
   "positions": { "<characterId>": { "x": 0, "y": 0 } },

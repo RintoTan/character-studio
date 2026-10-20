@@ -1,4 +1,4 @@
-import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type CanvasStyle, type CanvasPresetId } from "../storage/canvasStyle";
+import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
 import {
   useCallback,
   useEffect,
@@ -530,6 +530,33 @@ export function contentBounds(
  * how `北境线` came to look pinned to the left edge of the canvas. The answer is the
  * shortfall, plus a little air, and zero when there is nothing to draw around.
  */
+/** A card is wide enough for a four-character name and one short line under it. */
+export const CARD_WIDTH = 168;
+export const CARD_HEIGHT = 56;
+
+/**
+ * The geometry a node is drawn with. One function for drawing, hit bounds, edges and
+ * the fitted frame, so a card cannot be laid out by one rule and trimmed by another.
+ */
+export function nodeGeometry(
+  form: NodeForm,
+  metrics: GraphMetrics,
+  size: number,
+): { radius: number; halfWidth: number; halfHeight: number; card: boolean } {
+  if (form === "card") {
+    return {
+      radius: (metrics.radius * size),
+      halfWidth: (CARD_WIDTH * size) / 2,
+      halfHeight: (CARD_HEIGHT * size) / 2,
+      card: true,
+    };
+  }
+
+  const radius = form === "compact" ? metrics.radius * 0.62 * size : metrics.radius * size;
+
+  return { radius, halfWidth: radius, halfHeight: radius, card: false };
+}
+
 export function groupBleed(
   hasGroups: boolean,
   metrics: GraphMetrics = DEFAULT_METRICS,
@@ -706,7 +733,16 @@ export type EdgeGeometry = {
 export function edgeGeometry(
   from: GraphPoint,
   to: GraphPoint,
-  options: { bend?: number; metrics?: GraphMetrics; symmetrical?: boolean } = {},
+  options: {
+    bend?: number;
+    metrics?: GraphMetrics;
+    symmetrical?: boolean;
+    /** Half extents of each end when it is not a circle (a card). */
+    fromBox?: { halfWidth: number; halfHeight: number };
+    toBox?: { halfWidth: number; halfHeight: number };
+    /** Stroke width, so the head grows with the line instead of floating beside it. */
+    weight?: number;
+  } = {},
 ): EdgeGeometry {
   const metrics = options.metrics ?? DEFAULT_METRICS;
   const bend = options.bend ?? 0;
@@ -717,10 +753,18 @@ export function edgeGeometry(
   const nx = -uy;
   const ny = ux;
 
-  const startX = from.x + ux * (metrics.radius + 2);
-  const startY = from.y + uy * (metrics.radius + 2);
-  const endX = to.x - ux * (metrics.radius + 3);
-  const endY = to.y - uy * (metrics.radius + 3);
+  // Distance from the centre to the boundary along this direction. A circle is the
+  // same in every direction; a card is not, and using its width everywhere left the
+  // line floating beside its narrow side.
+  const reach = (box: { halfWidth: number; halfHeight: number } | undefined, pad: number) =>
+    box
+      ? 1 / Math.max(Math.abs(ux) / box.halfWidth, Math.abs(uy) / box.halfHeight) + pad
+      : metrics.radius + pad;
+
+  const startX = from.x + ux * reach(options.fromBox, 2);
+  const startY = from.y + uy * reach(options.fromBox, 2);
+  const endX = to.x - ux * reach(options.toBox, 3);
+  const endY = to.y - uy * reach(options.toBox, 3);
   const bendAmount = bend * BEND_UNIT;
   const controlX = (startX + endX) / 2 + nx * bendAmount;
   const controlY = (startY + endY) / 2 + ny * bendAmount;
@@ -746,10 +790,14 @@ export function edgeGeometry(
     const tangentLength = Math.hypot(tangentX, tangentY) || 1;
     const tx = tangentX / tangentLength;
     const ty = tangentY / tangentLength;
-    const backX = endX - tx * 10;
-    const backY = endY - ty * 10;
-    const wingX = -ty * 4.5;
-    const wingY = tx * 4.5;
+    // Bounded growth: a heavier line gets a slightly larger head, a hairline does
+    // not disappear. Unbounded scaling is what made the head look like a flowchart.
+    const head = Math.max(8, Math.min(14, 8 + (options.weight ?? 1.4) * 1.6));
+    const wing = head * 0.45;
+    const backX = endX - tx * head;
+    const backY = endY - ty * head;
+    const wingX = -ty * wing;
+    const wingY = tx * wing;
     arrow = `${round(endX)},${round(endY)} ${round(backX + wingX)},${round(backY + wingY)} ${round(backX - wingX)},${round(backY - wingY)}`;
   }
 
@@ -1118,6 +1166,20 @@ export function RelationshipGraph({
   // from a node being dragged would change the mapping under the pointer, which is
   // exactly the "release and it jumps back" this canvas is meant not to do.
   const visibleKey = visibleCharacters.map((character) => character.id).join("|");
+  // A card is wider than any label it would have carried, and the widest card wins:
+  // the frame has to contain the drawing, not the names of the round nodes.
+  const boxHalfWidth = useMemo(() => {
+    const cardHalf = (CARD_WIDTH * style.node.size) / 2;
+    const widestCard = visibleCharacters.reduce(
+      (widest, character) =>
+        (layout.nodeStyles?.[character.id]?.form ?? style.node.form) === "card"
+          ? Math.max(widest, cardHalf - metrics.radius)
+          : widest,
+      0,
+    );
+
+    return Math.max(labelHalfWidth, widestCard);
+  }, [visibleCharacters, layout.nodeStyles, style.node.form, style.node.size, metrics.radius, labelHalfWidth]);
   const stableBoxRef = useRef<{ key: string; viewBox: string; width: number } | null>(null);
   const canvas = useMemo(() => {
     if (stableBoxRef.current?.key === visibleKey) {
@@ -1127,13 +1189,13 @@ export function RelationshipGraph({
     const box = canvasBox(
       visibleCharacters.map((character, index) => layout.positions[character.id] ?? ringPositions[index]),
       metrics,
-      labelHalfWidth,
+      boxHalfWidth,
     );
     // A group's border stands GROUP_PADDING off its members. When the widest label
     // reserves less than that, the border falls outside the box and the canvas edge
     // cuts it — which is what made 北境线 look pinned to the left edge. The box grows
     // by the shortfall, so the border is inside the drawing it belongs to.
-    const bleed = groupBleed(layout.groups.length > 0, metrics, labelHalfWidth);
+    const bleed = groupBleed(layout.groups.length > 0, metrics, boxHalfWidth);
     const [boxX, boxY, boxWidth, boxHeight] = box.viewBox.split(" ").map(Number);
     stableBoxRef.current = {
       key: visibleKey,
@@ -1141,7 +1203,7 @@ export function RelationshipGraph({
       width: round(boxWidth + bleed.x * 2),
     };
     return stableBoxRef.current;
-  }, [visibleKey, visibleCharacters, layout, ringPositions, metrics, labelHalfWidth]);
+  }, [visibleKey, visibleCharacters, layout, ringPositions, metrics, boxHalfWidth]);
   const bends = useMemo(() => edgeBends(relationships), [relationships]);
 
   // What each drawn node's coordinates are right now: a preview (arrange) wins over
@@ -1541,7 +1603,7 @@ export function RelationshipGraph({
     }
 
     const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
-    const zoom = fitZoom(contentBounds(positions, metrics, labelHalfWidth), room, scale);
+    const zoom = fitZoom(contentBounds(positions, metrics, boxHalfWidth), room, scale);
     // Whatever a sheet covers, the drawing is fitted into what is left of the canvas
     // and centred there — derived from the covered height, not nudged by a constant.
     const lift = inset / 2 / Math.max(zoom * scale, 0.0001);
@@ -3353,7 +3415,8 @@ export function RelationshipGraph({
                     onClick={resetView}
                     type="button"
                   >
-                    适应画布
+                    <Icon name="maximize" size={15} />
+                    <span className="graph-dock-label">适应画布</span>
                   </button>
                   {previousView && (
                     <button
@@ -3427,7 +3490,8 @@ export function RelationshipGraph({
                     onClick={() => setIsMobileMenuOpen((open) => !open)}
                     type="button"
                   >
-                    工具
+                    <Icon name="more" size={16} />
+                    <span className="graph-dock-label">工具</span>
                   </button>
                 </div>
               </div>
@@ -3719,7 +3783,24 @@ export function RelationshipGraph({
                 visibleCharacters.map((character, index) =>
                   avatarUrls[character.id] ? (
                     <clipPath id={avatarClipId(character.id)} key={character.id}>
-                      <circle cx={positions[index].x} cy={positions[index].y} r={metrics.radius * style.node.size} />
+                      {(() => {
+                        const form: NodeForm =
+                          layout.nodeStyles?.[character.id]?.form ?? style.node.form;
+                        const geom = nodeGeometry(form, metrics, style.node.size);
+                        const centre = geom.card
+                          ? {
+                              x: positions[index].x - geom.halfWidth + geom.halfHeight - 4,
+                              y: positions[index].y,
+                            }
+                          : { x: positions[index].x, y: positions[index].y };
+                        return (
+                          <circle
+                            cx={centre.x}
+                            cy={centre.y}
+                            r={geom.card ? geom.halfHeight - 6 : geom.radius}
+                          />
+                        );
+                      })()}
                     </clipPath>
                   ) : null,
                 )}
@@ -3765,7 +3846,16 @@ export function RelationshipGraph({
               // and behind it), and a symmetric kind gets no head at all: 友人
               // between two people is not one of them befriending the other.
               const symmetric = isSymmetricKind(relationship.kind);
+              const fromForm: NodeForm =
+                layout.nodeStyles?.[relationship.fromId]?.form ?? style.node.form;
+              const toForm: NodeForm =
+                layout.nodeStyles?.[relationship.toId]?.form ?? style.node.form;
+              const fromGeom = nodeGeometry(fromForm, metrics, style.node.size);
+              const toGeom = nodeGeometry(toForm, metrics, style.node.size);
               const geometry = edgeGeometry(from, to, {
+                fromBox: fromGeom.card ? fromGeom : undefined,
+                toBox: toGeom.card ? toGeom : undefined,
+                weight: style.edge.width,
                 bend: bends.get(relationship.id) ?? 0,
                 metrics,
                 symmetrical: symmetric,
@@ -3844,6 +3934,15 @@ export function RelationshipGraph({
               // highlight circles whose names are not being drawn.
               const isSelected = selectedIds.includes(character.id);
               const nodeOverride = layout.nodeStyles?.[character.id];
+              const form: NodeForm = nodeOverride?.form ?? style.node.form;
+              const geom = nodeGeometry(form, metrics, style.node.size);
+              const nodeX = positions[index].x;
+              const nodeY = positions[index].y;
+              // A card puts the picture on its left edge; a round node has it centred.
+              const avatarCentre = geom.card
+                ? { x: nodeX - geom.halfWidth + geom.halfHeight - 4, y: nodeY }
+                : { x: nodeX, y: nodeY };
+              const cardNameX = nodeX - geom.halfWidth + geom.halfHeight * 2;
               const labelled =
                 prefs.showNames &&
                 (showLabels || isHovered || isFocused || isNeighbour || isSelected || hubIds.has(character.id));
@@ -3878,30 +3977,60 @@ export function RelationshipGraph({
                       node: a node may carry a local border colour, and a ring drawn
                       by restyling the node's own stroke would either hide that colour
                       or be hidden by it. */}
-                  {isSelected && (
+                  {isSelected &&
+                    (geom.card ? (
+                      <rect
+                        className="relationship-node-ring"
+                        height={geom.halfHeight * 2 + 12}
+                        rx={16}
+                        width={geom.halfWidth * 2 + 12}
+                        x={nodeX - geom.halfWidth - 6}
+                        y={nodeY - geom.halfHeight - 6}
+                      />
+                    ) : (
+                      <circle
+                        className="relationship-node-ring"
+                        cx={nodeX}
+                        cy={nodeY}
+                        r={geom.radius + 6}
+                      />
+                    ))}
+                  {geom.card ? (
+                    <rect
+                      className="relationship-node-card"
+                      height={geom.halfHeight * 2}
+                      rx={12}
+                      style={{
+                        ...(nodeOverride?.borderColor
+                          ? ({ "--node-stroke": nodeOverride.borderColor } as Record<string, string>)
+                          : {}),
+                        ...(nodeOverride?.background
+                          ? ({ "--node-fill": nodeOverride.background } as Record<string, string>)
+                          : {}),
+                      }}
+                      width={geom.halfWidth * 2}
+                      x={nodeX - geom.halfWidth}
+                      y={nodeY - geom.halfHeight}
+                    />
+                  ) : (
                     <circle
-                      className="relationship-node-ring"
-                      cx={positions[index].x}
-                      cy={positions[index].y}
-                      r={metrics.radius * style.node.size + 6}
+                      className="relationship-node-circle"
+                      cx={nodeX}
+                      cy={nodeY}
+                      r={geom.radius}
+                      style={{
+                        // Variables rather than properties: the selected state is a
+                        // stroke on this same circle, and an inline stroke would win
+                        // over it.
+                        ...(nodeOverride?.borderColor
+                          ? ({ "--node-stroke": nodeOverride.borderColor } as Record<string, string>)
+                          : {}),
+                        ...(nodeOverride?.background
+                          ? ({ "--node-fill": nodeOverride.background } as Record<string, string>)
+                          : {}),
+                      }}
                     />
                   )}
-                  <circle
-                    cx={positions[index].x}
-                    cy={positions[index].y}
-                    r={metrics.radius * style.node.size}
-                    style={{
-                      // Variables rather than properties: the selected state is a
-                      // stroke on this same circle, and an inline stroke would win
-                      // over it.
-                      ...(nodeOverride?.borderColor
-                        ? ({ "--node-stroke": nodeOverride.borderColor } as Record<string, string>)
-                        : {}),
-                      ...(nodeOverride?.background
-                        ? ({ "--node-fill": nodeOverride.background } as Record<string, string>)
-                        : {}),
-                    }}
-                  />
                   {/* An uploaded picture is drawn as the node itself, through the same
                       circle and at the same size as the emoji it replaces. Before this
                       the graph only ever drew `avatarEmoji`, so a character with a
@@ -3911,25 +4040,49 @@ export function RelationshipGraph({
                     <image
                       className="relationship-node-image"
                       clipPath={`url(#${avatarClipId(character.id)})`}
-                      height={metrics.radius * 2}
+                      height={geom.card ? geom.halfHeight * 2 - 12 : metrics.radius * 2}
                       href={avatarUrl}
                       preserveAspectRatio="xMidYMid slice"
-                      width={metrics.radius * 2}
-                      x={positions[index].x - metrics.radius}
-                      y={positions[index].y - metrics.radius}
+                      width={geom.card ? geom.halfHeight * 2 - 12 : metrics.radius * 2}
+                      x={avatarCentre.x - (geom.card ? geom.halfHeight - 6 : metrics.radius)}
+                      y={avatarCentre.y - (geom.card ? geom.halfHeight - 6 : metrics.radius)}
                     />
                   )}
                   {prefs.showAvatars && style.node.showAvatars && !avatarUrl && (
                     <text
                       className="relationship-node-emoji"
-                      style={{ fontSize: `${metrics.emojiSize}px` }}
-                      x={positions[index].x}
-                      y={positions[index].y}
+                      style={{
+                        fontSize: `${geom.card ? geom.halfHeight * 1.0 : metrics.emojiSize * (geom.radius / Math.max(metrics.radius * style.node.size, 0.001))}px`,
+                      }}
+                      x={avatarCentre.x}
+                      y={avatarCentre.y}
                     >
                       {character.avatarEmoji || "🙂"}
                     </text>
                   )}
-                  {labelled && (
+                  {geom.card && (
+                    <>
+                      <text
+                        className="relationship-node-card-name"
+                        style={{ fontSize: `${Math.min(nameSize, 15)}px` }}
+                        x={cardNameX}
+                        y={character.occupation ? nodeY - 4 : nodeY + 4}
+                      >
+                        {characterDisplayName(character)}
+                      </text>
+                      {character.occupation && (
+                        <text
+                          className="relationship-node-card-meta"
+                          style={{ fontSize: `${Math.min(11, nameSize - 2)}px` }}
+                          x={cardNameX}
+                          y={nodeY + 14}
+                        >
+                          {character.occupation}
+                        </text>
+                      )}
+                    </>
+                  )}
+                  {labelled && !geom.card && (
                     <text
                       className={
                         !showLabels && hubIds.has(character.id)
