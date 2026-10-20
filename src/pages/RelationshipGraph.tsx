@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { useEscapeDismiss } from "../hooks/useLightDismiss";
 import {
   createRelationship,
@@ -67,6 +68,8 @@ import {
   type LayoutPoint,
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
+import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
+import { popoverPosition } from "../utils/popover";
 import {
   alignPositions,
   distributePositions,
@@ -1384,7 +1387,86 @@ export function RelationshipGraph({
   // than a guess about which fields count.
   const draftBaselineRef = useRef("");
   useEscapeDismiss(isArrangeOpen, () => setIsArrangeOpen(false));
+  // Space is a temporary pan and Escape leaves the selection tool, the way both
+  // work in a drawing program. Neither key may steal a keystroke from a text field.
+  useEffect(() => {
+    const typing = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+
+      return Boolean(element && (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable));
+    };
+    const down = (event: KeyboardEvent) => {
+      if (typing(event.target)) {
+        return;
+      }
+      if (event.code === "Space" && svgRef.current) {
+        event.preventDefault();
+        spaceRef.current = true;
+        setSpaceHeld(true);
+      }
+      if (event.key === "Escape" && selectMode) {
+        marqueeRef.current = null;
+        setMarquee(null);
+        setSelectMode(false);
+      }
+    };
+    const up = (event: KeyboardEvent) => {
+      if (event.code === "Space") {
+        spaceRef.current = false;
+        setSpaceHeld(false);
+      }
+    };
+
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [selectMode]);
   useEscapeDismiss(isStyleOpen, () => setIsStyleOpen(false));
+  /**
+   * Put the appearance panel next to the button that opened it.
+   *
+   * Rendered into `document.body` on purpose: the graph sits inside a card that
+   * clips its children and, in the studio, inside transformed containers, so a panel
+   * positioned inside the tree lands wherever the nearest containing block says —
+   * which is how it ended up under the page.
+   */
+  useLayoutEffect(() => {
+    if (!isStyleOpen || isStudio) {
+      setStyleBox(null);
+      return;
+    }
+    const place = () => {
+      const anchor = styleAnchorRef.current?.getBoundingClientRect();
+      if (!anchor) {
+        return;
+      }
+      const placed = popoverPosition(
+        { top: anchor.top, left: anchor.left, right: anchor.right, bottom: anchor.bottom },
+        { width: 340, height: 560 },
+        { width: window.innerWidth, height: window.innerHeight },
+      );
+      setStyleBox({ left: placed.left, top: placed.top, maxHeight: placed.maxHeight });
+    };
+    place();
+    window.addEventListener("resize", place);
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.(".graph-style-popover") || target?.closest?.(".graph-style-trigger")) {
+        return;
+      }
+      setIsStyleOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+
+    return () => {
+      window.removeEventListener("resize", place);
+      document.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [isStyleOpen, isStudio]);
   useEscapeDismiss(isGroupsOpen, () => setIsGroupsOpen(false));
   useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
   useEscapeDismiss(Boolean(preview), () => setPreview(null));
@@ -1658,6 +1740,33 @@ export function RelationshipGraph({
     moved: boolean;
     base: CanvasLayout;
   } | null>(null);
+  // A press on one member of a multi-selection moves the whole set. It is a
+  // different gesture from a group border: a group is a saved fact, a selection is
+  // what the reader has picked right now, and they must not share state.
+  const setDragRef = useRef<{
+    pointerId: number;
+    start: LayoutPoint;
+    last: LayoutPoint;
+    grab: LayoutPoint;
+    id: string;
+    members: string[];
+    base: CanvasLayout;
+    moved: boolean;
+  } | null>(null);
+  const marqueeRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    additive: boolean;
+    moved: boolean;
+  } | null>(null);
+  const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  // Space is the pans-anyway key, the way it is in every drawing tool. Held state is
+  // mirrored into a ref because the pointer handler must read it without a re-render.
+  const spaceRef = useRef(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const styleAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const [styleBox, setStyleBox] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
   const groupDragRef = useRef<{
     groupId: string;
     pointerId: number;
@@ -2539,6 +2648,26 @@ export function RelationshipGraph({
 
       if (nodePoint) {
         const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+
+        // Pressing one member of a multi-selection carries the whole set. Only when
+        // the node is part of the selection: pressing an unselected node is a
+        // request to work on that node alone.
+        if (selectedIds.length > 1 && selectedIds.includes(nodeId) && !spaceRef.current) {
+          setDragRef.current = {
+            pointerId: event.pointerId,
+            id: nodeId,
+            start: world,
+            last: world,
+            grab: { x: nodePoint.x - world.x, y: nodePoint.y - world.y },
+            members: [...selectedIds],
+            base: workingLayout(),
+            moved: false,
+          };
+          panRef.current = null;
+          nodeDragRef.current = null;
+          return;
+        }
+
         nodeDragRef.current = {
           id: nodeId,
           pointerId: event.pointerId,
@@ -2573,6 +2702,21 @@ export function RelationshipGraph({
         base: workingLayout(),
         moved: false,
       };
+      panRef.current = null;
+      return;
+    }
+
+    // Empty canvas: the selection tool draws a rectangle, everything else pans.
+    // Space turns the rectangle off for as long as it is held.
+    if (selectMode && !spaceRef.current) {
+      marqueeRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        additive: event.shiftKey,
+        moved: false,
+      };
+      setMarquee({ left: event.clientX, top: event.clientY, width: 0, height: 0 });
       panRef.current = null;
       return;
     }
@@ -2612,6 +2756,44 @@ export function RelationshipGraph({
         );
       }
       pinchRef.current = { distance };
+      return;
+    }
+
+    const setDrag = setDragRef.current;
+    if (setDrag && setDrag.pointerId === event.pointerId) {
+      const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
+      setDrag.last = world;
+      const delta = { x: world.x - setDrag.start.x, y: world.y - setDrag.start.y };
+
+      if (!setDrag.moved && Math.hypot(delta.x, delta.y) > dragThreshold(event.pointerType)) {
+        setDrag.moved = true;
+        setFocusId(null);
+        setHoveredId(null);
+      }
+
+      if (setDrag.moved) {
+        const next = { ...setDrag.base.positions };
+        for (const id of setDrag.members) {
+          const point = setDrag.base.positions[id];
+          if (point) {
+            next[id] = {
+              x: Math.round((point.x + delta.x) * 100) / 100,
+              y: Math.round((point.y + delta.y) * 100) / 100,
+            };
+          }
+        }
+        scheduleDrag(next);
+      }
+      return;
+    }
+
+    const marqueeDrag = marqueeRef.current;
+    if (marqueeDrag && marqueeDrag.pointerId === event.pointerId) {
+      const rect = dragRect(marqueeDrag.startX, marqueeDrag.startY, event.clientX, event.clientY);
+      if (!marqueeDrag.moved && isMarquee(rect)) {
+        marqueeDrag.moved = true;
+      }
+      setMarquee({ left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top });
       return;
     }
 
@@ -2691,6 +2873,13 @@ export function RelationshipGraph({
     if (groupDragRef.current?.pointerId === event.pointerId) {
       groupDragRef.current = null;
     }
+    if (setDragRef.current?.pointerId === event.pointerId) {
+      setDragRef.current = null;
+    }
+    if (marqueeRef.current?.pointerId === event.pointerId) {
+      marqueeRef.current = null;
+    }
+    setMarquee(null);
     pointersRef.current.delete(event.pointerId);
     pressedNodeRef.current = null;
     setPressedGroupId(null);
@@ -2705,11 +2894,56 @@ export function RelationshipGraph({
     const tappedId = pressedNodeRef.current;
     const tappedEdgeId = pressedEdgeRef.current;
 
+    const setDrag = setDragRef.current;
+    const marqueeDrag = marqueeRef.current;
+    const setGesture = setDrag && setDrag.pointerId === event.pointerId ? setDrag : null;
+    const marqueeGesture = marqueeDrag && marqueeDrag.pointerId === event.pointerId ? marqueeDrag : null;
     const nodeGesture = nodeDrag && nodeDrag.pointerId === event.pointerId ? nodeDrag : null;
     const groupGesture = groupDrag && groupDrag.pointerId === event.pointerId ? groupDrag : null;
     const panned = Boolean(pan && pan.pointerId === event.pointerId && pan.moved);
 
-    if (nodeGesture?.moved) {
+    if (setGesture?.moved) {
+      const world = setGesture.last;
+      const delta = { x: world.x - setGesture.start.x, y: world.y - setGesture.start.y };
+      const fallback = { ...setGesture.base.positions };
+
+      for (const id of setGesture.members) {
+        const point = setGesture.base.positions[id];
+        if (point) {
+          fallback[id] = {
+            x: Math.round((point.x + delta.x) * 100) / 100,
+            y: Math.round((point.y + delta.y) * 100) / 100,
+          };
+        }
+      }
+
+      commitLayout({ ...setGesture.base, positions: pendingDragRef.current ?? fallback });
+      // Moving several people at once is a gesture with no "drag back", so it takes
+      // the single step back the arrange path already owns.
+      setArrangeUndo({ layout: setGesture.base, label: "移动选择" });
+      stopDragFrame();
+    } else if (marqueeGesture?.moved) {
+      const rect = dragRect(marqueeGesture.startX, marqueeGesture.startY, event.clientX, event.clientY);
+      const svg = svgRef.current;
+      const picked = svg
+        ? [...svg.querySelectorAll("[data-character-id]")]
+            .filter((element) => {
+              const shape = element.querySelector(".relationship-node-card, .relationship-node-circle") ?? element;
+              const box = shape.getBoundingClientRect();
+
+              return marqueeHits(
+                { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+                rect,
+              );
+            })
+            .map((element) => element.getAttribute("data-character-id"))
+            .filter((id): id is string => Boolean(id))
+        : [];
+      setSelectedEdgeId(null);
+      setSelectedIds((current) =>
+        marqueeGesture.additive ? [...new Set([...current, ...picked])] : picked,
+      );
+    } else if (nodeGesture?.moved) {
       // A fast flick can end before the next animation frame, so the release
       // position is computed here as well. Without this the node snaps back.
       // `pointerup` may report (0,0) on touch after a cancel; the last move is the
@@ -2784,6 +3018,9 @@ export function RelationshipGraph({
       pressedNodeRef.current = null;
       nodeDragRef.current = null;
       groupDragRef.current = null;
+      setDragRef.current = null;
+      marqueeRef.current = null;
+      setMarquee(null);
       // The drag is over: the border keeps the selected state, not the dragging one.
       setPressedGroupId(null);
     }
@@ -4134,19 +4371,25 @@ export function RelationshipGraph({
 
               <button
                 aria-expanded={isStyleOpen}
-                className="graph-tool-button hidden-in-studio"
+                aria-label="外观设置"
+                className="graph-tool-button graph-style-trigger hidden-in-studio"
                 onClick={() => setIsStyleOpen((open) => !open)}
+                ref={styleAnchorRef}
+                title="外观：画布、所选角色或所选关系线"
                 type="button"
               >
                 外观
               </button>
               <button
                 aria-pressed={isStudio}
+                aria-label="全屏编辑"
                 className="graph-tool-button graph-studio-entry"
                 onClick={enterStudio}
+                title="进入更大的关系画布编辑空间（应用内全屏，不改浏览器全屏状态）"
                 type="button"
               >
-                工作室
+                <Icon name="maximize" size={14} />
+                全屏编辑
               </button>
               <button
                 aria-label="重置视角"
@@ -4212,7 +4455,7 @@ export function RelationshipGraph({
           >
           <svg
             aria-hidden="true"
-            className="relationship-canvas"
+            className={`relationship-canvas${selectMode ? " is-selecting" : ""}${spaceHeld ? " is-panning" : ""}`}
             onPointerCancel={cancelPan}
             onPointerDown={beginPan}
             onPointerMove={movePan}
@@ -4674,7 +4917,7 @@ export function RelationshipGraph({
                     type="button"
                   >
                     <Icon name="arrowLeft" size={16} />
-                    <span>退出工作室</span>
+                    <span>退出全屏编辑</span>
                   </button>
                   <div className="graph-studio-titles">
                     <strong>角色关系网</strong>
@@ -5265,7 +5508,40 @@ export function RelationshipGraph({
             </>
           )}
 
-          {!isStudio && isStyleOpen && stylePanel}
+          {marquee && (
+            <div
+              aria-hidden="true"
+              className="graph-marquee"
+              style={{ height: marquee.height, left: marquee.left, top: marquee.top, width: marquee.width }}
+            />
+          )}
+          {!isStudio &&
+            isStyleOpen &&
+            styleBox &&
+            createPortal(
+              <div
+                aria-label="外观设置"
+                className="graph-style-popover"
+                role="dialog"
+                style={{ left: styleBox.left, top: styleBox.top, maxHeight: styleBox.maxHeight }}
+              >
+                <div className="graph-style-popover-head">
+                  <strong>
+                    外观 ·{" "}
+                    {selectedEdgeId && byId.size >= 0
+                      ? "所选关系线"
+                      : selectedIds.length === 1
+                        ? "所选角色"
+                        : "整体画布"}
+                  </strong>
+                  <button aria-label="关闭外观设置" onClick={() => setIsStyleOpen(false)} type="button">
+                    <Icon name="close" size={14} />
+                  </button>
+                </div>
+                <div className="graph-style-popover-body">{stylePanel}</div>
+              </div>,
+              document.body,
+            )}
 
           {/* A fixed slot, so showing a preview or a selection hint does not push
               the canvas down under the pointer that just selected something. */}
@@ -5336,7 +5612,10 @@ export function RelationshipGraph({
                   {selectedIds.length === 1 && (
                     <button
                       className="ghost-button"
-                      onClick={() => setIsStyleOpen(true)}
+                      onClick={() => {
+                        setStudioTab("design");
+                        setIsStudioRightOpen(true);
+                      }}
                       type="button"
                     >
                       外观
