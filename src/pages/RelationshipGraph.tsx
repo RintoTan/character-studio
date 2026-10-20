@@ -68,6 +68,16 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import {
+  alignPositions,
+  distributePositions,
+  nodeStateClass,
+  pruneSelection,
+  spreadPositions,
+  type AlignAxis,
+  type AlignBox,
+  type AlignMode,
+} from "../utils/canvasAlign";
+import {
   downloadPng,
   downloadSvg,
   inlineSvgPresentation,
@@ -1554,7 +1564,8 @@ export function RelationshipGraph({
       saveLayout(pruned);
       return pruned;
     });
-    setSelectedIds((current) => current.filter((id) => valid.includes(id)));
+    setSelectedIds((current) => pruneSelection(current, valid));
+    setFocusId((current) => (current && !valid.includes(current) ? null : current));
   }, [characters, relationships, relationshipsLoaded]);
 
   // A character drawn for the first time — 显示全部, a search that adds a stranger,
@@ -2069,37 +2080,75 @@ export function RelationshipGraph({
     setView(restored);
   }
 
-  function alignSelection(axis: "x" | "y", mode: "start" | "center" | "end") {
-    const ids = selectedIds.filter((id) => layoutRef.current.positions[id]);
-    if (ids.length < 2) {
-      return;
-    }
+  /**
+   * The drawn box of every selected node, in drawing units.
+   *
+   * This is what alignment has to see: a card is 84 units wide from its centre, a
+   * circle 20, and a plate 56. Reading only the stored points would line up the
+   * centres of three different shapes and call the ragged result "aligned".
+   */
+  function selectionBoxes(): AlignBox[] {
+    return selectedIds.flatMap((id) => {
+      // The drawn point, not the stored one: a canvas that has never been dragged
+      // has no saved coordinates at all, and reading only the store is why "左对齐"
+      // could sit there doing nothing on a fresh workspace.
+      const index = visibleCharacters.findIndex((character) => character.id === id);
+      const point = positions[index] ?? layoutRef.current.positions[id];
+      const geom = nodeVisuals[id]?.geom;
+
+      if (!point) {
+        return [];
+      }
+
+      return [{
+        id,
+        x: point.x,
+        y: point.y,
+        halfWidth: geom?.halfWidth ?? metrics.radius,
+        halfHeight: geom?.halfHeight ?? metrics.radius,
+      }];
+    });
+  }
+
+  function writeAxis(boxes: AlignBox[], values: Record<string, number>, axis: AlignAxis) {
     const base = workingLayout();
-    const values = ids.map((id) => base.positions[id][axis]);
-    const target =
-      mode === "start" ? Math.min(...values) : mode === "end" ? Math.max(...values) : values.reduce((sum, value) => sum + value, 0) / values.length;
     const positions = { ...base.positions };
-    ids.forEach((id) => {
-      positions[id] = { ...positions[id], [axis]: Math.round(target) };
+
+    // Writing the axis alone would leave `{ x }` for a node that had no stored point
+    // yet, dropping its y. Both coordinates are written from the box that was measured.
+    boxes.forEach((box) => {
+      const value = values[box.id];
+
+      if (value === undefined) {
+        return;
+      }
+
+      positions[box.id] = {
+        x: axis === "x" ? Math.round(value * 100) / 100 : box.x,
+        y: axis === "y" ? Math.round(value * 100) / 100 : box.y,
+      };
     });
     commitLayout({ ...base, positions });
   }
 
-  function distributeSelection(axis: "x" | "y") {
-    const ids = selectedIds.filter((id) => layoutRef.current.positions[id]);
-    if (ids.length < 3) {
-      return;
+  function alignSelection(axis: AlignAxis, mode: AlignMode) {
+    const boxes = selectionBoxes();
+    const values = alignPositions(boxes, axis, mode);
+
+    if (values) {
+      writeAxis(boxes, values, axis);
     }
-    const base = workingLayout();
-    const ordered = [...ids].sort((a, b) => base.positions[a][axis] - base.positions[b][axis]);
-    const first = base.positions[ordered[0]][axis];
-    const last = base.positions[ordered[ordered.length - 1]][axis];
-    const step = (last - first) / (ordered.length - 1);
-    const positions = { ...base.positions };
-    ordered.forEach((id, index) => {
-      positions[id] = { ...positions[id], [axis]: Math.round(first + step * index) };
-    });
-    commitLayout({ ...base, positions });
+  }
+
+  function distributeSelection(axis: AlignAxis) {
+    const boxes = selectionBoxes();
+    // Equal gaps where there is room for them; when the boxes already fill the
+    // span, equal centre spacing is the only honest reading of "distribute".
+    const values = distributePositions(boxes, axis) ?? spreadPositions(boxes, axis);
+
+    if (values) {
+      writeAxis(boxes, values, axis);
+    }
   }
 
   /** The only path that writes coordinates. One gesture, one write. */
@@ -4383,16 +4432,16 @@ export function RelationshipGraph({
               // "I exited the spotlight" and "the pointer is still on a node" look
               // identical, and it made the exit look broken.
               const outsideSpotlight = spotlightSet !== null && !spotlightSet.has(character.id);
-              const baseState = outsideSpotlight
-                ? "relationship-node spotlight-dim"
-                : isFocused
-                  ? "relationship-node active focused"
-                  : isHovered
-                    ? "relationship-node active"
-                    : activeId && character.id !== activeId && !isNeighbour
-                      ? "relationship-node dimmed"
-                      : "relationship-node";
-              const state = `${baseState}${isSelected ? " selected" : ""}`;
+              // One function owns the priority. A hover used to be able to dim the
+              // node the reader had just picked, which read as "the selection went
+              // away"; selection now outranks hover by construction.
+              const state = nodeStateClass({
+                selected: isSelected,
+                focused: isFocused,
+                hovered: isHovered,
+                outsideSpotlight,
+                dimmedByHover: Boolean(activeId && character.id !== activeId && !isNeighbour),
+              });
               const avatarUrl = avatarUrls[character.id];
               // A ring drawn in world units disappears at the zoom a hundred-character
               // wheel is read at, which is exactly where "which one did I pick" matters.
@@ -4436,6 +4485,26 @@ export function RelationshipGraph({
                          strokeWidth={ringStroke}
                        />
                      ))}
+                   {isSelected &&
+                     (() => {
+                       // A ring is still a colour at a glance. The tick is the same mark
+                       // in every preset, light or dark, so "picked" survives a theme
+                       // that paints the ring close to the node's own border.
+                       const badgeR = Math.max(5.5, Math.min(9, geom.halfHeight * 0.34));
+                       const tight = geom.card ? 2 : badgeR * 0.15;
+                       const bx = nodeX + geom.halfWidth - tight;
+                       const by = nodeY - geom.halfHeight + tight;
+
+                       return (
+                         <g className="relationship-node-badge" aria-hidden="true">
+                           <circle cx={bx} cy={by} r={badgeR} />
+                           <path
+                             d={`M ${bx - badgeR * 0.42} ${by} L ${bx - badgeR * 0.1} ${by + badgeR * 0.32} L ${bx + badgeR * 0.44} ${by - badgeR * 0.3}`}
+                             strokeWidth={Math.max(1.2, badgeR * 0.3)}
+                           />
+                         </g>
+                       );
+                     })()}
                   {geom.card ? (
                     <rect
                       className="relationship-node-card"
@@ -4706,6 +4775,7 @@ export function RelationshipGraph({
                         整理
                       </button>
                       <button
+                        aria-pressed={selectMode}
                         onClick={() => {
                           setIsMobileMenuOpen(false);
                           setSelectMode((current) => {
@@ -4718,8 +4788,69 @@ export function RelationshipGraph({
                         role="menuitem"
                         type="button"
                       >
-                        多选
+                        {selectMode ? "多选中" : "多选"}
                       </button>
+                      {selectedIds.length >= 2 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setIsAlignOpen(true);
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          排列
+                        </button>
+                      )}
+                      {selectedIds.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            fitSelection();
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          适应选中
+                        </button>
+                      )}
+                      {selectedIds.length >= 2 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setGroupDraft({ name: "", editingId: null });
+                            setIsGroupsOpen(true);
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          创建分组
+                        </button>
+                      )}
+                      {selectedIds.length === 1 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setIsStyleOpen(true);
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          外观
+                        </button>
+                      )}
+                      {selectedIds.length > 0 && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            setSelectedIds([]);
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          清除选择
+                        </button>
+                      )}
                       {previousView && (
                         <button
                           onClick={() => {
@@ -5170,42 +5301,48 @@ export function RelationshipGraph({
 
           {selectedIds.length > 0 && !preview && (
             <div className="graph-edit-bar selection" role="status">
-              <span>已选 {selectedIds.length} 个角色</span>
+              <span className="graph-edit-bar-count">已选 {selectedIds.length} 个角色</span>
+              <span className={`graph-edit-bar-mode${selectMode ? " on" : ""}`}>
+                {selectMode ? "多选模式：点按加入或移出" : "单选：点按替换选择"}
+              </span>
               <div className="graph-edit-bar-actions">
-                <button className="ghost-button" onClick={fitSelection} type="button">
-                  适应选中
-                </button>
-                {!isStudio && (
-                  <button
-                    aria-expanded={isAlignOpen}
-                    className="ghost-button"
-                    disabled={selectedIds.length < 2}
-                    onClick={() => setIsAlignOpen((open) => !open)}
-                    type="button"
-                  >
-                    排列
+                <span className="graph-edit-bar-secondary">
+                  <button className="ghost-button" onClick={fitSelection} type="button">
+                    适应选中
                   </button>
-                )}
+                </span>
                 <button
-                  className="ghost-button"
+                  aria-expanded={isAlignOpen}
+                  className={isAlignOpen ? "ghost-button active" : "ghost-button"}
                   disabled={selectedIds.length < 2}
-                  onClick={() => {
-                    setGroupDraft({ name: "", editingId: null });
-                    setIsGroupsOpen(true);
-                  }}
+                  onClick={() => setIsAlignOpen((open) => !open)}
+                  title={selectedIds.length < 2 ? "对齐与分布需要至少两个角色" : "对齐与分布"}
                   type="button"
                 >
-                  创建分组
+                  排列
                 </button>
-                {selectedIds.length === 1 && (
+                <span className="graph-edit-bar-secondary">
                   <button
                     className="ghost-button"
-                    onClick={() => setIsStyleOpen(true)}
+                    disabled={selectedIds.length < 2}
+                    onClick={() => {
+                      setGroupDraft({ name: "", editingId: null });
+                      setIsGroupsOpen(true);
+                    }}
                     type="button"
                   >
-                    外观
+                    创建分组
                   </button>
-                )}
+                  {selectedIds.length === 1 && (
+                    <button
+                      className="ghost-button"
+                      onClick={() => setIsStyleOpen(true)}
+                      type="button"
+                    >
+                      外观
+                    </button>
+                  )}
+                </span>
                 <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
                   清除选择
                 </button>
@@ -5215,15 +5352,29 @@ export function RelationshipGraph({
 
           {isAlignOpen && selectedIds.length >= 2 && !preview && (
             <div className="graph-align-panel" role="group" aria-label="对齐与分布">
-              <button className="graph-tool-button" onClick={() => alignSelection("x", "start")} type="button">左对齐</button>
-              <button className="graph-tool-button" onClick={() => alignSelection("x", "center")} type="button">水平居中</button>
-              <button className="graph-tool-button" onClick={() => alignSelection("x", "end")} type="button">右对齐</button>
-              <button className="graph-tool-button" onClick={() => alignSelection("y", "start")} type="button">顶对齐</button>
-              <button className="graph-tool-button" onClick={() => alignSelection("y", "center")} type="button">垂直居中</button>
-              <button className="graph-tool-button" onClick={() => alignSelection("y", "end")} type="button">底对齐</button>
-              <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("x")} type="button">水平等距</button>
-              <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("y")} type="button">垂直等距</button>
-              <p className="muted">等距需要三个以上节点。对齐只改坐标，不改关系。</p>
+              <div className="graph-align-section">
+                <span className="graph-align-title">对齐</span>
+                <div className="graph-align-grid">
+                  <button className="graph-tool-button" onClick={() => alignSelection("x", "start")} type="button">左对齐</button>
+                  <button className="graph-tool-button" onClick={() => alignSelection("x", "center")} type="button">水平居中</button>
+                  <button className="graph-tool-button" onClick={() => alignSelection("x", "end")} type="button">右对齐</button>
+                  <button className="graph-tool-button" onClick={() => alignSelection("y", "start")} type="button">顶对齐</button>
+                  <button className="graph-tool-button" onClick={() => alignSelection("y", "center")} type="button">垂直居中</button>
+                  <button className="graph-tool-button" onClick={() => alignSelection("y", "end")} type="button">底对齐</button>
+                </div>
+              </div>
+              <div className="graph-align-section">
+                <span className="graph-align-title">分布</span>
+                <div className="graph-align-grid">
+                  <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("x")} type="button">水平等距</button>
+                  <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("y")} type="button">垂直等距</button>
+                </div>
+              </div>
+              <p className="graph-align-note">
+                {selectedIds.length < 3
+                  ? `等距需要至少三个角色，当前已选 ${selectedIds.length} 个。对齐按角色的实际外框计算，只改坐标，不改关系。`
+                  : "对齐按角色的实际外框计算，只改坐标，不改关系。"}
+              </p>
             </div>
           )}
 

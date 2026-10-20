@@ -12,7 +12,8 @@
     "verify:deploy": "node scripts/verify-deploy.mjs",
     "verify:version": "node scripts/verify-version.mjs",
     "verify:browser": "node scripts/verify-browser.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "preview:local": "node scripts/preview-local.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

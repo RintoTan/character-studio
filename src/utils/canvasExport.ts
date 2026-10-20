@@ -275,12 +275,14 @@ export function stripTransientState(clone: SVGSVGElement) {
   // Classes only: removing them changes no element counts, so this can run before
   // the computed styles are copied across. The rings are removed afterwards, by
   // removeTransientMarks, because that does change the shape of the tree.
-  clone.querySelectorAll(".selected, .active, .dimmed").forEach((el) => {
-    el.classList.remove("selected", "active", "dimmed");
+  clone.querySelectorAll(".selected, .active, .dimmed, .focused, .spotlight-dim").forEach((el) => {
+    el.classList.remove("selected", "active", "dimmed", "focused", "spotlight-dim");
   });
 }
 
 /** Drop the selection ring and the edge halo — they belong to the interaction. */
 export function removeTransientMarks(clone: SVGSVGElement) {
-  clone.querySelectorAll(".relationship-node-ring, .relationship-edge-halo").forEach((el) => el.remove());
+  clone
+    .querySelectorAll(".relationship-node-ring, .relationship-edge-halo, .relationship-node-badge")
+    .forEach((el) => el.remove());
 }

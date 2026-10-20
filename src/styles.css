@@ -11356,6 +11356,104 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .relationship-node-ring.tight {
   stroke-dasharray: none;
 }
+/* The selected tick: the same small mark in every preset and both themes, so
+   "picked" never depends on one colour being distinguishable from another. */
+.relationship-node-badge {
+  pointer-events: none;
+}
+
+.relationship-node-badge circle {
+  fill: var(--primary);
+  stroke: var(--surface);
+  stroke-width: 1.5;
+}
+
+.relationship-node-badge path {
+  fill: none;
+  stroke: var(--surface);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Hover must never win over a pick: the ring and the tick stay at full strength
+   while the pointer is elsewhere. */
+.relationship-node.selected .relationship-node-card,
+.relationship-node.selected .relationship-node-circle {
+  stroke: var(--primary);
+}
+
+.graph-edit-bar-count {
+  font-weight: 600;
+}
+
+.graph-edit-bar-mode {
+  color: var(--text-soft);
+  font-size: var(--studio-font-meta);
+}
+
+.graph-edit-bar-mode.on {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.graph-align-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.graph-edit-bar-secondary {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.graph-align-section {
+  display: grid;
+  gap: 6px;
+}
+
+.graph-align-title {
+  color: var(--text-soft);
+  font-size: var(--studio-font-meta);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.graph-align-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 430px) {
+  /* One row on a phone: the bar keeps the count, the mode and the two commands
+     that act on the selection as a whole. The rest live in the tool menu. */
+  .graph-edit-bar.selection .graph-edit-bar-secondary {
+    display: none;
+  }
+
+  .graph-align-panel {
+    position: fixed;
+    right: 12px;
+    bottom: calc(var(--studio-dock-space) + 12px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    z-index: 40;
+    max-height: min(52dvh, 380px);
+    overflow: auto;
+    box-shadow: 0 14px 34px rgb(0 0 0 / 0.18);
+  }
+}
+
+.graph-align-note {
+  color: var(--text-soft);
+  font-size: var(--studio-font-meta);
+  line-height: 1.5;
+  margin: 0;
+}
 
 /* A selected line: a soft halo under it, so its own colour and dash stay exactly
    as the author set them. */
