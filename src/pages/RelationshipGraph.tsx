@@ -68,6 +68,7 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
+import { labelDensity, namesNode, pickSpacedLabels } from "../utils/labelDensity";
 import {
   ARRANGE_NOTICE_MS,
   appearanceTarget,
@@ -1178,18 +1179,15 @@ export function RelationshipGraph({
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [notOnCanvas, setNotOnCanvas] = useState<Character | null>(null);
-  const [isDisplayOpen, setIsDisplayOpen] = useState(false);
   // Output is set once and used rarely, so it lives behind its own toggle: the bar
   // keeps 显示设置 and 导出 at one height instead of five controls in a row.
   const [isExportOpen, setIsExportOpen] = useState(false);
   // Both bar panels close outside already; Escape closes the one on top, and the
   // last one opened is the one the shared light-layer stack sees first.
-  useEscapeDismiss(isDisplayOpen, () => setIsDisplayOpen(false));
   useEscapeDismiss(isExportOpen, () => setIsExportOpen(false));
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
   const holderRef = useRef<HTMLDivElement | null>(null);
   const nodeCardRef = useRef<HTMLDivElement | null>(null);
-  const displayWrapRef = useRef<HTMLDivElement | null>(null);
   const exportWrapRef = useRef<HTMLDivElement | null>(null);
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const avatarUrls = useGraphAvatarUrls(characters);
@@ -1305,6 +1303,9 @@ export function RelationshipGraph({
   const [arrangeUndo, setArrangeUndo] = useState<{ layout: CanvasLayout; label: string } | null>(null);
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
+  // One row's action menu at a time: three text buttons per row was the widest
+  // thing in the table and the least used.
+  const [manageMenuId, setManageMenuId] = useState<string | null>(null);
   // The small menus: 更多 and 对齐/分布. They are popovers, not surfaces, because they
   // hold one press each and close on the next click anywhere.
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -1321,6 +1322,8 @@ export function RelationshipGraph({
   const [exportScope, setExportScope] = useState<ExportScope>("all");
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
+  // Which slider run the last style write belongs to, so a drag is one undo step.
+  const styleRunRef = useRef<{ key: string; at: number }>({ key: "", at: 0 });
   const redoRef = useRef<CanvasLayout[]>([]);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -1366,6 +1369,7 @@ export function RelationshipGraph({
   // of these, the two small menus sit above it, and a bookmark's own menu above them.
   // One key press therefore never closes a drawer and a popover together.
   useEscapeDismiss(surface !== "none", () => setSurface("none"));
+  useEscapeDismiss(Boolean(manageMenuId), () => setManageMenuId(null));
   useEscapeDismiss(isMoreOpen, () => setIsMoreOpen(false));
   useEscapeDismiss(isAlignOpen, () => setIsAlignOpen(false));
   useEscapeDismiss(Boolean(bookmarkMenuId), () => setBookmarkMenuId(null));
@@ -1855,9 +1859,15 @@ export function RelationshipGraph({
   // test: a handful of nodes at reading scale have room for their names even when a
   // hundred would not. Above that, the density rules below still apply.
   const compactViewport = frameSize.width > 0 && frameSize.width <= 720;
-  const showLabels =
-    prefs.showNames &&
-    (exporting || labelsFit || (compactViewport && visibleCharacters.length <= 12));
+  // One rule decides how many names the drawing carries; the render asks it per node.
+  const density = labelDensity({
+    showNames: prefs.showNames,
+    exporting,
+    labelsFit,
+    compact: compactViewport,
+    visibleCount: visibleCharacters.length,
+  });
+  const showLabels = density === "all";
 
   // When not every name fits, a few still do: the nodes the most edges meet at are the
   // ones that make the shape legible ("the two clusters meet at 沈砚"), and the rest
@@ -1876,13 +1886,25 @@ export function RelationshipGraph({
       }
     }
 
-    return new Set(
-      [...degree.entries()]
-        .sort((left, right) => right[1] - left[1])
-        .slice(0, 10)
-        .map(([id]) => id),
-    );
-  }, [visibleCharacters, relationships]);
+    // Busiest first, then only those with room: a ring's hubs are neighbours, and ten
+    // names in the same 60 units overlap into a smear.
+    const ranked = [...degree.entries()]
+      .sort((left, right) => right[1] - left[1])
+      .slice(0, 12)
+      .flatMap(([id, weight]) => {
+        const index = visibleCharacters.findIndex((character) => character.id === id);
+        const point = index >= 0 ? positions[index] : null;
+        return point ? [{ id, x: point.x, y: point.y, weight }] : [];
+      });
+
+    // Distances are world units, so the threshold has to be the on-screen gap divided
+    // by the scale the drawing is rendered at — otherwise a hundred-node ring, drawn at
+    // 0.4×, stacks names that were 52 units apart into 20 pixels.
+    const screenGap = Math.max(58, nameSize * 5);
+    const minDistance = screenScale > 0 ? screenGap / screenScale : Math.max(52, nameSize * 4.2);
+
+    return new Set(pickSpacedLabels(ranked, minDistance).map((item) => item.id));
+  }, [visibleCharacters, relationships, positions, nameSize, screenScale]);
 
   // The canvas only exists once there is something to draw, so this has to re-run when
   // it appears; measuring nothing on mount and never measuring again would leave the
@@ -2230,11 +2252,26 @@ export function RelationshipGraph({
     }
   }
 
-  /** The only path that writes coordinates. One gesture, one write. */
-  function commitLayout(next: CanvasLayout) {
+  /**
+   * The only path that writes coordinates. One gesture, one write.
+   *
+   * A range slider fires on every pixel of the drag. Writing one undo entry per
+   * event would turn a single decision ("make the nodes a bit bigger") into thirty
+   * steps, so the caller can name the run it belongs to: consecutive writes with the
+   * same key inside a short window keep the snapshot taken before the first one.
+   */
+  function commitLayout(next: CanvasLayout, coalesceKey?: string) {
     if (JSON.stringify(next) !== JSON.stringify(layoutRef.current)) {
-      undoRef.current = [...undoRef.current.slice(-39), layoutRef.current];
-      redoRef.current = [];
+      const now = Date.now();
+      const run = styleRunRef.current;
+      const continues = Boolean(coalesceKey) && run.key === coalesceKey && now - run.at < 900;
+
+      if (!continues) {
+        undoRef.current = [...undoRef.current.slice(-39), layoutRef.current];
+        redoRef.current = [];
+      }
+
+      styleRunRef.current = coalesceKey ? { key: coalesceKey, at: now } : { key: "", at: 0 };
     }
     setLayout(next);
     saveLayout(next);
@@ -2242,8 +2279,8 @@ export function RelationshipGraph({
   }
 
   /** Style edits are layout edits: same store, same undo history, same backup. */
-  function patchStyle(next: CanvasStyle) {
-    commitLayout({ ...workingLayout(), style: next });
+  function patchStyle(next: CanvasStyle, coalesceKey?: string) {
+    commitLayout({ ...workingLayout(), style: next }, coalesceKey);
   }
 
   function applyPreset(id: CanvasPresetId) {
@@ -3159,26 +3196,22 @@ export function RelationshipGraph({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [focusId, draft, pendingDelete]);
 
-  // The bar's panels close on a click anywhere outside them, like every other dropdown
+  // The export panel closes on a click anywhere outside it, like every other dropdown
   // in the app.
   useEffect(() => {
-    if (!isDisplayOpen && !isExportOpen) {
+    if (!isExportOpen) {
       return;
     }
 
     function onPointerDown(event: MouseEvent) {
-      if (isDisplayOpen && !displayWrapRef.current?.contains(event.target as Node)) {
-        setIsDisplayOpen(false);
-      }
-
-      if (isExportOpen && !exportWrapRef.current?.contains(event.target as Node)) {
+      if (!exportWrapRef.current?.contains(event.target as Node)) {
         setIsExportOpen(false);
       }
     }
 
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
-  }, [isDisplayOpen, isExportOpen]);
+  }, [isExportOpen]);
 
   // Where the hover card sits: under the node it describes, placed from the node's own
   // projected position rather than from the cursor, so it does not jump while the
@@ -3712,7 +3745,7 @@ export function RelationshipGraph({
                     aria-label="节点大小"
                     max={2}
                     min={0.6}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } }, "node-size")}
                     step={0.05}
                     type="range"
                     value={style.node.size}
@@ -3727,7 +3760,7 @@ export function RelationshipGraph({
                     aria-label="姓名字号"
                     max={1.8}
                     min={0.8}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: Number(event.target.value) } })}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: Number(event.target.value) } }, "name-scale")}
                     step={0.05}
                     type="range"
                     value={style.node.nameScale}
@@ -3742,7 +3775,7 @@ export function RelationshipGraph({
                     aria-label="连线宽度"
                     max={6}
                     min={0.4}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } })}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } }, "edge-width")}
                     step={0.1}
                     type="range"
                     value={style.edge.width}
@@ -3772,6 +3805,125 @@ export function RelationshipGraph({
 
   const stylePanel = (
             <div className="graph-style-panel" role="group" aria-label="画布外观">
+              {/* What this device shows, stated before what the artwork is. The two
+                  halves write to different stores — 视图 to graph.prefs, 外观 to the
+                  layout — and the export clones the live drawing, so the copy has to
+                  say which of them travels into an export. */}
+              <div aria-label="视图" className="graph-style-view" role="group">
+                <div className="graph-style-section-head">
+                  <strong>视图</strong>
+                  <span>只改本机显示；导出取当前画面，因此跟着一起变</span>
+                </div>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">名称</span>
+                  <div className="graph-segment">
+                    {[
+                      { value: true, label: "显示" },
+                      { value: false, label: "隐藏" },
+                    ].map((option) => (
+                      <button
+                        aria-pressed={prefs.showNames === option.value}
+                        className={prefs.showNames === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                        key={option.label}
+                        onClick={() => updatePrefs({ showNames: option.value })}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="graph-segment">
+                    {NAME_SIZES.map((size) => (
+                      <button
+                        aria-pressed={prefs.nameSize === size.value}
+                        className={prefs.nameSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
+                        key={size.value}
+                        onClick={() => updatePrefs({ nameSize: size.value })}
+                        type="button"
+                      >
+                        {size.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">头像</span>
+                  <div className="graph-segment">
+                    {[
+                      { value: true, label: "显示" },
+                      { value: false, label: "隐藏" },
+                    ].map((option) => (
+                      <button
+                        aria-pressed={prefs.showAvatars === option.value}
+                        className={prefs.showAvatars === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                        key={option.label}
+                        onClick={() => updatePrefs({ showAvatars: option.value })}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="graph-segment">
+                    {AVATAR_SIZES.map((size) => (
+                      <button
+                        aria-pressed={prefs.avatarSize === size.value}
+                        className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
+                        key={size.value}
+                        onClick={() => updatePrefs({ avatarSize: size.value })}
+                        type="button"
+                      >
+                        {size.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* Which characters the drawing contains. It used to sit in the page
+                    header, where it read as a page-level filter; it is a property of
+                    the canvas, so it belongs with the other view switches. */}
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">范围</span>
+                  <div className="graph-segment">
+                    <button
+                      aria-pressed={!showAll}
+                      className={!showAll ? "graph-segment-button selected" : "graph-segment-button"}
+                      onClick={() => setShowAll(false)}
+                      type="button"
+                    >
+                      只看有关联的
+                    </button>
+                    <button
+                      aria-pressed={showAll}
+                      className={showAll ? "graph-segment-button selected" : "graph-segment-button"}
+                      onClick={() => setShowAll(true)}
+                      type="button"
+                    >
+                      全部角色
+                    </button>
+                  </div>
+                </div>
+                {/* What the strokes mean. It belongs with the display switches — it is
+                    the same question ("what am I looking at") — and it is read once,
+                    so it does not get a permanent corner of the drawing. */}
+                <div className="graph-panel-row graph-legend">
+                  <span className="graph-control-label">线型</span>
+                  <ul className="graph-legend-list">
+                    <li>
+                      <span aria-hidden="true" className="graph-legend-line legend-primary" />
+                      亲属、情感
+                    </li>
+                    <li>
+                      <span aria-hidden="true" className="graph-legend-line legend-danger" />
+                      敌对、对手
+                    </li>
+                    <li>
+                      <span aria-hidden="true" className="graph-legend-line legend-plain" />
+                      师承、友人、同僚、其他
+                    </li>
+                  </ul>
+                  <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
+                </div>
+              </div>
               {/* Above the presets, because it applies to one object: what the whole
                   canvas looks like is the wrong question while a single line is
                   selected. */}
@@ -3784,14 +3936,17 @@ export function RelationshipGraph({
                       return <p className="muted">这条关系已不存在。</p>;
                     }
                     const local = layout.edgeStyles?.[edge.id] ?? {};
-                    const patch = (next: Partial<NonNullable<typeof local>>) =>
-                      commitLayout({
-                        ...layout,
-                        edgeStyles: {
-                          ...(layout.edgeStyles ?? {}),
-                          [edge.id]: { ...local, ...next },
+                    const patch = (next: Partial<NonNullable<typeof local>>, run?: string) =>
+                      commitLayout(
+                        {
+                          ...layout,
+                          edgeStyles: {
+                            ...(layout.edgeStyles ?? {}),
+                            [edge.id]: { ...local, ...next },
+                          },
                         },
-                      });
+                        run,
+                      );
                     return (
                       <>
                         <span className="muted">
@@ -3813,7 +3968,7 @@ export function RelationshipGraph({
                               aria-label="线条粗细"
                               max={6}
                               min={0.4}
-                              onChange={(event) => patch({ width: Number(event.target.value) })}
+                              onChange={(event) => patch({ width: Number(event.target.value) }, `edge-width-${edge.id}`)}
                               step={0.1}
                               type="range"
                               value={local.width ?? style.edge.width}
@@ -3997,10 +4152,10 @@ export function RelationshipGraph({
                     </select>
                   </label>
                   <label>网格密度
-                    <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } })} step={4} type="range" value={style.canvas.gridSize} />
+                    <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } }, "grid-size")} step={4} type="range" value={style.canvas.gridSize} />
                   </label>
                   <label>网格强度
-                    <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } })} step={0.05} type="range" value={style.canvas.gridOpacity} />
+                    <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
                   </label>
                 </div>
               </details>
@@ -4039,6 +4194,7 @@ export function RelationshipGraph({
       id="workspace-relationships"
     >
       <WorkspaceHeader
+        compact
         eyebrow="关系网"
         title="角色关系网"
         summary={
@@ -4072,21 +4228,6 @@ export function RelationshipGraph({
                 </button>
               </div>
             </div>
-            {boardMode === "graph" && canLink && (
-              <div className="toolbar-group">
-                <button
-                  aria-pressed={showAll}
-                  className={showAll ? "graph-toggle active" : "graph-toggle"}
-                  onClick={() => setShowAll((current) => !current)}
-                  type="button"
-                >
-                  {/* The label and the count say what pressing it will show, so the two
-                      never describe different sets. */}
-                  {showAll ? "只看有关联的" : "显示全部角色"}
-                  <span className="graph-toggle-count">{showAll ? connectedIds.size : characters.length}</span>
-                </button>
-              </div>
-            )}
             <div className="toolbar-group">
               <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
                 新建关系
@@ -4662,7 +4803,10 @@ export function RelationshipGraph({
                       were read. The stroke style already says the kind, and the legend
                       names it; the word appears when a node is pointed at, or when the
                       graph is small enough for every word to have room. */}
-                  {style.edge.showLabel &&
+                  {/* A hundred edges converging at one point drop their kind labels on
+                      top of each other; at that size they are a smear, not information.
+                      Hover and selection still name the edge. */}
+                  {style.edge.showLabel && visibleCharacters.length <= 60 &&
                     inLens &&
                     (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
                       touchesHovered ||
@@ -4701,9 +4845,13 @@ export function RelationshipGraph({
                   : geom.halfWidth * 2 - (geom.halfHeight * 2 - 8) - 20,
                 Math.min(nameSize, 15),
               );
-              const labelled =
-                prefs.showNames &&
-                (showLabels || isHovered || isFocused || isNeighbour || isSelected || hubIds.has(character.id));
+              const labelled = namesNode(density, {
+                 hovered: isHovered,
+                 focused: isFocused,
+                 neighbour: isNeighbour,
+                 selected: isSelected,
+                 hub: hubIds.has(character.id),
+               });
               // Spotlight dimming is its own class. Sharing one with hover made
               // "I exited the spotlight" and "the pointer is still on a node" look
               // identical, and it made the exit look broken.
@@ -4767,9 +4915,16 @@ export function RelationshipGraph({
                        // in every preset, light or dark, so "picked" survives a theme
                        // that paints the ring close to the node's own border.
                        const badgeR = Math.max(5.5, Math.min(9, geom.halfHeight * 0.34));
-                       const tight = geom.card ? 2 : badgeR * 0.15;
-                       const bx = nodeX + geom.halfWidth - tight;
-                       const by = nodeY - geom.halfHeight + tight;
+                       // A rectangle has a corner the mark can sit inside; a circle
+                       // does not, so on a round node the tick rides the rim at 45°
+                       // and stays attached to the shape it marks instead of
+                       // floating off the bounding box.
+                       const bx = geom.card
+                         ? nodeX + geom.halfWidth - badgeR - 6
+                         : nodeX + geom.radius * 0.707;
+                       const by = geom.card
+                         ? nodeY - geom.halfHeight + badgeR + 6
+                         : nodeY - geom.radius * 0.707;
 
                        return (
                          <g className="relationship-node-badge" aria-hidden="true">
@@ -5622,109 +5777,6 @@ export function RelationshipGraph({
               one group and one output. It lives outside the frame, so it never ends up
               in an export. */}
           <div className="graph-canvas-bar">
-            <div className="graph-display-wrap" ref={displayWrapRef}>
-              <button
-                aria-expanded={isDisplayOpen}
-                className={isDisplayOpen ? "graph-toggle active" : "graph-toggle"}
-                onClick={() => setIsDisplayOpen((current) => !current)}
-                type="button"
-              >
-                <Icon name="eye" size={15} />
-                显示设置
-              </button>
-              {isDisplayOpen && (
-                <div aria-label="显示设置" className="graph-panel" role="dialog">
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">名称</span>
-                    <div className="graph-segment">
-                      {[
-                        { value: true, label: "显示" },
-                        { value: false, label: "隐藏" },
-                      ].map((option) => (
-                        <button
-                          aria-pressed={prefs.showNames === option.value}
-                          className={prefs.showNames === option.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={option.label}
-                          onClick={() => updatePrefs({ showNames: option.value })}
-                          type="button"
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="graph-segment">
-                      {NAME_SIZES.map((size) => (
-                        <button
-                          aria-pressed={prefs.nameSize === size.value}
-                          className={prefs.nameSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={size.value}
-                          onClick={() => updatePrefs({ nameSize: size.value })}
-                          type="button"
-                        >
-                          {size.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">头像</span>
-                    <div className="graph-segment">
-                      {[
-                        { value: true, label: "显示" },
-                        { value: false, label: "隐藏" },
-                      ].map((option) => (
-                        <button
-                          aria-pressed={prefs.showAvatars === option.value}
-                          className={prefs.showAvatars === option.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={option.label}
-                          onClick={() => updatePrefs({ showAvatars: option.value })}
-                          type="button"
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="graph-segment">
-                      {AVATAR_SIZES.map((size) => (
-                        <button
-                          aria-pressed={prefs.avatarSize === size.value}
-                          className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={size.value}
-                          onClick={() => updatePrefs({ avatarSize: size.value })}
-                          type="button"
-                        >
-                          {size.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* What the strokes mean. It belongs with the display switches — it is
-                      the same question ("what am I looking at") — and it is read once,
-                      so it does not get a permanent corner of the drawing. */}
-                  <div className="graph-panel-row graph-legend">
-                    <span className="graph-control-label">线型</span>
-                    <ul className="graph-legend-list">
-                      <li>
-                        <span aria-hidden="true" className="graph-legend-line legend-primary" />
-                        亲属、情感
-                      </li>
-                      <li>
-                        <span aria-hidden="true" className="graph-legend-line legend-danger" />
-                        敌对、对手
-                      </li>
-                      <li>
-                        <span aria-hidden="true" className="graph-legend-line legend-plain" />
-                        师承、友人、同僚、其他
-                      </li>
-                    </ul>
-                    <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
-                  </div>
-                </div>
-              )}
-            </div>
-            {/* Output is set once and used rarely, so it is one toggle wide instead of
-                five controls in a row. The choices are one click from the canvas, and
-                the formats stay where they were. */}
             <div className="graph-display-wrap graph-export-wrap" ref={exportWrapRef}>
               <button
                 aria-expanded={isExportOpen}
@@ -5923,7 +5975,7 @@ export function RelationshipGraph({
                     <col style={{ width: "130px" }} />
                     <col style={{ width: "18%" }} />
                     <col />
-                    <col style={{ width: "152px" }} />
+                    <col style={{ width: "56px" }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -5943,20 +5995,24 @@ export function RelationshipGraph({
                         <tr key={relationship.id}>
                           <td className="manage-name">{fromName}</td>
                           <td>
-                            <span className={`relationship-kind-chip kind-${relationship.kind}`}>
-                              {relationshipKindLabel(relationship.kind)}
-                            </span>
-                            <span
-                              aria-hidden="true"
-                              className="manage-direction"
-                              title={symmetric ? "互为关系" : "方向由左指向右"}
-                            >
-                              {symmetric ? "↔" : "→"}
-                            </span>
-                            <span className="visually-hidden">
-                              {symmetric ? "与对方互为" : "指向右侧角色"}
-                            </span>
-                          </td>
+                             {/* The arrow says which way the line runs; the word says
+                                 whether that direction means anything. A reader who does
+                                 not know the kind list cannot infer 互为 from ↔. */}
+                             <span className="manage-relation">
+                               <span className={`relationship-kind-chip kind-${relationship.kind}`}>
+                                 {relationshipKindLabel(relationship.kind)}
+                               </span>
+                               <span aria-hidden="true" className="manage-direction">
+                                 {symmetric ? "↔" : "→"}
+                               </span>
+                               <span className="manage-direction-word">
+                                 {symmetric ? "互为" : "单向"}
+                               </span>
+                               <span className="visually-hidden">
+                                 {symmetric ? "与对方互为" : "指向右侧角色"}
+                               </span>
+                             </span>
+                           </td>
                           <td className="manage-name">{toName}</td>
                           <td className="relationship-table-note">
                             <span
@@ -5971,6 +6027,7 @@ export function RelationshipGraph({
                             {relationship.note && relationship.note.length > 24 && (
                               <button
                                 className="relationship-note-toggle"
+                                title={expandedNotes.includes(relationship.id) ? "收起备注" : "展开完整备注"}
                                 aria-expanded={expandedNotes.includes(relationship.id)}
                                 onClick={() =>
                                   setExpandedNotes((current) =>
@@ -5986,31 +6043,77 @@ export function RelationshipGraph({
                             )}
                           </td>
                           <td className="relationship-col-actions">
-                            <button
-                              aria-label={`编辑 ${fromName} 与 ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
-                              className="relationship-row-action"
-                              onClick={() => openEdit(relationship)}
-                              type="button"
-                            >
-                              编辑
-                            </button>
-                            <button
-                              aria-label={`在图谱中定位 ${fromName}`}
-                              className="relationship-row-action"
-                              onClick={() => locateOnGraph(relationship)}
-                              type="button"
-                            >
-                              定位
-                            </button>
-                            <button
-                              aria-label={`删除 ${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
-                              className="relationship-row-action"
-                              onClick={() => setPendingDelete(relationship)}
-                              type="button"
-                            >
-                              删除
-                            </button>
-                          </td>
+                             {/* One control per row. The same three commands, one press
+                                 away, and the row stops competing with the names it is
+                                 made of. */}
+                             <div className="manage-row-menu-wrap">
+                               <button
+                                 aria-expanded={manageMenuId === relationship.id}
+                                 aria-haspopup="menu"
+                                 aria-label={`${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系：更多操作`}
+                                 className="manage-row-more"
+                                 data-tooltip="更多操作"
+                                 onClick={() =>
+                                   setManageMenuId((current) => (current === relationship.id ? null : relationship.id))
+                                 }
+                                 type="button"
+                               >
+                                 <Icon name="more" size={16} />
+                               </button>
+                               {manageMenuId === relationship.id && (
+                                 <div className="manage-row-menu" role="menu">
+                                   <button
+                                     aria-label={`编辑 ${fromName} 与 ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
+                                     onClick={(event) => {
+                                       // The menu item disappears with the menu, so
+                                       // focus goes back to the row's own trigger
+                                       // first; that is what the dialog returns to.
+                                       event.currentTarget
+                                         .closest(".manage-row-menu-wrap")
+                                         ?.querySelector<HTMLElement>(".manage-row-more")
+                                         ?.focus();
+                                       setManageMenuId(null);
+                                       openEdit(relationship);
+                                     }}
+                                     role="menuitem"
+                                     type="button"
+                                   >
+                                     <Icon name="pencil" size={14} />
+                                     编辑
+                                   </button>
+                                   <button
+                                     aria-label={`在图谱中定位 ${fromName}`}
+                                     onClick={() => {
+                                       setManageMenuId(null);
+                                       locateOnGraph(relationship);
+                                     }}
+                                     role="menuitem"
+                                     type="button"
+                                   >
+                                     <Icon name="search" size={14} />
+                                     定位
+                                   </button>
+                                   <button
+                                     aria-label={`删除 ${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
+                                     className="danger"
+                                     onClick={(event) => {
+                                       event.currentTarget
+                                         .closest(".manage-row-menu-wrap")
+                                         ?.querySelector<HTMLElement>(".manage-row-more")
+                                         ?.focus();
+                                       setManageMenuId(null);
+                                       setPendingDelete(relationship);
+                                     }}
+                                     role="menuitem"
+                                     type="button"
+                                   >
+                                     <Icon name="trash" size={14} />
+                                     删除
+                                   </button>
+                                 </div>
+                               )}
+                             </div>
+                           </td>
                         </tr>
                       );
                     })}

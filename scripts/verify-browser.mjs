@@ -1560,7 +1560,7 @@ const GRAPH_DISPLAY_AND_EXPORT = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const clickText = (text) => {
-      const button = [...document.querySelectorAll(".graph-panel button")].find(
+      const button = [...document.querySelectorAll(".graph-style-view button")].find(
         (candidate) => candidate.textContent.trim() === text,
       );
       if (!button) throw new Error("panel button missing: " + text);
@@ -1572,18 +1572,18 @@ const GRAPH_DISPLAY_AND_EXPORT = `
       emojis: document.querySelectorAll(".relationship-node-emoji").length,
     });
 
-    const toggle = [...document.querySelectorAll("button")].find(
-      (button) => button.textContent.trim() === "显示设置",
-    );
-    if (!toggle) throw new Error("显示设置 missing");
+    // 显示设置 is the 视图 half of the appearance drawer now. The same switches are
+    // checked, from the one entry a reader is told to use.
+    const toggle = document.querySelector('.graph-toolbar button[aria-label="外观设置"]');
+    if (!toggle) throw new Error("外观 entry missing");
     toggle.click();
-    await sleep(250);
+    await sleep(450);
 
-    const panel = document.querySelector(".graph-panel");
+    const panel = document.querySelector(".graph-style-view");
     const panelRect = panel?.getBoundingClientRect();
     const opened = {
       present: Boolean(panel),
-      rows: [...document.querySelectorAll(".graph-panel-row")].map((row) => row.textContent.replace(/\\s+/g, " ").trim()),
+      rows: [...document.querySelectorAll(".graph-style-view .graph-panel-row")].map((row) => row.textContent.replace(/\\s+/g, " ").trim()),
       insideViewport: panelRect ? panelRect.left >= -1 && panelRect.right <= window.innerWidth + 1 && panelRect.top >= -1 : false,
       namesBefore: counts().names,
     };
@@ -1595,17 +1595,17 @@ const GRAPH_DISPLAY_AND_EXPORT = `
     await sleep(250);
     const namesBack = counts().names;
 
-    // The avatar row is the second one: its 隐藏 is the second 隐藏 button in the panel.
-    [...document.querySelectorAll(".graph-panel button")].filter((button) => button.textContent.trim() === "隐藏")[1].click();
+    // The avatar row is the second one: its 隐藏 is the second 隐藏 button in 视图.
+    [...document.querySelectorAll(".graph-style-view button")].filter((button) => button.textContent.trim() === "隐藏")[1].click();
     await sleep(250);
     const avatarsHidden = counts();
-    [...document.querySelectorAll(".graph-panel button")].filter((button) => button.textContent.trim() === "显示")[1].click();
+    [...document.querySelectorAll(".graph-style-view button")].filter((button) => button.textContent.trim() === "显示")[1].click();
     await sleep(250);
     const avatarsBack = counts();
 
     toggle.click();
-    await sleep(200);
-    const closed = !document.querySelector(".graph-panel");
+    await sleep(250);
+    const closed = !document.querySelector(".graph-page-drawer");
 
     // Output sits behind its own toggle — one entry wide instead of five controls on the
     // bar — so opening it is part of exporting, and the check opens it the same way a
@@ -1721,6 +1721,16 @@ const GRAPH_MANAGE = `
       setter.call(select, value);
       select.dispatchEvent(new Event("change", { bubbles: true }));
     };
+    // Row actions live behind one menu per row; opening it is what a reader does
+    // before editing, locating or deleting.
+    const openRowMenu = async (row) => {
+      row.querySelector(".manage-row-more").click();
+      await sleep(140);
+    };
+    const menuItem = (label) =>
+      [...document.querySelectorAll(".manage-row-menu button")].find(
+        (button) => button.textContent.trim() === label,
+      );
     const initial = { rows: rows().length, pager: pager(), total: total() };
 
     const next = () => [...document.querySelectorAll(".relationship-pager button")].find((button) => button.textContent.trim() === "下一页");
@@ -1769,7 +1779,8 @@ const GRAPH_MANAGE = `
 
     const stored = () => JSON.parse(localStorage.getItem("character-studio.relationships") || "[]");
     const beforeEdit = stored().length;
-    rows()[0].querySelectorAll(".relationship-row-action")[0].click();
+    await openRowMenu(rows()[0]);
+    menuItem("编辑").click();
     await sleep(300);
     const editDialog = document.querySelector('.confirm-dialog[aria-label="编辑关系"]');
     const editTitle = editDialog?.querySelector("h2")?.textContent.trim() || "";
@@ -1788,7 +1799,8 @@ const GRAPH_MANAGE = `
     // them, which is the case for most of a large roster.
     const targetRow = rows()[0];
     const targetText = rowText(targetRow);
-    targetRow.querySelectorAll(".relationship-row-action")[2].click();
+    await openRowMenu(targetRow);
+    menuItem("删除").click();
     await sleep(300);
     const deleteText = (document.querySelector('.confirm-dialog[aria-label="删除关系"] p')?.textContent || "").replace(/\\s+/g, " ").trim();
     [...document.querySelectorAll('.confirm-dialog[aria-label="删除关系"] button')].find((button) => button.textContent.trim() === "确认删除").click();
@@ -1796,7 +1808,8 @@ const GRAPH_MANAGE = `
     const afterDelete = { count: stored().length, total: total(), pager: pager(), rows: rows().length };
 
     // 定位 leaves the table for the drawing, focused on the edge's first character.
-    rows()[0].querySelectorAll(".relationship-row-action")[1].click();
+    await openRowMenu(rows()[0]);
+    menuItem("定位").click();
     await sleep(600);
     const located = {
       page: Boolean(document.querySelector(".relationship-canvas")),
@@ -1815,7 +1828,11 @@ const GRAPH_MANAGE_NARROW = `
     const rows = () => [...document.querySelectorAll(".manage-table tbody tr")];
     const first = rows()[0];
     const box = first?.getBoundingClientRect();
-    const actions = [...(first?.querySelectorAll(".relationship-row-action") || [])].map((button) => ({
+    // The row's three commands live in one menu now; opening it is the step a
+    // thumb takes before any of them.
+    first?.querySelector(".manage-row-more")?.click();
+    await sleep(160);
+    const actions = [...document.querySelectorAll(".manage-row-menu button")].map((button) => ({
       text: button.textContent.trim(),
       visible: button.getBoundingClientRect().width > 0 && button.getBoundingClientRect().height > 0,
     }));
@@ -1835,7 +1852,9 @@ const GRAPH_MANAGE_NARROW = `
       })(),
     };
 
-    first.querySelectorAll(".relationship-row-action")[0].click();
+    [...document.querySelectorAll(".manage-row-menu button")]
+      .find((button) => button.textContent.trim() === "编辑")
+      .click();
     await sleep(300);
     const dialog = document.querySelector('.confirm-dialog[aria-label="编辑关系"]');
     const dialogBox = dialog?.getBoundingClientRect();
@@ -5733,6 +5752,20 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
       const sketch = await cdp.value(READ_GRAPH_CANVAS);
+      // 显示全部角色 moved from the page header into 视图, because it changes what the
+      // canvas contains rather than what the page is. The check reads it where a reader
+      // now finds it.
+      await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="外观设置"]').click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const scope = await cdp.value(`(() => {
+        const view = document.querySelector(".graph-style-view");
+        return {
+          pressed: view ? [...view.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent.trim()) : [],
+          labels: view ? [...view.querySelectorAll(".graph-control-label")].map((e) => e.textContent.trim()) : [],
+        };
+      })()`);
+      await cdp.value(`document.querySelector(".graph-page-drawer-close").click()`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
       const state = await cdp.value(GRAPH_SEARCH_AND_FOCUS);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
 
@@ -5742,7 +5775,8 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         sketch.nodeCount === 40 &&
         sketch.scopeNote.includes("40 / 400") &&
         sketch.scopeNote.includes("360") &&
-        sketch.toggleLabel.includes("显示全部角色");
+        scope.pressed.includes("只看有关联的") &&
+        scope.labels.includes("范围");
 
       const searchOk =
         state.byName.length === 1 &&
@@ -5776,7 +5810,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(startingPoint && searchOk && focusOk && escapeOk),
-        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」、开关「${sketch.toggleLabel}」；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name + "/" + entry.state).join(" ")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}`,
+        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」、范围「${scope.pressed.join("/")}」；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name + "/" + entry.state).join(" ")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}`,
       };
     });
 
@@ -7043,14 +7077,24 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
 
       await cdp.value(`(() => {
-        const trigger = document.querySelector(".relationship-row-action");
+        const trigger = document.querySelector(".manage-row-more");
         window.__relationshipTrigger = trigger;
         trigger.focus();
         trigger.click();
         return true;
       })()`);
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      await cdp.value(`(() => {
+        [...document.querySelectorAll(".manage-row-menu button")]
+          .find((button) => button.textContent.trim() === "编辑")
+          .click();
+        return true;
+      })()`);
       await cdp.waitFor(`!!document.querySelector(".relationship-dialog")`, 4000);
-      const triggerLabel = await cdp.value(`document.activeElement?.textContent?.trim().slice(0, 12)`);
+      const triggerLabel = await cdp.value(`(() => {
+        const active = document.activeElement;
+        return (active?.getAttribute("aria-label") || active?.textContent || "").trim().slice(0, 24);
+      })()`);
       await cdp.value(`(() => {
         const input = [...document.querySelectorAll(".relationship-dialog input")].find((item) => item.placeholder === "可选");
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
