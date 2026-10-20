@@ -557,6 +557,74 @@ export function nodeGeometry(
   return { radius, halfWidth: radius, halfHeight: radius, card: false };
 }
 
+/**
+ * The half width the canvas must reserve: the widest external label, or the widest
+ * card's own half width if that is larger. A card carries its name inside itself, so
+ * its box is the thing that has to fit, not a label beside it.
+ */
+export function boxHalfWidthFor(
+  forms: NodeForm[],
+  metrics: GraphMetrics,
+  labelHalfWidth: number,
+  size = 1,
+): number {
+  const cardHalf = (CARD_WIDTH * size) / 2;
+  const widestCard = forms.reduce(
+    (widest, form) => (form === "card" ? Math.max(widest, cardHalf - metrics.radius) : widest),
+    0,
+  );
+
+  return Math.max(labelHalfWidth, widestCard);
+}
+
+/**
+ * Room a group's border leaves around its members. A dashed box drawn 72 units out
+ * cuts straight through a card that is 84 units wide, so the padding follows the
+ * widest form the group actually contains.
+ */
+export function groupPaddingFor(forms: NodeForm[], size = 1): number {
+  const cardHalf = (CARD_WIDTH * size) / 2;
+
+  return forms.some((form) => form === "card") ? Math.max(GROUP_PADDING, cardHalf + 10) : GROUP_PADDING;
+}
+
+/**
+ * How a name is set inside a card: one line, measured, with an ellipsis when it will
+ * not fit. Character counts are not a rule — a measured width is.
+ */
+export function cardNameLayout(
+  name: string,
+  availableWidth: number,
+  fontSize: number,
+): { text: string; fontSize: number } {
+  if (measureNameWidth(name, fontSize) <= availableWidth) {
+    return { text: name, fontSize };
+  }
+
+  const glyphs = [...name];
+  let size = fontSize;
+
+  // A slightly smaller type often fits the whole name; only then does it truncate.
+  while (size > 10 && measureNameWidth(name, size) > availableWidth) {
+    size -= 1;
+  }
+
+  if (measureNameWidth(name, size) <= availableWidth) {
+    return { text: name, fontSize: size };
+  }
+
+  let text = "";
+
+  for (const glyph of glyphs) {
+    if (measureNameWidth(`${text}${glyph}…`, size) > availableWidth) {
+      break;
+    }
+    text += glyph;
+  }
+
+  return { text: `${text || (glyphs[0] ?? "")}…`, fontSize: size };
+}
+
 export function groupBleed(
   hasGroups: boolean,
   metrics: GraphMetrics = DEFAULT_METRICS,
@@ -1144,7 +1212,11 @@ export function RelationshipGraph({
   // The ring the canvas starts as. It is still what a workspace with no saved layout
   // draws, so an untouched graph looks exactly as it did before free placement.
   const ringPositions = useMemo(
-    () => nodePositions(visibleCharacters.length, metrics.radius),
+    () =>
+      nodePositions(
+        visibleCharacters.length,
+        style.node.form === "card" ? CARD_WIDTH / 2 : metrics.radius * style.node.size,
+      ),
     [visibleCharacters.length, metrics.radius],
   );
   // The widest name the drawing will have to fit, so the outermost labels of a wide
@@ -1168,18 +1240,18 @@ export function RelationshipGraph({
   const visibleKey = visibleCharacters.map((character) => character.id).join("|");
   // A card is wider than any label it would have carried, and the widest card wins:
   // the frame has to contain the drawing, not the names of the round nodes.
-  const boxHalfWidth = useMemo(() => {
-    const cardHalf = (CARD_WIDTH * style.node.size) / 2;
-    const widestCard = visibleCharacters.reduce(
-      (widest, character) =>
-        (layout.nodeStyles?.[character.id]?.form ?? style.node.form) === "card"
-          ? Math.max(widest, cardHalf - metrics.radius)
-          : widest,
-      0,
-    );
-
-    return Math.max(labelHalfWidth, widestCard);
-  }, [visibleCharacters, layout.nodeStyles, style.node.form, style.node.size, metrics.radius, labelHalfWidth]);
+  const boxHalfWidth = useMemo(
+    () =>
+      boxHalfWidthFor(
+        visibleCharacters.map(
+          (character) => layout.nodeStyles?.[character.id]?.form ?? style.node.form,
+        ),
+        metrics,
+        labelHalfWidth,
+        style.node.size,
+      ),
+    [visibleCharacters, layout.nodeStyles, style.node.form, style.node.size, metrics, labelHalfWidth],
+  );
   const stableBoxRef = useRef<{ key: string; viewBox: string; width: number } | null>(null);
   const canvas = useMemo(() => {
     if (stableBoxRef.current?.key === visibleKey) {
@@ -1270,15 +1342,40 @@ export function RelationshipGraph({
   const groupRects = useMemo(() => {
     const positionsNow = { ...layout.positions, ...(livePositions ?? {}), ...(preview?.positions ?? {}) };
     return layout.groups
-      .map((group) => ({ group, rect: groupBounds({ ...layout, positions: positionsNow }, group) }))
+      .map((group) => ({
+        group,
+        rect: groupBounds(
+          { ...layout, positions: positionsNow },
+          group,
+          groupPaddingFor(
+            group.characterIds.map(
+              (id) => layout.nodeStyles?.[id]?.form ?? style.node.form,
+            ),
+            style.node.size,
+          ),
+        ),
+      }))
       .filter((entry): entry is { group: CanvasGroup; rect: NonNullable<ReturnType<typeof groupBounds>> } =>
         Boolean(entry.rect),
       );
-  }, [layout, livePositions, preview]);
+  }, [layout, livePositions, preview, style.node.form, style.node.size]);
 
   // Zoom and pan live in the drawing's own coordinates, so the wheel stays on the
   // point under the cursor and the fit view is just k = 1 with no offset.
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
+  // Secondary text inside a card appears at 1.0× and disappears at 0.9×: two
+  // thresholds, so a viewport parked between them cannot make it flicker.
+  const [cardMetaVisible, setCardMetaVisible] = useState(true);
+  useEffect(() => {
+    const wide = visibleCharacters.length <= 40;
+    const next = cardMetaVisible
+      ? view.k > 0.9 && (wide || view.k > 1.15)
+      : view.k > 1.0 && (wide || view.k > 1.2);
+
+    if (next !== cardMetaVisible) {
+      setCardMetaVisible(next);
+    }
+  }, [view.k, visibleCharacters.length, cardMetaVisible]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const panRef = useRef<{
     pointerId: number;
@@ -2670,7 +2767,11 @@ export function RelationshipGraph({
       allPoints: positions,
       selectedPoints,
       viewBox: canvas.viewBox,
-      padding: metrics.radius + metrics.nameDrop + 24,
+      padding: Math.max(
+        metrics.radius + metrics.nameDrop + 24,
+        boxHalfWidth + 24,
+        style.node.form === "card" ? CARD_HEIGHT / 2 + 24 : 0,
+      ),
     });
 
     if (!bounds) {
@@ -3820,7 +3921,16 @@ export function RelationshipGraph({
             {/* Visual groups sit under the edges and the nodes: a rectangle that
                 covered them would swallow every drag that started inside it. */}
             {groupRects.map(({ group, rect }) => (
-              <g className="graph-group" data-group-id={group.id} key={group.id}>
+              <g
+                className={
+                  group.characterIds.length > 0 &&
+                  group.characterIds.every((id) => selectedIds.includes(id))
+                    ? "graph-group selected"
+                    : "graph-group"
+                }
+                data-group-id={group.id}
+                key={group.id}
+              >
                 <rect
                   className="graph-group-rect"
                   height={rect.height}
@@ -3943,6 +4053,11 @@ export function RelationshipGraph({
                 ? { x: nodeX - geom.halfWidth + geom.halfHeight - 4, y: nodeY }
                 : { x: nodeX, y: nodeY };
               const cardNameX = nodeX - geom.halfWidth + geom.halfHeight * 2;
+              const cardName = cardNameLayout(
+                characterDisplayName(character),
+                geom.halfWidth * 2 - (geom.halfHeight * 2 - 8) - 20,
+                Math.min(nameSize, 15),
+              );
               const labelled =
                 prefs.showNames &&
                 (showLabels || isHovered || isFocused || isNeighbour || isSelected || hubIds.has(character.id));
@@ -4064,13 +4179,13 @@ export function RelationshipGraph({
                     <>
                       <text
                         className="relationship-node-card-name"
-                        style={{ fontSize: `${Math.min(nameSize, 15)}px` }}
+                        style={{ fontSize: `${cardName.fontSize}px` }}
                         x={cardNameX}
                         y={character.occupation ? nodeY - 4 : nodeY + 4}
                       >
-                        {characterDisplayName(character)}
+                        {cardName.text}
                       </text>
-                      {character.occupation && (
+                      {character.occupation && cardMetaVisible && (
                         <text
                           className="relationship-node-card-meta"
                           style={{ fontSize: `${Math.min(11, nameSize - 2)}px` }}

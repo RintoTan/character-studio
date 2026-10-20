@@ -11580,6 +11580,17 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   font-size: 12.5px;
 }
 
+/* A group's border must not read as one more relation line: dash, weight and a
+   pale fill do that; its selected state is a stronger edge, not a colour block. */
+.graph-group:hover .graph-group-rect {
+  stroke: color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.graph-group.selected .graph-group-rect {
+  stroke: color-mix(in srgb, var(--primary) 70%, transparent);
+  stroke-width: 2;
+}
+
 .graph-group-rect {
   /* The interior is a drag handle, not only its outline: `visiblePainted` would
      leave the pale fill dead in any browser that resolves it to a near-transparent
@@ -11597,8 +11608,8 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-group-label {
-  fill: var(--muted);
-  font-size: 12px;
+  fill: var(--text-soft);
+  font-size: 13px;
   font-weight: 600;
   paint-order: stroke;
   stroke: var(--surface);
