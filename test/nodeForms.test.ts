@@ -5,13 +5,16 @@ import {
   boxHalfWidthFor,
   cardNameLayout,
   canvasBox,
+  canvasBoxKey,
   edgeGeometry,
   groupPaddingFor,
   measureNameWidth,
   cardGeometry,
   cardRect,
+  neighbourIdsOf,
   nodeGeometry,
   resolveCardLevels,
+  ringStrokeFor,
   type GraphMetrics,
 } from "../src/pages/RelationshipGraph";
 import {
@@ -349,5 +352,76 @@ describe("spacing layout for cards", () => {
     const grid = gridLayout(["a", "b", "c", "d"], { x: 0, y: 0 }, 30, 56);
 
     expect(Math.abs(grid.b.x - grid.a.x)).toBe(116);
+  });
+});
+
+describe("neighbours of a selection", () => {
+  const rels = [
+    { fromId: "a", toId: "b" },
+    { fromId: "c", toId: "a" },
+    { fromId: "a", toId: "a" },
+    { fromId: "d", toId: "e" },
+  ];
+
+  it("collects both directions and ignores an unrelated pair", () => {
+    expect([...neighbourIdsOf(["a"], rels)].sort()).toEqual(["b", "c"]);
+  });
+
+  it("never returns an anchor as its own neighbour", () => {
+    const out = neighbourIdsOf(["a", "b"], rels);
+
+    expect(out.has("a")).toBe(false);
+    expect(out.has("b")).toBe(false);
+    expect([...out]).toEqual(["c"]);
+  });
+
+  it("is empty without anchors", () => {
+    expect(neighbourIdsOf([], rels).size).toBe(0);
+  });
+});
+
+describe("selection ring ink", () => {
+  it("solves for a constant on-screen weight instead of a fixed world stroke", () => {
+    expect(ringStrokeFor(1)).toBeCloseTo(2.2, 5);
+    expect(ringStrokeFor(0.2)).toBeCloseTo(8, 5);
+  });
+
+  it("stays inside its clamp before the frame is measured", () => {
+    expect(ringStrokeFor(0)).toBe(8);
+    expect(ringStrokeFor(10)).toBe(2);
+  });
+});
+
+describe("card priority for a neighbour", () => {
+  it("keeps a fuller card for the neighbour rather than the stranger beside it", () => {
+    const levels = resolveCardLevels(
+      [
+        { id: "stranger", x: 0, y: 0, priority: 1 },
+        { id: "neighbour", x: 120, y: 0, priority: 2 },
+      ],
+      1,
+      { compactRadius: 18 },
+    );
+
+    expect(levels.neighbour).toBe("full");
+    expect(["plate", "compact"]).toContain(levels.stranger);
+  });
+});
+
+describe("drawing box cache key", () => {
+  it("changes when cards make the drawing wider", () => {
+    expect(canvasBoxKey(["a", "b"], 0, false)).not.toBe(canvasBoxKey(["a", "b"], 84, false));
+  });
+
+  it("changes when a group border appears", () => {
+    expect(canvasBoxKey(["a", "b"], 0, false)).not.toBe(canvasBoxKey(["a", "b"], 0, true));
+  });
+
+  it("is stable when nothing the box depends on changed", () => {
+    expect(canvasBoxKey(["a", "b"], 12, true)).toBe(canvasBoxKey(["a", "b"], 12, true));
+  });
+
+  it("changes when the roster changes", () => {
+    expect(canvasBoxKey(["a", "b"], 0, false)).not.toBe(canvasBoxKey(["a"], 0, false));
   });
 });

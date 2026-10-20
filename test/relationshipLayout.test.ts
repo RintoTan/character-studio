@@ -8,7 +8,9 @@ import {
   edgeGeometry,
   fitZoom,
   groupBleed,
+  labelReadability,
   labelZoomNeeded,
+  labelsFitAfter,
   labelsReadable,
   measureNameWidth,
   minimumNodeSpacing,
@@ -477,5 +479,23 @@ describe("groupBleed", () => {
     expect(rect.y).toBeLessThanOrEqual(top - GROUP_PADDING);
     expect(rect.x + rect.width).toBeGreaterThanOrEqual(400 + GROUP_PADDING);
     expect(rect.y + rect.height).toBeGreaterThanOrEqual(260 + GROUP_PADDING);
+  });
+});
+
+describe("label switch hysteresis", () => {
+  it("reads room as a ratio around the point where names fit", () => {
+    const { positions, metrics } = canvasFor(3);
+
+    expect(labelReadability({ positions, nameSize: metrics.nameSize, zoom: 1, scale: 1 })).toBeGreaterThan(1);
+    expect(labelReadability({ positions, nameSize: metrics.nameSize, zoom: 4, scale: 0 })).toBe(0);
+  });
+
+  it("does not flip while the zoom sits on the boundary", () => {
+    // Names are on at 1.0; a nudge to 0.95 would turn them off under a single
+    // threshold and the wheel would strobe. They only go below 0.9.
+    expect(labelsFitAfter(true, 0.95)).toBe(true);
+    expect(labelsFitAfter(true, 0.89)).toBe(false);
+    expect(labelsFitAfter(false, 0.99)).toBe(false);
+    expect(labelsFitAfter(false, 1)).toBe(true);
   });
 });

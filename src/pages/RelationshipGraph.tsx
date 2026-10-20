@@ -396,21 +396,47 @@ export function canvasScreenScale(
  * collide once the nodes are closer together than a couple of name-heights. That is
  * the whole decluttering rule; there is no roster-size threshold any more.
  */
+/**
+ * How much room the names have, as one number: 1 is exactly enough, below 1 is not.
+ *
+ * Both tests are folded into a ratio so the boundary can be moved without duplicating
+ * the arithmetic — the switch below needs to know how far past it a zoom landed.
+ */
+export function labelReadability(options: {
+  positions: GraphPoint[];
+  nameSize: number;
+  zoom: number;
+  scale: number;
+}): number {
+  const rendered = options.nameSize * options.zoom * options.scale;
+
+  if (!(rendered > 0)) {
+    return 0;
+  }
+
+  const spacing = minimumNodeSpacing(options.positions) * options.zoom * options.scale;
+
+  return Math.min(rendered / MIN_LABEL_PX, spacing / (rendered * LABEL_GAP_FACTOR + LABEL_GAP_MIN));
+}
+
 export function labelsReadable(options: {
   positions: GraphPoint[];
   nameSize: number;
   zoom: number;
   scale: number;
 }): boolean {
-  const rendered = options.nameSize * options.zoom * options.scale;
+  return labelReadability(options) >= 1;
+}
 
-  if (rendered < MIN_LABEL_PX) {
-    return false;
-  }
-
-  const spacing = minimumNodeSpacing(options.positions) * options.zoom * options.scale;
-
-  return spacing >= rendered * LABEL_GAP_FACTOR + LABEL_GAP_MIN;
+/**
+ * Names come on at 1.0 of the room they need and only go away below 0.9.
+ *
+ * A single threshold makes the labels strobe when the reader rests the wheel on it:
+ * one notch of zoom crosses the line in both directions. The gap means a zoom that
+ * lands near the boundary settles instead of flapping.
+ */
+export function labelsFitAfter(current: boolean, readability: number): boolean {
+  return current ? readability >= 0.9 : readability >= 1;
 }
 
 /**
@@ -530,6 +556,19 @@ export function contentBounds(
  * how `北境线` came to look pinned to the left edge of the canvas. The answer is the
  * shortfall, plus a little air, and zero when there is nothing to draw around.
  */
+/**
+ * The identity of a drawing box: the visible roster, how wide its widest object is,
+ * and whether a group border has to be accommodated.
+ *
+ * The box is cached so a drag cannot move the mapping under the pointer, but the key
+ * used to be the roster alone. Switching every node to cards, or creating the first
+ * group, changed what the box had to contain without changing who was on it, so the
+ * cached box was reused and the new cards and borders were drawn outside it.
+ */
+export function canvasBoxKey(ids: string[], boxHalfWidth: number, hasGroups: boolean): string {
+  return `${ids.join("|")}::${boxHalfWidth.toFixed(2)}::${hasGroups ? "groups" : "none"}`;
+}
+
 /** A card is wide enough for a four-character name and one short line under it. */
 export const CARD_WIDTH = 168;
 export const CARD_HEIGHT = 56;
@@ -542,6 +581,46 @@ export const PLATE_HEIGHT = 30;
  * setting: the author's form stays "card" in storage whatever the crowding says.
  */
 export type CardLevel = "full" | "plate" | "compact";
+
+/**
+ * The selected ring's ink, in drawing units, for a given on-screen scale.
+ *
+ * A fixed world-space stroke is 0.3px at the zoom a hundred nodes are read at and the
+ * ring stops saying anything. Solving for ~2.2px of screen keeps the mark the same
+ * weight from three nodes to a hundred, and clamps so it can neither vanish nor turn
+ * into a band when the frame has not been measured yet.
+ */
+/**
+ * Everyone one hop from the anchors, excluding the anchors themselves.
+ *
+ * Reading a selected person means reading who stands next to them, so this set is what
+ * decides which cards keep their name when the roster is too crowded for all of them.
+ * A relationship is symmetric here whatever its kind: a line exists between two people.
+ */
+export function neighbourIdsOf(
+  anchors: Iterable<string>,
+  relationships: { fromId: string; toId: string }[],
+): Set<string> {
+  const anchorSet = new Set(anchors);
+  const out = new Set<string>();
+
+  for (const relationship of relationships) {
+    if (anchorSet.has(relationship.fromId) && !anchorSet.has(relationship.toId)) {
+      out.add(relationship.toId);
+    }
+    if (anchorSet.has(relationship.toId) && !anchorSet.has(relationship.fromId)) {
+      out.add(relationship.fromId);
+    }
+  }
+
+  return out;
+}
+
+export function ringStrokeFor(pxPerUnit: number): number {
+  const scale = Math.max(pxPerUnit, 0.0001);
+
+  return Math.min(8, Math.max(2, 2.2 / scale));
+}
 
 /** The rectangle a card occupies at a given level, in drawing units. */
 export function cardRect(level: CardLevel, x: number, y: number, size = 1) {
@@ -1185,6 +1264,10 @@ export function RelationshipGraph({
   const [livePositions, setLivePositions] = useState<Record<string, LayoutPoint> | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectMode, setSelectMode] = useState(false);
+  // The group whose rectangle the pointer is down on. Selecting on release alone
+  // left the border unmarked for the whole drag: `.dragging` is derived from this,
+  // not from the member list, so pressing a group shows both states at once.
+  const [pressedGroupId, setPressedGroupId] = useState<string | null>(null);
   const [cardCap, setCardCap] = useState<CardLevel>("full");
   const [isArrangeOpen, setIsArrangeOpen] = useState(false);
   const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
@@ -1321,7 +1404,7 @@ export function RelationshipGraph({
   // The view box follows the visible set, not the live coordinates. Recomputing it
   // from a node being dragged would change the mapping under the pointer, which is
   // exactly the "release and it jumps back" this canvas is meant not to do.
-  const visibleKey = visibleCharacters.map((character) => character.id).join("|");
+  const visibleIds = visibleCharacters.map((character) => character.id);
   // A card is wider than any label it would have carried, and the widest card wins:
   // the frame has to contain the drawing, not the names of the round nodes.
   const boxHalfWidth = useMemo(
@@ -1338,7 +1421,9 @@ export function RelationshipGraph({
   );
   const stableBoxRef = useRef<{ key: string; viewBox: string; width: number } | null>(null);
   const canvas = useMemo(() => {
-    if (stableBoxRef.current?.key === visibleKey) {
+    const boxKey = canvasBoxKey(visibleIds, boxHalfWidth, layout.groups.length > 0);
+
+    if (stableBoxRef.current?.key === boxKey) {
       return stableBoxRef.current;
     }
 
@@ -1354,12 +1439,12 @@ export function RelationshipGraph({
     const bleed = groupBleed(layout.groups.length > 0, metrics, boxHalfWidth);
     const [boxX, boxY, boxWidth, boxHeight] = box.viewBox.split(" ").map(Number);
     stableBoxRef.current = {
-      key: visibleKey,
+      key: boxKey,
       viewBox: `${round(boxX - bleed.x)} ${round(boxY - bleed.y)} ${round(boxWidth + bleed.x * 2)} ${round(boxHeight + bleed.y * 2)}`,
       width: round(boxWidth + bleed.x * 2),
     };
     return stableBoxRef.current;
-  }, [visibleKey, visibleCharacters, layout, ringPositions, metrics, boxHalfWidth]);
+  }, [visibleIds, visibleCharacters, layout, ringPositions, metrics, boxHalfWidth]);
   const bends = useMemo(() => edgeBends(relationships), [relationships]);
 
   // What each drawn node's coordinates are right now: a preview (arrange) wins over
@@ -1390,6 +1475,13 @@ export function RelationshipGraph({
       forms.set(character.id, layout.nodeStyles?.[character.id]?.form ?? style.node.form);
     });
 
+    // Reading one person means reading who they stand next to, so a neighbour of
+    // the selected or focused node outranks an unrelated one when the room is not
+    // enough for every full card. The order is only about who keeps the richer
+    // level — no coordinate is derived from it.
+    const anchors = focusId ? [...selectedIds, focusId] : selectedIds;
+    const neighboursOfAnchors = neighbourIdsOf(anchors, relationships);
+
     const cards = visibleCharacters
       .map((character, index) => ({ character, index }))
       .filter(({ character }) => forms.get(character.id) === "card")
@@ -1397,14 +1489,13 @@ export function RelationshipGraph({
         id: character.id,
         x: positions[index].x,
         y: positions[index].y,
-        priority:
-          selectedIds.includes(character.id) || selectedEdgeId === null
-            ? selectedIds.includes(character.id)
-              ? 3
-              : focusId === character.id
-                ? 2
-                : 1
-            : 1,
+        priority: selectedIds.includes(character.id)
+          ? 4
+          : focusId === character.id
+            ? 3
+            : neighboursOfAnchors.has(character.id)
+              ? 2
+              : 1,
       }));
 
     const fitted = resolveCardLevels(cards, size, {
@@ -1440,7 +1531,7 @@ export function RelationshipGraph({
     style.node.size,
     metrics,
     selectedIds,
-    selectedEdgeId,
+    relationships,
     focusId,
     cardCap,
   ]);
@@ -1639,12 +1730,21 @@ export function RelationshipGraph({
       setCardCap(next);
     }
   }, [view.k, screenScale, style.node.size, cardCap]);
-  const labelsFit = labelsReadable({
+  const readability = labelReadability({
     positions,
     nameSize,
     zoom: view.k,
     scale: screenScale,
   });
+  const [labelsFit, setLabelsFit] = useState(true);
+
+  useEffect(() => {
+    const next = labelsFitAfter(labelsFit, readability);
+
+    if (next !== labelsFit) {
+      setLabelsFit(next);
+    }
+  }, [labelsFit, readability]);
 
   // An export is the fitted graph with every name on it, not whatever corner the
   // canvas happens to be zoomed into. The author's own switch still wins: names turned
@@ -2407,6 +2507,14 @@ export function RelationshipGraph({
 
     if (groupId) {
       const group = layout.groups.find((item) => item.id === groupId);
+      // A press on the rectangle is a statement about the whole group, so the
+      // members are selected as the gesture begins: from here the border, the
+      // members' rings and the drag all describe the same object.
+      if (group && group.characterIds.length > 0) {
+        setSelectedEdgeId(null);
+        setSelectedIds(group.characterIds);
+      }
+      setPressedGroupId(groupId);
       groupDragRef.current = {
         groupId,
         pointerId: event.pointerId,
@@ -2536,6 +2644,7 @@ export function RelationshipGraph({
     }
     pointersRef.current.delete(event.pointerId);
     pressedNodeRef.current = null;
+    setPressedGroupId(null);
     setLivePositions(null);
     stopDragFrame();
   }
@@ -2582,7 +2691,10 @@ export function RelationshipGraph({
         }
       }
       commitLayout({ ...groupGesture.base, positions: pendingDragRef.current ?? fallback });
-      setArrangeUndo(null);
+      // A group is several nodes moving at once and there is no obvious "drag back" to
+      // the exact previous arrangement, so this gesture offers the single step back the
+      // arrange path already owns. A single node still keeps its drag-back.
+      setArrangeUndo({ layout: groupGesture.base, label: "分组移动" });
       stopDragFrame();
     } else if (nodeGesture && tappedId) {
       // A press that never moved is a tap. Two taps on the same node inside the
@@ -2623,6 +2735,8 @@ export function RelationshipGraph({
       pressedNodeRef.current = null;
       nodeDragRef.current = null;
       groupDragRef.current = null;
+      // The drag is over: the border keeps the selected state, not the dragging one.
+      setPressedGroupId(null);
     }
   }
   const byId = useMemo(
@@ -4119,11 +4233,7 @@ export function RelationshipGraph({
                     : "",
                   // Moving the whole group is the one moment its members are all
                   // selected and the pointer is down; the border says so.
-                  Boolean(livePositions) &&
-                  group.characterIds.length > 0 &&
-                  group.characterIds.every((id) => selectedIds.includes(id))
-                    ? "dragging"
-                    : "",
+                  pressedGroupId === group.id && Boolean(livePositions) ? "dragging" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
@@ -4188,6 +4298,13 @@ export function RelationshipGraph({
               const touchesHovered =
                 activeId !== null &&
                 (relationship.fromId === activeId || relationship.toId === activeId);
+              // A word on the lines of the person being read, whatever the roster
+              // size: "who is this to them" is the question a selection asks.
+              const touchesActiveSelection =
+                focusId === relationship.fromId ||
+                focusId === relationship.toId ||
+                selectedIds.includes(relationship.fromId) ||
+                selectedIds.includes(relationship.toId);
               return (
                 <g
                   className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens ? "" : " lens-dim"}${inSpotlight ? "" : " spotlight-dim"}`}
@@ -4222,7 +4339,9 @@ export function RelationshipGraph({
                       graph is small enough for every word to have room. */}
                   {style.edge.showLabel &&
                     inLens &&
-                    (visibleCharacters.length <= EDGE_LABEL_LIMIT || touchesHovered) && (
+                    (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
+                      touchesHovered ||
+                      touchesActiveSelection) && (
                     <text style={{ fontSize: `${style.edge.labelSize}px` }} x={geometry.labelX} y={geometry.labelY}>
                       {relationshipKindLabel(relationship.kind)}
                     </text>
@@ -4275,6 +4394,12 @@ export function RelationshipGraph({
                       : "relationship-node";
               const state = `${baseState}${isSelected ? " selected" : ""}`;
               const avatarUrl = avatarUrls[character.id];
+              // A ring drawn in world units disappears at the zoom a hundred-character
+              // wheel is read at, which is exactly where "which one did I pick" matters.
+              // The ink is solved for a constant on-screen weight instead.
+              const pxPerUnit = view.k * (screenScale > 0 ? screenScale : 1);
+              const renderedRadius = geom.radius * pxPerUnit;
+              const ringStroke = ringStrokeFor(pxPerUnit);
               return (
                 <g
                   className={state}
@@ -4291,24 +4416,26 @@ export function RelationshipGraph({
                       node: a node may carry a local border colour, and a ring drawn
                       by restyling the node's own stroke would either hide that colour
                       or be hidden by it. */}
-                  {isSelected &&
-                    (geom.card ? (
-                      <rect
-                        className="relationship-node-ring"
-                        height={geom.halfHeight * 2 + 12}
-                        rx={16}
-                        width={geom.halfWidth * 2 + 12}
-                        x={nodeX - geom.halfWidth - 6}
-                        y={nodeY - geom.halfHeight - 6}
-                      />
-                    ) : (
-                      <circle
-                        className="relationship-node-ring"
-                        cx={nodeX}
-                        cy={nodeY}
-                        r={geom.radius + 6}
-                      />
-                    ))}
+                   {isSelected &&
+                     (geom.card ? (
+                       <rect
+                         className={`relationship-node-ring${renderedRadius < 12 ? " tight" : ""}`}
+                         height={geom.halfHeight * 2 + 12}
+                         rx={16}
+                         strokeWidth={ringStroke}
+                         width={geom.halfWidth * 2 + 12}
+                         x={nodeX - geom.halfWidth - 6}
+                         y={nodeY - geom.halfHeight - 6}
+                       />
+                     ) : (
+                       <circle
+                         className={`relationship-node-ring${renderedRadius < 12 ? " tight" : ""}`}
+                         cx={nodeX}
+                         cy={nodeY}
+                         r={geom.radius + 6}
+                         strokeWidth={ringStroke}
+                       />
+                     ))}
                   {geom.card ? (
                     <rect
                       className="relationship-node-card"

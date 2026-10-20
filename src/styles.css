@@ -7604,6 +7604,23 @@ body:has([aria-modal="true"]) .floating-actions {
   stroke: var(--node-stroke);
 }
 
+/* A selected card says so on its own border as well as on the ring: the ring is one
+   more outline among a hundred, the card's own edge is the object that was picked.
+   This outranks a local border colour on purpose — a colour must never hide a
+   selection. */
+.relationship-node.selected .relationship-node-card {
+  stroke: var(--primary);
+  stroke-width: 2;
+}
+
+.relationship-node.selected .relationship-node-card-name {
+  font-weight: 700;
+}
+
+.relationship-node.selected .relationship-node-card-meta {
+  fill: var(--text-soft);
+}
+
 .relationship-node-card-name {
   fill: var(--text);
   font-weight: 600;
@@ -11334,6 +11351,12 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   pointer-events: none;
 }
 
+/* Under about 12px of node the dashes close up into a grey smear, so the ring is
+   drawn solid at the size a hundred-character wheel is actually read at. */
+.relationship-node-ring.tight {
+  stroke-dasharray: none;
+}
+
 /* A selected line: a soft halo under it, so its own colour and dash stay exactly
    as the author set them. */
 .relationship-edge-halo {
@@ -11591,10 +11614,14 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   stroke-width: 2;
 }
 
+/* Moving is not "selected a bit more": the dashes close into a solid edge and the
+   tint deepens, so a group in hand reads differently from a group merely picked. */
 .graph-group.dragging .graph-group-rect {
-  fill: color-mix(in srgb, var(--primary) 6%, transparent);
-  stroke: color-mix(in srgb, var(--primary) 55%, transparent);
-  stroke-dasharray: 10 5;
+  fill: color-mix(in srgb, var(--primary) 10%, transparent);
+  stroke: color-mix(in srgb, var(--primary) 72%, transparent);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+  cursor: grabbing;
 }
 
 .graph-group-rect {
@@ -12026,6 +12053,11 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   --studio-gap: 4px;
   --studio-group-gap: 10px;
   --studio-bar-pad: 14px;
+  /* Everything the dock occupies at the bottom of a phone screen: its own 58px
+     (44 of control plus 6+6 of padding and 1+1 of border) plus the 8px of air it
+     sits on. A sheet that reserved only the 59 measured before this left its last
+     7px underneath the dock's shadow. */
+  --studio-dock-space: 66px;
   /* One type scale for everything the studio draws. Layers, not sizes that happen
      to differ: title, panel, section, control, meta. */
   --studio-font-title: 18px;
@@ -13157,7 +13189,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
     right: 0;
     /* Stops above the dock, so the zoom and fit controls stay reachable while a
        sheet is open instead of being covered by it. */
-    bottom: calc(59px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--studio-dock-space) + env(safe-area-inset-bottom, 0px));
     width: auto;
     height: min(50dvh, 440px);
     max-height: none;
@@ -13171,7 +13203,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   /* Full expansion is a real second height, not a bigger max-height: the panel's own
      scroll area grows with it, and the dock stays where it was. */
   .graph-studio-drawer[data-level="full"] {
-    height: calc(100dvh - 60px - 59px - env(safe-area-inset-bottom, 0px));
+    height: calc(100dvh - 60px - var(--studio-dock-space) - env(safe-area-inset-bottom, 0px));
   }
 
   .graph-studio-drawer.left {
