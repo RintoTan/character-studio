@@ -9,7 +9,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { createPortal } from "react-dom";
 import { useEscapeDismiss } from "../hooks/useLightDismiss";
 import {
   createRelationship,
@@ -69,7 +68,15 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
-import { popoverPosition } from "../utils/popover";
+import {
+  ARRANGE_NOTICE_MS,
+  appearanceTarget,
+  arrangeAvailability,
+  contextBarMode,
+  toggleSurface,
+  type GraphSurface,
+  type SurfaceRequest,
+} from "../utils/graphSurfaces";
 import {
   alignPositions,
   distributePositions,
@@ -1282,21 +1289,25 @@ export function RelationshipGraph({
   // not from the member list, so pressing a group shows both states at once.
   const [pressedGroupId, setPressedGroupId] = useState<string | null>(null);
   const [cardCap, setCardCap] = useState<CardLevel>("full");
-  const [isArrangeOpen, setIsArrangeOpen] = useState(false);
+  // The one large surface that is open. Drawers and full panels are mutually
+  // exclusive: 设计, 整理, 角色, 探索 and 分组 all live here, so there is no way to end
+  // up with two of them stacked over the drawing.
+  const [surface, setSurface] = useState<GraphSurface>("none");
   const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
   const [preview, setPreview] = useState<{
     mode: ArrangeMode;
     scope: "visible" | "all";
     positions: Record<string, LayoutPoint>;
   } | null>(null);
-  const [isGroupsOpen, setIsGroupsOpen] = useState(false);
   const [groupDraft, setGroupDraft] = useState<{ name: string; editingId: string | null } | null>(null);
   // One step of undo for a whole arrange, which is the only operation that moves
   // every node at once. A drag is undone by dragging back; an arrange is not.
   const [arrangeUndo, setArrangeUndo] = useState<{ layout: CanvasLayout; label: string } | null>(null);
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
-  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+  // The small menus: 更多 and 对齐/分布. They are popovers, not surfaces, because they
+  // hold one press each and close on the next click anywhere.
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isAlignOpen, setIsAlignOpen] = useState(false);
   // One edge at a time: an edge has no box to marquee and its properties are a
   // different set from a node's, so it is its own selection.
@@ -1308,7 +1319,6 @@ export function RelationshipGraph({
   const [lensKinds, setLensKinds] = useState<RelationshipKind[]>([]);
   const [bookmarkDraft, setBookmarkDraft] = useState("");
   const [exportScope, setExportScope] = useState<ExportScope>("all");
-  const [isStyleOpen, setIsStyleOpen] = useState(false);
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
   const redoRef = useRef<CanvasLayout[]>([]);
@@ -1321,11 +1331,11 @@ export function RelationshipGraph({
   // cannot lose a position or a zoom. Neither drawer is open by default, because the
   // drawing is the reason the studio exists.
   const [isStudio, setIsStudio] = useState(false);
-  const [isStudioLeftOpen, setIsStudioLeftOpen] = useState(false);
-  const [isStudioRightOpen, setIsStudioRightOpen] = useState(false);
-  // Two jobs live in one panel, so only one panel is ever open: 设计 and 探索 are tabs
-  // of the same drawer, and 角色 is the other drawer.
-  const [studioTab, setStudioTab] = useState<"design" | "explore">("design");
+  // Both drawers and every full panel are views of `surface`; these names are kept
+  // because the rendering and the fit compensation read them.
+  const isStudioLeftOpen = surface === "characters";
+  const isStudioRightOpen = surface === "design" || surface === "explore" || surface === "arrange";
+  const studioTab: "design" | "explore" = surface === "explore" ? "explore" : "design";
   // A phone's panel is a sheet over the drawing, and how much of the drawing it
   // covers is a choice: half for a quick adjustment with the canvas still visible,
   // full for long lists and advanced settings.
@@ -1343,9 +1353,6 @@ export function RelationshipGraph({
   const fitFrameRef = useRef("");
   // Bookmarks are rows, not forms: a name that jumps, and a menu for the two things
   // that change it.
-  // The phone's single tool entry: everything not worth permanent space on a
-  // canvas that is only 375 wide.
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [bookmarkMenuId, setBookmarkMenuId] = useState<string | null>(null);
   const [bookmarkEditingId, setBookmarkEditingId] = useState<string | null>(null);
   const [bookmarkNameDraft, setBookmarkNameDraft] = useState("");
@@ -1354,8 +1361,14 @@ export function RelationshipGraph({
     removed?: CanvasBookmark;
     index?: number;
   } | null>(null);
+  // Escape walks down from the top. The dismiss stack closes the layer registered
+  // last, so declaration order here *is* the layering: the open surface is the lowest
+  // of these, the two small menus sit above it, and a bookmark's own menu above them.
+  // One key press therefore never closes a drawer and a popover together.
+  useEscapeDismiss(surface !== "none", () => setSurface("none"));
+  useEscapeDismiss(isMoreOpen, () => setIsMoreOpen(false));
+  useEscapeDismiss(isAlignOpen, () => setIsAlignOpen(false));
   useEscapeDismiss(Boolean(bookmarkMenuId), () => setBookmarkMenuId(null));
-  useEscapeDismiss(isMobileMenuOpen, () => setIsMobileMenuOpen(false));
   useEffect(() => {
     if (!bookmarkNotice) {
       return;
@@ -1363,6 +1376,15 @@ export function RelationshipGraph({
     const timer = window.setTimeout(() => setBookmarkNotice(null), 8000);
     return () => window.clearTimeout(timer);
   }, [bookmarkNotice]);
+  // A finished move is reported, not administered: the notice fades, and undo stays
+  // available from the toolbar and the history stack afterwards.
+  useEffect(() => {
+    if (!arrangeUndo) {
+      return;
+    }
+    const timer = window.setTimeout(() => setArrangeUndo(null), ARRANGE_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [arrangeUndo]);
   useEffect(() => {
     if (!bookmarkMenuId) {
       return;
@@ -1377,16 +1399,10 @@ export function RelationshipGraph({
     document.addEventListener("pointerdown", close, true);
     return () => document.removeEventListener("pointerdown", close, true);
   }, [bookmarkMenuId]);
-  // A drawer is dismissed before anything else: Escape must not leave the studio
-  // while a panel the reader opened is still on top of the drawing.
-  useEscapeDismiss(isStudioLeftOpen, () => setIsStudioLeftOpen(false));
-  useEscapeDismiss(isStudioRightOpen, () => setIsStudioRightOpen(false));
   useEscapeDismiss(isDirectionHelpOpen, () => setIsDirectionHelpOpen(false));
-  useEscapeDismiss(isMobileToolsOpen, () => setIsMobileToolsOpen(false));
   // What the dialog opened with, so "has anything been typed" is a fact rather
   // than a guess about which fields count.
   const draftBaselineRef = useRef("");
-  useEscapeDismiss(isArrangeOpen, () => setIsArrangeOpen(false));
   // Space is a temporary pan and Escape leaves the selection tool, the way both
   // work in a drawing program. Neither key may steal a keystroke from a text field.
   useEffect(() => {
@@ -1404,7 +1420,17 @@ export function RelationshipGraph({
         spaceRef.current = true;
         setSpaceHeld(true);
       }
-      if (event.key === "Escape" && selectMode) {
+      // The select tool is the outermost layer, so Escape only leaves it once no
+      // drawer, popover or dialog is above it — otherwise one press would close a
+      // panel and drop the tool the author is still using.
+      const layerAbove =
+        surface !== "none" ||
+        isMoreOpen ||
+        isAlignOpen ||
+        isDirectionHelpOpen ||
+        Boolean(document.querySelector('[aria-modal="true"]'));
+
+      if (event.key === "Escape" && selectMode && !layerAbove) {
         marqueeRef.current = null;
         setMarquee(null);
         setSelectMode(false);
@@ -1424,50 +1450,7 @@ export function RelationshipGraph({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [selectMode]);
-  useEscapeDismiss(isStyleOpen, () => setIsStyleOpen(false));
-  /**
-   * Put the appearance panel next to the button that opened it.
-   *
-   * Rendered into `document.body` on purpose: the graph sits inside a card that
-   * clips its children and, in the studio, inside transformed containers, so a panel
-   * positioned inside the tree lands wherever the nearest containing block says —
-   * which is how it ended up under the page.
-   */
-  useLayoutEffect(() => {
-    if (!isStyleOpen || isStudio) {
-      setStyleBox(null);
-      return;
-    }
-    const place = () => {
-      const anchor = styleAnchorRef.current?.getBoundingClientRect();
-      if (!anchor) {
-        return;
-      }
-      const placed = popoverPosition(
-        { top: anchor.top, left: anchor.left, right: anchor.right, bottom: anchor.bottom },
-        { width: 340, height: 560 },
-        { width: window.innerWidth, height: window.innerHeight },
-      );
-      setStyleBox({ left: placed.left, top: placed.top, maxHeight: placed.maxHeight });
-    };
-    place();
-    window.addEventListener("resize", place);
-    const onDown = (event: PointerEvent) => {
-      const target = event.target as Element | null;
-      if (target?.closest?.(".graph-style-popover") || target?.closest?.(".graph-style-trigger")) {
-        return;
-      }
-      setIsStyleOpen(false);
-    };
-    document.addEventListener("pointerdown", onDown, true);
-
-    return () => {
-      window.removeEventListener("resize", place);
-      document.removeEventListener("pointerdown", onDown, true);
-    };
-  }, [isStyleOpen, isStudio]);
-  useEscapeDismiss(isGroupsOpen, () => setIsGroupsOpen(false));
+  }, [selectMode, surface, isMoreOpen, isAlignOpen, isDirectionHelpOpen]);
   useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
   useEscapeDismiss(Boolean(preview), () => setPreview(null));
   const style = layout.style ?? DEFAULT_CANVAS_STYLE;
@@ -1765,8 +1748,7 @@ export function RelationshipGraph({
   // mirrored into a ref because the pointer handler must read it without a re-render.
   const spaceRef = useRef(false);
   const [spaceHeld, setSpaceHeld] = useState(false);
-  const styleAnchorRef = useRef<HTMLButtonElement | null>(null);
-  const [styleBox, setStyleBox] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
+
   const groupDragRef = useRef<{
     groupId: string;
     pointerId: number;
@@ -2147,37 +2129,25 @@ export function RelationshipGraph({
   // once for the room it now has. The view that was there is put back on the way
   // out: changing the chrome must not change where the author was looking.
   /**
-   * One rule for switching task panels, shared by the desktop top bar and the phone's
-   * tool menu: opening a task closes the other surfaces, so two panels can never be
-   * expanded at once.
+   * The one door every permanent panel goes through, wherever it was pressed: the
+   * page toolbar, the studio's top bar, or the phone's dock. There is exactly one open
+   * surface, so opening a task cannot leave another one underneath it.
    */
-  function toggleStudioPanel(task: "characters" | "design" | "explore") {
-    setIsArrangeOpen(false);
-    setIsMobileMenuOpen(false);
-
-    if (task === "characters") {
-      setIsStudioLeftOpen((open) => !open);
-      setIsStudioRightOpen(false);
-      return;
-    }
-
-    setStudioTab(task);
-    setIsStudioRightOpen((open) => (studioTab === task ? !open : true));
-    setIsStudioLeftOpen(false);
+  function openGraphSurface(next: SurfaceRequest) {
+    setSurface((current) => toggleSurface(current, next));
+    setIsMoreOpen(false);
   }
 
   function enterStudio() {
     studioViewRef.current = view;
     setSheetLevel("half");
     setIsStudio(true);
-    setIsMobileToolsOpen(false);
+    setSurface("none");
   }
 
   function exitStudio() {
     setIsStudio(false);
-    setIsArrangeOpen(false);
-    setIsStudioLeftOpen(false);
-    setIsStudioRightOpen(false);
+    setSurface("none");
   }
 
   function restoreView() {
@@ -2497,7 +2467,9 @@ export function RelationshipGraph({
                 : clusterLayout(ids, relationships, center, metrics.radius);
 
     setPreview({ mode, scope: arrangeScope, positions });
-    setIsArrangeOpen(false);
+    // The preview is the one place that says 取消 / 确认应用, so the panel that asked
+    // for it steps aside and gives the drawing the whole width.
+    setSurface("none");
   }
 
   function applyArrange() {
@@ -3632,6 +3604,78 @@ export function RelationshipGraph({
     </div>
   );
 
+  const groupPanel = (
+    <div className="graph-panel graph-group-panel" role="group" aria-label="视觉分组">
+      {groupDraft ? (
+        <form
+          className="graph-group-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveGroupDraft();
+          }}
+        >
+          <label className="graph-group-field">
+            <span>分组名称</span>
+            <input
+              aria-label="分组名称"
+              autoFocus
+              maxLength={40}
+              onChange={(event) =>
+                setGroupDraft((current) => (current ? { ...current, name: event.target.value } : current))
+              }
+              placeholder="例如：北境线"
+              value={groupDraft.name}
+            />
+          </label>
+          <p className="muted">将 {selectedIds.length} 个角色归为一组。只影响画布，不写世界观。</p>
+          <div className="graph-group-actions">
+            <button className="ghost-button" onClick={() => setGroupDraft(null)} type="button">
+              取消
+            </button>
+            <button className="primary-button" disabled={!groupDraft.name.trim()} type="submit">
+              创建分组
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          {layout.groups.length === 0 ? (
+            <p className="muted">还没有分组。选中两个以上角色后创建。</p>
+          ) : (
+            <ul className="graph-group-list">
+              {layout.groups.map((group) => (
+                <li key={group.id}>
+                  <span className="graph-group-name">{group.name}</span>
+                  <span className="graph-group-count">{group.characterIds.length} 人</span>
+                  <button
+                    aria-label={`取消分组 ${group.name}`}
+                    className="ghost-button graph-group-remove"
+                    onClick={() => {
+                      commitLayout(removeGroup(layout, group.id));
+                      setArrangeUndo(null);
+                    }}
+                    type="button"
+                  >
+                    取消分组
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <button
+            className="ghost-button graph-group-create"
+            disabled={selectedIds.length < 2}
+            onClick={() => setGroupDraft({ name: "", editingId: null })}
+            type="button"
+          >
+            用所选创建分组（{selectedIds.length}）
+          </button>
+        </>
+      )}
+      <p className="muted">分组只影响画布，不写入世界观。</p>
+    </div>
+  );
+
   const presetTier = (
             <section className="graph-design-tier">
               <strong className="graph-design-heading">风格预设</strong>
@@ -3839,6 +3883,31 @@ export function RelationshipGraph({
                             />
                           </label>
                         </div>
+                        <div className="graph-style-field">
+                          <span className="graph-style-label">节点形态</span>
+                          <div className="graph-segment" role="group" aria-label="节点形态">
+                            {[
+                              { value: "avatar", label: "头像" },
+                              { value: "compact", label: "圆点" },
+                              { value: "card", label: "卡片" },
+                            ].map((option) => {
+                              const current = (local.form ?? style.node.form) === option.value;
+                              return (
+                                <button
+                                  aria-pressed={current}
+                                  className={current ? "graph-segment-button selected" : "graph-segment-button"}
+                                  key={option.value}
+                                  onClick={() =>
+                                    patch({ form: option.value as CanvasStyle["node"]["form"] })
+                                  }
+                                  type="button"
+                                >
+                                  {option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
                         <button
                           className="ghost-button"
                           disabled={!layout.nodeStyles?.[nodeId]}
@@ -3854,6 +3923,25 @@ export function RelationshipGraph({
                       </>
                     );
                   })()}
+                </div>
+              )}
+              {/* Several objects are selected: say which settings a batch would have to
+                  change, rather than silently showing one node's controls as if it spoke
+                  for all of them. */}
+              {!selectedEdgeId && selectedIds.length > 1 && (
+                <div className="graph-style-local" role="note">
+                  <strong>已选 {selectedIds.length} 个角色</strong>
+                  <p className="muted">
+                    批量外观暂不支持：边框、底色和形态按单个角色保存，这里先只改整体画布。
+                    要改其中某一个，选中它再打开这里。
+                  </p>
+                  <button
+                    className="ghost-button"
+                    onClick={() => setSurface("groups")}
+                    type="button"
+                  >
+                    用所选创建分组
+                  </button>
                 </div>
               )}
               {/* On a phone the half sheet opens on the quick adjustments, which is what
@@ -3917,9 +4005,33 @@ export function RelationshipGraph({
                 </div>
               </details>
 
-              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复默认外观</button>
+              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复整体画布默认外观</button>
             </div>
   );
+
+  // The name the appearance drawer puts in its title. It has to be the object the
+  // controls underneath will change, so a node uses its own name and nothing else
+  // stands in for it.
+  const appearanceSelection = appearanceTarget(selectedIds, selectedEdgeId);
+  const appearanceLabel = (() => {
+    if (appearanceSelection.kind === "node") {
+      const node = characters.find((character) => character.id === appearanceSelection.id);
+      return node ? characterDisplayName(node) : "所选角色";
+    }
+    if (appearanceSelection.kind === "edge") {
+      return "关系线";
+    }
+    if (appearanceSelection.kind === "multi") {
+      return `已选 ${appearanceSelection.count} 个角色`;
+    }
+    return "整体画布";
+  })();
+
+  const contextBar = contextBarMode({
+    previewing: Boolean(preview),
+    selectedCount: selectedIds.length,
+    canUndo: Boolean(arrangeUndo),
+  });
 
   return (
     <section
@@ -4007,9 +4119,10 @@ export function RelationshipGraph({
           {/* What acts on the canvas sits with the canvas: finding a character,
               zooming, and what the nodes show. The header keeps what the graph
               contains. */}
-          <div className={`graph-canvas-tools${isStudio ? " studio-dock" : ""}`}>
-            {/* In the studio the search lives in the left drawer, where it sits with
-                the list it filters instead of over the drawing. */}
+          <div className={`graph-tool-strip${isStudio ? " is-studio" : ""}`}>
+            {/* The search is the one entry that is not an icon: it is a field, and
+                on a phone it keeps its own row above the canvas while the toolbar
+                moves to the bottom edge. */}
             {!isStudio && (
             <div className="graph-search" ref={searchWrapRef}>
               <label className="graph-search-field">
@@ -4059,6 +4172,9 @@ export function RelationshipGraph({
               )}
             </div>
             )}
+          <div className={`graph-canvas-tools${isStudio ? " studio-dock" : ""}`}>
+            {/* In the studio the search lives in the left drawer, where it sits with
+                the list it filters instead of over the drawing. */}
 
             {/* Focus is a state of the whole canvas, so it says so and has one obvious
                 way out — the same control the search set it with. */}
@@ -4075,139 +4191,61 @@ export function RelationshipGraph({
               </button>
             )}
 
-            {isStudio ? (
-              /* The studio's own dock: three jobs in three groups — where you are
-                 looking, what you are selecting, and how the drawing is arranged.
-                 Undo lives in the top bar here, so it is not repeated below. */
-              <div aria-label="画布工具" className="graph-studio-dock" role="toolbar">
-                <div aria-label="视角" className="graph-dock-group" role="group">
-                  <div aria-label="缩放" className="graph-dock-cluster" role="group">
-                    <button aria-label="缩小画布" className="graph-dock-icon" onClick={() => zoomBy(1 / 1.25)} type="button">
-                      <Icon name="minus" size={15} />
-                    </button>
-                    <button
-                      aria-label="恢复适配"
-                      className="graph-dock-value"
-                      data-tooltip="当前缩放：点按适应画布"
-                      onClick={resetView}
-                      type="button"
-                    >
-                      {Math.round(view.k * 100)}%
-                    </button>
-                    <button aria-label="放大画布" className="graph-dock-icon" onClick={() => zoomBy(1.25)} type="button">
-                      <Icon name="plus" size={15} />
-                    </button>
-                  </div>
-                  <button
-                    aria-label="适应画布"
-                    className="graph-dock-button"
-                    data-tooltip="让全部角色与姓名进入视野"
-                    onClick={resetView}
-                    type="button"
-                  >
-                    <Icon name="maximize" size={15} />
-                    <span className="graph-dock-label">适应画布</span>
-                  </button>
-                  {previousView && (
-                    <button
-                      className="graph-dock-button graph-dock-optional"
-                      data-tooltip="回到上一个观察位置"
-                      onClick={restoreView}
-                      type="button"
-                    >
-                      恢复视角
-                    </button>
-                  )}
-                  <button
-                    aria-label="重置视角"
-                    className="graph-dock-button graph-dock-optional"
-                    data-tooltip="回到刚进入工作室时的视角"
-                    onClick={resetToDefaultView}
-                    type="button"
-                  >
-                    重置视角
-                  </button>
-                </div>
-
-                <span aria-hidden="true" className="graph-dock-sep" />
-
-                <div aria-label="选择与编辑" className="graph-dock-group" role="group">
-                  <button
-                    aria-pressed={selectMode}
-                    className={`graph-dock-button${selectMode ? " active" : ""}`}
-                    onClick={() => {
-                      setSelectMode((current) => {
-                        if (current) {
-                          setSelectedIds([]);
-                        }
-                        return !current;
-                      });
-                    }}
-                    type="button"
-                  >
-                    多选
-                  </button>
-                  {selectedIds.length >= 2 && (
-                    <button
-                      aria-expanded={isAlignOpen}
-                      aria-label="对齐与分布"
-                      className="graph-dock-button"
-                      onClick={() => setIsAlignOpen((open) => !open)}
-                      type="button"
-                    >
-                      排列
-                    </button>
-                  )}
-                </div>
-
-                <span aria-hidden="true" className="graph-dock-sep" />
-
-                <div aria-label="整理画布" className="graph-dock-group graph-dock-arrange" role="group">
-                  <button
-                    aria-expanded={isArrangeOpen}
-                    className={`graph-dock-button${isArrangeOpen ? " active" : ""}`}
-                    onClick={() => setIsArrangeOpen((current) => !current)}
-                    type="button"
-                  >
-                    整理
-                  </button>
-                  {/* The phone's single door to everything that does not earn a
-                      permanent place on a 375 wide canvas. */}
-                  <button
-                    aria-expanded={isMobileMenuOpen}
-                    aria-label="更多工具"
-                    className={`graph-dock-button graph-dock-tools${isMobileMenuOpen ? " active" : ""}`}
-                    onClick={() => setIsMobileMenuOpen((open) => !open)}
-                    type="button"
-                  >
-                    <Icon name="more" size={16} />
-                    <span className="graph-dock-label">工具</span>
-                  </button>
-                </div>
+            {/* One toolbar for both surfaces: the page's strip above the drawing and
+                the studio's dock below it. High-frequency entries only, each an icon
+                with a tooltip, an aria-label and a focus ring. Everything that edits
+                the drawing for longer than one press opens a drawer instead. */}
+            <div
+              aria-label="画布工具"
+              className={`graph-toolbar${isStudio ? " in-studio" : ""}`}
+              role="toolbar"
+            >
+              <div aria-label="缩放" className="graph-tool-cluster" role="group">
+                <button
+                  aria-label="缩小画布"
+                  className="graph-icon-button"
+                  data-tooltip="缩小"
+                  onClick={() => zoomBy(1 / 1.25)}
+                  type="button"
+                >
+                  <Icon name="minus" size={15} />
+                </button>
+                <button
+                  aria-label={`当前缩放 ${Math.round(view.k * 100)}%，点按适应画布`}
+                  className="graph-zoom-readout"
+                  data-tooltip="适应画布"
+                  onClick={resetView}
+                  type="button"
+                >
+                  {Math.round(view.k * 100)}%
+                </button>
+                <button
+                  aria-label="放大画布"
+                  className="graph-icon-button"
+                  data-tooltip="放大"
+                  onClick={() => zoomBy(1.25)}
+                  type="button"
+                >
+                  <Icon name="plus" size={15} />
+                </button>
               </div>
-            ) : (
-            <>
-            <div aria-label="画布缩放" className="graph-zoom" role="group">
-              <button aria-label="缩小画布" className="graph-zoom-step" onClick={() => zoomBy(1 / 1.25)} type="button">
-                <Icon name="minus" size={15} />
-              </button>
+
               <button
-                aria-label="恢复适配"
-                className="graph-zoom-value"
-                data-tooltip="适配画布"
+                aria-label="适应画布"
+                className="graph-icon-button"
+                data-tooltip="适应画布：让全部角色与姓名进入视野"
                 onClick={resetView}
                 type="button"
               >
-                {Math.round(view.k * 100)}%
+                <Icon name="fit" size={16} />
               </button>
-              <button aria-label="放大画布" className="graph-zoom-step" onClick={() => zoomBy(1.25)} type="button">
-                <Icon name="plus" size={15} />
-              </button>
-              {/* Named rather than implied by a percentage: on a phone there is no
-                  tooltip, and "back to the whole network" is the way out of any close-up. */}
+
+              {/* History is always one press away on a wide screen. A phone moves the
+                  same two commands into 更多 rather than shrinking the dock. */}
               <button
                 aria-label="撤销"
-                className="graph-history-button"
+                className="graph-icon-button graph-tool-history"
+                data-tooltip="撤销上一步布局改动"
                 disabled={undoRef.current.length === 0}
                 onClick={undoLayout}
                 type="button"
@@ -4216,44 +4254,26 @@ export function RelationshipGraph({
               </button>
               <button
                 aria-label="重做"
-                className="graph-history-button"
+                className="graph-icon-button graph-tool-history"
+                data-tooltip="重做"
                 disabled={redoRef.current.length === 0}
                 onClick={redoLayout}
                 type="button"
               >
                 <Icon name="redo" size={16} />
               </button>
-              {previousView && (
-                <button className="graph-fit-button" onClick={restoreView} type="button">
-                  恢复视角
-                </button>
-              )}
-              <button aria-label="适应画布" className="graph-fit-button" onClick={resetView} type="button">
-                <Icon name="grid" size={14} />
-                适应画布
-              </button>
-              {/* Phones keep zoom and fit on the row and put the rest behind one
-                  button, instead of spending a third row on four controls. */}
-              <button
-                aria-expanded={isMobileToolsOpen}
-                className="graph-tool-button graph-mobile-tools-trigger"
-                onClick={() => setIsMobileToolsOpen((current) => !current)}
-                type="button"
-              >
-                工具
-              </button>
-            </div>
 
-            {/* Free placement, arranging and grouping. They act on the drawing, so
-                they sit with it, in the same strip as search and zoom. */}
-            <div
-              aria-label="画布编辑"
-              className={`graph-edit-tools${isMobileToolsOpen ? " open" : ""}`}
-              role="group"
-            >
+              <span aria-hidden="true" className="graph-tool-sep" />
+
               <button
+                aria-label={selectMode ? "选择工具（已开启）" : "选择工具"}
                 aria-pressed={selectMode}
-                className={`graph-tool-button${selectMode ? " active" : ""}`}
+                className="graph-icon-button"
+                data-tooltip={
+                  selectMode
+                    ? "选择工具已开启：在空白处拖动框选，Esc 退出"
+                    : "选择工具：从空白处拖动框选角色"
+                }
                 onClick={() => {
                   setSelectMode((current) => {
                     if (current) {
@@ -4261,150 +4281,158 @@ export function RelationshipGraph({
                     }
                     return !current;
                   });
-                  setIsMobileToolsOpen(false);
+                  setIsMoreOpen(false);
                 }}
                 type="button"
               >
-                多选
+                <Icon name="select" size={16} />
               </button>
 
-              <div className="graph-tool-wrap hidden-in-studio">
+              <button
+                aria-expanded={surface === "arrange"}
+                aria-label="整理画布"
+                className="graph-icon-button"
+                data-tooltip="整理：关系聚类、环形、网格、层级与按尺寸排开"
+                onClick={() => openGraphSurface("arrange")}
+                type="button"
+              >
+                <Icon name="layout" size={16} />
+              </button>
+
+              {/* The studio's top bar already owns 设计, so the dock does not repeat it. */}
+              {!isStudio && (
                 <button
-                  aria-expanded={isGroupsOpen}
-                  aria-label="视觉分组"
-                  className={`graph-tool-button${layout.groups.length > 0 ? " has-count" : ""}`}
-                  onClick={() => setIsGroupsOpen((current) => !current)}
+                  aria-expanded={surface === "design"}
+                  aria-label="外观设置"
+                  className="graph-icon-button"
+                  data-tooltip="外观：画布、所选角色或所选关系线"
+                  onClick={() => openGraphSurface("design")}
                   type="button"
                 >
-                  分组
-                  {layout.groups.length > 0 && <span className="graph-tool-count">{layout.groups.length}</span>}
+                  <Icon name="sliders" size={16} />
                 </button>
-                {isGroupsOpen && (
-                  <div className="graph-panel graph-group-panel" role="group" aria-label="视觉分组面板">
-                    {groupDraft ? (
-                      <form
-                        className="graph-group-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          saveGroupDraft();
-                        }}
+              )}
+
+              <div className="graph-more-wrap">
+                <button
+                  aria-expanded={isMoreOpen}
+                  aria-label="更多工具"
+                  className="graph-icon-button"
+                  data-tooltip="更多工具"
+                  onClick={() => setIsMoreOpen((open) => !open)}
+                  type="button"
+                >
+                  <Icon name="more" size={16} />
+                </button>
+                {isMoreOpen && (
+                  <div aria-label="更多工具" className="graph-more-menu" role="menu">
+                    {!isStudio && (
+                      <button
+                        className="graph-more-item"
+                        onClick={() => openGraphSurface("groups")}
+                        role="menuitem"
+                        type="button"
                       >
-                        <label className="graph-group-field">
-                          <span>分组名称</span>
-                          <input
-                            aria-label="分组名称"
-                            autoFocus
-                            maxLength={40}
-                            onChange={(event) =>
-                              setGroupDraft((current) =>
-                                current ? { ...current, name: event.target.value } : current,
-                              )
-                            }
-                            placeholder="例如：北境线"
-                            value={groupDraft.name}
-                          />
-                        </label>
-                        <p className="muted">将 {selectedIds.length} 个角色归为一组。只影响画布，不写世界观。</p>
-                        <div className="graph-group-actions">
-                          <button className="ghost-button" onClick={() => setGroupDraft(null)} type="button">
-                            取消
-                          </button>
-                          <button className="primary-button" disabled={!groupDraft.name.trim()} type="submit">
-                            创建分组
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <>
-                        {layout.groups.length === 0 ? (
-                          <p className="muted">还没有分组。选中两个以上角色后创建。</p>
-                        ) : (
-                          <ul className="graph-group-list">
-                            {layout.groups.map((group) => (
-                              <li key={group.id}>
-                                <span className="graph-group-name">{group.name}</span>
-                                <span className="graph-group-count">{group.characterIds.length} 人</span>
-                                <button
-                                  aria-label={`取消分组 ${group.name}`}
-                                  className="ghost-button graph-group-remove"
-                                  onClick={() => {
-                                    commitLayout(removeGroup(layout, group.id));
-                                    setArrangeUndo(null);
-                                  }}
-                                  type="button"
-                                >
-                                  取消分组
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                        <button
-                          className="ghost-button graph-group-create"
-                          disabled={selectedIds.length < 2}
-                          onClick={() => setGroupDraft({ name: "", editingId: null })}
-                          type="button"
-                        >
-                          用所选创建分组（{selectedIds.length}）
-                        </button>
-                      </>
+                        <Icon name="layers" size={15} />
+                        <span>视觉分组</span>
+                        {layout.groups.length > 0 && <em>{layout.groups.length}</em>}
+                      </button>
+                    )}
+                    {isStudio && (
+                      <button
+                        className="graph-more-item"
+                        onClick={() => openGraphSurface("characters")}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <Icon name="layers" size={15} />
+                        <span>角色与分组</span>
+                      </button>
+                    )}
+                    <button
+                      className="graph-more-item graph-more-only-narrow"
+                      disabled={undoRef.current.length === 0}
+                      onClick={() => {
+                        setIsMoreOpen(false);
+                        undoLayout();
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <Icon name="undo" size={15} />
+                      <span>撤销</span>
+                    </button>
+                    <button
+                      className="graph-more-item graph-more-only-narrow"
+                      disabled={redoRef.current.length === 0}
+                      onClick={() => {
+                        setIsMoreOpen(false);
+                        redoLayout();
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <Icon name="redo" size={15} />
+                      <span>重做</span>
+                    </button>
+                    {previousView && (
+                      <button
+                        className="graph-more-item"
+                        onClick={() => {
+                          setIsMoreOpen(false);
+                          restoreView();
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <Icon name="refresh" size={15} />
+                        <span>回到上一个视角</span>
+                      </button>
+                    )}
+                    <button
+                      className="graph-more-item"
+                      onClick={() => {
+                        setIsMoreOpen(false);
+                        resetToDefaultView();
+                      }}
+                      role="menuitem"
+                      type="button"
+                    >
+                      <Icon name="maximize" size={15} />
+                      <span>重置视角</span>
+                    </button>
+                    {!isStudio && (
+                      <button
+                        className="graph-more-item graph-more-only-narrow"
+                        onClick={() => {
+                          setIsMoreOpen(false);
+                          enterStudio();
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <Icon name="maximize" size={15} />
+                        <span>全屏编辑</span>
+                      </button>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* In the studio this entry lives in the dock instead, so the panel is
-                  rendered there and not twice. */}
               {!isStudio && (
-                <div className="graph-tool-wrap">
-                  <button
-                    aria-expanded={isArrangeOpen}
-                    className="graph-tool-button"
-                    onClick={() => setIsArrangeOpen((current) => !current)}
-                    type="button"
-                  >
-                    整理
-                  </button>
-                  {isArrangeOpen && arrangePanel}
-                </div>
+                <button
+                  aria-label="全屏编辑"
+                  className="graph-studio-entry-button"
+                  data-tooltip="全屏编辑：在更大的空间里整理这张关系图（应用内全屏）"
+                  onClick={enterStudio}
+                  type="button"
+                >
+                  <Icon name="maximize" size={15} />
+                  <span>全屏编辑</span>
+                </button>
               )}
-
-              <button
-                aria-expanded={isStyleOpen}
-                aria-label="外观设置"
-                className="graph-tool-button graph-style-trigger hidden-in-studio"
-                onClick={() => setIsStyleOpen((open) => !open)}
-                ref={styleAnchorRef}
-                title="外观：画布、所选角色或所选关系线"
-                type="button"
-              >
-                外观
-              </button>
-              <button
-                aria-pressed={isStudio}
-                aria-label="全屏编辑"
-                className="graph-tool-button graph-studio-entry"
-                onClick={enterStudio}
-                title="进入更大的关系画布编辑空间（应用内全屏，不改浏览器全屏状态）"
-                type="button"
-              >
-                <Icon name="maximize" size={14} />
-                全屏编辑
-              </button>
-              <button
-                aria-label="重置视角"
-                className="graph-tool-button"
-                onClick={() => {
-                  resetToDefaultView();
-                  setIsMobileToolsOpen(false);
-                }}
-                type="button"
-              >
-                重置视角
-              </button>
             </div>
-            </>
-            )}
+            </div>
           </div>
 
           {!showAll && visibleCharacters.length < connectedIds.size && (
@@ -4445,6 +4473,11 @@ export function RelationshipGraph({
               fine, which is why the character sheets always exported. The hover card is
               outside the frame for that reason: a card under the pointer is not part of
               the drawing. */}
+          <div
+            className={`graph-canvas-row${isStudio ? " is-studio" : ""}${
+              !isStudio && surface !== "none" ? " has-drawer" : ""
+            }`}
+          >
           <div className="graph-canvas-holder" ref={holderRef}>
           <div
             className="graph-canvas-frame"
@@ -4900,6 +4933,78 @@ export function RelationshipGraph({
           )}
           </div>
 
+          {/* The page's drawer. It takes its own column beside the drawing instead
+              of lying on top of it, so no character can end up behind a panel; on a
+              narrow screen the same panel is a sheet over the lower part of the
+              canvas, with the drawing still visible above it. */}
+          {!isStudio && surface !== "none" && (
+            <div className="graph-page-drawer-layer" data-surface={surface}>
+              <div aria-hidden="true" className="graph-page-drawer-scrim" onClick={() => setSurface("none")} />
+              <aside
+                aria-label={
+                  surface === "design"
+                    ? `外观 · ${appearanceLabel}`
+                    : surface === "arrange"
+                      ? "整理画布"
+                      : "视觉分组"
+                }
+                className="graph-page-drawer"
+                data-level={sheetLevel}
+                role="dialog"
+              >
+                <div className="graph-page-drawer-head">
+                  <div className="graph-page-drawer-title">
+                    <strong>
+                      {surface === "design"
+                        ? `外观 · ${appearanceLabel}`
+                        : surface === "arrange"
+                          ? "整理画布"
+                          : "视觉分组"}
+                    </strong>
+                    <span>
+                      {surface === "design"
+                        ? appearanceSelection.kind === "canvas"
+                          ? "预设、快速调整与高级自定义"
+                          : appearanceSelection.kind === "multi"
+                            ? "批量外观暂不支持，这里只改整体画布"
+                            : "这个对象自己的边框、底色与形态"
+                        : surface === "arrange"
+                          ? "先预览，确认后才写入布局"
+                          : "分组只影响画布，不写世界观"}
+                    </span>
+                  </div>
+                  <div className="graph-page-drawer-tools">
+                    {/* Half height leaves the drawing visible; full height is for
+                        reading every control. The grip only exists on a phone. */}
+                    <button
+                      aria-label={sheetLevel === "half" ? "展开到全屏高度" : "收起为半屏"}
+                      className="graph-sheet-toggle"
+                      data-level={sheetLevel}
+                      onClick={() => setSheetLevel((level) => (level === "half" ? "full" : "half"))}
+                      type="button"
+                    >
+                      <Icon name="chevronDown" size={16} />
+                    </button>
+                    <button
+                      aria-label={`关闭${surface === "design" ? "外观设置" : surface === "arrange" ? "整理画布" : "视觉分组"}`}
+                      className="graph-page-drawer-close"
+                      onClick={() => setSurface("none")}
+                      type="button"
+                    >
+                      <Icon name="close" size={16} />
+                    </button>
+                  </div>
+                </div>
+                <div className="graph-page-drawer-body">
+                  {surface === "design" && stylePanel}
+                  {surface === "arrange" && arrangePanel}
+                  {surface === "groups" && groupPanel}
+                </div>
+              </aside>
+            </div>
+          )}
+          </div>
+
           {/* ------------------------------------------------------------------
               Studio mode. Same canvas, same layout store, same undo stack — only the
               chrome changes: a title bar, two drawers that are closed until asked
@@ -4963,175 +5068,43 @@ export function RelationshipGraph({
                   <button
                     aria-pressed={isStudioLeftOpen}
                     className="graph-studio-toggle"
-                    onClick={() => toggleStudioPanel("characters")}
+                    data-tooltip="角色与分组：搜索、定位与视觉分组"
+                    onClick={() => openGraphSurface("characters")}
                     type="button"
                   >
-                    角色
+                    <Icon name="layers" size={15} />
+                    <span>角色</span>
                   </button>
                   <button
                     aria-pressed={isStudioRightOpen && studioTab === "design"}
+                    aria-expanded={surface === "design"}
                     className="graph-studio-toggle"
-                    onClick={() => toggleStudioPanel("design")}
+                    data-tooltip="设计：所选对象、关系线与整体画布"
+                    onClick={() => openGraphSurface("design")}
                     type="button"
                   >
-                    设计
+                    <Icon name="sliders" size={15} />
+                    <span>设计</span>
                   </button>
                   <button
                     aria-pressed={isStudioRightOpen && studioTab === "explore"}
                     className="graph-studio-toggle"
-                    onClick={() => toggleStudioPanel("explore")}
+                    data-tooltip="探索：聚光灯、关系透镜与视角书签"
+                    onClick={() => openGraphSurface("explore")}
                     type="button"
                   >
-                    探索
+                    <Icon name="compass" size={15} />
+                    <span>探索</span>
                   </button>
                   </div>
                 </div>
               </div>
 
-              {isMobileMenuOpen && (
-                <div aria-label="工作室工具" className="graph-mobile-menu" role="menu">
-                  <div className="graph-mobile-menu-section">
-                    <span className="graph-mobile-menu-title">面板</span>
-                    <div className="graph-mobile-menu-grid">
-                      <button onClick={() => toggleStudioPanel("characters")} role="menuitem" type="button">
-                        角色
-                      </button>
-                      <button onClick={() => toggleStudioPanel("design")} role="menuitem" type="button">
-                        设计
-                      </button>
-                      <button onClick={() => toggleStudioPanel("explore")} role="menuitem" type="button">
-                        探索
-                      </button>
-                    </div>
-                  </div>
-                  <div className="graph-mobile-menu-section">
-                    <span className="graph-mobile-menu-title">画布</span>
-                    <div className="graph-mobile-menu-grid">
-                      <button
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          setIsArrangeOpen(true);
-                        }}
-                        role="menuitem"
-                        type="button"
-                      >
-                        整理
-                      </button>
-                      <button
-                        aria-pressed={selectMode}
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          setSelectMode((current) => {
-                            if (current) {
-                              setSelectedIds([]);
-                            }
-                            return !current;
-                          });
-                        }}
-                        role="menuitem"
-                        type="button"
-                      >
-                        {selectMode ? "多选中" : "多选"}
-                      </button>
-                      {selectedIds.length >= 2 && (
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            setIsAlignOpen(true);
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          排列
-                        </button>
-                      )}
-                      {selectedIds.length > 0 && (
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            fitSelection();
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          适应选中
-                        </button>
-                      )}
-                      {selectedIds.length >= 2 && (
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            setGroupDraft({ name: "", editingId: null });
-                            setIsGroupsOpen(true);
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          创建分组
-                        </button>
-                      )}
-                      {selectedIds.length === 1 && (
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            setIsStyleOpen(true);
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          外观
-                        </button>
-                      )}
-                      {selectedIds.length > 0 && (
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            setSelectedIds([]);
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          清除选择
-                        </button>
-                      )}
-                      {previousView && (
-                        <button
-                          onClick={() => {
-                            setIsMobileMenuOpen(false);
-                            restoreView();
-                          }}
-                          role="menuitem"
-                          type="button"
-                        >
-                          恢复视角
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setIsMobileMenuOpen(false);
-                          resetToDefaultView();
-                        }}
-                        role="menuitem"
-                        type="button"
-                      >
-                        重置视角
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {isArrangeOpen && (
-                <div className="graph-studio-arrange" role="group" aria-label="画布整理">
-                  {arrangePanel}
-                </div>
-              )}
-
               {isStudioLeftOpen && (
                 <aside aria-label="角色与分组" className="graph-studio-drawer left">
                   <div className="graph-studio-drawer-head">
                     <strong>角色与分组</strong>
-                    <button aria-label="关闭角色面板" onClick={() => setIsStudioLeftOpen(false)} type="button">
+                    <button aria-label="关闭角色面板" onClick={() => setSurface("none")} type="button">
                       <Icon name="close" size={14} />
                     </button>
                   </div>
@@ -5242,17 +5215,25 @@ export function RelationshipGraph({
 
               {isStudioRightOpen && (
                 <aside
-                  aria-label={studioTab === "design" ? "设计面板" : "探索面板"}
+                  aria-label={
+                    surface === "arrange" ? "整理画布" : studioTab === "design" ? "设计面板" : "探索面板"
+                  }
                   className="graph-studio-drawer right"
                   data-level={sheetLevel}
-                  data-tab={studioTab}
+                  data-tab={surface === "arrange" ? "arrange" : studioTab}
                   ref={rightDrawerRef}
                 >
                   {/* The top bar already switches between 角色 / 设计 / 探索, so the panel
                       names its own job and offers the one thing the bar cannot: how much
                       of the screen the sheet takes. */}
                   <div className="graph-studio-drawer-head">
-                    <strong>{studioTab === "design" ? "设计" : "探索"}</strong>
+                    <strong>
+                      {surface === "arrange"
+                        ? "整理画布"
+                        : studioTab === "design"
+                          ? `设计 · ${appearanceLabel}`
+                          : "探索"}
+                    </strong>
                     <div className="graph-studio-drawer-actions">
                       <button
                         aria-expanded={sheetLevel === "full"}
@@ -5263,13 +5244,19 @@ export function RelationshipGraph({
                       >
                         {sheetLevel === "half" ? "展开" : "收起"}
                       </button>
-                      <button aria-label="关闭属性面板" onClick={() => setIsStudioRightOpen(false)} type="button">
+                      <button aria-label="关闭属性面板" onClick={() => setSurface("none")} type="button">
                         <Icon name="close" size={14} />
                       </button>
                     </div>
                   </div>
 
-                  {studioTab === "design" && (
+                  {surface === "arrange" && (
+                    <div className="graph-arrange-drawer" role="group" aria-label="整理画布">
+                      {arrangePanel}
+                    </div>
+                  )}
+
+                  {surface === "design" && (
                     <>
 
                   <strong className="graph-studio-section">所选对象</strong>
@@ -5310,10 +5297,8 @@ export function RelationshipGraph({
                         <button className="ghost-button" onClick={() => fitSelection()} type="button">
                           适应选中
                         </button>
-                        <button className="ghost-button" onClick={() => setIsAlignOpen((open) => !open)} type="button">
-                          对齐与分布
-                        </button>
                       </div>
+                      <p className="muted">对齐与分布在下方的选择条上，只有一处入口。</p>
                     </div>
                   )}
 
@@ -5323,7 +5308,7 @@ export function RelationshipGraph({
                     </>
                   )}
 
-                  {studioTab === "explore" && (
+                  {surface === "explore" && (
                   <div className="graph-explore-section">
                   <strong className="graph-studio-section">探索</strong>
                   <div className="graph-studio-props">
@@ -5515,148 +5500,119 @@ export function RelationshipGraph({
               style={{ height: marquee.height, left: marquee.left, top: marquee.top, width: marquee.width }}
             />
           )}
-          {!isStudio &&
-            isStyleOpen &&
-            styleBox &&
-            createPortal(
-              <div
-                aria-label="外观设置"
-                className="graph-style-popover"
-                role="dialog"
-                style={{ left: styleBox.left, top: styleBox.top, maxHeight: styleBox.maxHeight }}
-              >
-                <div className="graph-style-popover-head">
-                  <strong>
-                    外观 ·{" "}
-                    {selectedEdgeId && byId.size >= 0
-                      ? "所选关系线"
-                      : selectedIds.length === 1
-                        ? "所选角色"
-                        : "整体画布"}
-                  </strong>
-                  <button aria-label="关闭外观设置" onClick={() => setIsStyleOpen(false)} type="button">
-                    <Icon name="close" size={14} />
-                  </button>
+          {/* One context card under the drawing, and only one. `contextBar` decides
+              which single state is shown — a preview waiting for a decision, the
+              current selection, or a notice about the last change — so a selection
+              bar, an arrange panel and an undo notice can never stack up again. */}
+          <div className="graph-context-slot">
+            {contextBar === "preview" && preview && (
+              <div className="graph-context preview" role="status">
+                <div className="graph-context-row">
+                  <span className="graph-context-count">
+                    预览：{arrangeLabel(preview.mode)} · {Object.keys(preview.positions).length} 个节点（
+                    {preview.scope === "visible" ? "当前可见" : "全部角色"}）
+                  </span>
+                  <div className="graph-context-actions">
+                    <button className="ghost-button" onClick={() => setPreview(null)} type="button">
+                      取消
+                    </button>
+                    <button className="primary-button" onClick={applyArrange} type="button">
+                      确认应用
+                    </button>
+                  </div>
                 </div>
-                <div className="graph-style-popover-body">{stylePanel}</div>
-              </div>,
-              document.body,
+              </div>
             )}
 
-          {/* A fixed slot, so showing a preview or a selection hint does not push
-              the canvas down under the pointer that just selected something. */}
-          <div className="graph-edit-slot">
-          {preview && (
-            <div className="graph-edit-bar preview" role="status">
-              <span>
-                预览：{arrangeLabel(preview.mode)} ·{" "}
-                {Object.keys(preview.positions).length} 个节点（
-                {preview.scope === "visible" ? "当前可见" : "全部角色"}）
-              </span>
-              <div className="graph-edit-bar-actions">
-                <button className="ghost-button" onClick={() => setPreview(null)} type="button">
-                  取消
-                </button>
-                <button className="primary-button" onClick={applyArrange} type="button">
-                  确认应用
-                </button>
-              </div>
-            </div>
-          )}
-
-          {!preview && arrangeUndo && (
-            <div className="graph-edit-bar" role="status">
-              <span>已应用{arrangeUndo.label}</span>
-              <div className="graph-edit-bar-actions">
-                <button className="ghost-button" onClick={undoArrange} type="button">
-                  撤销
-                </button>
-              </div>
-            </div>
-          )}
-
-          {selectedIds.length > 0 && !preview && (
-            <div className="graph-edit-bar selection" role="status">
-              <span className="graph-edit-bar-count">已选 {selectedIds.length} 个角色</span>
-              <span className={`graph-edit-bar-mode${selectMode ? " on" : ""}`}>
-                {selectMode ? "多选模式：点按加入或移出" : "单选：点按替换选择"}
-              </span>
-              <div className="graph-edit-bar-actions">
-                <span className="graph-edit-bar-secondary">
-                  <button className="ghost-button" onClick={fitSelection} type="button">
-                    适应选中
-                  </button>
-                </span>
-                <button
-                  aria-expanded={isAlignOpen}
-                  className={isAlignOpen ? "ghost-button active" : "ghost-button"}
-                  disabled={selectedIds.length < 2}
-                  onClick={() => setIsAlignOpen((open) => !open)}
-                  title={selectedIds.length < 2 ? "对齐与分布需要至少两个角色" : "对齐与分布"}
-                  type="button"
-                >
-                  排列
-                </button>
-                <span className="graph-edit-bar-secondary">
-                  <button
-                    className="ghost-button"
-                    disabled={selectedIds.length < 2}
-                    onClick={() => {
-                      setGroupDraft({ name: "", editingId: null });
-                      setIsGroupsOpen(true);
-                    }}
-                    type="button"
-                  >
-                    创建分组
-                  </button>
-                  {selectedIds.length === 1 && (
+            {contextBar === "selection" && (
+              <div aria-label="所选角色" className="graph-context selection" role="group">
+                <div className="graph-context-row">
+                  <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
+                  <span className={`graph-context-mode${selectMode ? " on" : ""}`}>
+                    {selectMode ? "选择工具：点按加入或移出，空白处拖动框选" : "浏览：点按替换选择"}
+                  </span>
+                  <div className="graph-context-actions">
+                    <button className="ghost-button" onClick={fitSelection} type="button">
+                      适应选中
+                    </button>
+                    <button
+                      aria-expanded={isAlignOpen}
+                      className={isAlignOpen ? "ghost-button active" : "ghost-button"}
+                      disabled={selectedIds.length < 2}
+                      onClick={() => setIsAlignOpen((open) => !open)}
+                      title={arrangeAvailability(selectedIds.length).reason ?? "对齐与分布"}
+                      type="button"
+                    >
+                      排列
+                    </button>
                     <button
                       className="ghost-button"
+                      disabled={selectedIds.length < 2}
                       onClick={() => {
-                        setStudioTab("design");
-                        setIsStudioRightOpen(true);
+                        setGroupDraft({ name: "", editingId: null });
+                        setSurface("groups");
                       }}
                       type="button"
                     >
+                      创建分组
+                    </button>
+                    <button className="ghost-button" onClick={() => setSurface("design")} type="button">
                       外观
                     </button>
+                    <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                      清除选择
+                    </button>
+                  </div>
+                  {arrangeUndo && (
+                    <span className="graph-context-undo" role="status">
+                      已应用{arrangeUndo.label}
+                      <button onClick={undoArrange} type="button">
+                        撤销
+                      </button>
+                    </span>
                   )}
-                </span>
-                <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
-                  清除选择
-                </button>
+                </div>
+                {isAlignOpen && selectedIds.length >= 2 && (
+                  <div className="graph-align-panel" role="group" aria-label="对齐与分布">
+                    <div className="graph-align-section">
+                      <span className="graph-align-title">对齐</span>
+                      <div className="graph-align-grid">
+                        <button className="graph-tool-button" onClick={() => alignSelection("x", "start")} type="button">左对齐</button>
+                        <button className="graph-tool-button" onClick={() => alignSelection("x", "center")} type="button">水平居中</button>
+                        <button className="graph-tool-button" onClick={() => alignSelection("x", "end")} type="button">右对齐</button>
+                        <button className="graph-tool-button" onClick={() => alignSelection("y", "start")} type="button">顶对齐</button>
+                        <button className="graph-tool-button" onClick={() => alignSelection("y", "center")} type="button">垂直居中</button>
+                        <button className="graph-tool-button" onClick={() => alignSelection("y", "end")} type="button">底对齐</button>
+                      </div>
+                    </div>
+                    <div className="graph-align-section">
+                      <span className="graph-align-title">分布</span>
+                      <div className="graph-align-grid">
+                        <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("x")} type="button">水平等距</button>
+                        <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("y")} type="button">垂直等距</button>
+                      </div>
+                    </div>
+                    <p className="graph-align-note">
+                      {arrangeAvailability(selectedIds.length).reason ??
+                        "对齐与分布都按角色的实际外框计算，只改坐标，不改关系。"}
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {isAlignOpen && selectedIds.length >= 2 && !preview && (
-            <div className="graph-align-panel" role="group" aria-label="对齐与分布">
-              <div className="graph-align-section">
-                <span className="graph-align-title">对齐</span>
-                <div className="graph-align-grid">
-                  <button className="graph-tool-button" onClick={() => alignSelection("x", "start")} type="button">左对齐</button>
-                  <button className="graph-tool-button" onClick={() => alignSelection("x", "center")} type="button">水平居中</button>
-                  <button className="graph-tool-button" onClick={() => alignSelection("x", "end")} type="button">右对齐</button>
-                  <button className="graph-tool-button" onClick={() => alignSelection("y", "start")} type="button">顶对齐</button>
-                  <button className="graph-tool-button" onClick={() => alignSelection("y", "center")} type="button">垂直居中</button>
-                  <button className="graph-tool-button" onClick={() => alignSelection("y", "end")} type="button">底对齐</button>
+            {contextBar === "undo" && arrangeUndo && (
+              <div className="graph-context undo" role="status">
+                <div className="graph-context-row">
+                  <span className="graph-context-count">已应用{arrangeUndo.label}</span>
+                  <div className="graph-context-actions">
+                    <button className="ghost-button" onClick={undoArrange} type="button">
+                      撤销
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="graph-align-section">
-                <span className="graph-align-title">分布</span>
-                <div className="graph-align-grid">
-                  <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("x")} type="button">水平等距</button>
-                  <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("y")} type="button">垂直等距</button>
-                </div>
-              </div>
-              <p className="graph-align-note">
-                {selectedIds.length < 3
-                  ? `等距需要至少三个角色，当前已选 ${selectedIds.length} 个。对齐按角色的实际外框计算，只改坐标，不改关系。`
-                  : "对齐按角色的实际外框计算，只改坐标，不改关系。"}
-              </p>
-            </div>
-          )}
-
+            )}
           </div>
 
           {/* Output, under the drawing it exports. The node's own appearance moved

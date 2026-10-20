@@ -13442,3 +13442,755 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .graph-tool-button.graph-studio-entry:hover {
   filter: brightness(1.06);
 }
+
+/* ===========================================================================
+   Sprint 50 — one toolbar, one surface, one context bar.
+
+   The page used to answer every request by adding a text button to the row above
+   the drawing, and every panel by opening another absolutely positioned box near
+   it. The result was a wall of labels, arrange options clipped by a 320px popover,
+   an appearance panel whose body was drawn outside its own container, and three
+   bars under the canvas at once.
+
+   What replaces it:
+     - a toolbar of icons, each with a tooltip and an accessible name;
+     - one open surface at a time, rendered as a drawer that takes its own column
+       on a wide screen and as a sheet over the drawing on a narrow one;
+     - one context card under the drawing, carrying preview, selection or the last
+       change — never two of them.
+   =========================================================================== */
+
+/* The search field and the toolbar share one row. The strip is what owns the margin
+   now, so the toolbar inside it can be the same box on both surfaces. */
+.graph-tool-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 12px 0 0;
+}
+
+/* Inside the studio the strip is not a box: the dock keeps its own grid area. */
+.graph-tool-strip.is-studio {
+  display: contents;
+}
+
+.graph-tool-strip .graph-search {
+  flex: 1 1 180px;
+}
+
+.graph-tool-strip .graph-canvas-tools {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  margin-left: auto;
+}
+
+.graph-canvas-tools.studio-dock .graph-toolbar {
+  margin-left: 0;
+}
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.graph-tool-cluster {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 9px;
+  background: var(--surface-subtle);
+}
+
+.graph-icon-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.graph-icon-button:hover:not(:disabled) {
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.graph-icon-button[aria-pressed="true"],
+.graph-icon-button[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.graph-icon-button:disabled {
+  opacity: 0.36;
+  cursor: not-allowed;
+}
+
+.graph-icon-button:focus-visible,
+.graph-zoom-readout:focus-visible,
+.graph-more-item:focus-visible,
+.graph-studio-entry-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.graph-zoom-readout {
+  min-width: 50px;
+  height: 30px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.graph-zoom-readout:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.graph-tool-sep {
+  width: 1px;
+  height: 20px;
+  flex: 0 0 auto;
+  margin: 0 2px;
+  background: var(--border);
+}
+
+/* The one entry that keeps a word: it changes the shape of the page, and an
+   unlabelled square in the corner is how it went unnoticed before. */
+.graph-studio-entry-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  margin-left: 3px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--primary);
+  color: var(--primary-contrast, #fff);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph-studio-entry-button:hover {
+  filter: brightness(1.06);
+}
+
+/* 更多: a short menu of commands that need no editing surface. */
+.graph-more-wrap {
+  position: relative;
+  display: flex;
+}
+
+.graph-more-menu {
+  position: absolute;
+  z-index: var(--z-overlay-5);
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 1px;
+  min-width: 196px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+}
+
+.graph-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.graph-more-item:hover:not(:disabled) {
+  background: var(--surface-subtle);
+}
+
+.graph-more-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.graph-more-item em {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-style: normal;
+}
+
+.graph-more-only-narrow {
+  display: none;
+}
+
+/* ---------------------------------------------------------------------------
+   The drawing column and the drawer beside it
+   ------------------------------------------------------------------------- */
+
+.graph-canvas-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* In the studio the holder is the grid's canvas cell; this wrapper is only a page
+   construct and must not add a box of its own there. */
+.graph-canvas-row.is-studio {
+  display: contents;
+}
+
+/* A wide screen gives the drawer its own column: the drawing keeps every node
+   visible and simply has less width, instead of losing the right-hand side of the
+   graph under a panel. */
+.graph-canvas-row.has-drawer {
+  grid-template-columns: minmax(0, 1fr) 348px;
+}
+
+.graph-page-drawer-layer {
+  min-width: 0;
+}
+
+.graph-page-drawer {
+  position: sticky;
+  top: 84px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: min(660px, calc(100dvh - 120px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.graph-page-drawer-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-page-drawer-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.graph-page-drawer-title strong {
+  font-size: 14.5px;
+  color: var(--text);
+}
+
+.graph-page-drawer-title span {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.graph-page-drawer-close {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.graph-page-drawer-close:hover {
+  color: var(--text);
+  border-color: var(--border-strong, var(--border));
+}
+
+/* The body is the only thing that scrolls: the title and the close button stay
+   where they were when the last control is reached. */
+.graph-page-drawer-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
+}
+
+.graph-page-drawer-scrim {
+  display: none;
+}
+
+/* ---- the root cause of "标题正常，正文空白" -------------------------------
+
+   Two panels were written as dropdowns: `.graph-style-panel` and `.graph-panel`
+   both carry `position: absolute` and, for the first, `top: calc(100% + 8px)`.
+   Inside a drawer or a popover they were therefore positioned against that
+   container — pushed below its bottom edge — and the container clipped them. The
+   heading belonged to the container and rendered; the body was drawn outside it.
+
+   Inside any drawer the panel is a normal block: the container owns the frame,
+   the scroll and the padding. */
+.graph-page-drawer-body > .graph-style-panel,
+.graph-page-drawer-body > .graph-panel,
+.graph-studio-drawer > .graph-style-panel,
+.graph-studio-drawer .graph-arrange-drawer > .graph-panel {
+  position: static;
+  inset: auto;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  z-index: auto;
+  width: 100%;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* 整理 used to be six equal-width buttons in a nowrap flex row inside a 320px
+   popover: each one shrank under its own label and the last ones were clipped.
+   Two columns, wrapping, no horizontal scroll. */
+.graph-arrange-panel {
+  width: 100%;
+  min-width: 0;
+}
+
+.graph-arrange-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.graph-arrange-actions button {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+}
+
+.graph-arrange-drawer {
+  display: grid;
+  gap: 12px;
+}
+
+.graph-page-drawer .graph-scope-switch,
+.graph-studio-drawer .graph-scope-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.graph-page-drawer .graph-scope-switch button,
+.graph-studio-drawer .graph-scope-switch button {
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   One context card under the drawing
+   ------------------------------------------------------------------------- */
+
+.graph-context-slot {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.graph-context {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.graph-context.preview {
+  border-color: color-mix(in srgb, var(--primary) 34%, var(--border));
+}
+
+.graph-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  min-width: 0;
+}
+
+.graph-context-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.graph-context-mode {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.graph-context-mode.on {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  color: var(--primary);
+}
+
+.graph-context-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.graph-context-actions .ghost-button.active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* The undo notice rides in the same card as the selection it undoes. */
+.graph-context-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.graph-context-undo button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph-context .graph-align-panel {
+  margin-top: 8px;
+  padding: 8px 0 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   Studio: the same dock, the same drawers, one open surface
+   ------------------------------------------------------------------------- */
+
+.graph-studio-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-studio-toggle svg {
+  flex: 0 0 auto;
+}
+
+/* The panel's own title stays put while its settings scroll. */
+.graph-studio-drawer-head {
+  position: sticky;
+  z-index: 3;
+  top: -14px;
+  margin: -14px -14px 0;
+  padding: 14px 14px 10px;
+  background: var(--surface-subtle);
+}
+
+.graph-studio-drawer.right[data-tab="arrange"] {
+  width: 336px;
+}
+
+/* The preview and selection card floats over the drawing inside the studio, in the
+   canvas cell, never over a drawer. */
+.graph-studio .graph-context-slot {
+  grid-area: canvas;
+  order: 3;
+  align-self: end;
+  position: relative;
+  z-index: var(--z-overlay-3);
+  margin: 0 14px 12px;
+  padding-bottom: 0;
+}
+
+.graph-studio .graph-context {
+  box-shadow: var(--shadow-strong);
+}
+
+/* ---------------------------------------------------------------------------
+   Narrow screens: the toolbar becomes a bottom dock, the drawer a sheet
+   ------------------------------------------------------------------------- */
+
+@media (max-width: 1024px) {
+  .graph-canvas-row.has-drawer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graph-page-drawer-layer {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay-6);
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .graph-page-drawer-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 12, 18, 0.28);
+  }
+
+  .graph-page-drawer {
+    position: relative;
+    top: 0;
+    width: min(372px, 94vw);
+    height: 100dvh;
+    max-height: none;
+    border-radius: 0;
+    border-top: 0;
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Canvas first: the row of controls leaves the top of the page and becomes a
+     dock at the bottom edge, where a thumb reaches it. */
+  .relationship-page:not(.graph-studio) {
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-tools {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--z-overlay-6);
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    box-shadow: 0 -10px 26px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(10px);
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-tools .graph-focus-chip {
+    max-width: 100%;
+  }
+
+  .graph-toolbar {
+    gap: 1px;
+    padding: 2px;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .graph-icon-button {
+    width: 36px;
+    height: 36px;
+  }
+
+  .graph-zoom-readout {
+    min-width: 44px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .graph-tool-sep {
+    height: 18px;
+    margin: 0;
+  }
+
+  /* Undo, redo and the full-screen entry move into 更多, which names them. */
+  .graph-tool-history,
+  .graph-studio-entry-button {
+    display: none;
+  }
+
+  .graph-more-only-narrow {
+    display: flex;
+  }
+
+  .graph-more-menu {
+    top: auto;
+    bottom: calc(100% + 10px);
+    right: -6px;
+    min-width: 208px;
+  }
+
+  /* The sheet: half the screen by default so the drawing stays visible, and the
+     full height when the reader asks for it. */
+  .graph-page-drawer-layer {
+    align-items: flex-end;
+    justify-content: stretch;
+  }
+
+  .graph-page-drawer {
+    width: 100%;
+    height: auto;
+    max-height: 78dvh;
+    border: 0;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-shadow: 0 -18px 40px rgba(15, 23, 42, 0.18);
+  }
+
+  .graph-page-drawer::before {
+    content: "";
+    display: block;
+    width: 38px;
+    height: 4px;
+    margin: 8px auto 0;
+    border-radius: 999px;
+    background: var(--border-strong, var(--border));
+  }
+
+  .graph-page-drawer-body {
+    padding: 12px 14px 18px;
+  }
+
+  /* The context card sits above the dock rather than under it. */
+  .relationship-page:not(.graph-studio) .graph-context-slot {
+    margin-bottom: 6px;
+  }
+
+  .graph-context-row {
+    gap: 8px;
+  }
+
+  .graph-context-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+/* 320 still had five pixels too many: at this width every seventh pixel counts, and
+   the answer is smaller controls, not fewer of them — each one here is a distinct
+   job, and hiding one would only move the problem to 更多. */
+@media (max-width: 360px) {
+  .relationship-page:not(.graph-studio) .graph-canvas-tools {
+    gap: 0;
+    padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .graph-toolbar {
+    gap: 0;
+    padding: 0;
+  }
+
+  .graph-tool-cluster {
+    gap: 0;
+    padding: 0;
+  }
+
+  .graph-icon-button {
+    width: 32px;
+    height: 34px;
+  }
+
+  .graph-zoom-readout {
+    min-width: 40px;
+    height: 32px;
+    padding: 0 2px;
+    font-size: 11.5px;
+  }
+
+  .graph-tool-sep {
+    margin: 0 1px;
+  }
+
+  .graph-more-menu {
+    right: -4px;
+    min-width: 196px;
+  }
+}
+
+.graph-page-drawer-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Phone only: the sheet opens at half height so the drawing stays in view. */
+.graph-sheet-toggle {
+  display: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.graph-sheet-toggle[data-level="full"] svg {
+  transform: rotate(180deg);
+}
+
+@media (max-width: 720px) {
+  .graph-sheet-toggle {
+    display: grid;
+  }
+
+  .graph-page-drawer[data-level="half"] {
+    max-height: 46dvh;
+  }
+
+  .graph-page-drawer[data-level="full"] {
+    max-height: 92dvh;
+  }
+}

@@ -19,6 +19,7 @@ export type IconName =
   | "chevronRight"
   | "clock"
   | "close"
+  | "compass"
   | "component"
   | "contrast"
   | "copy"
@@ -26,12 +27,15 @@ export type IconName =
   | "eye"
   | "file"
   | "filter"
+  | "fit"
   | "gear"
   | "globe"
   | "grid"
   | "heart"
   | "home"
   | "image"
+  | "layers"
+  | "layout"
   | "link"
   | "list"
   | "maximize"
@@ -47,6 +51,8 @@ export type IconName =
   | "redo"
   | "refresh"
   | "search"
+  | "select"
+  | "sliders"
   | "sparkles"
   | "square"
   | "sun"
@@ -96,6 +102,14 @@ const ICONS: Record<IconName, ReactNode> = {
   chevronLeft: <path d="m15 5-7 7 7 7" />,
   chevronRight: <path d="m9 5 7 7-7 7" />,
   close: <path d="M18 6 6 18M6 6l12 12" />,
+  // Exploration: a needle inside a ring, rather than a magnifier that would read as
+  // the search field sitting a few pixels away.
+  compass: (
+    <>
+      <circle cx="12" cy="12" r="8.6" />
+      <path d="m15.6 8.4-2.1 5.1-5.1 2.1 2.1-5.1z" />
+    </>
+  ),
   component: (
     <>
       <path d="M12 2.6 15.4 6 12 9.4 8.6 6z" />
@@ -164,6 +178,22 @@ const ICONS: Record<IconName, ReactNode> = {
       <rect height="17" rx="2.4" width="18" x="3" y="3.5" />
       <circle cx="8.6" cy="9.2" r="1.6" />
       <path d="m21 15.4-4.6-4.6L5.2 21" />
+    </>
+  ),
+  // Groups: stacked plates, the way a set of members sits under one name.
+  layers: (
+    <>
+      <path d="m12 3.4 8.4 4.6-8.4 4.6L3.6 8z" />
+      <path d="m3.6 12.4 8.4 4.6 8.4-4.6" />
+      <path d="m3.6 16.2 8.4 4.6 8.4-4.6" />
+    </>
+  ),
+  // Arrange: three columns with equal gaps, which is the outcome 整理 aims at.
+  layout: (
+    <>
+      <rect height="12" rx="1.3" width="4.4" x="3.2" y="6" />
+      <rect height="12" rx="1.3" width="4.4" x="9.8" y="6" />
+      <rect height="12" rx="1.3" width="4.4" x="16.4" y="6" />
     </>
   ),
   link: (
@@ -256,10 +286,34 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M3.5 5h17l-6.4 7.4v5.9l-4.2 2.2v-8.1z" />
     </>
   ),
+  // Fit: the frame the drawing has to fill, dashed because the frame is a target and
+  // not a border of the picture.
+  fit: (
+    <>
+      <rect height="15" rx="2.4" strokeDasharray="3.2 2.6" width="17" x="3.5" y="4.5" />
+      <path d="M8.6 8.6h6.8v6.8H8.6z" />
+    </>
+  ),
   search: (
     <>
       <circle cx="11" cy="11" r="7" />
       <path d="m16.4 16.4 4.1 4.1" />
+    </>
+  ),
+  // The selection tool: a marquee with a pointer that starts inside it, so it reads as
+  // "drag a box" rather than as a plain frame.
+  select: (
+    <>
+      <rect height="11.6" rx="1.4" strokeDasharray="3 2.4" width="11.6" x="3.4" y="3.4" />
+      <path d="m12.6 11.6 7.2 3.1-3.1 1-1 3.1z" />
+    </>
+  ),
+  // Appearance: two rails with their knobs, the shape every settings panel uses.
+  sliders: (
+    <>
+      <path d="M3.6 8.4h4.2M12.2 8.4h8.2M3.6 15.6h8.6M16.2 15.6h4.2" />
+      <circle cx="9.8" cy="8.4" r="2.1" />
+      <circle cx="14.2" cy="15.6" r="2.1" />
     </>
   ),
   sparkles: (

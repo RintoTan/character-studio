@@ -1384,7 +1384,7 @@ const READ_GRAPH_CANVAS = `
       emojiCount: document.querySelectorAll(".relationship-node-emoji").length,
       clipCount: document.querySelectorAll("defs clipPath").length,
       imageHref: images.length ? (images[0].getAttribute("href") || "").slice(0, 22) : "",
-      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+      zoom: (document.querySelector(".graph-zoom-readout")?.textContent || "").trim(),
       transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
       // What the fit had to work with: the box the drawing was given, and the frame it
       // has to fit into. Both are what decides whether the drawing uses the canvas.
@@ -1467,7 +1467,7 @@ const GRAPH_SEARCH_AND_FOCUS = `
     const namesBefore = [...document.querySelectorAll(".relationship-node-name")].map((node) => node.textContent.trim());
     const before = {
       transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
-      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+      zoom: (document.querySelector(".graph-zoom-readout")?.textContent || "").trim(),
     };
 
     // Search the name once more before choosing, so the option taken is the one this
@@ -1493,7 +1493,7 @@ const GRAPH_SEARCH_AND_FOCUS = `
       panelClosed: !document.querySelector(".graph-search-panel"),
       chip: (document.querySelector(".graph-focus-chip")?.textContent || "").trim(),
       transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
-      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+      zoom: (document.querySelector(".graph-zoom-readout")?.textContent || "").trim(),
     };
 
     // Escape is the keyboard way out; the chip is the visible one.
@@ -1869,7 +1869,7 @@ const GRAPH_MOBILE_VIEW = `
       lit: centres.filter((point) => point.lit).length,
       litInside: centres.filter((point) => point.lit && inside(point)).length,
       focused: document.querySelectorAll(".relationship-node.focused").length,
-      zoom: (document.querySelector(".graph-zoom-value")?.textContent || "").trim(),
+      zoom: (document.querySelector(".graph-zoom-readout")?.textContent || "").trim(),
       fitButton: Boolean(document.querySelector('button[aria-label="适应画布"]')),
       chip: (document.querySelector(".graph-focus-chip")?.textContent || "").replace(/\\s+/g, " ").trim(),
       frame: box ? [Math.round(box.width), Math.round(box.height)] : null,
@@ -6168,8 +6168,8 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         characters: localStorage.getItem("character-studio.characters"),
         selected: document.querySelectorAll('.relationship-node[data-selected="true"]').length,
         groups: document.querySelectorAll(".graph-group-rect").length,
-        preview: (document.querySelector(".graph-edit-bar.preview")?.textContent || "").replace(/\\s+/g, " ").trim(),
-        undo: Boolean([...document.querySelectorAll(".graph-edit-bar button")].find((b) => b.textContent.trim() === "撤销")),
+        preview: (document.querySelector(".graph-context.preview")?.textContent || "").replace(/\\s+/g, " ").trim(),
+        undo: Boolean([...document.querySelectorAll(".graph-context button")].find((b) => b.textContent.trim() === "撤销")),
         zoom: match ? Number(match[3]) : null,
         pan: match ? { x: Number(match[1]), y: Number(match[2]) } : null,
         nodes: [...document.querySelectorAll(".relationship-node")].map((node) => ({
@@ -6293,7 +6293,11 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await new Promise((resolve) => setTimeout(resolve, 300));
       const panned = await cdp.value(CANVAS_STATE);
 
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "重置视角")).click()`);
+      // 重置视角 lives in 更多 now that the bar is icon-first: open the menu, press the
+      // item by name, and the assertion still watches the same command.
+      await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="更多工具"]').click()`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await cdp.value(`([...document.querySelectorAll(".graph-more-item")].find((b) => b.textContent.trim() === "重置视角")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const reset = await cdp.value(CANVAS_STATE);
 
@@ -6318,10 +6322,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const before = await cdp.value(CANVAS_STATE);
       const beforePreview = JSON.stringify(before.layout);
 
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-arrange-panel")`, 3000);
       await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "关系聚类")).click()`);
-      await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.preview")`, 3000);
+      await cdp.waitFor(`!!document.querySelector(".graph-context.preview")`, 3000);
       await new Promise((resolve) => setTimeout(resolve, 250));
       const previewing = await cdp.value(CANVAS_STATE);
       const previewWroteNothing = JSON.stringify(previewing.layout) === beforePreview;
@@ -6330,7 +6334,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return start && (Math.abs(start.cx - node.cx) > 1 || Math.abs(start.cy - node.cy) > 1);
       });
 
-      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
+      await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 300));
       const cancelled = await cdp.value(CANVAS_STATE);
       const cancelledNodes = cancelled.nodes.every((node) => {
@@ -6338,14 +6342,14 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
       });
 
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
       await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "环形布局")).click()`);
-      await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.preview")`, 3000);
-      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.preview button")].find((b) => b.textContent.trim() === "确认应用")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-context.preview")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "确认应用")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const applied = await cdp.value(CANVAS_STATE);
 
-      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar button")].find((b) => b.textContent.trim() === "撤销")).click()`);
+      await cdp.value(`([...document.querySelectorAll(".graph-context button")].find((b) => b.textContent.trim() === "撤销")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const undone = await cdp.value(CANVAS_STATE);
 
@@ -6376,7 +6380,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
     await check("视觉分组：多选创建、整体移动、取消分组，关系数据不变（Sprint 49）", async () => {
       await OPEN_GRAPH();
       const before = await cdp.value(CANVAS_STATE);
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "多选")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label^="选择工具"]')).click()`);
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       for (const id of ["g-1", "g-2"]) {
@@ -6391,12 +6395,12 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       if (selecting.selected !== 2) {
         return {
           pass: false,
-          detail: `多选后选中 ${selecting.selected}/${selecting.nodes.length}（多选按钮存在 ${await cdp.value(`Boolean([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "多选"))`)}）`,
+          detail: `多选后选中 ${selecting.selected}/${selecting.nodes.length}（多选按钮存在 ${await cdp.value(`Boolean(document.querySelector('.graph-toolbar button[aria-label^="选择工具"]'))`)}）`,
         };
       }
 
-      await cdp.waitFor(`!!document.querySelector(".graph-edit-bar.selection")`, 3000);
-      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.selection button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-context.selection")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-context.selection button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
       await cdp.waitFor(`!!document.querySelector('input[aria-label="分组名称"]')`, 3000);
       await cdp.value(`(() => {
         const input = document.querySelector('input[aria-label="分组名称"]');
@@ -6480,29 +6484,300 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
     await check("自由画布：移动端手势阈值、删除角色后布局裁剪、无横向溢出（Sprint 49）", async () => {
       await OPEN_GRAPH(375, 812, true);
-      const shelf = await cdp.value(`(() => ({
-        toolbar: Math.round(document.querySelector(".graph-canvas-tools").getBoundingClientRect().height),
-        frame: Math.round(document.querySelector(".graph-canvas-frame").getBoundingClientRect().height),
-        names: document.querySelectorAll(".relationship-node-name").length,
-        truncated: [...document.querySelectorAll(".relationship-node-name")].some((node) => node.textContent.includes("…")),
-        toolsHidden: getComputedStyle(document.querySelector(".graph-edit-tools")).display === "none",
-      }))()`);
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "工具")).click()`);
+      // The phone's chrome is its own: a dock at the bottom edge and one 更多 menu.
+      // What matters is that the dock is reachable, holds no overflow, does not cover
+      // the drawing, and that every command that left it is still named in the menu.
+      const shelf = await cdp.value(`(() => {
+        const bar = document.querySelector(".graph-canvas-tools");
+        const r = bar.getBoundingClientRect();
+        const t = document.querySelector(".graph-toolbar");
+        const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+        return {
+          dock: getComputedStyle(bar).position,
+          bottomGap: Math.round(innerHeight - r.bottom),
+          toolbar: Math.round(t.getBoundingClientRect().height),
+          overflow: t.scrollWidth - t.clientWidth,
+          pageOverflow: document.documentElement.scrollWidth - innerWidth,
+          names: document.querySelectorAll(".relationship-node-name").length,
+          coversCanvas: r.top < frame.bottom - 1,
+        };
+      })()`);
+      await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="更多工具"]').click()`);
       await new Promise((resolve) => setTimeout(resolve, 200));
-      const menu = await cdp.value(`({
-        open: document.querySelector(".graph-edit-tools").classList.contains("open"),
-        items: [...document.querySelectorAll(".graph-edit-tools .graph-tool-button")].map((b) => b.textContent.trim()).filter((t) => t && t !== "工具"),
-        coversCanvas: (() => {
-          const tools = document.querySelector(".graph-edit-tools").getBoundingClientRect();
-          const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
-          return tools.height > frame.height;
-        })(),
-      })`);
+      const menu = await cdp.value(`(() => {
+        const m = document.querySelector(".graph-more-menu");
+        if (!m) return { open: false, items: [], inside: false };
+        const r = m.getBoundingClientRect();
+        return {
+          open: true,
+          items: [...m.querySelectorAll(".graph-more-item")].map((b) => b.textContent.trim()),
+          inside: r.top >= 0 && r.bottom <= innerHeight + 1 && r.left >= 0 && r.right <= innerWidth + 1,
+        };
+      })()`);
       await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
       await new Promise((resolve) => setTimeout(resolve, 200));
-      const menuClosed = await cdp.value(`!document.querySelector(".graph-edit-tools").classList.contains("open")`);
+      const menuClosed = await cdp.value(`!document.querySelector(".graph-more-menu")`);
+      const selectCentre = await cdp.value(NODE_CENTRE("g-3"));
       const centre = await cdp.value(NODE_CENTRE("g-2"));
-      if (!centre) throw new Error("375px 陆停云 节点缺失");
+      if (!centre || !selectCentre) throw new Error("节点缺失");
+
+      // One tap selects. Read after the double-tap window has closed, so this tap
+      // cannot be mistaken for the first half of an opening gesture.
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(selectCentre.x), y: Math.round(selectCentre.y), buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(selectCentre.x), y: Math.round(selectCentre.y), button: "left", buttons: 1, clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(selectCentre.x), y: Math.round(selectCentre.y), button: "left", buttons: 0, clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 420));
+      const selected = await cdp.value(CANVAS_STATE);
+
+      // Two taps inside 350ms open the character. Sent back to back: an evaluate
+      // round trip between them is enough to fall outside the window.
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 2 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 2 });
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      const opened = await cdp.value(`({ graph: Boolean(document.querySelector(".relationship-page")), name: document.body.textContent.includes("陆停云") })`);
+
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const beforeView = await cdp.value(CANVAS_STATE);
+      const frame = await cdp.value(`(() => { const r = document.querySelector(".graph-canvas-frame").getBoundingClientRect(); return { x: r.x + 30, y: r.y + 30, cx: r.x + r.width / 2, cy: r.y + r.height / 2 }; })()`);
+
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: Math.round(frame.cx), y: Math.round(frame.cy), deltaX: 0, deltaY: -120 });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const zoomed = await cdp.value(CANVAS_STATE);
+
+      await DRAG(frame, 70, 40);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const panned = await cdp.value(CANVAS_STATE);
+
+      // 重置视角 lives in 更多 now that the bar is icon-first: open the menu, press the
+      // item by name, and the assertion still watches the same command.
+      await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="更多工具"]').click()`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await cdp.value(`([...document.querySelectorAll(".graph-more-item")].find((b) => b.textContent.trim() === "重置视角")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const reset = await cdp.value(CANVAS_STATE);
+
+      const positions = (state) => JSON.stringify(state.layout?.positions ?? {});
+      const pass =
+        selected.page && selected.selected === 1 &&
+        !opened.graph && opened.name &&
+        zoomed.zoom !== beforeView.zoom &&
+        panned.pan && beforeView.pan && (panned.pan.x !== zoomed.pan.x || panned.pan.y !== zoomed.pan.y) &&
+        reset.zoom !== null &&
+        positions(reset) === positions(beforeView) &&
+        reset.relationships === beforeView.relationships;
+
+      return {
+        pass: Boolean(pass),
+        detail: `单击 → 页面 ${selected.page ? "仍在图谱" : "已离开"}、选中 ${selected.selected}；双击 → ${opened.graph ? "仍在图谱" : "进入角色页"}（含姓名 ${opened.name}）；缩放 ${beforeView.zoom}→${zoomed.zoom}；平移 ${JSON.stringify(zoomed.pan)}→${JSON.stringify(panned.pan)}；重置后 ${reset.zoom}，坐标 ${positions(reset) === positions(beforeView) ? "未变" : "被改"}`,
+      };
+    });
+
+    await check("自动整理：预览不落盘、可取消、确认后写入并可撤销，只动所选范围（Sprint 49）", async () => {
+      await OPEN_GRAPH();
+      const before = await cdp.value(CANVAS_STATE);
+      const beforePreview = JSON.stringify(before.layout);
+
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-arrange-panel")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "关系聚类")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-context.preview")`, 3000);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const previewing = await cdp.value(CANVAS_STATE);
+      const previewWroteNothing = JSON.stringify(previewing.layout) === beforePreview;
+      const previewMoved = previewing.nodes.some((node) => {
+        const start = before.nodes.find((item) => item.id === node.id);
+        return start && (Math.abs(start.cx - node.cx) > 1 || Math.abs(start.cy - node.cy) > 1);
+      });
+
+      await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const cancelled = await cdp.value(CANVAS_STATE);
+      const cancelledNodes = cancelled.nodes.every((node) => {
+        const start = before.nodes.find((item) => item.id === node.id);
+        return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
+      });
+
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
+      await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "环形布局")).click()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-context.preview")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "确认应用")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const applied = await cdp.value(CANVAS_STATE);
+
+      await cdp.value(`([...document.querySelectorAll(".graph-context button")].find((b) => b.textContent.trim() === "撤销")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const undone = await cdp.value(CANVAS_STATE);
+
+      const sameAs = (left, right) =>
+        JSON.stringify(left.layout?.positions ?? {}) === JSON.stringify(right.layout?.positions ?? {});
+      // Undo restores the drawing that was on screen, which for a never-arranged
+      // canvas is the ring that was materialised on confirm — storage was empty
+      // before, so comparing files would ask undo to delete coordinates it needs.
+      const sameDrawing = undone.nodes.every((node) => {
+        const start = before.nodes.find((item) => item.id === node.id);
+        return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
+      });
+      const pass =
+        previewing.preview.includes("节点") && previewMoved &&
+        previewWroteNothing &&
+        !cancelled.preview && cancelledNodes && JSON.stringify(cancelled.layout) === beforePreview &&
+        Boolean(applied.layout) && !sameAs(applied, before) && applied.undo &&
+        sameDrawing && !undone.undo &&
+        applied.relationships === before.relationships &&
+        applied.characters === before.characters;
+
+      return {
+        pass: Boolean(pass),
+        detail: `预览「${previewing.preview}」、画布移位 ${previewMoved}、落盘 ${previewWroteNothing ? "未变" : "被改"}；取消后复原 ${cancelledNodes}；确认后落盘 ${applied.layout ? Object.keys(applied.layout.positions).length + " 个坐标" : "无"}、撤销入口 ${applied.undo}；撤销后与整理前一致 ${sameDrawing}；关系与角色未变 ${applied.relationships === before.relationships && applied.characters === before.characters}`,
+      };
+    });
+
+    await check("视觉分组：多选创建、整体移动、取消分组，关系数据不变（Sprint 49）", async () => {
+      await OPEN_GRAPH();
+      const before = await cdp.value(CANVAS_STATE);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label^="选择工具"]')).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      for (const id of ["g-1", "g-2"]) {
+        const centre = await cdp.value(NODE_CENTRE(id));
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(centre.x), y: Math.round(centre.y), buttons: 0 });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 1, clickCount: 1 });
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x), y: Math.round(centre.y), button: "left", buttons: 0, clickCount: 1 });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+      const selecting = await cdp.value(CANVAS_STATE);
+
+      if (selecting.selected !== 2) {
+        return {
+          pass: false,
+          detail: `多选后选中 ${selecting.selected}/${selecting.nodes.length}（多选按钮存在 ${await cdp.value(`Boolean(document.querySelector('.graph-toolbar button[aria-label^="选择工具"]'))`)}）`,
+        };
+      }
+
+      await cdp.waitFor(`!!document.querySelector(".graph-context.selection")`, 3000);
+      await cdp.value(`([...document.querySelectorAll(".graph-context.selection button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      await cdp.waitFor(`!!document.querySelector('input[aria-label="分组名称"]')`, 3000);
+      await cdp.value(`(() => {
+        const input = document.querySelector('input[aria-label="分组名称"]');
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+        setter.call(input, "北境线");
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await cdp.value(`([...document.querySelectorAll(".graph-group-form button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const grouped = await cdp.value(CANVAS_STATE);
+
+      const label = await cdp.value(`(() => {
+        const rect = document.querySelector(".graph-group-rect");
+        if (!rect) return null;
+        const box = rect.getBoundingClientRect();
+        const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+        // Inside the padded bottom band: clear of every node, clear of the caption,
+        // and always within the frame.
+        return {
+          x: box.left + box.width / 2,
+          y: box.bottom - 12,
+          frame: { top: frame.top, bottom: frame.bottom, left: frame.left, right: frame.right },
+          box: { top: box.top, bottom: box.bottom, left: box.left, right: box.right },
+        };
+      })()`);
+      const beforeMove = grouped.layout?.positions ?? {};
+      if (label) {
+        await DRAG(label, 80, 44);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      const movedState = await cdp.value(CANVAS_STATE);
+      const afterMove = movedState.layout?.positions ?? {};
+      const memberIds = grouped.layout?.groups?.[0]?.characterIds ?? [];
+      const deltas = memberIds.map((id) => ({
+        x: (afterMove[id]?.x ?? 0) - (beforeMove[id]?.x ?? 0),
+        y: (afterMove[id]?.y ?? 0) - (beforeMove[id]?.y ?? 0),
+      }));
+      const groupMoved =
+        memberIds.length === 2 &&
+        deltas.every((delta) => Math.abs(delta.x - deltas[0].x) < 0.5 && Math.abs(delta.y - deltas[0].y) < 0.5) &&
+        Math.hypot(deltas[0].x, deltas[0].y) > 20;
+
+      // Creating a group opens this panel; toggling blindly would close it again.
+      await cdp.value(`(() => {
+        if (document.querySelector(".graph-group-panel")) return true;
+        [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("分组")).click();
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-group-remove")`, 3000);
+      const removed = await cdp.value(`(() => {
+        const button = document.querySelector(".graph-group-remove");
+        if (!button) return "missing";
+        button.click();
+        return "clicked";
+      })()`);
+      if (removed !== "clicked") {
+        return { pass: false, detail: `取消分组按钮 ${removed}；分组存储 ${JSON.stringify(grouped.layout?.groups)}` };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const ungrouped = await cdp.value(CANVAS_STATE);
+
+      const pass =
+        selecting.selected === 2 &&
+        grouped.groups === 1 &&
+        grouped.layout?.groups?.length === 1 &&
+        grouped.layout.groups[0].name === "北境线" &&
+        groupMoved &&
+        ungrouped.groups === 0 &&
+        (ungrouped.layout?.groups?.length ?? 0) === 0 &&
+        JSON.stringify(ungrouped.layout?.positions ?? {}) === JSON.stringify(afterMove) &&
+        ungrouped.relationships === before.relationships &&
+        ungrouped.characters === before.characters;
+
+      return {
+        pass: Boolean(pass),
+        detail: `选中 ${selecting.selected}；分组 ${grouped.groups} 个（${JSON.stringify(grouped.layout?.groups)}）；拖动点 ${JSON.stringify(label)}；整体移动 ${groupMoved}（${JSON.stringify(deltas)}）；取消分组后 ${ungrouped.groups} 个、坐标保留 ${JSON.stringify(ungrouped.layout?.positions ?? {}) === JSON.stringify(afterMove)}；关系与角色未变 ${ungrouped.relationships === before.relationships && ungrouped.characters === before.characters}`,
+      };
+    });
+
+    await check("自由画布：移动端手势阈值、删除角色后布局裁剪、无横向溢出（Sprint 49）", async () => {
+      await OPEN_GRAPH(375, 812, true);
+      // The phone's chrome is its own: a dock at the bottom edge and one 更多 menu.
+      const shelf = await cdp.value(`(() => {
+        const bar = document.querySelector(".graph-canvas-tools");
+        const r = bar.getBoundingClientRect();
+        const t = document.querySelector(".graph-toolbar");
+        const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+        return {
+          dock: getComputedStyle(bar).position,
+          bottomGap: Math.round(innerHeight - r.bottom),
+          toolbar: Math.round(t.getBoundingClientRect().height),
+          overflow: t.scrollWidth - t.clientWidth,
+          pageOverflow: document.documentElement.scrollWidth - innerWidth,
+          names: document.querySelectorAll(".relationship-node-name").length,
+          coversCanvas: r.top < frame.bottom - 1,
+        };
+      })()`);
+      await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="更多工具"]').click()`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const menu = await cdp.value(`(() => {
+        const m = document.querySelector(".graph-more-menu");
+        if (!m) return { open: false, items: [], inside: false };
+        const r = m.getBoundingClientRect();
+        return {
+          open: true,
+          items: [...m.querySelectorAll(".graph-more-item")].map((b) => b.textContent.trim()),
+          inside: r.top >= 0 && r.bottom <= innerHeight + 1 && r.left >= 0 && r.right <= innerWidth + 1,
+        };
+      })()`);
+      await cdp.value(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))`);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const menuClosed = await cdp.value(`!document.querySelector(".graph-more-menu")`);
+      const selectCentre = await cdp.value(NODE_CENTRE("g-3"));
+      const centre = await cdp.value(NODE_CENTRE("g-2"));
+      if (!centre || !selectCentre) throw new Error("375px 陆停云 节点缺失");
 
       // A tap selects and goes nowhere.
       await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: centre.x, y: centre.y }] });
@@ -6577,13 +6852,16 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         !(pruned.layout?.groups ?? []).some((group) => group.id === "g-ghost") &&
         pruned.groups === 0 &&
         pruned.overflow <= 1 &&
-        shelf.toolbar <= 110 && shelf.names >= 4 && shelf.toolsHidden &&
-        menu.open && menu.items.length >= 4 && !menu.coversCanvas && menuClosed;
+        shelf.dock === "fixed" && shelf.bottomGap === 0 && shelf.toolbar <= 56 &&
+        shelf.overflow <= 0 && shelf.pageOverflow <= 0 && !shelf.coversCanvas && shelf.names >= 4 &&
+        menu.open && menu.inside && menu.items.length >= 4 &&
+        ["撤销", "重做", "全屏编辑", "视觉分组"].every((item) => menu.items.includes(item)) &&
+        menuClosed
 
       return {
         pass: Boolean(pass),
-        detail: `375px 工具栏 ${shelf.toolbar}px / 画布 ${shelf.frame}px、名称 ${shelf.names} 个、长名截断 ${longShown} / 选中显示完整 ${longFull.full}、工具默认收起 ${shelf.toolsHidden}、菜单 ${menu.items.length} 项 ${menu.open} / Escape 关闭 ${menuClosed}；轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,
-      };
+        detail: `375px 底部坞 ${shelf.dock} 距底 ${shelf.bottomGap}px、高 ${shelf.toolbar}px、溢出 ${shelf.overflow}px、页面溢出 ${shelf.pageOverflow}px、未遮挡画布 ${!shelf.coversCanvas}、名称 ${shelf.names} 个；更多菜单 ${menu.items.length} 项（${menu.items.join("、")}）在视口内 ${menu.inside}、Escape 关闭 ${menuClosed}；` +
+          `长名截断 ${longShown} / 选中显示完整 ${longFull.full}；轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,      };
     });
 
 
@@ -6887,7 +7165,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         undoEnabled && Math.abs(afterUndo - startWorld) < 1 && Math.abs(afterRedo - expected) < 1;
 
       // Align two selected nodes to the same top edge.
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "多选")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label^="选择工具"]')).click()`);
       for (const id of ["g-1", "g-2"]) {
         const point = await centre(id);
         await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(point.x), y: Math.round(point.y) });
@@ -6913,15 +7191,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const afterFit = await cx("g-1");
 
       // The three new arrangements exist and preview without writing.
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "整理")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
       await new Promise((resolve) => setTimeout(resolve, 150));
       const modes = await cdp.value(`[...document.querySelectorAll(".graph-arrange-actions button")].map((b) => b.textContent.trim())`);
       const beforeGrid = await cx("g-1");
       await cdp.value(`([...document.querySelectorAll(".graph-arrange-actions button")].find((b) => b.textContent.trim() === "网格布局")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 300));
-      const gridPreview = await cdp.value(`(document.querySelector(".graph-edit-bar.preview") || {}).textContent || ""`);
+      const gridPreview = await cdp.value(`(document.querySelector(".graph-context.preview") || {}).textContent || ""`);
       const storedDuringPreview = await cdp.value(`localStorage.getItem("character-studio.relationship-layout")`);
-      await cdp.value(`([...document.querySelectorAll(".graph-edit-bar.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
+      await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "取消")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 200));
       const afterCancel = await cx("g-1");
 
@@ -6961,7 +7239,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       })()`);
 
       const base = await look();
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "外观")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="外观设置"]')).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
       const presetCount = await cdp.value(`document.querySelectorAll(".graph-preset").length`);
       await cdp.value(`([...document.querySelectorAll(".graph-preset")].find((b) => b.textContent.trim() === "档案研究")).click()`);
@@ -6977,9 +7255,9 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await OPEN_GRAPH();
       const reloaded = await look();
 
-      await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "外观")).click()`);
+      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="外观设置"]')).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
-      await cdp.value(`([...document.querySelectorAll(".graph-style-panel button")].find((b) => b.textContent.trim() === "恢复默认外观")).click()`);
+      await cdp.value(`([...document.querySelectorAll(".graph-style-panel button")].find((b) => b.textContent.trim() === "恢复整体画布默认外观")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 350));
       const restored = await look();
 
