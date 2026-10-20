@@ -540,11 +540,14 @@ export function clusterLayout(
   return result;
 }
 
+/** How far a group's border stands off its members, in drawing units. */
+export const GROUP_PADDING = 72;
+
 /** A group's rectangle, in drawing units: the members' bounds plus breathing room. */
 export function groupBounds(
   layout: CanvasLayout,
   group: CanvasGroup,
-  padding = 72,
+  padding = GROUP_PADDING,
 ): { x: number; y: number; width: number; height: number } | null {
   const points = group.characterIds
     .map((id) => layout.positions[id])

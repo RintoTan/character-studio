@@ -1,5 +1,6 @@
 import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type CanvasStyle, type CanvasPresetId } from "../storage/canvasStyle";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -58,6 +59,7 @@ import {
   saveLayout,
   setPosition,
   translatePositions,
+  GROUP_PADDING,
   type ArrangeMode,
   type CanvasBookmark,
   type CanvasGroup,
@@ -301,6 +303,16 @@ function clampZoom(value: number) {
 }
 
 /**
+ * Identity of the room the drawing has: its size and the part of it a sheet covers.
+ *
+ * Rounded to whole pixels because a fit that is recomputed for a half-pixel change is
+ * a fit that visibly re-runs for no reason.
+ */
+function frameKey(width: number, height: number, inset: number) {
+  return `${Math.round(width)}x${Math.round(height)}x${Math.round(inset)}`;
+}
+
+/**
  * What to paint behind an exported canvas. Read from the live page rather than
  * hard-coded, so a dark-theme graph exports dark: a JPEG has no alpha channel, and
  * a transparent background would come out black instead of the surface colour.
@@ -508,6 +520,26 @@ export function contentBounds(
       metrics.nameDrop +
       metrics.nameSpace,
   };
+}
+
+/**
+ * How much wider the canvas box must be for the visual groups it draws.
+ *
+ * A group's border stands `GROUP_PADDING` away from its members, so a box that only
+ * reserved room for nodes and labels could end with the border outside it — which is
+ * how `北境线` came to look pinned to the left edge of the canvas. The answer is the
+ * shortfall, plus a little air, and zero when there is nothing to draw around.
+ */
+export function groupBleed(
+  hasGroups: boolean,
+  metrics: GraphMetrics = DEFAULT_METRICS,
+  labelHalfWidth = 0,
+) {
+  if (!hasGroups) {
+    return 0;
+  }
+
+  return Math.max(0, GROUP_PADDING + 10 - (metrics.radius + CANVAS_PADDING + labelHalfWidth));
 }
 
 /**
@@ -818,6 +850,15 @@ export function RelationshipGraph({
   const [exporting, setExporting] = useState(false);
   const { message, show } = useTransientMessage();
   const frameRef = useRef<HTMLDivElement | null>(null);
+  // The canvas is unmounted and mounted again when the page switches between the
+  // drawing and the relationship table. A ref object alone cannot say that: the
+  // measuring effect below watches this node, so a new element is measured even
+  // though nothing about the data changed.
+  const [frameNode, setFrameNode] = useState<HTMLDivElement | null>(null);
+  const attachFrame = useCallback((node: HTMLDivElement | null) => {
+    frameRef.current = node;
+    setFrameNode(node);
+  }, []);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const prefsLoadedRef = useRef(false);
   // The character the search is pointing at, and the pan requested by the last
@@ -977,8 +1018,50 @@ export function RelationshipGraph({
   // Two jobs live in one panel, so only one panel is ever open: 设计 and 探索 are tabs
   // of the same drawer, and 角色 is the other drawer.
   const [studioTab, setStudioTab] = useState<"design" | "explore">("design");
+  // A phone's panel is a sheet over the drawing, and how much of the drawing it
+  // covers is a choice: half for a quick adjustment with the canvas still visible,
+  // full for long lists and advanced settings.
+  const [sheetLevel, setSheetLevel] = useState<"half" | "full">("half");
+  const [studioInset, setStudioInset] = useState(0);
   const studioViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
-  const studioFitRef = useRef(false);
+  const rightDrawerRef = useRef<HTMLElement | null>(null);
+  // Whether the current view is the system's fit, which follows the room the drawing
+  // has, or a view the author composed by panning and zooming, which nothing may
+  // take back. Every user gesture sets this to false; 适应画布 sets it back.
+  const viewAutoRef = useRef(true);
+  const fitFrameRef = useRef("");
+  // Bookmarks are rows, not forms: a name that jumps, and a menu for the two things
+  // that change it.
+  const [bookmarkMenuId, setBookmarkMenuId] = useState<string | null>(null);
+  const [bookmarkEditingId, setBookmarkEditingId] = useState<string | null>(null);
+  const [bookmarkNameDraft, setBookmarkNameDraft] = useState("");
+  const [bookmarkNotice, setBookmarkNotice] = useState<{
+    text: string;
+    removed?: CanvasBookmark;
+    index?: number;
+  } | null>(null);
+  useEscapeDismiss(Boolean(bookmarkMenuId), () => setBookmarkMenuId(null));
+  useEffect(() => {
+    if (!bookmarkNotice) {
+      return;
+    }
+    const timer = window.setTimeout(() => setBookmarkNotice(null), 8000);
+    return () => window.clearTimeout(timer);
+  }, [bookmarkNotice]);
+  useEffect(() => {
+    if (!bookmarkMenuId) {
+      return;
+    }
+    const close = (event: Event) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.(".graph-bookmark-row")) {
+        return;
+      }
+      setBookmarkMenuId(null);
+    };
+    document.addEventListener("pointerdown", close, true);
+    return () => document.removeEventListener("pointerdown", close, true);
+  }, [bookmarkMenuId]);
   // A drawer is dismissed before anything else: Escape must not leave the studio
   // while a panel the reader opened is still on top of the drawing.
   useEscapeDismiss(isStudioLeftOpen, () => setIsStudioLeftOpen(false));
@@ -1031,7 +1114,17 @@ export function RelationshipGraph({
       metrics,
       labelHalfWidth,
     );
-    stableBoxRef.current = { key: visibleKey, ...box };
+    // A group's border stands GROUP_PADDING off its members. When the widest label
+    // reserves less than that, the border falls outside the box and the canvas edge
+    // cuts it — which is what made 北境线 look pinned to the left edge. The box grows
+    // by the shortfall, so the border is inside the drawing it belongs to.
+    const bleed = groupBleed(layout.groups.length > 0, metrics, labelHalfWidth);
+    const [boxX, boxY, boxWidth, boxHeight] = box.viewBox.split(" ").map(Number);
+    stableBoxRef.current = {
+      key: visibleKey,
+      viewBox: `${round(boxX - bleed)} ${boxY} ${round(boxWidth + bleed * 2)} ${boxHeight}`,
+      width: round(boxWidth + bleed * 2),
+    };
     return stableBoxRef.current;
   }, [visibleKey, visibleCharacters, layout, ringPositions, metrics, labelHalfWidth]);
   const bends = useMemo(() => edgeBends(relationships), [relationships]);
@@ -1256,14 +1349,12 @@ export function RelationshipGraph({
   const hasCanvas = characters.length >= 2 && relationships.length > 0;
 
   useEffect(() => {
-    const frame = frameRef.current;
-
-    if (!frame || !hasCanvas) {
+    if (!frameNode) {
       return;
     }
 
     const measure = () => {
-      const rect = frame.getBoundingClientRect();
+      const rect = frameNode.getBoundingClientRect();
       setFrameSize({ width: rect.width, height: rect.height });
     };
 
@@ -1275,49 +1366,125 @@ export function RelationshipGraph({
     }
 
     const observer = new ResizeObserver(measure);
-    observer.observe(frame);
+    observer.observe(frameNode);
     return () => observer.disconnect();
-  }, [hasCanvas]);
+  }, [frameNode]);
 
-  // The studio is a bigger canvas, so the drawing is fitted once for the room it
-  // now has — and the view that was there is put back on the way out. Either way
-  // this is a view change only: no coordinate is written.
+  /**
+   * Entering the studio is measured here rather than read from `frameSize`.
+   *
+   * The state still holds the page's canvas size for the render in which the studio
+   * is first committed — the ResizeObserver has not run yet — so the old code fitted
+   * the drawing to the *page* and then refused to fit again, which is why the studio
+   * sometimes opened showing a crop of it. A layout effect runs after the studio's
+   * DOM exists and before it is painted, so the rectangle it reads is the studio's.
+   */
+  useLayoutEffect(() => {
+    if (!isStudio) {
+      return;
+    }
+
+    const frame = frameRef.current;
+
+    if (!frame) {
+      return;
+    }
+
+    const rect = frame.getBoundingClientRect();
+
+    if (rect.width < 1 || rect.height < 1) {
+      return;
+    }
+
+    viewAutoRef.current = true;
+    fitFrameRef.current = frameKey(rect.width, rect.height, studioInset);
+    applyFitView({ width: rect.width, height: rect.height }, { remember: false });
+    // Only on entry: re-fitting whenever the studio state object changed would take
+    // the view back from the author.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStudio]);
+
+  // The room the drawing has changes for reasons the author did not choose: the studio
+  // replacing the page, a drawer taking its column, a phone rotating. While the view is
+  // still the system's fit it follows that room; once the author has panned or zoomed
+  // it is theirs and is left alone.
   useEffect(() => {
-    if (isStudio) {
-      if (studioFitRef.current || screenScale <= 0 || positions.length === 0) {
+    if (screenScale <= 0 || positions.length === 0) {
+      return;
+    }
+
+    const key = frameKey(frameSize.width, frameSize.height, studioInset);
+
+    if (fitFrameRef.current === key) {
+      return;
+    }
+
+    if (!viewAutoRef.current) {
+      return;
+    }
+
+    if (applyFitView(undefined, { remember: false })) {
+      fitFrameRef.current = key;
+    }
+  }, [frameSize, studioInset, screenScale, positions]);
+
+  // Leaving the studio puts back the view the page had. A view change only: no
+  // coordinate is written, so a position cannot be lost by entering or leaving.
+  useEffect(() => {
+    if (isStudio || !studioViewRef.current) {
+      return;
+    }
+
+    const saved = studioViewRef.current;
+    studioViewRef.current = null;
+    viewAutoRef.current = false;
+    setView(saved);
+  }, [isStudio]);
+
+  // How much of the drawing a phone's sheet actually covers. Only a sheet overlays
+  // the canvas; a drawer that takes its own column leaves the frame untouched.
+  useEffect(() => {
+    if (!isStudio || !isStudioRightOpen) {
+      setStudioInset(0);
+      return;
+    }
+
+    const sheet = rightDrawerRef.current;
+    const frame = frameRef.current;
+
+    if (!sheet || !frame) {
+      setStudioInset(0);
+      return;
+    }
+
+    const measure = () => {
+      if (getComputedStyle(sheet).position !== "fixed") {
+        setStudioInset(0);
         return;
       }
-      studioFitRef.current = true;
-      resetView();
-      return;
+
+      const covered = frame.getBoundingClientRect().bottom - sheet.getBoundingClientRect().top;
+      setStudioInset(Math.max(0, Math.round(covered)));
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
     }
 
-    if (studioViewRef.current) {
-      const saved = studioViewRef.current;
-      studioViewRef.current = null;
-      setView(saved);
-    }
-  }, [isStudio, screenScale, positions]);
-
-  // The canvas fits the nodes it has, not the box that was reserved for them. Once per
-  // mount, for the same reason the phone's fit below is once: the author's own zoom and
-  // pan are never taken back.
-  const contentFitAppliedRef = useRef(false);
-
-  useEffect(() => {
-    if (contentFitAppliedRef.current || screenScale <= 0 || positions.length === 0) {
-      return;
-    }
-
-    contentFitAppliedRef.current = true;
-    applyFitView();
-  }, [screenScale, positions, metrics, labelHalfWidth, frameSize, canvas.viewBox]);
+    const observer = new ResizeObserver(measure);
+    observer.observe(sheet);
+    return () => observer.disconnect();
+  }, [isStudio, isStudioRightOpen, sheetLevel, studioTab]);
 
   // A phone used to open zoomed in far enough to read the names, which on a large
   // roster meant 298% of the middle of the wheel: edges crossing an empty screen. The
   // opening view is the fit — the whole drawing — and 适应画布 gives it back at any time.
 
   function zoomBy(factor: number) {
+    viewAutoRef.current = false;
     setView((current) => ({ ...current, k: clampZoom(current.k * factor) }));
   }
 
@@ -1326,16 +1493,56 @@ export function RelationshipGraph({
    * drawing use it. The box's centre is the drawing's centre — `canvasBox` grows the box
    * around it — so centring on the box keeps the graph where it was.
    */
-  function applyFitView() {
-    setPreviousView(view);
-    const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
-    const zoom = fitZoom(contentBounds(positions, metrics, labelHalfWidth), frameSize, screenScale);
+  function applyFitView(
+    frameOverride?: { width: number; height: number },
+    options: { remember?: boolean; insetBottom?: number } = {},
+  ) {
+    const frame = frameOverride ?? frameSize;
 
-    setView(centreOn({ x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 }, zoom, canvas.viewBox));
+    if (frame.width <= 0 || frame.height <= 0) {
+      return false;
+    }
+
+    const inset = Math.max(0, options.insetBottom ?? (isStudio ? studioInset : 0));
+    // A sheet that covers nearly all of the canvas leaves no room to frame anything
+    // in: the view is left where it was rather than squeezed into a letterbox.
+    const room = { width: frame.width, height: frame.height - inset };
+
+    if (room.height < 160) {
+      return false;
+    }
+
+    // `screenScale` is the element's own mapping, which `meet` derives from its full
+    // size; the fit is against the part of it that can be seen.
+    const scale = canvasScreenScale(frame, canvas.viewBox);
+
+    if (scale <= 0) {
+      return false;
+    }
+
+    if (options.remember !== false) {
+      setPreviousView(view);
+    }
+
+    const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
+    const zoom = fitZoom(contentBounds(positions, metrics, labelHalfWidth), room, scale);
+    // Whatever a sheet covers, the drawing is fitted into what is left of the canvas
+    // and centred there — derived from the covered height, not nudged by a constant.
+    const lift = inset / 2 / Math.max(zoom * scale, 0.0001);
+
+    setView(
+      centreOn(
+        { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 + lift },
+        zoom,
+        canvas.viewBox,
+      ),
+    );
+    return true;
   }
 
   /** What the 适配画布 control and the export both mean by "fit". */
   function resetView() {
+    viewAutoRef.current = true;
     applyFitView();
   }
 
@@ -1354,6 +1561,7 @@ export function RelationshipGraph({
       frameSize,
       screenScale,
     );
+    viewAutoRef.current = false;
     setPreviousView(view);
     setView(centreOn(center, zoom, canvas.viewBox));
   }
@@ -1363,13 +1571,14 @@ export function RelationshipGraph({
   // out: changing the chrome must not change where the author was looking.
   function enterStudio() {
     studioViewRef.current = view;
-    studioFitRef.current = false;
+    setSheetLevel("half");
     setIsStudio(true);
     setIsMobileToolsOpen(false);
   }
 
   function exitStudio() {
     setIsStudio(false);
+    setIsArrangeOpen(false);
     setIsStudioLeftOpen(false);
     setIsStudioRightOpen(false);
   }
@@ -1443,6 +1652,55 @@ export function RelationshipGraph({
     const updated = { ...layoutRef.current, bookmarks: next.slice(0, 30) };
     setLayout(updated);
     saveLayout(updated);
+  }
+
+  /** A bookmark is a viewpoint: returning to it is the author's own move. */
+  function jumpToBookmark(bookmark: CanvasBookmark) {
+    viewAutoRef.current = false;
+    setBookmarkMenuId(null);
+    setView(bookmark.view);
+  }
+
+  /**
+   * Deleting a saved view is the one bookmark action that destroys something, so it
+   * says what it did and keeps the entry for one press of 撤销. The store is written
+   * once, exactly as a save is.
+   */
+  function removeBookmark(bookmark: CanvasBookmark) {
+    const list = layoutRef.current.bookmarks ?? [];
+    const index = list.findIndex((entry) => entry.id === bookmark.id);
+    writeBookmarks(list.filter((entry) => entry.id !== bookmark.id));
+    setBookmarkMenuId(null);
+    setBookmarkNotice({ text: `已删除「${bookmark.name}」`, removed: bookmark, index });
+  }
+
+  function undoRemoveBookmark() {
+    const removed = bookmarkNotice?.removed;
+
+    if (!removed) {
+      return;
+    }
+
+    const list = [...(layoutRef.current.bookmarks ?? [])];
+    const at = Math.min(Math.max(bookmarkNotice?.index ?? list.length, 0), list.length);
+    list.splice(at, 0, removed);
+    writeBookmarks(list);
+    setBookmarkNotice(null);
+  }
+
+  function renameBookmark(id: string, name: string) {
+    const trimmed = name.trim().slice(0, 40);
+
+    if (!trimmed) {
+      return;
+    }
+
+    writeBookmarks(
+      (layoutRef.current.bookmarks ?? []).map((entry) =>
+        entry.id === id ? { ...entry, name: trimmed } : entry,
+      ),
+    );
+    setBookmarkEditingId(null);
   }
 
   function saveBookmark(name: string) {
@@ -1640,6 +1898,7 @@ export function RelationshipGraph({
 
   /** Zooms about a point given in client coordinates, so the point stays put. */
   function zoomAround(svg: SVGSVGElement, clientX: number, clientY: number, factor: number) {
+    viewAutoRef.current = false;
     const pointer = viewBoxPointAt(clientX, clientY, svg.getBoundingClientRect(), canvas.viewBox);
 
     setView((current) => {
@@ -1863,6 +2122,8 @@ export function RelationshipGraph({
     pan.lastY = event.clientY;
     if (Math.abs(dx) + Math.abs(dy) > 0.6) {
       pan.moved = true;
+      // The author has composed this view; a drawer opening must not take it back.
+      viewAutoRef.current = false;
     }
     setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
   }
@@ -2056,6 +2317,7 @@ export function RelationshipGraph({
       y: points.reduce((sum, item) => sum + item.y, 0) / points.length,
     };
 
+    viewAutoRef.current = false;
     setView(centreOn(centrePoint, zoom, canvas.viewBox));
   }, [pendingFocusId, byId, metrics, labelHalfWidth, screenScale, frameSize, canvas.viewBox, relationships]);
 
@@ -2518,6 +2780,147 @@ export function RelationshipGraph({
   // The same panel in both places: an absolute popover beside the accepted toolbar,
   // and a section of the studio's right drawer. One definition, so a control cannot
   // mean two different things depending on where it is opened.
+  /**
+   * The canvas-tidying tools. One panel, two ways in — the page's tool strip and the
+   * studio's dock — because arranging is something you do to the drawing, not a look
+   * you choose for it. Scope, preview and confirm are the same in both.
+   */
+  const arrangePanel = (
+    <div className="graph-panel graph-arrange-panel" role="group" aria-label="自动整理">
+      <p className="graph-panel-title">先预览，确认后才写入布局</p>
+      <div className="graph-scope-switch" role="group" aria-label="整理范围">
+        <button
+          aria-pressed={arrangeScope === "visible"}
+          className={arrangeScope === "visible" ? "active" : ""}
+          onClick={() => setArrangeScope("visible")}
+          type="button"
+        >
+          当前可见（{visibleCharacters.length}）
+        </button>
+        <button
+          aria-pressed={arrangeScope === "all"}
+          className={arrangeScope === "all" ? "active" : ""}
+          onClick={() => setArrangeScope("all")}
+          type="button"
+        >
+          全部角色（{characters.length}）
+        </button>
+      </div>
+      <div className="graph-arrange-actions">
+        <button className="ghost-button" onClick={() => proposeArrange("cluster")} type="button">
+          关系聚类
+        </button>
+        <button className="ghost-button" onClick={() => proposeArrange("ring")} type="button">
+          环形布局
+        </button>
+        <button className="ghost-button" onClick={() => proposeArrange("grid")} type="button">
+          网格布局
+        </button>
+        <button className="ghost-button" onClick={() => proposeArrange("hierarchy")} type="button">
+          层级布局
+        </button>
+        <button className="ghost-button" onClick={() => proposeArrange("groups")} type="button">
+          按分组整理
+        </button>
+      </div>
+      <p className="muted">只移动所选范围的节点，不改角色资料与关系。</p>
+    </div>
+  );
+
+  const presetTier = (
+            <section className="graph-design-tier">
+              <strong className="graph-design-heading">风格预设</strong>
+              <div className="graph-style-presets graph-preset-cards">
+                {CANVAS_PRESETS.map((preset) => (
+                  <button
+                    aria-pressed={style.preset === preset.id}
+                    className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
+                    key={preset.id}
+                    onClick={() => applyPreset(preset.id)}
+                    title={preset.hint}
+                    type="button"
+                  >
+                    <PresetThumb presetId={preset.id} />
+                    <span>{preset.name}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+  );
+
+  // The four answers most edits need, with the number they produce. No apply button:
+  // the drawing behind the panel is the preview.
+  const quickTier = (
+            <section className="graph-design-tier">
+              <strong className="graph-design-heading">快速调整</strong>
+              <div className="graph-style-grid graph-style-quick">
+                <label>
+                  <span className="graph-style-label">
+                    节点大小
+                    <span className="graph-style-value">{Math.round(style.node.size * 100)}%</span>
+                  </span>
+                  <input
+                    aria-label="节点大小"
+                    max={2}
+                    min={0.6}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })}
+                    step={0.05}
+                    type="range"
+                    value={style.node.size}
+                  />
+                </label>
+                <label>
+                  <span className="graph-style-label">
+                    姓名大小
+                    <span className="graph-style-value">{Math.round(nameSize)}px</span>
+                  </span>
+                  <input
+                    aria-label="姓名字号"
+                    max={1.8}
+                    min={0.8}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: Number(event.target.value) } })}
+                    step={0.05}
+                    type="range"
+                    value={style.node.nameScale}
+                  />
+                </label>
+                <label>
+                  <span className="graph-style-label">
+                    关系线粗细
+                    <span className="graph-style-value">{style.edge.width.toFixed(1)}px</span>
+                  </span>
+                  <input
+                    aria-label="连线宽度"
+                    max={6}
+                    min={0.4}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } })}
+                    step={0.1}
+                    type="range"
+                    value={style.edge.width}
+                  />
+                </label>
+                <label>
+                  <span className="graph-style-label">关系颜色</span>
+                  <input
+                    aria-label="关系颜色"
+                    disabled={style.edge.byKind}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, color: event.target.value } })}
+                    type="color"
+                    value={style.edge.color || "#7b87a8"}
+                  />
+                </label>
+                <label className="graph-style-check">
+                  <input
+                    checked={style.edge.byKind}
+                    onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, byKind: event.target.checked } })}
+                    type="checkbox"
+                  />
+                  按关系类型着色
+                </label>
+              </div>
+            </section>
+  );
+
   const stylePanel = (
             <div className="graph-style-panel" role="group" aria-label="画布外观">
               {/* Above the presets, because it applies to one object: what the whole
@@ -2648,82 +3051,67 @@ export function RelationshipGraph({
                   })()}
                 </div>
               )}
-              <div className="graph-style-presets graph-preset-cards">
-                {CANVAS_PRESETS.map((preset) => (
-                  <button
-                    aria-pressed={style.preset === preset.id}
-                    className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
-                    key={preset.id}
-                    onClick={() => applyPreset(preset.id)}
-                    title={preset.hint}
-                    type="button"
-                  >
-                    <PresetThumb presetId={preset.id} />
-                    <span>{preset.name}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="graph-style-grid">
-                <label>节点大小
-                  <input max={2} min={0.6} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } })} step={0.05} type="range" value={style.node.size} />
-                </label>
-                <label>姓名字号
-                  <input
-                    aria-label="姓名字号"
-                    max={1.8}
-                    min={0.8}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: Number(event.target.value) } })}
-                    step={0.05}
-                    type="range"
-                    value={style.node.nameScale}
-                  />
-                  <span className="graph-style-value">{Math.round(nameSize)}px</span>
-                </label>
-                <label className="graph-style-check">
-                  <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
-                  显示头像
-                </label>
-                <label>连线宽度
-                  <input max={6} min={0.4} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } })} step={0.1} type="range" value={style.edge.width} />
-                </label>
-                <label>线型
-                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
-                    <option value="solid">实线</option>
-                    <option value="dashed">虚线</option>
-                    <option value="dotted">点线</option>
-                  </select>
-                </label>
-                <label>走向
-                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
-                    <option value="curved">曲线</option>
-                    <option value="straight">直线</option>
-                  </select>
-                </label>
-                <label className="graph-style-check">
-                  <input checked={style.edge.byKind} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, byKind: event.target.checked } })} type="checkbox" />
-                  按关系类型着色
-                </label>
-                <label className="graph-style-check">
-                  <input checked={style.edge.showLabel} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })} type="checkbox" />
-                  关系标签
-                </label>
-                <label>画布底色
-                  <input onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
-                </label>
-                <label>网格
-                  <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
-                    <option value="dots">点阵</option>
-                    <option value="lines">方格</option>
-                    <option value="none">无</option>
-                  </select>
-                </label>
-                <label>网格密度
-                  <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } })} step={4} type="range" value={style.canvas.gridSize} />
-                </label>
-                <label>网格强度
-                  <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } })} step={0.05} type="range" value={style.canvas.gridOpacity} />
-                </label>
-              </div>
+              {/* On a phone the half sheet opens on the quick adjustments, which is what
+                  it is for; the presets are one short scroll below. Desktop keeps the
+                  order the panel is described in: presets, quick, advanced. */}
+              {isNarrowScreen ? (
+                <>
+                  {quickTier}
+                  {presetTier}
+                </>
+              ) : (
+                <>
+                  {presetTier}
+                  {quickTier}
+                </>
+              )}
+
+              {/* Everything else, folded away: present when a session needs it, out of
+                  the way of the four controls above. Native <details> so the fold is a
+                  browser guarantee rather than a class that hides a live control. */}
+              <details className="graph-design-advanced">
+                <summary>高级自定义</summary>
+                <div className="graph-style-grid">
+                  <label className="graph-style-check">
+                    <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
+                    显示头像
+                  </label>
+                  <label className="graph-style-check">
+                    <input checked={style.edge.showLabel} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })} type="checkbox" />
+                    关系标签
+                  </label>
+                  <label>线型
+                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
+                      <option value="solid">实线</option>
+                      <option value="dashed">虚线</option>
+                      <option value="dotted">点线</option>
+                    </select>
+                  </label>
+                  <label>走向
+                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
+                      <option value="curved">曲线</option>
+                      <option value="straight">直线</option>
+                    </select>
+                  </label>
+                  <label>画布底色
+                    <input aria-label="画布底色" onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
+                  </label>
+                  <label>网格
+                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
+                      <option value="dots">点阵</option>
+                      <option value="lines">方格</option>
+                      <option value="none">无</option>
+                    </select>
+                  </label>
+                  <label>网格密度
+                    <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } })} step={4} type="range" value={style.canvas.gridSize} />
+                  </label>
+                  <label>网格强度
+                    <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } })} step={0.05} type="range" value={style.canvas.gridOpacity} />
+                  </label>
+                </div>
+              </details>
+
               <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复默认外观</button>
             </div>
   );
@@ -2927,6 +3315,21 @@ export function RelationshipGraph({
                 <Icon name="grid" size={14} />
                 适应画布
               </button>
+              {/* Arranging is a canvas tool, so it sits with the canvas — one button
+                  that opens the panel, not five that stay there. */}
+              {isStudio && (
+                <button
+                  aria-expanded={isArrangeOpen}
+                  className="graph-tool-button"
+                  onClick={() => {
+                    setIsArrangeOpen((current) => !current);
+                    setIsMobileToolsOpen(false);
+                  }}
+                  type="button"
+                >
+                  整理
+                </button>
+              )}
               {/* Phones keep zoom and fit on the row and put the rest behind one
                   button, instead of spending a third row on four controls. */}
               <button
@@ -3048,57 +3451,21 @@ export function RelationshipGraph({
                 )}
               </div>
 
-              <div className="graph-tool-wrap hidden-in-studio">
-                <button
-                  aria-expanded={isArrangeOpen}
-                  className="graph-tool-button"
-                  onClick={() => setIsArrangeOpen((current) => !current)}
-                  type="button"
-                >
-                  整理
-                </button>
-                {isArrangeOpen && (
-                  <div className="graph-panel graph-arrange-panel" role="group" aria-label="自动整理">
-                    <p className="graph-panel-title">先预览，确认后才写入布局</p>
-                    <div className="graph-scope-switch" role="group" aria-label="整理范围">
-                      <button
-                        aria-pressed={arrangeScope === "visible"}
-                        className={arrangeScope === "visible" ? "active" : ""}
-                        onClick={() => setArrangeScope("visible")}
-                        type="button"
-                      >
-                        当前可见（{visibleCharacters.length}）
-                      </button>
-                      <button
-                        aria-pressed={arrangeScope === "all"}
-                        className={arrangeScope === "all" ? "active" : ""}
-                        onClick={() => setArrangeScope("all")}
-                        type="button"
-                      >
-                        全部角色（{characters.length}）
-                      </button>
-                    </div>
-                    <div className="graph-arrange-actions">
-                      <button className="ghost-button" onClick={() => proposeArrange("cluster")} type="button">
-                        关系聚类
-                      </button>
-                      <button className="ghost-button" onClick={() => proposeArrange("ring")} type="button">
-                        环形布局
-                      </button>
-                      <button className="ghost-button" onClick={() => proposeArrange("grid")} type="button">
-                        网格布局
-                      </button>
-                      <button className="ghost-button" onClick={() => proposeArrange("hierarchy")} type="button">
-                        层级布局
-                      </button>
-                      <button className="ghost-button" onClick={() => proposeArrange("groups")} type="button">
-                        按分组整理
-                      </button>
-                    </div>
-                    <p className="muted">只移动所选范围的节点，不改角色资料与关系。</p>
-                  </div>
-                )}
-              </div>
+              {/* In the studio this entry lives in the dock instead, so the panel is
+                  rendered there and not twice. */}
+              {!isStudio && (
+                <div className="graph-tool-wrap">
+                  <button
+                    aria-expanded={isArrangeOpen}
+                    className="graph-tool-button"
+                    onClick={() => setIsArrangeOpen((current) => !current)}
+                    type="button"
+                  >
+                    整理
+                  </button>
+                  {isArrangeOpen && arrangePanel}
+                </div>
+              )}
 
               <button
                 aria-expanded={isStyleOpen}
@@ -3173,7 +3540,7 @@ export function RelationshipGraph({
           <div className="graph-canvas-holder" ref={holderRef}>
           <div
             className="graph-canvas-frame"
-            ref={frameRef}
+            ref={attachFrame}
             /* The colour the author picked has to be the colour they see, not only
                the colour the exported file gets. */
             style={style.canvas.background ? { background: style.canvas.background } : undefined}
@@ -3534,6 +3901,7 @@ export function RelationshipGraph({
                     onClick={() => {
                       setIsStudioLeftOpen((open) => !open);
                       setIsStudioRightOpen(false);
+                      setIsArrangeOpen(false);
                     }}
                     type="button"
                   >
@@ -3546,6 +3914,7 @@ export function RelationshipGraph({
                       setStudioTab("design");
                       setIsStudioRightOpen((open) => (studioTab === "design" ? !open : true));
                       setIsStudioLeftOpen(false);
+                      setIsArrangeOpen(false);
                     }}
                     type="button"
                   >
@@ -3558,6 +3927,7 @@ export function RelationshipGraph({
                       setStudioTab("explore");
                       setIsStudioRightOpen((open) => (studioTab === "explore" ? !open : true));
                       setIsStudioLeftOpen(false);
+                      setIsArrangeOpen(false);
                     }}
                     type="button"
                   >
@@ -3565,6 +3935,12 @@ export function RelationshipGraph({
                   </button>
                 </div>
               </div>
+
+              {isArrangeOpen && (
+                <div className="graph-studio-arrange" role="group" aria-label="画布整理">
+                  {arrangePanel}
+                </div>
+              )}
 
               {isStudioLeftOpen && (
                 <aside aria-label="角色与分组" className="graph-studio-drawer left">
@@ -3681,41 +4057,39 @@ export function RelationshipGraph({
 
               {isStudioRightOpen && (
                 <aside
-                  aria-label="设计面板"
+                  aria-label={studioTab === "design" ? "设计面板" : "探索面板"}
                   className="graph-studio-drawer right"
+                  data-level={sheetLevel}
                   data-tab={studioTab}
+                  ref={rightDrawerRef}
                 >
+                  {/* The top bar already switches between 角色 / 设计 / 探索, so the panel
+                      names its own job and offers the one thing the bar cannot: how much
+                      of the screen the sheet takes. */}
                   <div className="graph-studio-drawer-head">
                     <strong>{studioTab === "design" ? "设计" : "探索"}</strong>
-                    <button aria-label="关闭属性面板" onClick={() => setIsStudioRightOpen(false)} type="button">
-                      <Icon name="close" size={14} />
-                    </button>
+                    <div className="graph-studio-drawer-actions">
+                      <button
+                        aria-expanded={sheetLevel === "full"}
+                        aria-label={sheetLevel === "half" ? "展开面板" : "收起面板"}
+                        className="graph-sheet-toggle"
+                        onClick={() => setSheetLevel((level) => (level === "half" ? "full" : "half"))}
+                        type="button"
+                      >
+                        {sheetLevel === "half" ? "展开" : "收起"}
+                      </button>
+                      <button aria-label="关闭属性面板" onClick={() => setIsStudioRightOpen(false)} type="button">
+                        <Icon name="close" size={14} />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="graph-studio-tabs" role="tablist" aria-label="面板">
-                    <button
-                      aria-selected={studioTab === "design"}
-                      className={studioTab === "design" ? "active" : ""}
-                      onClick={() => setStudioTab("design")}
-                      role="tab"
-                      type="button"
-                    >
-                      设计
-                    </button>
-                    <button
-                      aria-selected={studioTab === "explore"}
-                      className={studioTab === "explore" ? "active" : ""}
-                      onClick={() => setStudioTab("explore")}
-                      role="tab"
-                      type="button"
-                    >
-                      探索
-                    </button>
-                  </div>
+                  {studioTab === "design" && (
+                    <>
 
                   <strong className="graph-studio-section">所选对象</strong>
                   {selectedIds.length === 0 ? (
-                    <p className="muted">在画布上点选角色，这里显示它的属性和局部外观。</p>
+                    <p className="muted">点选角色后，这里显示它的属性和局部外观。</p>
                   ) : selectedIds.length === 1 ? (
                     (() => {
                       const chosen = byId.get(selectedIds[0])?.character;
@@ -3758,40 +4132,13 @@ export function RelationshipGraph({
                     </div>
                   )}
 
-                  <strong className="graph-studio-section">布局</strong>
-                  <div className="graph-scope-switch" role="group" aria-label="整理范围">
-                    <button
-                      aria-pressed={arrangeScope === "visible"}
-                      className={arrangeScope === "visible" ? "active" : ""}
-                      onClick={() => setArrangeScope("visible")}
-                      type="button"
-                    >
-                      当前可见（{visibleCharacters.length}）
-                    </button>
-                    <button
-                      aria-pressed={arrangeScope === "all"}
-                      className={arrangeScope === "all" ? "active" : ""}
-                      onClick={() => setArrangeScope("all")}
-                      type="button"
-                    >
-                      全部（{characters.length}）
-                    </button>
-                  </div>
-                  <div className="graph-studio-layouts">
-                    {([
-                      ["cluster", "关系聚类"],
-                      ["ring", "环形"],
-                      ["grid", "网格"],
-                      ["hierarchy", "层级"],
-                      ["groups", "按分组"],
-                    ] as Array<[ArrangeMode, string]>).map(([mode, label]) => (
-                      <button className="ghost-button" key={mode} onClick={() => proposeArrange(mode)} type="button">
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="muted">先预览，确认后才写入；只移动所选范围，不改关系。</p>
+                  {/* Arranging is a canvas tool, not an appearance setting: it lives in
+                      the dock with the other things that move the drawing. */}
+                  {stylePanel}
+                    </>
+                  )}
 
+                  {studioTab === "explore" && (
                   <div className="graph-explore-section">
                   <strong className="graph-studio-section">探索</strong>
                   <div className="graph-studio-props">
@@ -3878,47 +4225,99 @@ export function RelationshipGraph({
                   </form>
                   {(layout.bookmarks ?? []).length > 0 && (
                     <ul className="graph-bookmarks">
-                      {(layout.bookmarks ?? []).map((bookmark) => (
-                        <li key={bookmark.id}>
-                          <input
-                            aria-label={`书签 ${bookmark.name}`}
-                            maxLength={40}
-                            onChange={(event) =>
-                              writeBookmarks(
-                                (layoutRef.current.bookmarks ?? []).map((entry) =>
-                                  entry.id === bookmark.id
-                                    ? { ...entry, name: event.target.value.slice(0, 40) }
-                                    : entry,
-                                ),
-                              )
-                            }
-                            value={bookmark.name}
-                          />
-                          <button onClick={() => setView(bookmark.view)} type="button">
-                            跳转
-                          </button>
-                          <button
-                            aria-label={`删除书签 ${bookmark.name}`}
-                            onClick={() =>
-                              writeBookmarks(
-                                (layoutRef.current.bookmarks ?? []).filter(
-                                  (entry) => entry.id !== bookmark.id,
-                                ),
-                              )
-                            }
-                            type="button"
-                          >
-                            删除
-                          </button>
-                        </li>
-                      ))}
+                      {(layout.bookmarks ?? []).map((bookmark) => {
+                        const editing = bookmarkEditingId === bookmark.id;
+                        const menuOpen = bookmarkMenuId === bookmark.id;
+                        return (
+                          <li className="graph-bookmark-row" key={bookmark.id}>
+                            {editing ? (
+                              <form
+                                className="graph-bookmark-rename"
+                                onSubmit={(event) => {
+                                  event.preventDefault();
+                                  renameBookmark(bookmark.id, bookmarkNameDraft);
+                                }}
+                              >
+                                <input
+                                  aria-label={`重命名书签 ${bookmark.name}`}
+                                  autoFocus
+                                  maxLength={40}
+                                  onChange={(event) => setBookmarkNameDraft(event.target.value)}
+                                  value={bookmarkNameDraft}
+                                />
+                                <button className="primary-button" disabled={!bookmarkNameDraft.trim()} type="submit">
+                                  保存
+                                </button>
+                                <button className="ghost-button" onClick={() => setBookmarkEditingId(null)} type="button">
+                                  取消
+                                </button>
+                              </form>
+                            ) : (
+                              <>
+                                {/* The name is the control: one press returns to that view.
+                                    It wraps nowhere and says its whole self in a tooltip,
+                                    because a bookmark is a label, not a form field. */}
+                                <button
+                                  className="graph-bookmark-jump"
+                                  onClick={() => jumpToBookmark(bookmark)}
+                                  title={bookmark.name}
+                                  type="button"
+                                >
+                                  <span>{bookmark.name}</span>
+                                  <em>{Math.round(bookmark.view.k * 100)}%</em>
+                                </button>
+                                <button
+                                  aria-expanded={menuOpen}
+                                  aria-haspopup="menu"
+                                  aria-label={`书签 ${bookmark.name} 的更多操作`}
+                                  className="graph-bookmark-more"
+                                  onClick={() => setBookmarkMenuId(menuOpen ? null : bookmark.id)}
+                                  type="button"
+                                >
+                                  ⋯
+                                </button>
+                                {menuOpen && (
+                                  <div className="graph-bookmark-menu" role="menu">
+                                    <button
+                                      onClick={() => {
+                                        setBookmarkEditingId(bookmark.id);
+                                        setBookmarkNameDraft(bookmark.name);
+                                        setBookmarkMenuId(null);
+                                      }}
+                                      role="menuitem"
+                                      type="button"
+                                    >
+                                      重命名
+                                    </button>
+                                    <button
+                                      onClick={() => removeBookmark(bookmark)}
+                                      role="menuitem"
+                                      type="button"
+                                    >
+                                      删除
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
+                  )}
+                  {bookmarkNotice && (
+                    <p className="graph-bookmark-notice" role="status">
+                      <span>{bookmarkNotice.text}</span>
+                      {bookmarkNotice.removed && (
+                        <button className="ghost-button" onClick={undoRemoveBookmark} type="button">
+                          撤销
+                        </button>
+                      )}
+                    </p>
                   )}
                   <p className="muted">书签只记录视角，不复制任何角色数据。</p>
                   </div>
-
-                  <strong className="graph-studio-section">画布外观</strong>
-                  {stylePanel}
+                  )}
                 </aside>
               )}
             </>

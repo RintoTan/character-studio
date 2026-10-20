@@ -7,6 +7,7 @@ import {
   edgeBends,
   edgeGeometry,
   fitZoom,
+  groupBleed,
   labelZoomNeeded,
   labelsReadable,
   measureNameWidth,
@@ -18,6 +19,7 @@ import {
   type GraphPoint,
 } from "../src/pages/RelationshipGraph";
 import { defaultGraphPrefs, graphMetrics } from "../src/storage/graphPrefs";
+import { groupBounds, GROUP_PADDING } from "../src/storage/relationshipLayout";
 
 const NODE_RADIUS = 30;
 const NAME_DROP = 44;
@@ -411,5 +413,66 @@ describe("fitting the canvas to the drawing", () => {
     expect(fitZoom({ width: 100, height: 100 }, { width: 0, height: 0 }, 1)).toBe(1);
     expect(fitZoom({ width: 100, height: 100 }, frame, 0)).toBe(1);
     expect(fitZoom({ width: 0, height: 0 }, frame, 1)).toBe(1);
+  });
+});
+
+describe("groupBleed", () => {
+  // What a group's border needs and what the canvas box already reserves: the box
+  // leaves room for the widest label, the border stands GROUP_PADDING from its
+  // members. The bleed is the shortfall, so the border is never outside the drawing.
+  const reserve = (labelHalfWidth: number) => 30 + 16 + labelHalfWidth;
+
+  it("adds nothing when no group is drawn", () => {
+    expect(groupBleed(false, { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 }, 0)).toBe(0);
+  });
+
+  it("covers the border when the labels reserve less than the group padding", () => {
+    const metrics = { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 };
+    const bleed = groupBleed(true, metrics, 10);
+
+    expect(bleed).toBe(GROUP_PADDING + 10 - reserve(10));
+    expect(reserve(10) + bleed).toBeGreaterThan(GROUP_PADDING);
+  });
+
+  it("adds nothing when the widest label already reserves more than the border needs", () => {
+    const metrics = { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 };
+
+    expect(groupBleed(true, metrics, 60)).toBe(0);
+  });
+
+  it("is symmetric, so adding the bleed does not move the centre of the view", () => {
+    const metrics = { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 };
+    const positions = [
+      { x: 0, y: 0 },
+      { x: 320, y: 0 },
+    ];
+    const { viewBox } = canvasBox(positions, metrics, 10);
+    const [x, , width] = viewBox.split(" ").map(Number);
+    const bleed = groupBleed(true, metrics, 10);
+    const widenedCentre = x - bleed + (width + bleed * 2) / 2;
+
+    expect(bleed).toBeGreaterThan(0);
+    // Growing both sides keeps the drawing where the author left it: only the frame
+    // around it changed, which is what stops the view jumping when a group appears.
+    expect(widenedCentre).toBeCloseTo(x + width / 2, 6);
+    expect(positions).toEqual([
+      { x: 0, y: 0 },
+      { x: 320, y: 0 },
+    ]);
+  });
+
+  it("keeps every member inside the rectangle a group draws", () => {
+    const layout = {
+      positions: { a: { x: 0, y: 0 }, b: { x: 400, y: 260 } },
+      groups: [{ id: "g", name: "北境线", characterIds: ["a", "b"] }],
+    };
+    const rect = groupBounds(layout as never, layout.groups[0] as never);
+    const left = Math.min(0, 400);
+    const top = Math.min(0, 260);
+
+    expect(rect.x).toBeLessThanOrEqual(left - GROUP_PADDING);
+    expect(rect.y).toBeLessThanOrEqual(top - GROUP_PADDING);
+    expect(rect.x + rect.width).toBeGreaterThanOrEqual(400 + GROUP_PADDING);
+    expect(rect.y + rect.height).toBeGreaterThanOrEqual(260 + GROUP_PADDING);
   });
 });

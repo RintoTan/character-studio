@@ -11875,8 +11875,16 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   position: fixed;
   inset: 0;
   z-index: var(--z-overlay-7);
-  display: flex;
-  flex-direction: column;
+  /* A grid, not a stack: an open drawer takes its own column instead of lying on
+     top of the drawing, so no node can end up hidden behind a panel. The middle
+     column is the canvas and gets everything the chrome does not. */
+  display: grid;
+  grid-template-areas:
+    "top top top"
+    "left canvas right"
+    "dock dock dock";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   width: 100%;
   max-width: none;
   height: 100dvh;
@@ -11885,6 +11893,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   border: 0;
   border-radius: 0;
   background: var(--surface);
+  overflow: hidden;
 }
 
 .graph-studio > .workspace-header,
@@ -11923,6 +11932,9 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-studio-top {
+  grid-area: top;
+  /* Also the flex order a phone falls back to: the tools strip sits before the
+     studio's own bar in the document, so stacking must not rely on source order. */
   order: 1;
   flex: 0 0 auto;
   display: flex;
@@ -12036,9 +12048,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 
 /* The drawing gets everything the chrome does not need. */
 .graph-studio .graph-canvas-holder {
+  grid-area: canvas;
   order: 2;
-  flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
 }
 
 .graph-studio .graph-canvas-frame {
@@ -12054,6 +12067,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-studio .graph-canvas-tools {
+  grid-area: dock;
   order: 4;
   flex: 0 0 auto;
   flex-wrap: nowrap;
@@ -12076,13 +12090,14 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   flex: 0 0 auto;
 }
 
-/* Previews and selection hints float over the drawing instead of shortening it. */
+/* Previews and selection hints float over the drawing instead of shortening it,
+   and they float over the canvas column, never over a drawer. */
 .graph-studio .graph-edit-slot {
+  grid-area: canvas;
   order: 3;
-  position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  align-self: end;
+  position: relative;
+  margin: 0 14px 12px;
   z-index: var(--z-overlay-3);
 }
 
@@ -12099,33 +12114,33 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-studio-drawer {
-  position: fixed;
-  top: 52px;
-  margin: 0;
-  /* Stops above the dock: the zoom and fit controls stay reachable while a
-     drawer is open, instead of being covered by it. */
-  bottom: 59px;
+  position: relative;
   z-index: var(--z-overlay-6);
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: 316px;
-  padding: 12px;
-  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  gap: 12px;
+  width: 320px;
+  min-width: 0;
+  max-height: 100%;
+  margin: 0;
+  padding: 14px;
+  padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  box-shadow: var(--shadow-strong);
+  overscroll-behavior: contain;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+  box-shadow: none;
 }
 
 .graph-studio-drawer.left {
-  left: 0;
-  border-left: 0;
+  grid-area: left;
+  border-right: 1px solid var(--border);
 }
 
 .graph-studio-drawer.right {
-  right: 0;
-  border-right: 0;
+  grid-area: right;
+  border-left: 1px solid var(--border);
 }
 
 .graph-studio-drawer-head {
@@ -12294,12 +12309,6 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .graph-studio-props-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-}
-
-.graph-studio-layouts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -12488,35 +12497,317 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   font-size: 12px;
 }
 
-.graph-studio-tabs {
-  display: flex;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
+/* --- Pass A.1: one job per panel, and a panel that does not lie on the drawing --- */
+
+.graph-studio-drawer > * {
+  flex: 0 0 auto;
 }
 
-.graph-studio-tabs button {
-  flex: 1;
-  padding: 5px 8px;
+.graph-studio-drawer-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The sheet's height is a choice on a phone and not a thing on a desktop, where the
+   drawer has its own column. */
+.graph-studio-drawer-head .graph-sheet-toggle {
+  display: none;
+}
+
+/* Three tiers: what the whole canvas looks like, the four numbers most edits need,
+   and everything else folded away. */
+.graph-design-tier {
+  display: grid;
+  gap: 8px;
+}
+
+.graph-design-heading {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.graph-design-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.graph-design-advanced > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--control-height-compact);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.graph-design-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.graph-design-advanced > summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 120ms ease;
+}
+
+.graph-design-advanced[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.graph-design-advanced[open] {
+  display: grid;
+  gap: 10px;
+}
+
+.graph-style-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.graph-style-quick input[type="color"] {
+  width: 100%;
+  max-width: 96px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.graph-style-quick input[type="color"]:disabled {
+  opacity: 0.45;
+}
+
+/* A bookmark is a name you press, not a form you fill in. */
+.graph-bookmarks li.graph-bookmark-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px 3px 6px;
+}
+
+.graph-bookmark-jump {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 4px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.graph-bookmark-jump > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.graph-bookmark-jump > em {
+  flex: 0 0 auto;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.graph-bookmark-jump:hover,
+.graph-bookmark-more:hover {
+  background: var(--surface);
+}
+
+.graph-bookmark-more {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
   background: none;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 15px;
+  line-height: 1;
 }
 
-.graph-studio-tabs button.active {
-  background: var(--surface-subtle);
+.graph-bookmark-more[aria-expanded="true"] {
+  background: var(--surface);
   color: var(--text);
 }
 
-/* One job per panel: the tab that is not selected is not rendered. */
-.graph-studio-drawer[data-tab="explore"]
-  > :not(.graph-studio-drawer-head):not(.graph-studio-tabs):not(.graph-explore-section) {
-  display: none;
+.graph-bookmark-menu {
+  position: absolute;
+  top: calc(100% - 2px);
+  right: 4px;
+  z-index: var(--z-overlay-4, 4);
+  display: grid;
+  min-width: 128px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
 }
 
-.graph-studio-drawer[data-tab="design"] .graph-explore-section {
-  display: none;
+.graph-bookmark-menu button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+}
+
+.graph-bookmark-menu button:hover {
+  background: var(--surface-subtle);
+}
+
+.graph-bookmark-rename {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.graph-bookmark-rename input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--control-height-compact);
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.graph-bookmark-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.graph-bookmark-notice button {
+  min-height: 26px;
+  padding: 0 8px;
+}
+
+/* The arrange panel opens over the canvas it tidies, next to the control that
+   opened it. */
+.graph-studio-arrange {
+  position: fixed;
+  right: 14px;
+  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-overlay-6);
+  width: 300px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+}
+
+@media (max-width: 720px) {
+  /* A phone's panel is a sheet, and how much of the drawing it leaves visible is
+     the author's choice — not a max-height that pretends. */
+  .relationship-page.graph-studio {
+    display: flex;
+    flex-direction: column;
+    grid-template-areas: none;
+  }
+
+  /* The stack again, with the drawing taking what the chrome leaves. */
+  .graph-studio .graph-canvas-holder {
+    flex: 1 1 auto;
+  }
+
+  .graph-studio-drawer {
+    position: fixed;
+    left: 0;
+    right: 0;
+    /* Stops above the dock, so the zoom and fit controls stay reachable while a
+       sheet is open instead of being covered by it. */
+    bottom: calc(59px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    height: min(50dvh, 440px);
+    max-height: none;
+    border-radius: 16px 16px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: 0;
+    box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.18);
+    padding-top: 10px;
+  }
+
+  /* Full expansion is a real second height, not a bigger max-height: the panel's own
+     scroll area grows with it, and the dock stays where it was. */
+  .graph-studio-drawer[data-level="full"] {
+    height: calc(100dvh - 60px - 59px - env(safe-area-inset-bottom, 0px));
+  }
+
+  .graph-studio-drawer.left {
+    border-right: 0;
+  }
+
+  .graph-studio-drawer.right {
+    border-left: 0;
+  }
+
+  .graph-studio-drawer-head .graph-sheet-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: auto;
+    min-width: 46px;
+    height: 32px;
+    padding: 0 10px;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .graph-studio-drawer-head button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .graph-studio-arrange {
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
+
+  .graph-studio .graph-edit-slot {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+    margin: 0 12px;
+  }
 }
