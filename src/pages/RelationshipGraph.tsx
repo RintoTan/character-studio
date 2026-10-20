@@ -534,12 +534,20 @@ export function groupBleed(
   hasGroups: boolean,
   metrics: GraphMetrics = DEFAULT_METRICS,
   labelHalfWidth = 0,
-) {
+): { x: number; y: number } {
   if (!hasGroups) {
-    return 0;
+    return { x: 0, y: 0 };
   }
 
-  return Math.max(0, GROUP_PADDING + 10 - (metrics.radius + CANVAS_PADDING + labelHalfWidth));
+  // Sideways the box reserves room for the widest label; above and below it only
+  // reserves the node and its padding, which is less than the border needs.
+  const horizontalReserve = metrics.radius + CANVAS_PADDING + labelHalfWidth;
+  const verticalReserve = metrics.radius + CANVAS_PADDING;
+
+  return {
+    x: Math.max(0, GROUP_PADDING + 10 - horizontalReserve),
+    y: Math.max(0, GROUP_PADDING + 10 - verticalReserve),
+  };
 }
 
 /**
@@ -1024,6 +1032,9 @@ export function RelationshipGraph({
   const [sheetLevel, setSheetLevel] = useState<"half" | "full">("half");
   const [studioInset, setStudioInset] = useState(0);
   const studioViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
+  // The viewpoint the studio opened at. 重置视角 returns to this, which is a defined
+  // state — not the same thing as 适应画布, which re-fits whatever is visible now.
+  const studioEntryViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
   const rightDrawerRef = useRef<HTMLElement | null>(null);
   // Whether the current view is the system's fit, which follows the room the drawing
   // has, or a view the author composed by panning and zooming, which nothing may
@@ -1122,8 +1133,8 @@ export function RelationshipGraph({
     const [boxX, boxY, boxWidth, boxHeight] = box.viewBox.split(" ").map(Number);
     stableBoxRef.current = {
       key: visibleKey,
-      viewBox: `${round(boxX - bleed)} ${boxY} ${round(boxWidth + bleed * 2)} ${boxHeight}`,
-      width: round(boxWidth + bleed * 2),
+      viewBox: `${round(boxX - bleed.x)} ${round(boxY - bleed.y)} ${round(boxWidth + bleed.x * 2)} ${round(boxHeight + bleed.y * 2)}`,
+      width: round(boxWidth + bleed.x * 2),
     };
     return stableBoxRef.current;
   }, [visibleKey, visibleCharacters, layout, ringPositions, metrics, labelHalfWidth]);
@@ -1398,7 +1409,8 @@ export function RelationshipGraph({
 
     viewAutoRef.current = true;
     fitFrameRef.current = frameKey(rect.width, rect.height, studioInset);
-    applyFitView({ width: rect.width, height: rect.height }, { remember: false });
+    const opened = applyFitView({ width: rect.width, height: rect.height }, { remember: false });
+    studioEntryViewRef.current = opened ?? null;
     // Only on entry: re-fitting whenever the studio state object changed would take
     // the view back from the author.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1500,7 +1512,7 @@ export function RelationshipGraph({
     const frame = frameOverride ?? frameSize;
 
     if (frame.width <= 0 || frame.height <= 0) {
-      return false;
+      return null;
     }
 
     const inset = Math.max(0, options.insetBottom ?? (isStudio ? studioInset : 0));
@@ -1509,7 +1521,7 @@ export function RelationshipGraph({
     const room = { width: frame.width, height: frame.height - inset };
 
     if (room.height < 160) {
-      return false;
+      return null;
     }
 
     // `screenScale` is the element's own mapping, which `meet` derives from its full
@@ -1517,7 +1529,7 @@ export function RelationshipGraph({
     const scale = canvasScreenScale(frame, canvas.viewBox);
 
     if (scale <= 0) {
-      return false;
+      return null;
     }
 
     if (options.remember !== false) {
@@ -1530,19 +1542,36 @@ export function RelationshipGraph({
     // and centred there — derived from the covered height, not nudged by a constant.
     const lift = inset / 2 / Math.max(zoom * scale, 0.0001);
 
-    setView(
-      centreOn(
-        { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 + lift },
-        zoom,
-        canvas.viewBox,
-      ),
+    const next = centreOn(
+      { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 + lift },
+      zoom,
+      canvas.viewBox,
     );
-    return true;
+    setView(next);
+    return next;
   }
 
   /** What the 适配画布 control and the export both mean by "fit". */
   function resetView() {
     viewAutoRef.current = true;
+    applyFitView();
+  }
+
+  /**
+   * 重置视角 returns to the observation this surface started from: the studio's
+   * opening view inside the studio, the page's own fit outside it. Deliberately not
+   * the same as 适应画布, which answers "what is visible now" instead of "where I began".
+   */
+  function resetToDefaultView() {
+    setFocusId(null);
+    setSelectedIds([]);
+    viewAutoRef.current = true;
+
+    if (isStudio && studioEntryViewRef.current) {
+      setView(studioEntryViewRef.current);
+      return;
+    }
+
     applyFitView();
   }
 
@@ -3270,6 +3299,105 @@ export function RelationshipGraph({
               </button>
             )}
 
+            {isStudio ? (
+              /* The studio's own dock: three jobs in three groups — where you are
+                 looking, what you are selecting, and how the drawing is arranged.
+                 Undo lives in the top bar here, so it is not repeated below. */
+              <div aria-label="画布工具" className="graph-studio-dock" role="toolbar">
+                <div aria-label="视角" className="graph-dock-group" role="group">
+                  <div aria-label="缩放" className="graph-dock-cluster" role="group">
+                    <button aria-label="缩小画布" className="graph-dock-icon" onClick={() => zoomBy(1 / 1.25)} type="button">
+                      <Icon name="minus" size={15} />
+                    </button>
+                    <button
+                      aria-label="恢复适配"
+                      className="graph-dock-value"
+                      data-tooltip="当前缩放：点按适应画布"
+                      onClick={resetView}
+                      type="button"
+                    >
+                      {Math.round(view.k * 100)}%
+                    </button>
+                    <button aria-label="放大画布" className="graph-dock-icon" onClick={() => zoomBy(1.25)} type="button">
+                      <Icon name="plus" size={15} />
+                    </button>
+                  </div>
+                  <button
+                    aria-label="适应画布"
+                    className="graph-dock-button"
+                    data-tooltip="让全部角色与姓名进入视野"
+                    onClick={resetView}
+                    type="button"
+                  >
+                    适应画布
+                  </button>
+                  {previousView && (
+                    <button
+                      className="graph-dock-button"
+                      data-tooltip="回到上一个观察位置"
+                      onClick={restoreView}
+                      type="button"
+                    >
+                      恢复视角
+                    </button>
+                  )}
+                  <button
+                    aria-label="重置视角"
+                    className="graph-dock-button"
+                    data-tooltip="回到刚进入工作室时的视角"
+                    onClick={resetToDefaultView}
+                    type="button"
+                  >
+                    重置视角
+                  </button>
+                </div>
+
+                <span aria-hidden="true" className="graph-dock-sep" />
+
+                <div aria-label="选择与编辑" className="graph-dock-group" role="group">
+                  <button
+                    aria-pressed={selectMode}
+                    className={`graph-dock-button${selectMode ? " active" : ""}`}
+                    onClick={() => {
+                      setSelectMode((current) => {
+                        if (current) {
+                          setSelectedIds([]);
+                        }
+                        return !current;
+                      });
+                    }}
+                    type="button"
+                  >
+                    多选
+                  </button>
+                  {selectedIds.length >= 2 && (
+                    <button
+                      aria-expanded={isAlignOpen}
+                      aria-label="对齐与分布"
+                      className="graph-dock-button"
+                      onClick={() => setIsAlignOpen((open) => !open)}
+                      type="button"
+                    >
+                      排列
+                    </button>
+                  )}
+                </div>
+
+                <span aria-hidden="true" className="graph-dock-sep" />
+
+                <div aria-label="整理画布" className="graph-dock-group" role="group">
+                  <button
+                    aria-expanded={isArrangeOpen}
+                    className={`graph-dock-button${isArrangeOpen ? " active" : ""}`}
+                    onClick={() => setIsArrangeOpen((current) => !current)}
+                    type="button"
+                  >
+                    整理
+                  </button>
+                </div>
+              </div>
+            ) : (
+            <>
             <div aria-label="画布缩放" className="graph-zoom" role="group">
               <button aria-label="缩小画布" className="graph-zoom-step" onClick={() => zoomBy(1 / 1.25)} type="button">
                 <Icon name="minus" size={15} />
@@ -3315,21 +3443,6 @@ export function RelationshipGraph({
                 <Icon name="grid" size={14} />
                 适应画布
               </button>
-              {/* Arranging is a canvas tool, so it sits with the canvas — one button
-                  that opens the panel, not five that stay there. */}
-              {isStudio && (
-                <button
-                  aria-expanded={isArrangeOpen}
-                  className="graph-tool-button"
-                  onClick={() => {
-                    setIsArrangeOpen((current) => !current);
-                    setIsMobileToolsOpen(false);
-                  }}
-                  type="button"
-                >
-                  整理
-                </button>
-              )}
               {/* Phones keep zoom and fit on the row and put the rest behind one
                   button, instead of spending a third row on four controls. */}
               <button
@@ -3487,9 +3600,7 @@ export function RelationshipGraph({
                 aria-label="重置视角"
                 className="graph-tool-button"
                 onClick={() => {
-                  setFocusId(null);
-                  setSelectedIds([]);
-                  resetView();
+                  resetToDefaultView();
                   setIsMobileToolsOpen(false);
                 }}
                 type="button"
@@ -3497,6 +3608,8 @@ export function RelationshipGraph({
                 重置视角
               </button>
             </div>
+            </>
+            )}
           </div>
 
           {!showAll && visibleCharacters.length < connectedIds.size && (
@@ -3872,6 +3985,7 @@ export function RelationshipGraph({
                   </div>
                 </div>
                 <div className="graph-studio-actions">
+                  <div aria-label="历史与保存" className="graph-studio-toolgroup" role="group">
                   <button
                     aria-label="撤销"
                     disabled={undoRef.current.length === 0}
@@ -3895,6 +4009,11 @@ export function RelationshipGraph({
                     <span className="graph-studio-save-dot" />
                     {livePositions ? "调整中…" : "已保存"}
                   </span>
+                  </div>
+
+                  <span aria-hidden="true" className="graph-studio-sep" />
+
+                  <div aria-label="任务面板" className="graph-studio-toolgroup" role="group">
                   <button
                     aria-pressed={isStudioLeftOpen}
                     className="graph-studio-toggle"
@@ -3933,6 +4052,7 @@ export function RelationshipGraph({
                   >
                     探索
                   </button>
+                  </div>
                 </div>
               </div>
 
@@ -4364,15 +4484,17 @@ export function RelationshipGraph({
                 <button className="ghost-button" onClick={fitSelection} type="button">
                   适应选中
                 </button>
-                <button
-                  aria-expanded={isAlignOpen}
-                  className="ghost-button"
-                  disabled={selectedIds.length < 2}
-                  onClick={() => setIsAlignOpen((open) => !open)}
-                  type="button"
-                >
-                  排列
-                </button>
+                {!isStudio && (
+                  <button
+                    aria-expanded={isAlignOpen}
+                    className="ghost-button"
+                    disabled={selectedIds.length < 2}
+                    onClick={() => setIsAlignOpen((open) => !open)}
+                    type="button"
+                  >
+                    排列
+                  </button>
+                )}
                 <button
                   className="ghost-button"
                   disabled={selectedIds.length < 2}

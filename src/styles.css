@@ -3776,6 +3776,24 @@ input[type="number"]::-webkit-inner-spin-button {
   color: var(--danger);
 }
 
+@media (max-width: 380px) {
+  /* 320 keeps one row of view controls by tightening padding, not by hiding a
+     command or shrinking the target below a finger. */
+  .relationship-page.graph-studio {
+    --studio-ctl-pad: 9px;
+    --studio-gap: 3px;
+    --studio-group-gap: 6px;
+  }
+
+  .graph-dock-icon {
+    width: 26px;
+  }
+
+  .graph-dock-value {
+    min-width: 42px;
+  }
+}
+
 @media (max-width: 720px) {
   .editor-action-bar {
     padding: 8px 10px;
@@ -11931,6 +11949,21 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   }
 }
 
+/* ---------------------------------------------------------------------------
+   The studio's own controls.
+   One set of measurements for the bar and the dock, so a button is the same
+   button wherever it appears: 32 high, 8px radius, 12px of label padding,
+   1px of border, 4px inside a group and 10px between groups.
+   ------------------------------------------------------------------------- */
+.relationship-page.graph-studio {
+  --studio-ctl-h: 32px;
+  --studio-ctl-pad: 12px;
+  --studio-ctl-radius: 8px;
+  --studio-gap: 4px;
+  --studio-group-gap: 10px;
+  --studio-bar-pad: 14px;
+}
+
 .graph-studio-top {
   grid-area: top;
   /* Also the flex order a phone falls back to: the tools strip sits before the
@@ -11939,11 +11972,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: var(--studio-group-gap);
   min-height: 52px;
-  padding: 0 14px;
-  padding-top: env(safe-area-inset-top, 0px);
+  padding: 8px var(--studio-bar-pad);
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -11951,7 +11983,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .graph-studio-heading {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--studio-group-gap);
   min-width: 0;
 }
 
@@ -11960,13 +11992,19 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  min-height: var(--control-height-icon);
-  padding: 0 10px;
+  height: var(--studio-ctl-h);
+  padding: 0 var(--studio-ctl-pad);
   border: 1px solid var(--border);
-  border-radius: var(--control-radius);
-  background: var(--surface-subtle);
+  border-radius: var(--studio-ctl-radius);
+  background: var(--surface);
   color: var(--text);
   font-size: 13px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.graph-studio-exit:hover {
+  background: var(--surface-subtle);
+  border-color: var(--border-strong);
 }
 
 .graph-studio-titles {
@@ -11987,49 +12025,79 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* Three groups with air between them, not a row of equally weighted chips:
+   where you came from, what you can take back, and which task you are in. */
 .graph-studio-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--studio-group-gap);
   flex: 0 0 auto;
+  margin-left: auto;
 }
 
-.graph-studio-actions > button {
-  font-size: 15px;
-  line-height: 1;
+.graph-studio-toolgroup {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-gap);
 }
 
+.graph-studio-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.graph-studio-actions .graph-studio-toolgroup > button,
 .graph-studio-actions > button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  min-height: var(--control-height-compact);
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--control-radius);
-  background: var(--surface);
+  min-width: var(--studio-ctl-h);
+  height: var(--studio-ctl-h);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--studio-ctl-radius);
+  background: none;
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
+.graph-studio-actions .graph-studio-toolgroup > button:not(:disabled):hover,
+.graph-studio-actions > button:not(:disabled):hover {
+  background: var(--surface-subtle);
+  border-color: var(--border);
+}
+
+.graph-studio-actions .graph-studio-toolgroup > button:disabled,
 .graph-studio-actions > button:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
+}
+
+.graph-studio-actions .graph-studio-toolgroup > button:focus-visible,
+.graph-studio-actions > button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 1px;
 }
 
 .graph-studio-toggle[aria-pressed="true"] {
-  border-color: var(--primary);
-  background: var(--primary-soft, color-mix(in srgb, var(--primary) 12%, transparent));
+  border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
   color: var(--primary);
 }
 
-/* Saving is automatic, so the state is a word rather than a button. */
+/* Saving is automatic, so the state is a word rather than a button — and it sits
+   at the end of its group, not in the middle of the controls. */
 .graph-studio-save {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  padding: 0 2px 0 4px;
   font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
@@ -12044,6 +12112,116 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 
 .graph-studio-save[data-dirty="true"] .graph-studio-save-dot {
   background: var(--warning, #c98a2f);
+}
+
+/* ---------------------------------------------------------------------------
+   The dock: one container, three groups, one divider between them. Corners and
+   borders belong to the container, never to each button as well.
+   ------------------------------------------------------------------------- */
+/* The dock already carries the container: the tools strip that holds it must not
+   draw a second one. */
+.graph-canvas-tools.studio-dock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--studio-group-gap);
+  margin: 10px var(--studio-bar-pad) 0;
+  padding: 0;
+}
+
+.graph-studio-dock {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-group-gap);
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.graph-dock-group {
+  display: flex;
+  align-items: center;
+  gap: var(--studio-gap);
+  min-width: 0;
+}
+
+.graph-dock-cluster {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: calc(var(--studio-ctl-radius) + 1px);
+  background: var(--surface-subtle);
+}
+
+.graph-dock-sep {
+  width: 1px;
+  height: 22px;
+  flex: 0 0 auto;
+  background: var(--border);
+}
+
+.graph-dock-icon,
+.graph-dock-value,
+.graph-dock-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--studio-ctl-h);
+  border: 1px solid transparent;
+  border-radius: var(--studio-ctl-radius);
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.graph-dock-icon {
+  width: 30px;
+  border-radius: 7px;
+}
+
+.graph-dock-value {
+  min-width: 54px;
+  padding: 0 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
+}
+
+.graph-dock-button {
+  padding: 0 var(--studio-ctl-pad);
+}
+
+.graph-dock-button.active,
+.graph-dock-button[aria-expanded="true"] {
+  border-color: color-mix(in srgb, var(--primary) 26%, transparent);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  color: var(--primary);
+}
+
+.graph-dock-icon:hover,
+.graph-dock-value:hover,
+.graph-dock-button:hover {
+  background: var(--surface-subtle);
+  border-color: var(--border);
+}
+
+.graph-dock-cluster .graph-dock-icon:hover,
+.graph-dock-cluster .graph-dock-value:hover {
+  background: var(--surface);
+}
+
+.graph-dock-button:focus-visible,
+.graph-dock-icon:focus-visible,
+.graph-dock-value:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 1px;
 }
 
 /* The drawing gets everything the chrome does not need. */
@@ -12070,15 +12248,14 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   grid-area: dock;
   order: 4;
   flex: 0 0 auto;
-  flex-wrap: nowrap;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: var(--studio-group-gap);
   margin: 0;
-  padding: 8px 12px;
+  padding: 8px var(--studio-bar-pad);
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
   border-top: 1px solid var(--border);
   background: var(--surface);
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: visible;
   scrollbar-width: none;
 }
 
@@ -12720,8 +12897,9 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
    opened it. */
 .graph-studio-arrange {
   position: fixed;
-  right: 14px;
-  bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  right: var(--studio-bar-pad);
+  /* Clear of the dock, whatever it is currently carrying. */
+  bottom: calc(70px + env(safe-area-inset-bottom, 0px));
   z-index: var(--z-overlay-6);
   width: 300px;
   padding: 12px;
@@ -12732,6 +12910,74 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 @media (max-width: 720px) {
+  /* A phone's bar keeps its three jobs and drops the words that repeat them. */
+  .graph-studio-exit {
+    width: var(--studio-ctl-h);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .graph-studio-exit span {
+    display: none;
+  }
+
+  .graph-studio-titles span {
+    display: none;
+  }
+
+  .graph-studio-titles strong {
+    font-size: 13px;
+  }
+
+  .graph-studio-top {
+    gap: 6px;
+    padding-inline: 10px;
+  }
+
+  .graph-studio-actions {
+    gap: 6px;
+  }
+
+  .graph-studio-actions .graph-studio-toolgroup > button {
+    padding: 0 8px;
+  }
+
+  .graph-studio-sep {
+    height: 18px;
+  }
+
+  /* The dock wraps instead of pushing buttons off the screen: two short rows
+     rather than a hidden 整理 or a row of 24px targets. */
+  .graph-canvas-tools.studio-dock {
+    margin: 8px 10px 0;
+  }
+
+  .graph-studio-dock {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    padding: 6px;
+  }
+
+  /* Narrower still: a group wraps inside itself rather than pushing its last
+     button off the screen. */
+  .graph-dock-group {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .graph-dock-button {
+    padding: 0 10px;
+  }
+
+  .graph-dock-value {
+    min-width: 46px;
+  }
+
+  .graph-dock-sep {
+    display: none;
+  }
+
   /* A phone's panel is a sheet, and how much of the drawing it leaves visible is
      the author's choice — not a max-height that pretends. */
   .relationship-page.graph-studio {

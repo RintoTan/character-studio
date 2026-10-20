@@ -423,21 +423,24 @@ describe("groupBleed", () => {
   const reserve = (labelHalfWidth: number) => 30 + 16 + labelHalfWidth;
 
   it("adds nothing when no group is drawn", () => {
-    expect(groupBleed(false, { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 }, 0)).toBe(0);
+    expect(groupBleed(false, { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 }, 0)).toEqual({ x: 0, y: 0 });
   });
 
   it("covers the border when the labels reserve less than the group padding", () => {
     const metrics = { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 };
     const bleed = groupBleed(true, metrics, 10);
 
-    expect(bleed).toBe(GROUP_PADDING + 10 - reserve(10));
-    expect(reserve(10) + bleed).toBeGreaterThan(GROUP_PADDING);
+    expect(bleed.x).toBe(GROUP_PADDING + 10 - reserve(10));
+    expect(reserve(10) + bleed.x).toBeGreaterThan(GROUP_PADDING);
+    // Above and below there is no label to reserve, so the border needs more there.
+    expect(bleed.y).toBe(GROUP_PADDING + 10 - (30 + 16));
+    expect(bleed.y).toBeGreaterThan(bleed.x);
   });
 
   it("adds nothing when the widest label already reserves more than the border needs", () => {
     const metrics = { radius: 30, emojiSize: 26, nameSize: 13, nameDrop: 44, nameSpace: 22 };
 
-    expect(groupBleed(true, metrics, 60)).toBe(0);
+    expect(groupBleed(true, metrics, 60)).toEqual({ x: 0, y: GROUP_PADDING + 10 - (30 + 16) });
   });
 
   it("is symmetric, so adding the bleed does not move the centre of the view", () => {
@@ -448,7 +451,7 @@ describe("groupBleed", () => {
     ];
     const { viewBox } = canvasBox(positions, metrics, 10);
     const [x, , width] = viewBox.split(" ").map(Number);
-    const bleed = groupBleed(true, metrics, 10);
+    const bleed = groupBleed(true, metrics, 10).x;
     const widenedCentre = x - bleed + (width + bleed * 2) / 2;
 
     expect(bleed).toBeGreaterThan(0);
