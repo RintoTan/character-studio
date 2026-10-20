@@ -11591,6 +11591,12 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   stroke-width: 2;
 }
 
+.graph-group.dragging .graph-group-rect {
+  fill: color-mix(in srgb, var(--primary) 6%, transparent);
+  stroke: color-mix(in srgb, var(--primary) 55%, transparent);
+  stroke-dasharray: 10 5;
+}
+
 .graph-group-rect {
   /* The interior is a drag handle, not only its outline: `visiblePainted` would
      leave the pale fill dead in any browser that resolves it to a near-transparent

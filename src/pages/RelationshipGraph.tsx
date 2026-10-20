@@ -533,6 +533,93 @@ export function contentBounds(
 /** A card is wide enough for a four-character name and one short line under it. */
 export const CARD_WIDTH = 168;
 export const CARD_HEIGHT = 56;
+/** The rung between a full card and a dot: a name plate with no avatar. */
+export const PLATE_WIDTH = 112;
+export const PLATE_HEIGHT = 30;
+
+/**
+ * How much of a card can be drawn where it stands. This is a drawing decision, not a
+ * setting: the author's form stays "card" in storage whatever the crowding says.
+ */
+export type CardLevel = "full" | "plate" | "compact";
+
+/** The rectangle a card occupies at a given level, in drawing units. */
+export function cardRect(level: CardLevel, x: number, y: number, size = 1) {
+  if (level === "compact") {
+    return null;
+  }
+
+  const width = (level === "full" ? CARD_WIDTH : PLATE_WIDTH) * size;
+  const height = (level === "full" ? CARD_HEIGHT : PLATE_HEIGHT) * size;
+
+  return { left: x - width / 2, right: x + width / 2, top: y - height / 2, bottom: y + height / 2, width, height };
+}
+
+/**
+ * Picks a level for every card so that no two cards overlap.
+ *
+ * Priority decides who keeps the full card — the selected person first, then the
+ * focused one, then whoever arrived first — and each card takes the richest level that
+ * still fits beside what is already placed. The result depends on world positions, so
+ * zooming cannot make it flicker.
+ */
+export function resolveCardLevels(
+  entries: { id: string; x: number; y: number; priority?: number }[],
+  size = 1,
+  options: { padding?: number; compactRadius?: number } = {},
+): Record<string, CardLevel> {
+  const padding = options.padding ?? 10;
+  const radius = options.compactRadius ?? DEFAULT_METRICS.radius * 0.62;
+  const placed: { left: number; right: number; top: number; bottom: number }[] = [];
+  const levels: Record<string, CardLevel> = {};
+  const order = [...entries].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+  const fits = (rect: { left: number; right: number; top: number; bottom: number }) =>
+    placed.every(
+      (other) =>
+        rect.right + padding <= other.left ||
+        rect.left - padding >= other.right ||
+        rect.bottom + padding <= other.top ||
+        rect.top - padding >= other.bottom,
+    );
+
+  for (const entry of order) {
+    const chosen =
+      (["full", "plate"] as const).find((level) => {
+        const rect = cardRect(level, entry.x, entry.y, size);
+        return rect ? fits(rect) : false;
+      }) ?? "compact";
+
+    const rect = cardRect(chosen, entry.x, entry.y, size);
+
+    if (rect) {
+      placed.push(rect);
+    } else {
+      placed.push({ left: entry.x - radius, right: entry.x + radius, top: entry.y - radius, bottom: entry.y + radius });
+    }
+
+    levels[entry.id] = chosen;
+  }
+
+  return levels;
+}
+
+/** The geometry of a card at a level. Plate and compact are smaller than a full card. */
+export function cardGeometry(level: CardLevel, metrics: GraphMetrics, size: number) {
+  if (level === "compact") {
+    return nodeGeometry("compact", metrics, size);
+  }
+
+  const width = (level === "full" ? CARD_WIDTH : PLATE_WIDTH) * size;
+  const height = (level === "full" ? CARD_HEIGHT : PLATE_HEIGHT) * size;
+
+  return {
+    radius: metrics.radius * size,
+    halfWidth: width / 2,
+    halfHeight: height / 2,
+    card: true,
+  };
+}
 
 /**
  * The geometry a node is drawn with. One function for drawing, hit bounds, edges and
@@ -1098,6 +1185,7 @@ export function RelationshipGraph({
   const [livePositions, setLivePositions] = useState<Record<string, LayoutPoint> | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectMode, setSelectMode] = useState(false);
+  const [cardCap, setCardCap] = useState<CardLevel>("full");
   const [isArrangeOpen, setIsArrangeOpen] = useState(false);
   const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
   const [preview, setPreview] = useState<{
@@ -1212,11 +1300,7 @@ export function RelationshipGraph({
   // The ring the canvas starts as. It is still what a workspace with no saved layout
   // draws, so an untouched graph looks exactly as it did before free placement.
   const ringPositions = useMemo(
-    () =>
-      nodePositions(
-        visibleCharacters.length,
-        style.node.form === "card" ? CARD_WIDTH / 2 : metrics.radius * style.node.size,
-      ),
+    () => nodePositions(visibleCharacters.length, metrics.radius * style.node.size),
     [visibleCharacters.length, metrics.radius],
   );
   // The widest name the drawing will have to fit, so the outermost labels of a wide
@@ -1296,6 +1380,72 @@ export function RelationshipGraph({
     [visibleCharacters, preview, livePositions, basePositions],
   );
 
+  // What each node is drawn as *now*: the author's form, and — for a card — the
+  // richest level that fits where it stands. Derived every render, never stored.
+  const nodeVisuals = useMemo(() => {
+    const size = style.node.size;
+    const forms = new Map<string, NodeForm>();
+
+    visibleCharacters.forEach((character) => {
+      forms.set(character.id, layout.nodeStyles?.[character.id]?.form ?? style.node.form);
+    });
+
+    const cards = visibleCharacters
+      .map((character, index) => ({ character, index }))
+      .filter(({ character }) => forms.get(character.id) === "card")
+      .map(({ character, index }) => ({
+        id: character.id,
+        x: positions[index].x,
+        y: positions[index].y,
+        priority:
+          selectedIds.includes(character.id) || selectedEdgeId === null
+            ? selectedIds.includes(character.id)
+              ? 3
+              : focusId === character.id
+                ? 2
+                : 1
+            : 1,
+      }));
+
+    const fitted = resolveCardLevels(cards, size, {
+      compactRadius: metrics.radius * 0.62 * size,
+    });
+    const rank: Record<CardLevel, number> = { compact: 0, plate: 1, full: 2 };
+    const levels: Record<string, CardLevel> = {};
+
+    Object.entries(fitted).forEach(([id, level]) => {
+      // The selected person keeps the level their neighbours allow; everyone else is
+      // also capped by how much room the current zoom leaves for a card.
+      const exempt = selectedIds.includes(id) || focusId === id;
+      levels[id] = exempt || rank[level] <= rank[cardCap] ? level : cardCap;
+    });
+    const out: Record<string, { form: NodeForm; level: CardLevel | null; geom: ReturnType<typeof nodeGeometry> }> = {};
+
+    visibleCharacters.forEach((character) => {
+      const form = forms.get(character.id) ?? "avatar";
+      const level = form === "card" ? (levels[character.id] ?? "full") : null;
+      out[character.id] = {
+        form,
+        level,
+        geom: form === "card" ? cardGeometry(level ?? "full", metrics, size) : nodeGeometry(form, metrics, size),
+      };
+    });
+
+    return out;
+  }, [
+    visibleCharacters,
+    positions,
+    layout.nodeStyles,
+    style.node.form,
+    style.node.size,
+    metrics,
+    selectedIds,
+    selectedEdgeId,
+    focusId,
+    cardCap,
+  ]);
+
+
   // A deleted character must not leave a coordinate or a rectangle behind. Pruning
   // happens before the drawing reads the layout, so nothing is drawn at a stale point.
   useEffect(() => {
@@ -1366,6 +1516,9 @@ export function RelationshipGraph({
   // Secondary text inside a card appears at 1.0× and disappears at 0.9×: two
   // thresholds, so a viewport parked between them cannot make it flicker.
   const [cardMetaVisible, setCardMetaVisible] = useState(true);
+  // How much of a card is worth drawing at this zoom. Two thresholds per step, so a
+  // viewport parked on a boundary cannot make cards change shape forever.
+
   useEffect(() => {
     const wide = visibleCharacters.length <= 40;
     const next = cardMetaVisible
@@ -1474,6 +1627,18 @@ export function RelationshipGraph({
   // wheel ends up with a smear of 3px names.
   const measured = frameSize.width > 0 && frameSize.height > 0;
   const screenScale = measured ? canvasScreenScale(frameSize, canvas.viewBox) : 0;
+
+  useEffect(() => {
+    const scale = screenScale > 0 ? screenScale : 1;
+    const cardPx = CARD_WIDTH * style.node.size * view.k * scale;
+    const fullLimit = cardCap === "full" ? 150 : 168;
+    const plateLimit = cardCap === "compact" ? 86 : 76;
+    const next: CardLevel = cardPx >= fullLimit ? "full" : cardPx >= plateLimit ? "plate" : "compact";
+
+    if (next !== cardCap) {
+      setCardCap(next);
+    }
+  }, [view.k, screenScale, style.node.size, cardCap]);
   const labelsFit = labelsReadable({
     positions,
     nameSize,
@@ -2028,7 +2193,26 @@ export function RelationshipGraph({
           ? "层级布局"
           : mode === "groups"
             ? "按分组整理"
-            : "关系聚类";
+            : mode === "spaced"
+              ? "按尺寸排开"
+              : "关系聚类";
+  }
+
+  /**
+   * The cell a node needs when it is laid out at its own size: a card is 168 × 56, a
+   * round node is a circle, and a mixed set follows the widest of them.
+   */
+  function spreadCell() {
+    const size = style.node.size;
+    const used = visibleCharacters.map(
+      (character) => layout.nodeStyles?.[character.id]?.form ?? style.node.form,
+    );
+    const wide = used.includes("card");
+
+    return {
+      width: (wide ? CARD_WIDTH : metrics.radius * 2) * size,
+      height: (wide ? CARD_HEIGHT : metrics.radius * 2 + metrics.nameDrop + 8) * size,
+    };
   }
 
   function proposeArrange(mode: ArrangeMode) {
@@ -2050,7 +2234,9 @@ export function RelationshipGraph({
             ? hierarchyLayout(ids, relationships, center, metrics.radius, selectedIds.find((id) => ids.includes(id)))
             : mode === "groups"
               ? groupedLayout(ids, layout.groups, center, metrics.radius)
-              : clusterLayout(ids, relationships, center, metrics.radius);
+              : mode === "spaced"
+                ? gridLayout(ids, center, metrics.radius, 64, spreadCell())
+                : clusterLayout(ids, relationships, center, metrics.radius);
 
     setPreview({ mode, scope: arrangeScope, positions });
     setIsArrangeOpen(false);
@@ -3038,6 +3224,9 @@ export function RelationshipGraph({
         <button className="ghost-button" onClick={() => proposeArrange("groups")} type="button">
           按分组整理
         </button>
+        <button className="ghost-button" onClick={() => proposeArrange("spaced")} type="button">
+          按尺寸排开
+        </button>
       </div>
       <p className="muted">只移动所选范围的节点，不改角色资料与关系。</p>
     </div>
@@ -3922,12 +4111,22 @@ export function RelationshipGraph({
                 covered them would swallow every drag that started inside it. */}
             {groupRects.map(({ group, rect }) => (
               <g
-                className={
+                className={[
+                  "graph-group",
                   group.characterIds.length > 0 &&
                   group.characterIds.every((id) => selectedIds.includes(id))
-                    ? "graph-group selected"
-                    : "graph-group"
-                }
+                    ? "selected"
+                    : "",
+                  // Moving the whole group is the one moment its members are all
+                  // selected and the pointer is down; the border says so.
+                  Boolean(livePositions) &&
+                  group.characterIds.length > 0 &&
+                  group.characterIds.every((id) => selectedIds.includes(id))
+                    ? "dragging"
+                    : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
                 data-group-id={group.id}
                 key={group.id}
               >
@@ -3956,15 +4155,11 @@ export function RelationshipGraph({
               // and behind it), and a symmetric kind gets no head at all: 友人
               // between two people is not one of them befriending the other.
               const symmetric = isSymmetricKind(relationship.kind);
-              const fromForm: NodeForm =
-                layout.nodeStyles?.[relationship.fromId]?.form ?? style.node.form;
-              const toForm: NodeForm =
-                layout.nodeStyles?.[relationship.toId]?.form ?? style.node.form;
-              const fromGeom = nodeGeometry(fromForm, metrics, style.node.size);
-              const toGeom = nodeGeometry(toForm, metrics, style.node.size);
+              const fromGeom = nodeVisuals[relationship.fromId]?.geom;
+              const toGeom = nodeVisuals[relationship.toId]?.geom;
               const geometry = edgeGeometry(from, to, {
-                fromBox: fromGeom.card ? fromGeom : undefined,
-                toBox: toGeom.card ? toGeom : undefined,
+                fromBox: fromGeom?.card ? fromGeom : undefined,
+                toBox: toGeom?.card ? toGeom : undefined,
                 weight: style.edge.width,
                 bend: bends.get(relationship.id) ?? 0,
                 metrics,
@@ -4044,8 +4239,10 @@ export function RelationshipGraph({
               // highlight circles whose names are not being drawn.
               const isSelected = selectedIds.includes(character.id);
               const nodeOverride = layout.nodeStyles?.[character.id];
-              const form: NodeForm = nodeOverride?.form ?? style.node.form;
-              const geom = nodeGeometry(form, metrics, style.node.size);
+              const visual = nodeVisuals[character.id];
+              const form: NodeForm = visual?.form ?? style.node.form;
+              const level = visual?.level ?? null;
+              const geom = visual?.geom ?? nodeGeometry(form, metrics, style.node.size);
               const nodeX = positions[index].x;
               const nodeY = positions[index].y;
               // A card puts the picture on its left edge; a round node has it centred.
@@ -4055,7 +4252,9 @@ export function RelationshipGraph({
               const cardNameX = nodeX - geom.halfWidth + geom.halfHeight * 2;
               const cardName = cardNameLayout(
                 characterDisplayName(character),
-                geom.halfWidth * 2 - (geom.halfHeight * 2 - 8) - 20,
+                level === "plate"
+                  ? geom.halfWidth * 2 - 16
+                  : geom.halfWidth * 2 - (geom.halfHeight * 2 - 8) - 20,
                 Math.min(nameSize, 15),
               );
               const labelled =
@@ -4151,7 +4350,7 @@ export function RelationshipGraph({
                       the graph only ever drew `avatarEmoji`, so a character with a
                       photo showed a generic face here and the real one everywhere
                       else — the picture was not broken, it was never asked for. */}
-                  {prefs.showAvatars && style.node.showAvatars && avatarUrl && (
+                  {level !== "plate" && prefs.showAvatars && style.node.showAvatars && avatarUrl && (
                     <image
                       className="relationship-node-image"
                       clipPath={`url(#${avatarClipId(character.id)})`}
@@ -4163,7 +4362,7 @@ export function RelationshipGraph({
                       y={avatarCentre.y - (geom.card ? geom.halfHeight - 6 : metrics.radius)}
                     />
                   )}
-                  {prefs.showAvatars && style.node.showAvatars && !avatarUrl && (
+                  {level !== "plate" && prefs.showAvatars && style.node.showAvatars && !avatarUrl && (
                     <text
                       className="relationship-node-emoji"
                       style={{
@@ -4179,13 +4378,14 @@ export function RelationshipGraph({
                     <>
                       <text
                         className="relationship-node-card-name"
-                        style={{ fontSize: `${cardName.fontSize}px` }}
-                        x={cardNameX}
-                        y={character.occupation ? nodeY - 4 : nodeY + 4}
+                        style={{ fontSize: `${level === "plate" ? Math.min(cardName.fontSize, 12) : cardName.fontSize}px` }}
+                        textAnchor={level === "plate" ? "middle" : "start"}
+                        x={level === "plate" ? nodeX : cardNameX}
+                        y={level === "plate" ? nodeY + 4 : character.occupation && cardMetaVisible ? nodeY - 4 : nodeY + 4}
                       >
                         {cardName.text}
                       </text>
-                      {character.occupation && cardMetaVisible && (
+                      {character.occupation && cardMetaVisible && level === "full" && (
                         <text
                           className="relationship-node-card-meta"
                           style={{ fontSize: `${Math.min(11, nameSize - 2)}px` }}

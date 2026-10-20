@@ -8,7 +8,10 @@ import {
   edgeGeometry,
   groupPaddingFor,
   measureNameWidth,
+  cardGeometry,
+  cardRect,
   nodeGeometry,
+  resolveCardLevels,
   type GraphMetrics,
 } from "../src/pages/RelationshipGraph";
 import {
@@ -16,7 +19,7 @@ import {
   normalizeCanvasStyle,
   styleForPreset,
 } from "../src/storage/canvasStyle";
-import { GROUP_PADDING, groupBounds, normalizeLayout } from "../src/storage/relationshipLayout";
+import { GROUP_PADDING, gridLayout, groupBounds, normalizeLayout } from "../src/storage/relationshipLayout";
 import { graphMetrics } from "../src/storage/graphPrefs";
 
 const metrics: GraphMetrics = graphMetrics({ avatarSize: "medium", nameSize: "medium" });
@@ -251,5 +254,100 @@ describe("style model compatibility", () => {
     expect(styled.edgeStyles?.e?.color).toBe("#0f766e");
     expect(styled.bookmarks).toHaveLength(1);
     expect(styled.positions.a).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe("adaptive card levels", () => {
+  const metricsForCards: GraphMetrics = graphMetrics({ avatarSize: "medium", nameSize: "medium" });
+
+  it("keeps a lone card full", () => {
+    const levels = resolveCardLevels([{ id: "a", x: 0, y: 0 }], 1, { compactRadius: 18 });
+
+    expect(levels.a).toBe("full");
+  });
+
+  it("steps a crowded card down to a plate instead of overlapping it", () => {
+    // Two cards 120 apart: full cards are 168 wide, so the second cannot be full.
+    const levels = resolveCardLevels(
+      [
+        { id: "a", x: 0, y: 0, priority: 3 },
+        { id: "b", x: 120, y: 0, priority: 1 },
+      ],
+      1,
+      { compactRadius: 18 },
+    );
+
+    expect(levels.a).toBe("full");
+    expect(["plate", "compact"]).toContain(levels.b);
+  });
+
+  it("gives the selected person the full card even when it arrives later", () => {
+    const levels = resolveCardLevels(
+      [
+        { id: "b", x: 0, y: 0, priority: 1 },
+        { id: "a", x: 60, y: 0, priority: 3 },
+      ],
+      1,
+      { compactRadius: 18 },
+    );
+
+    expect(levels.a).toBe("full");
+    expect(["plate", "compact"]).toContain(levels.b);
+  });
+
+  it("falls to compact when even a plate would collide", () => {
+    const levels = resolveCardLevels(
+      [
+        { id: "a", x: 0, y: 0, priority: 3 },
+        { id: "b", x: 20, y: 0, priority: 1 },
+      ],
+      1,
+      { compactRadius: 18 },
+    );
+
+    expect(levels.b).toBe("compact");
+    expect(cardRect(levels.b, 20, 0, 1)).toBeNull();
+  });
+
+  it("depends on distance, not on zoom, so the same layout always resolves alike", () => {
+    const entries = [
+      { id: "a", x: 0, y: 0 },
+      { id: "b", x: 300, y: 0 },
+      { id: "c", x: 0, y: 300 },
+    ];
+    const first = resolveCardLevels(entries, 1, { compactRadius: 18 });
+    const second = resolveCardLevels(entries, 1, { compactRadius: 18 });
+
+    expect(first).toEqual(second);
+    expect(Object.values(first).every((level) => level === "full")).toBe(true);
+  });
+
+  it("sizes a plate smaller than a full card but keeps it a box", () => {
+    const full = cardGeometry("full", metricsForCards, 1);
+    const plate = cardGeometry("plate", metricsForCards, 1);
+    const compact = cardGeometry("compact", metricsForCards, 1);
+
+    expect(plate.card).toBe(true);
+    expect(plate.halfWidth).toBeLessThan(full.halfWidth);
+    expect(plate.halfHeight).toBeLessThan(full.halfHeight);
+    expect(compact.card).toBe(false);
+    expect(compact.radius).toBeCloseTo(metricsForCards.radius * 0.62, 5);
+  });
+});
+
+describe("spacing layout for cards", () => {
+  it("uses rectangular cells when a card cell is given", () => {
+    const grid = gridLayout(["a", "b", "c", "d"], { x: 0, y: 0 }, 30, 56, { width: 168, height: 56 });
+    const stepX = Math.abs(grid.b.x - grid.a.x);
+    const stepY = Math.abs(grid.c.y - grid.a.y);
+
+    expect(stepX).toBe(224);
+    expect(stepY).toBe(112);
+  });
+
+  it("keeps the square step when no cell is given", () => {
+    const grid = gridLayout(["a", "b", "c", "d"], { x: 0, y: 0 }, 30, 56);
+
+    expect(Math.abs(grid.b.x - grid.a.x)).toBe(116);
   });
 });

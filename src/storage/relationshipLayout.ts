@@ -380,7 +380,7 @@ export function applyPositions(
   return { ...layout, positions: { ...layout.positions, ...next } };
 }
 
-export type ArrangeMode = "cluster" | "ring" | "grid" | "hierarchy" | "groups";
+export type ArrangeMode = "cluster" | "ring" | "grid" | "hierarchy" | "groups" | "spaced";
 
 /**
  * The ring every canvas starts as, and the shape 环形整理 produces.
@@ -719,8 +719,12 @@ export function gridLayout(
   center: LayoutPoint,
   radius: number,
   gap = 56,
+  cell?: { width: number; height: number },
 ): Record<string, LayoutPoint> {
-  const step = radius * 2 + gap;
+  // A cell is square for round nodes and rectangular for cards: spacing has to
+  // follow the shape that is actually drawn, not one radius for both axes.
+  const stepX = (cell?.width ?? radius * 2) + gap;
+  const stepY = (cell?.height ?? radius * 2) + gap;
   const columns = Math.max(1, Math.ceil(Math.sqrt(ids.length)));
   const rows = Math.ceil(ids.length / columns);
   const result: Record<string, LayoutPoint> = {};
@@ -728,8 +732,8 @@ export function gridLayout(
     const column = index % columns;
     const row = Math.floor(index / columns);
     result[id] = {
-      x: Math.round(center.x + (column - (columns - 1) / 2) * step),
-      y: Math.round(center.y + (row - (rows - 1) / 2) * step),
+      x: Math.round(center.x + (column - (columns - 1) / 2) * stepX),
+      y: Math.round(center.y + (row - (rows - 1) / 2) * stepY),
     };
   });
   return result;
