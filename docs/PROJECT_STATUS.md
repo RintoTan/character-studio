@@ -16,7 +16,7 @@
 | 分支 | `main` |
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
 | 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
-| 工作区状态 | **干净**（`git status --porcelain` 无输出） || Sprint 50 状态 | 画布工作室已完成本地实现（拖动加固、撤销重做、对齐分布、多布局、五种预设、高级外观、沉浸工作室、局部样式、字号、聚光灯、透镜、书签、PNG/SVG 导出、导出样式内联、UI Pass A 信息架构与工具栏/工具坞整改），**未升版本、未 push、未部署**，等待视觉验收 |
+| 工作区状态 | **干净**（`git status --porcelain` 无输出） || Sprint 50 状态 | 画布工作室已完成本地实现（拖动加固、撤销重做、对齐分布、多布局、五种预设、高级外观、沉浸工作室、局部样式、字号、聚光灯、透镜、书签、PNG/SVG 导出、导出样式内联、UI Pass A 信息架构与工具栏/工具坞整改、UI Pass B0 移动端独立布局与字号/图标规范），**未升版本、未 push、未部署**，等待视觉验收 |
 | 工作区状态 | 以 `git status --porcelain` 为准（本阶段只做本地提交） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |

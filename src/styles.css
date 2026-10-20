@@ -11962,6 +11962,13 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   --studio-gap: 4px;
   --studio-group-gap: 10px;
   --studio-bar-pad: 14px;
+  /* One type scale for everything the studio draws. Layers, not sizes that happen
+     to differ: title, panel, section, control, meta. */
+  --studio-font-title: 18px;
+  --studio-font-panel: 16px;
+  --studio-font-section: 14px;
+  --studio-font-control: 13px;
+  --studio-font-meta: 12px;
 }
 
 .graph-studio-top {
@@ -11998,7 +12005,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   border-radius: var(--studio-ctl-radius);
   background: var(--surface);
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--studio-font-control);
   transition: background 120ms ease, border-color 120ms ease;
 }
 
@@ -12014,7 +12021,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-studio-titles strong {
-  font-size: 14px;
+  font-size: var(--studio-font-title);
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
@@ -12022,7 +12029,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-studio-titles span {
-  font-size: 11px;
+  font-size: var(--studio-font-meta);
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -12063,7 +12070,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   border-radius: var(--studio-ctl-radius);
   background: none;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--studio-font-control);
   line-height: 1;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
@@ -12098,7 +12105,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   align-items: center;
   gap: 5px;
   padding: 0 2px 0 4px;
-  font-size: 11px;
+  font-size: var(--studio-font-meta);
   color: var(--muted);
   white-space: nowrap;
 }
@@ -12176,7 +12183,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   border-radius: var(--studio-ctl-radius);
   background: none;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--studio-font-control);
   line-height: 1;
   white-space: nowrap;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
@@ -12196,6 +12203,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 
 .graph-dock-button {
   padding: 0 var(--studio-ctl-pad);
+}
+
+.graph-dock-tools {
+  display: none;
 }
 
 .graph-dock-button.active,
@@ -12325,7 +12336,9 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--studio-font-panel);
+  font-weight: 600;
+  color: var(--text);
 }
 
 .graph-studio-drawer-head button {
@@ -12342,9 +12355,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .graph-studio-section {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  color: var(--muted);
+  font-size: var(--studio-font-section);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
 }
 
 .graph-studio-search {
@@ -12700,7 +12714,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-design-heading {
-  font-size: 12px;
+  font-size: var(--studio-font-section);
   font-weight: 600;
   color: var(--text-muted);
   letter-spacing: 0.02em;
@@ -12926,7 +12940,21 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   }
 
   .graph-studio-titles strong {
-    font-size: 13px;
+    font-size: var(--studio-font-control);
+    font-weight: 600;
+  }
+
+  /* A phone's bar is navigation and history only; the tasks live in the tool
+     menu, so the canvas is not squeezed by three more text buttons. */
+  .graph-studio-tasks,
+  .graph-studio-actions .graph-studio-sep,
+  .graph-studio-save {
+    display: none;
+  }
+
+  .graph-dock-optional,
+  .graph-dock-group[aria-label="选择与编辑"] {
+    display: none;
   }
 
   .graph-studio-top {
@@ -12948,6 +12976,69 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 
   /* The dock wraps instead of pushing buttons off the screen: two short rows
      rather than a hidden 整理 or a row of 24px targets. */
+  /* Thumbs, not cursors: 40 high controls with 44 wide icon targets. */
+  .relationship-page.graph-studio {
+    --studio-ctl-h: 40px;
+  }
+
+  .graph-dock-icon {
+    width: 44px;
+  }
+
+  .graph-dock-tools {
+    display: inline-flex;
+  }
+
+  /* One row on a phone: zoom, fit, and one door to the rest. 整理 lives in that
+     menu, one tap away, instead of pushing the dock onto a second line. */
+  .graph-dock-arrange > .graph-dock-button:not(.graph-dock-tools) {
+    display: none;
+  }
+
+  .graph-mobile-menu {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    z-index: var(--z-overlay-7);
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: var(--shadow-strong);
+  }
+
+  .graph-mobile-menu-section {
+    display: grid;
+    gap: 6px;
+  }
+
+  .graph-mobile-menu-title {
+    font-size: var(--studio-font-meta);
+    color: var(--muted);
+  }
+
+  .graph-mobile-menu-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .graph-mobile-menu-grid button {
+    min-height: 44px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-subtle);
+    color: var(--text);
+    font-size: var(--studio-font-control);
+  }
+
+  .graph-mobile-menu-grid button:active {
+    background: var(--surface);
+  }
+
   .graph-canvas-tools.studio-dock {
     margin: 8px 10px 0;
   }

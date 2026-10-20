@@ -1043,6 +1043,9 @@ export function RelationshipGraph({
   const fitFrameRef = useRef("");
   // Bookmarks are rows, not forms: a name that jumps, and a menu for the two things
   // that change it.
+  // The phone's single tool entry: everything not worth permanent space on a
+  // canvas that is only 375 wide.
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [bookmarkMenuId, setBookmarkMenuId] = useState<string | null>(null);
   const [bookmarkEditingId, setBookmarkEditingId] = useState<string | null>(null);
   const [bookmarkNameDraft, setBookmarkNameDraft] = useState("");
@@ -1052,6 +1055,7 @@ export function RelationshipGraph({
     index?: number;
   } | null>(null);
   useEscapeDismiss(Boolean(bookmarkMenuId), () => setBookmarkMenuId(null));
+  useEscapeDismiss(isMobileMenuOpen, () => setIsMobileMenuOpen(false));
   useEffect(() => {
     if (!bookmarkNotice) {
       return;
@@ -1598,6 +1602,26 @@ export function RelationshipGraph({
   // Entering the studio makes the canvas much larger, so the drawing is re-fitted
   // once for the room it now has. The view that was there is put back on the way
   // out: changing the chrome must not change where the author was looking.
+  /**
+   * One rule for switching task panels, shared by the desktop top bar and the phone's
+   * tool menu: opening a task closes the other surfaces, so two panels can never be
+   * expanded at once.
+   */
+  function toggleStudioPanel(task: "characters" | "design" | "explore") {
+    setIsArrangeOpen(false);
+    setIsMobileMenuOpen(false);
+
+    if (task === "characters") {
+      setIsStudioLeftOpen((open) => !open);
+      setIsStudioRightOpen(false);
+      return;
+    }
+
+    setStudioTab(task);
+    setIsStudioRightOpen((open) => (studioTab === task ? !open : true));
+    setIsStudioLeftOpen(false);
+  }
+
   function enterStudio() {
     studioViewRef.current = view;
     setSheetLevel("half");
@@ -3333,7 +3357,7 @@ export function RelationshipGraph({
                   </button>
                   {previousView && (
                     <button
-                      className="graph-dock-button"
+                      className="graph-dock-button graph-dock-optional"
                       data-tooltip="回到上一个观察位置"
                       onClick={restoreView}
                       type="button"
@@ -3343,7 +3367,7 @@ export function RelationshipGraph({
                   )}
                   <button
                     aria-label="重置视角"
-                    className="graph-dock-button"
+                    className="graph-dock-button graph-dock-optional"
                     data-tooltip="回到刚进入工作室时的视角"
                     onClick={resetToDefaultView}
                     type="button"
@@ -3385,7 +3409,7 @@ export function RelationshipGraph({
 
                 <span aria-hidden="true" className="graph-dock-sep" />
 
-                <div aria-label="整理画布" className="graph-dock-group" role="group">
+                <div aria-label="整理画布" className="graph-dock-group graph-dock-arrange" role="group">
                   <button
                     aria-expanded={isArrangeOpen}
                     className={`graph-dock-button${isArrangeOpen ? " active" : ""}`}
@@ -3393,6 +3417,17 @@ export function RelationshipGraph({
                     type="button"
                   >
                     整理
+                  </button>
+                  {/* The phone's single door to everything that does not earn a
+                      permanent place on a 375 wide canvas. */}
+                  <button
+                    aria-expanded={isMobileMenuOpen}
+                    aria-label="更多工具"
+                    className={`graph-dock-button graph-dock-tools${isMobileMenuOpen ? " active" : ""}`}
+                    onClick={() => setIsMobileMenuOpen((open) => !open)}
+                    type="button"
+                  >
+                    工具
                   </button>
                 </div>
               </div>
@@ -3423,7 +3458,7 @@ export function RelationshipGraph({
                 onClick={undoLayout}
                 type="button"
               >
-                ↶
+                <Icon name="undo" size={16} />
               </button>
               <button
                 aria-label="重做"
@@ -3432,7 +3467,7 @@ export function RelationshipGraph({
                 onClick={redoLayout}
                 type="button"
               >
-                ↷
+                <Icon name="redo" size={16} />
               </button>
               {previousView && (
                 <button className="graph-fit-button" onClick={restoreView} type="button">
@@ -3751,10 +3786,10 @@ export function RelationshipGraph({
               const inLens = !lensActive || lensKinds.includes(relationship.kind);
               const inSpotlight =
                 !spotlightSet || spotlightSet.has(relationship.fromId) || spotlightSet.has(relationship.toId);
-              const edgePath =
-                style.edge.curve === "straight"
-                  ? `M ${from.x} ${from.y} L ${to.x} ${to.y}`
-                  : geometry.path;
+              // Even a straight edge uses the trimmed path: a raw centre-to-centre
+              // line runs under both nodes and, with a light fill or a card, shows
+              // through the label area.
+              const edgePath = geometry.path;
               const touchesHovered =
                 activeId !== null &&
                 (relationship.fromId === activeId || relationship.toId === activeId);
@@ -3992,7 +4027,7 @@ export function RelationshipGraph({
                     onClick={undoLayout}
                     type="button"
                   >
-                    ↶
+                    <Icon name="undo" size={16} />
                   </button>
                   <button
                     aria-label="重做"
@@ -4000,7 +4035,7 @@ export function RelationshipGraph({
                     onClick={redoLayout}
                     type="button"
                   >
-                    ↷
+                    <Icon name="redo" size={16} />
                   </button>
                   {/* A save that happens on its own still has to be visible: the
                       author needs to know a drag was kept without looking for a
@@ -4013,15 +4048,15 @@ export function RelationshipGraph({
 
                   <span aria-hidden="true" className="graph-studio-sep" />
 
-                  <div aria-label="任务面板" className="graph-studio-toolgroup" role="group">
+                  <div
+                    aria-label="任务面板"
+                    className="graph-studio-toolgroup graph-studio-tasks"
+                    role="group"
+                  >
                   <button
                     aria-pressed={isStudioLeftOpen}
                     className="graph-studio-toggle"
-                    onClick={() => {
-                      setIsStudioLeftOpen((open) => !open);
-                      setIsStudioRightOpen(false);
-                      setIsArrangeOpen(false);
-                    }}
+                    onClick={() => toggleStudioPanel("characters")}
                     type="button"
                   >
                     角色
@@ -4029,12 +4064,7 @@ export function RelationshipGraph({
                   <button
                     aria-pressed={isStudioRightOpen && studioTab === "design"}
                     className="graph-studio-toggle"
-                    onClick={() => {
-                      setStudioTab("design");
-                      setIsStudioRightOpen((open) => (studioTab === "design" ? !open : true));
-                      setIsStudioLeftOpen(false);
-                      setIsArrangeOpen(false);
-                    }}
+                    onClick={() => toggleStudioPanel("design")}
                     type="button"
                   >
                     设计
@@ -4042,12 +4072,7 @@ export function RelationshipGraph({
                   <button
                     aria-pressed={isStudioRightOpen && studioTab === "explore"}
                     className="graph-studio-toggle"
-                    onClick={() => {
-                      setStudioTab("explore");
-                      setIsStudioRightOpen((open) => (studioTab === "explore" ? !open : true));
-                      setIsStudioLeftOpen(false);
-                      setIsArrangeOpen(false);
-                    }}
+                    onClick={() => toggleStudioPanel("explore")}
                     type="button"
                   >
                     探索
@@ -4055,6 +4080,77 @@ export function RelationshipGraph({
                   </div>
                 </div>
               </div>
+
+              {isMobileMenuOpen && (
+                <div aria-label="工作室工具" className="graph-mobile-menu" role="menu">
+                  <div className="graph-mobile-menu-section">
+                    <span className="graph-mobile-menu-title">面板</span>
+                    <div className="graph-mobile-menu-grid">
+                      <button onClick={() => toggleStudioPanel("characters")} role="menuitem" type="button">
+                        角色
+                      </button>
+                      <button onClick={() => toggleStudioPanel("design")} role="menuitem" type="button">
+                        设计
+                      </button>
+                      <button onClick={() => toggleStudioPanel("explore")} role="menuitem" type="button">
+                        探索
+                      </button>
+                    </div>
+                  </div>
+                  <div className="graph-mobile-menu-section">
+                    <span className="graph-mobile-menu-title">画布</span>
+                    <div className="graph-mobile-menu-grid">
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setIsArrangeOpen(true);
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        整理
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setSelectMode((current) => {
+                            if (current) {
+                              setSelectedIds([]);
+                            }
+                            return !current;
+                          });
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        多选
+                      </button>
+                      {previousView && (
+                        <button
+                          onClick={() => {
+                            setIsMobileMenuOpen(false);
+                            restoreView();
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          恢复视角
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          resetToDefaultView();
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        重置视角
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {isArrangeOpen && (
                 <div className="graph-studio-arrange" role="group" aria-label="画布整理">

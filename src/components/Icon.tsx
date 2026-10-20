@@ -34,6 +34,7 @@ export type IconName =
   | "image"
   | "link"
   | "list"
+  | "maximize"
   | "monitor"
   | "moon"
   | "more"
@@ -42,6 +43,8 @@ export type IconName =
   | "pencil"
   | "pin"
   | "plus"
+  | "pointer"
+  | "redo"
   | "refresh"
   | "search"
   | "sparkles"
@@ -49,6 +52,7 @@ export type IconName =
   | "sun"
   | "tool"
   | "trash"
+  | "undo"
   | "upload";
 
 // Optical nudges, in viewBox units. Centring the viewBox is not the same as
@@ -181,6 +185,35 @@ const ICONS: Record<IconName, ReactNode> = {
     </>
   ),
   moon: <path d="M20.6 14.7A8.7 8.7 0 0 1 9.3 3.4a8.7 8.7 0 1 0 11.3 11.3z" />,
+  // Two arrows that read as "step back" and "step forward" at 15px, which the
+  // text glyphs the bar used before did not.
+  undo: (
+    <>
+      <path d="M9 14 4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </>
+  ),
+  redo: (
+    <>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </>
+  ),
+  // Corners only: "make this fill the room" without drawing a frame around it.
+  maximize: (
+    <>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </>
+  ),
+  pointer: (
+    <>
+      <path d="m3 3 7.1 17 2.5-7.4 7.4-2.5Z" />
+      <path d="m13.2 13.2 5.8 5.8" />
+    </>
+  ),
   more: (
     <>
       <circle cx="5" cy="12" fill="currentColor" r="1.7" stroke="none" />
