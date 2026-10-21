@@ -2896,11 +2896,34 @@ async function main() {
       // slow run. The name is the progress bar.
       console.log(`RUN   ${name}`);
 
+      // A hung check used to stop the suite with no verdict at all, and the results
+      // were only printed after the last one — so a stall threw away every check that
+      // had already passed. Two changes: each check is bounded, and its verdict is
+      // printed as it lands. A timeout is a failure, never a skip.
+      const timeoutMs = Number(process.env.CHECK_TIMEOUT_MS ?? 90000);
+      let timer = null;
+
       try {
-        const detail = await run();
-        results.push({ name, pass: detail.pass, detail: detail.detail });
+        const detail = await Promise.race([
+          run(),
+          new Promise((_, reject) => {
+            timer = setTimeout(
+              () => reject(new Error(`检查超时（${timeoutMs}ms）：${name}`)),
+              timeoutMs,
+            );
+          }),
+        ]);
+        const result = { name, pass: detail.pass, detail: detail.detail };
+        results.push(result);
+        console.log(`${result.pass ? "PASS" : "FAIL"}  ${name}`);
       } catch (error) {
-        results.push({ name, pass: false, detail: String(error.message ?? error) });
+        const result = { name, pass: false, detail: String(error.message ?? error) };
+        results.push(result);
+        console.log(`FAIL  ${name}\n      ${result.detail}`);
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
       }
     };
 
