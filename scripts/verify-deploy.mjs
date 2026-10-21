@@ -70,13 +70,19 @@ if (!info) {
 
 // Deep-link fallback: an unknown subpath must still return the app shell.
 const deep = await get("developer");
-// A 404 page can contain the app's markup and still mean the fallback is missing.
-// The status is part of "returns the shell", not a detail beside it — without this an
-// unpublished route passed the check that exists to catch exactly that.
+// GitHub Pages answers an unknown subpath with 404 *and* `404.html`, which for this app
+// is a copy of the shell — that is the fallback working, not failing. What would be a
+// failure is GitHub's generic 404 page, so the test is whether the body is *this*
+// build's shell: it must carry the live entry chunk and the app root.
 const looksLikeShell =
-  deep.status === 200 && deep.body.includes("/assets/") && deep.body.includes('id="root"');
+  (deep.status === 200 || deep.status === 404) &&
+  deep.body.includes('id="root"') &&
+  (liveEntry ? deep.body.includes(`/assets/${liveEntry}`) : deep.body.includes("/assets/"));
 looksLikeShell
-  ? ok("deep link fallback", `/developer returns shell (HTTP ${deep.status})`)
+  ? ok(
+      "deep link fallback",
+      `/developer returns this build's shell (HTTP ${deep.status}${deep.status === 404 ? ", Pages 404 fallback" : ""})`,
+    )
   : bad("deep link fallback", `/developer did not return the app shell (HTTP ${deep.status})`);
 
 console.log(problems.length ? `\n${problems.length} problem(s) found` : "\nDeployment matches the local build.");
