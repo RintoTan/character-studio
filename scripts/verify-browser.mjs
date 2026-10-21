@@ -2921,6 +2921,18 @@ async function main() {
       const timeoutMs = Number(process.env.CHECK_TIMEOUT_MS ?? 90000);
       let timer = null;
 
+      // Every check starts from the same browser facts. A mobile check leaves touch
+      // emulation and a 375px viewport behind; the next desktop check then dispatches
+      // mouse drags into a touch-emulated page and fails for reasons that have nothing
+      // to do with the product. Checks that want a phone set it themselves.
+      await cdp.send("Emulation.setDeviceMetricsOverride", {
+        width: 1440,
+        height: 900,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+
       try {
         const detail = await Promise.race([
           run(),
@@ -7121,13 +7133,23 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
       await new Promise((resolve) => setTimeout(resolve, 400));
-      // Truncation is a fact about a name that is drawn. At the 375px fit the label
-      // floor hides small names, so the check zooms in first — the question is whether
-      // a drawn long name is shortened, not whether an unreadable one exists.
-      for (let step = 0; step < 4; step += 1) {
-        await cdp.value(`(document.querySelector('button[aria-label="放大画布"]')).click()`);
-        await new Promise((resolve) => setTimeout(resolve, 200));
+      // Truncation is a fact about a name that is drawn, and at the 375px fit the label
+      // floor hides small names — so the drawing has to be zoomed first. The zoom is a
+      // pinch centred on the node, not the + button: a button zooms about the frame,
+      // which pushed this node past the viewport edge and made the tap land on nothing.
+      // A pinch keeps the node under the fingers, and it is what a phone user does.
+      const start = await cdp.value(NODE_CENTRE("g-2"));
+      const spread = (dx, dy) => [
+        { x: Math.round(start.x - dx), y: Math.round(start.y - dy) },
+        { x: Math.round(start.x + dx), y: Math.round(start.y + dy) },
+      ];
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: spread(18, 0) });
+      for (const step of [1, 2, 3, 4]) {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: spread(18 * step, 0) });
+        await new Promise((resolve) => setTimeout(resolve, 70));
       }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 350));
       const longShown = await cdp.value(`[...document.querySelectorAll(".relationship-node-name")].some((node) => node.textContent.includes("…"))`);
       const longCentre = await cdp.value(NODE_CENTRE("g-2"));
       await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: longCentre.x, y: longCentre.y }] });
