@@ -89,10 +89,13 @@ import {
   appearanceTarget,
   arrangeAvailability,
   contextBarMode,
+  surfaceIsOpen,
   toggleSurface,
   type GraphSurface,
   type SurfaceRequest,
 } from "../utils/graphSurfaces";
+import { pinchView, translateMemberPositions } from "../utils/touchGestures";
+import { neighbourPreview } from "../utils/graphNeighbours";
 import {
   alignPositions,
   distributePositions,
@@ -1703,6 +1706,7 @@ export function RelationshipGraph({
   const [livePositions, setLivePositions] = useState<Record<string, LayoutPoint> | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectMode, setSelectMode] = useState(false);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
   // A hand tool for trackpads without a middle button: while it is on, a drag pans
   // whatever it starts on, including a node. It is a tool, not a mode of the data —
   // turning it off leaves selection and coordinates exactly as they were.
@@ -1907,10 +1911,11 @@ export function RelationshipGraph({
         isDirectionHelpOpen ||
         Boolean(document.querySelector('[aria-modal="true"]'));
 
-      if (event.key === "Escape" && (selectMode || panMode) && !layerAbove) {
+      if (event.key === "Escape" && (selectMode || panMode || multiSelectMode) && !layerAbove) {
         marqueeRef.current = null;
         setMarquee(null);
         setSelectMode(false);
+        setMultiSelectMode(false);
         setPanMode(false);
       }
     };
@@ -2253,7 +2258,7 @@ export function RelationshipGraph({
   // out of the first version to protect page scrolling; on a canvas this large that
   // was the wrong trade — dragging the graph is the interaction people reach for.
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
-  const pinchRef = useRef<{ distance: number } | null>(null);
+  const pinchRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null);
   // The node a press started on, if any: what a tap opens.
   const pressedNodeRef = useRef<string | null>(null);
   const pressedEdgeRef = useRef<string | null>(null);
@@ -3403,10 +3408,18 @@ export function RelationshipGraph({
 
     if (pointersRef.current.size === 2) {
       const [first, second] = [...pointersRef.current.values()];
-      pinchRef.current = { distance: Math.hypot(first.x - second.x, first.y - second.y) };
+      pinchRef.current = {
+        distance: Math.hypot(first.x - second.x, first.y - second.y),
+        centerX: (first.x + second.x) / 2,
+        centerY: (first.y + second.y) / 2,
+      };
       panRef.current = null;
       nodeDragRef.current = null;
       groupDragRef.current = null;
+      setDragRef.current = null;
+      if (livePositions) {
+        stopDragFrame();
+      }
       return;
     }
 
@@ -3523,25 +3536,34 @@ export function RelationshipGraph({
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     if (pointers.size >= 2) {
-      // A second finger turns the gesture into a pinch: whatever the first finger
+      // A second finger turns the gesture into a pinch & pan: whatever the first finger
       // was dragging must be abandoned, not committed halfway.
       nodeDragRef.current = null;
       groupDragRef.current = null;
+      setDragRef.current = null;
+      panRef.current = null;
       if (livePositions) {
         stopDragFrame();
       }
       const [first, second] = [...pointers.values()];
       const distance = Math.hypot(first.x - second.x, first.y - second.y);
+      const centerX = (first.x + second.x) / 2;
+      const centerY = (first.y + second.y) / 2;
       const previous = pinchRef.current;
       if (previous && previous.distance > 0 && distance > 0) {
-        zoomAround(
-          event.currentTarget,
-          (first.x + second.x) / 2,
-          (first.y + second.y) / 2,
-          distance / previous.distance,
-        );
+        const factor = distance / previous.distance;
+        const rect = event.currentTarget.getBoundingClientRect();
+        // Both the zoom anchor and the pan distance come from the same pair of
+        // midpoints, and the whole gesture lands in one state update. Doing it in two
+        // (zoomAround then a second setView) let the zoom anchor be computed from a
+        // stale box, which showed up as the drawing creeping under the fingers.
+        const from = viewBoxPointAt(previous.centerX, previous.centerY, rect, canvas.viewBox);
+        const to = viewBoxPointAt(centerX, centerY, rect, canvas.viewBox);
+
+        viewAutoRef.current = false;
+        setView((current) => pinchView(current, from, to, factor, clampZoom));
       }
-      pinchRef.current = { distance };
+      pinchRef.current = { distance, centerX, centerY };
       return;
     }
 
@@ -3566,17 +3588,7 @@ export function RelationshipGraph({
       }
 
       if (setDrag.moved) {
-        const next = { ...setDrag.base.positions };
-        for (const id of setDrag.members) {
-          const point = setDrag.base.positions[id];
-          if (point) {
-            next[id] = {
-              x: Math.round((point.x + delta.x) * 100) / 100,
-              y: Math.round((point.y + delta.y) * 100) / 100,
-            };
-          }
-        }
-        scheduleDrag(next);
+        scheduleDrag(translateMemberPositions(setDrag.base.positions, setDrag.members, delta));
       }
       return;
     }
@@ -3675,6 +3687,9 @@ export function RelationshipGraph({
     }
     setMarquee(null);
     pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchRef.current = null;
+    }
     pressedNodeRef.current = null;
     setPressedGroupId(null);
     setLivePositions(null);
@@ -3787,7 +3802,25 @@ export function RelationshipGraph({
       } else {
         lastTapRef.current = { id: tappedId, at: now };
         setSelectedEdgeId(null);
-        toggleSelected(tappedId, selectMode || event.shiftKey);
+        toggleSelected(tappedId, selectMode || event.shiftKey || multiSelectMode);
+      }
+    } else if (setGesture && !setGesture.moved && tappedId) {
+      // Pressing a member of a multi-selection starts a set drag, not a node drag, so
+      // the tap branch above never sees it. A press that never moved is still a tap:
+      // in multi-select mode it removes that one member, and outside the mode it
+      // replaces the selection with that node. Without this the second tap on a
+      // selected node did nothing at all.
+      const previous = lastTapRef.current;
+      const now = Date.now();
+      const doubleTap = previous?.id === tappedId && now - previous.at < 350;
+
+      if (doubleTap) {
+        lastTapRef.current = null;
+        onOpenCharacter(tappedId);
+      } else {
+        lastTapRef.current = { id: tappedId, at: now };
+        setSelectedEdgeId(null);
+        toggleSelected(tappedId, selectMode || event.shiftKey || multiSelectMode);
       }
     } else if (groupGesture && !groupGesture.moved) {
       setSelectedEdgeId(null);
@@ -3799,8 +3832,10 @@ export function RelationshipGraph({
       setSelectedIds([]);
       setSelectedEdgeId(tappedEdgeId);
     } else if (!panned && !tappedId && !groupGesture) {
-      setSelectedIds([]);
-      setSelectedEdgeId(null);
+      if (!multiSelectMode) {
+        setSelectedIds([]);
+        setSelectedEdgeId(null);
+      }
     }
 
     pointersRef.current.delete(event.pointerId);
@@ -4988,6 +5023,9 @@ export function RelationshipGraph({
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">字号</span>
                   <div className="graph-segment">
                     {NAME_SIZES.map((size) => (
                       <button
@@ -5071,9 +5109,9 @@ export function RelationshipGraph({
                 {/* Which characters the drawing contains. It used to sit in the page
                     header, where it read as a page-level filter; it is a property of
                     the canvas, so it belongs with the other view switches. */}
-                <div className="graph-panel-row">
+                <div className="graph-panel-row graph-panel-row-stacked">
                   <span className="graph-control-label">范围</span>
-                  <div className="graph-segment">
+                  <div className="graph-segment graph-segment-full">
                     <button
                       aria-pressed={!showAll}
                       className={!showAll ? "graph-segment-button selected" : "graph-segment-button"}
@@ -5642,6 +5680,320 @@ export function RelationshipGraph({
             </div>
   );
 
+  const charactersPanelContent = (
+    <div className="graph-studio-characters-body">
+      <label className="graph-studio-search">
+        <Icon name="search" size={15} />
+        <input
+          aria-label="搜索角色"
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setNotOnCanvas(null);
+          }}
+          placeholder="搜索角色名、职业、世界观"
+          type="search"
+          value={query}
+        />
+        {query && (
+          <button aria-label="清除搜索" onClick={() => setQuery("")} type="button">
+            <Icon name="close" size={13} />
+          </button>
+        )}
+      </label>
+
+      <div className="graph-studio-list" role="listbox" aria-label="角色列表">
+        {(query.trim() ? searchResults : visibleCharacters).map((character) => (
+          <button
+            aria-selected={focusId === character.id}
+            className={`graph-studio-row${focusId === character.id ? " active" : ""}`}
+            key={character.id}
+            onClick={() => focusCharacter(character)}
+            role="option"
+            type="button"
+          >
+            <CharacterRow character={character} />
+            <span className="graph-studio-row-state">
+              {byId.has(character.id) ? "在画布" : "未显示"}
+            </span>
+          </button>
+        ))}
+        {query.trim() && searchResults.length === 0 && (
+          <p className="muted">没有匹配的角色。</p>
+        )}
+      </div>
+
+      <div className="graph-studio-group">
+        <strong className="graph-studio-section">视觉分组</strong>
+        {groupDraft ? (
+          <form
+            className="graph-studio-group-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveGroupDraft();
+            }}
+          >
+            <input
+              aria-label="分组名称"
+              autoFocus
+              maxLength={40}
+              onChange={(event) =>
+                setGroupDraft((current) =>
+                  current ? { ...current, name: event.target.value } : current,
+                )
+              }
+              placeholder="例如：北境线"
+              value={groupDraft.name}
+            />
+            <button className="primary-button" disabled={!groupDraft.name.trim()} type="submit">
+              创建
+            </button>
+            <button className="ghost-button" onClick={() => setGroupDraft(null)} type="button">
+              取消
+            </button>
+          </form>
+        ) : (
+          <button
+            className="ghost-button graph-studio-group-add"
+            disabled={selectedIds.length === 0}
+            onClick={() => setGroupDraft({ name: "", editingId: null })}
+            type="button"
+          >
+            用所选创建分组（{selectedIds.length}）
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  // A six-person drawing does not need a spotlight to be read: naming the selected
+  // character's direct relations is the whole job. The same block is capped on a large
+  // network by `neighbourPreview`, so the lens and spotlight below stay the main tools.
+  const focusedNeighbours = selectedIds.length === 1 ? neighbourPreview(relationships, selectedIds[0]) : null;
+
+  const explorePanelContent = (
+    <div className="graph-explore-section">
+      {/* Small networks first: who this person is next to. Large ones get the same
+          block, capped, because the lens and spotlight are what they actually need. */}
+      {focusedNeighbours && (
+        <div className="graph-explore-focus">
+          <div className="graph-explore-focus-head">
+            <strong>
+              {byId.get(selectedIds[0])
+                ? characterDisplayName(byId.get(selectedIds[0])!.character)
+                : "所选角色"}
+            </strong>
+            <span>{focusedNeighbours.total} 条直接关系</span>
+          </div>
+          {focusedNeighbours.rows.length > 0 ? (
+            <ul className="graph-explore-neighbours">
+              {focusedNeighbours.rows.map((row) => (
+                <li key={row.id}>
+                  <span className="graph-explore-neighbour-name">
+                    {byId.get(row.otherId)
+                      ? characterDisplayName(byId.get(row.otherId)!.character)
+                      : "未命名角色"}
+                  </span>
+                  <span className="graph-explore-neighbour-kind">
+                    {relationshipKindLabel(row.kind)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">这个角色还没有任何关系。</p>
+          )}
+          {focusedNeighbours.hidden > 0 && (
+            <p className="muted">另有 {focusedNeighbours.hidden} 条，见关系管理。</p>
+          )}
+        </div>
+      )}
+      <div className="graph-explore-note">
+        <span className="graph-explore-count">
+          透镜 {lensKinds.length ? `${lensKinds.length} 类` : "未开启"}
+        </span>
+        <span>
+          {lensKinds.length
+            ? `正在强调：${lensKinds.map((kind) => relationshipKindLabel(kind)).join("、")}`
+            : "选中关系类型后，其它类型淡出但仍保留。"}
+        </span>
+      </div>
+      <div className="graph-studio-props">
+        <div className="graph-spotlight">
+          <button
+            className="ghost-button"
+            disabled={selectedIds.length !== 1 || spotlightId === selectedIds[0]}
+            onClick={() => selectedIds.length === 1 && setSpotlightId(selectedIds[0])}
+            type="button"
+          >
+            聚光灯
+          </button>
+          <div className="graph-scope-switch" role="group" aria-label="聚光灯层数">
+            {[1, 2].map((depth) => (
+              <button
+                aria-pressed={spotlightDepth === depth}
+                className={spotlightDepth === depth ? "active" : ""}
+                key={depth}
+                onClick={() => setSpotlightDepth(depth as 1 | 2)}
+                type="button"
+              >
+                {depth} 层
+              </button>
+            ))}
+          </div>
+          {spotlightId && (
+            <button className="ghost-button" onClick={() => setSpotlightId(null)} type="button">
+              退出聚光灯
+            </button>
+          )}
+        </div>
+        <p className="graph-explore-hint">
+          {spotlightId
+            ? `高亮 ${spotlightSet?.size ?? 0} 个角色，其余淡出；只改显示，不改关系。`
+            : "选中一个角色后开启，查看它的直接关系或两层关系。"}
+        </p>
+
+        <strong className="graph-studio-section">关系类型透镜</strong>
+        <div className="graph-lens" role="group" aria-label="关系类型透镜">
+          {presentKinds.map((kind) => (
+            <button
+              aria-pressed={lensKinds.includes(kind)}
+              className={lensKinds.includes(kind) ? "graph-lens-chip active" : "graph-lens-chip"}
+              key={kind}
+              onClick={() =>
+                setLensKinds((current) =>
+                  current.includes(kind)
+                    ? current.filter((entry) => entry !== kind)
+                    : [...current, kind],
+                )
+              }
+              type="button"
+            >
+              {relationshipKindLabel(kind)}
+            </button>
+          ))}
+        </div>
+        <button
+          className="ghost-button graph-lens-clear"
+          disabled={lensKinds.length === 0}
+          onClick={() => setLensKinds([])}
+          type="button"
+        >
+          {lensKinds.length ? `清除透镜（${lensKinds.length}）` : "未选择透镜"}
+        </button>
+      </div>
+
+      <strong className="graph-studio-section">视角书签</strong>
+      <form
+        className="graph-bookmark-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          saveBookmark(bookmarkDraft);
+        }}
+      >
+        <input
+          aria-label="书签名称"
+          maxLength={40}
+          onChange={(event) => setBookmarkDraft(event.target.value)}
+          placeholder="例如：北境线特写"
+          value={bookmarkDraft}
+        />
+        <button className="ghost-button" disabled={!bookmarkDraft.trim()} type="submit">
+          存下视角
+        </button>
+      </form>
+      {(layout.bookmarks ?? []).length > 0 && (
+        <ul className="graph-bookmarks">
+          {(layout.bookmarks ?? []).map((bookmark) => {
+            const editing = bookmarkEditingId === bookmark.id;
+            const menuOpen = bookmarkMenuId === bookmark.id;
+            return (
+              <li className="graph-bookmark-row" key={bookmark.id}>
+                {editing ? (
+                  <form
+                    className="graph-bookmark-rename"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      renameBookmark(bookmark.id, bookmarkNameDraft);
+                    }}
+                  >
+                    <input
+                      aria-label={`重命名书签 ${bookmark.name}`}
+                      autoFocus
+                      maxLength={40}
+                      onChange={(event) => setBookmarkNameDraft(event.target.value)}
+                      value={bookmarkNameDraft}
+                    />
+                    <button className="primary-button" disabled={!bookmarkNameDraft.trim()} type="submit">
+                      保存
+                    </button>
+                    <button className="ghost-button" onClick={() => setBookmarkEditingId(null)} type="button">
+                      取消
+                    </button>
+                  </form>
+                ) : (
+                  <>
+                    <button
+                      className="graph-bookmark-jump"
+                      onClick={() => jumpToBookmark(bookmark)}
+                      title={bookmark.name}
+                      type="button"
+                    >
+                      <span>{bookmark.name}</span>
+                      <em>{Math.round(bookmark.view.k * 100)}%</em>
+                    </button>
+                    <button
+                      aria-expanded={menuOpen}
+                      aria-haspopup="menu"
+                      aria-label={`书签 ${bookmark.name} 的更多操作`}
+                      className="graph-bookmark-more"
+                      onClick={() => setBookmarkMenuId(menuOpen ? null : bookmark.id)}
+                      type="button"
+                    >
+                      ⋯
+                    </button>
+                    {menuOpen && (
+                      <div className="graph-bookmark-menu" role="menu">
+                        <button
+                          onClick={() => {
+                            setBookmarkEditingId(bookmark.id);
+                            setBookmarkNameDraft(bookmark.name);
+                            setBookmarkMenuId(null);
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          重命名
+                        </button>
+                        <button
+                          onClick={() => removeBookmark(bookmark)}
+                          role="menuitem"
+                          type="button"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {bookmarkNotice && (
+        <p className="graph-bookmark-notice" role="status">
+          <span>{bookmarkNotice.text}</span>
+          {bookmarkNotice.removed && (
+            <button className="ghost-button" onClick={undoRemoveBookmark} type="button">
+              撤销
+            </button>
+          )}
+        </p>
+      )}
+      <p className="muted">书签只记录视角，不复制任何角色数据。</p>
+    </div>
+  );
+
   return (
     <section
       className={`workspace-card relationship-page${isStudio ? " graph-studio" : ""}`}
@@ -5802,7 +6154,10 @@ export function RelationshipGraph({
               )}
             </div>
             )}
-          <div className={`graph-canvas-tools${isStudio ? " studio-dock" : ""}`}>
+          <div
+            className={`graph-canvas-tools${isStudio ? " studio-dock" : ""}`}
+            data-yielded={surfaceIsOpen(surface) ? "true" : undefined}
+          >
             {/* In the studio the search lives in the left drawer, where it sits with
                 the list it filters instead of over the drawing. */}
 
@@ -5903,7 +6258,7 @@ export function RelationshipGraph({
               <button
                 aria-label={selectMode ? "选择工具（已开启）" : "选择工具"}
                 aria-pressed={selectMode}
-                className="graph-icon-button"
+                className="graph-icon-button graph-desktop-select"
                 data-tooltip={
                   selectMode
                     ? "选择工具已开启（V）：空白处拖动框选，Esc 退出"
@@ -5915,6 +6270,7 @@ export function RelationshipGraph({
                       setSelectedIds([]);
                     } else {
                       setPanMode(false);
+                      setMultiSelectMode(false);
                     }
                     return !current;
                   });
@@ -5923,6 +6279,30 @@ export function RelationshipGraph({
                 type="button"
               >
                 <Icon name="select" size={16} />
+              </button>
+
+              <button
+                aria-label={multiSelectMode ? "多选模式（已开启）" : "多选模式"}
+                aria-pressed={multiSelectMode}
+                className={`graph-icon-button graph-touch-select${multiSelectMode ? " active" : ""}`}
+                data-tooltip={
+                  multiSelectMode
+                    ? "多选模式已开启：点按增删角色，Esc 退出"
+                    : "多选模式：无需按键，连续点按选择多个角色"
+                }
+                onClick={() => {
+                  setMultiSelectMode((current) => {
+                    if (!current) {
+                      setPanMode(false);
+                      setSelectMode(false);
+                    }
+                    return !current;
+                  });
+                  setIsMoreOpen(false);
+                }}
+                type="button"
+              >
+                <Icon name="checkSquare" size={16} />
               </button>
 
               {/* A trackpad has no middle button, so panning needs a tool as well as a
@@ -6813,7 +7193,11 @@ export function RelationshipGraph({
                     ? `外观 · ${appearanceLabel}`
                     : surface === "arrange"
                       ? "整理画布"
-                      : "视觉分组"
+                      : surface === "explore"
+                        ? "探索关系"
+                        : surface === "characters"
+                          ? "角色与分组"
+                          : "视觉分组"
                 }
                 className="graph-page-drawer"
                 data-level={sheetLevel}
@@ -6826,7 +7210,11 @@ export function RelationshipGraph({
                         ? `外观 · ${appearanceLabel}`
                         : surface === "arrange"
                           ? "整理画布"
-                          : "视觉分组"}
+                          : surface === "explore"
+                            ? "探索关系"
+                            : surface === "characters"
+                              ? "角色与分组"
+                              : "视觉分组"}
                     </strong>
                     <span>
                       {surface === "design"
@@ -6837,8 +7225,29 @@ export function RelationshipGraph({
                             : "这个对象自己的边框、底色与形态"
                         : surface === "arrange"
                           ? "先预览，确认后才写入布局"
-                          : "分组只影响画布，不写世界观"}
+                          : surface === "explore"
+                            ? "聚光灯、关系透镜与视角书签"
+                            : surface === "characters"
+                              ? "搜索、定位与角色列表"
+                              : "分组只影响画布，不写世界观"}
                     </span>
+                    {/* The dock and the selection bar step aside for this sheet on a
+                        phone, so the sheet itself has to say what is selected and
+                        whether a proposal is waiting. One line, no controls. */}
+                    {preview ? (
+                      <span className="graph-page-drawer-state is-preview">
+                        预览「{arrangeLabel(preview.mode)}」，坐标未保存
+                      </span>
+                    ) : selectedIds.length === 1 ? (
+                      <span className="graph-page-drawer-state">
+                        已选 1 个角色
+                        {byId.get(selectedIds[0])
+                          ? ` · ${characterDisplayName(byId.get(selectedIds[0])!.character)}`
+                          : ""}
+                      </span>
+                    ) : selectedIds.length > 1 ? (
+                      <span className="graph-page-drawer-state">已选 {selectedIds.length} 个角色</span>
+                    ) : null}
                   </div>
                   <div className="graph-page-drawer-tools">
                     {/* Half height leaves the drawing visible; full height is for
@@ -6853,7 +7262,7 @@ export function RelationshipGraph({
                       <Icon name="chevronDown" size={16} />
                     </button>
                     <button
-                      aria-label={`关闭${surface === "design" ? "外观设置" : surface === "arrange" ? "整理画布" : "视觉分组"}`}
+                      aria-label={`关闭${surface === "design" ? "外观设置" : surface === "arrange" ? "整理画布" : surface === "explore" ? "探索面板" : surface === "characters" ? "角色面板" : "视觉分组"}`}
                       className="graph-page-drawer-close"
                       onClick={closeSurface}
                       type="button"
@@ -6866,6 +7275,8 @@ export function RelationshipGraph({
                   {surface === "design" && stylePanel}
                   {surface === "arrange" && arrangePanel}
                   {surface === "groups" && groupPanel}
+                  {surface === "explore" && explorePanelContent}
+                  {surface === "characters" && charactersPanelContent}
                 </div>
               </aside>
             </div>
@@ -7211,198 +7622,7 @@ export function RelationshipGraph({
                     </>
                   )}
 
-                  {surface === "explore" && (
-                  <div className="graph-explore-section">
-<div className="graph-explore-note">
-                    <span className="graph-explore-count">透镜 {lensKinds.length ? `${lensKinds.length} 类` : "未开启"}</span>
-                    <span>
-                      {lensKinds.length
-                        ? `正在强调：${lensKinds.map((kind) => relationshipKindLabel(kind)).join("、")}`
-                        : "选中关系类型后，其它类型淡出但仍保留。"}
-                    </span>
-                  </div>
-                  <div className="graph-studio-props">
-                    <div className="graph-spotlight">
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length !== 1 || spotlightId === selectedIds[0]}
-                        onClick={() => selectedIds.length === 1 && setSpotlightId(selectedIds[0])}
-                        type="button"
-                      >
-                        聚光灯
-                      </button>
-                      <div className="graph-scope-switch" role="group" aria-label="聚光灯层数">
-                        {[1, 2].map((depth) => (
-                          <button
-                            aria-pressed={spotlightDepth === depth}
-                            className={spotlightDepth === depth ? "active" : ""}
-                            key={depth}
-                            onClick={() => setSpotlightDepth(depth as 1 | 2)}
-                            type="button"
-                          >
-                            {depth} 层
-                          </button>
-                        ))}
-                      </div>
-                      {spotlightId && (
-                        <button className="ghost-button" onClick={() => setSpotlightId(null)} type="button">
-                          退出聚光灯
-                        </button>
-                      )}
-                    </div>
-                    <p className="graph-explore-hint">
-                      {spotlightId
-                        ? `高亮 ${spotlightSet?.size ?? 0} 个角色，其余淡出；只改显示，不改关系。`
-                        : "选中一个角色后开启，查看它的直接关系或两层关系。"}
-                    </p>
-
-                    <strong className="graph-studio-section">关系类型透镜</strong>
-                    <div className="graph-lens" role="group" aria-label="关系类型透镜">
-                      {presentKinds.map((kind) => (
-                        <button
-                          aria-pressed={lensKinds.includes(kind)}
-                          className={lensKinds.includes(kind) ? "graph-lens-chip active" : "graph-lens-chip"}
-                          key={kind}
-                          onClick={() =>
-                            setLensKinds((current) =>
-                              current.includes(kind)
-                                ? current.filter((entry) => entry !== kind)
-                                : [...current, kind],
-                            )
-                          }
-                          type="button"
-                        >
-                          {relationshipKindLabel(kind)}
-                        </button>
-                      ))}
-                    </div>
-                    {/* One control, one behaviour: 清除透镜 is the only way back to the
-                        whole drawing, and it says how many kinds it will clear. */}
-                    <button
-                      className="ghost-button graph-lens-clear"
-                      disabled={lensKinds.length === 0}
-                      onClick={() => setLensKinds([])}
-                      type="button"
-                    >
-                      {lensKinds.length ? `清除透镜（${lensKinds.length}）` : "未选择透镜"}
-                    </button>
-                  </div>
-
-                  
-                  <strong className="graph-studio-section">视角书签</strong>
-                  <form
-                    className="graph-bookmark-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      saveBookmark(bookmarkDraft);
-                    }}
-                  >
-                    <input
-                      aria-label="书签名称"
-                      maxLength={40}
-                      onChange={(event) => setBookmarkDraft(event.target.value)}
-                      placeholder="例如：北境线特写"
-                      value={bookmarkDraft}
-                    />
-                    <button className="ghost-button" disabled={!bookmarkDraft.trim()} type="submit">
-                      存下视角
-                    </button>
-                  </form>
-                  {(layout.bookmarks ?? []).length > 0 && (
-                    <ul className="graph-bookmarks">
-                      {(layout.bookmarks ?? []).map((bookmark) => {
-                        const editing = bookmarkEditingId === bookmark.id;
-                        const menuOpen = bookmarkMenuId === bookmark.id;
-                        return (
-                          <li className="graph-bookmark-row" key={bookmark.id}>
-                            {editing ? (
-                              <form
-                                className="graph-bookmark-rename"
-                                onSubmit={(event) => {
-                                  event.preventDefault();
-                                  renameBookmark(bookmark.id, bookmarkNameDraft);
-                                }}
-                              >
-                                <input
-                                  aria-label={`重命名书签 ${bookmark.name}`}
-                                  autoFocus
-                                  maxLength={40}
-                                  onChange={(event) => setBookmarkNameDraft(event.target.value)}
-                                  value={bookmarkNameDraft}
-                                />
-                                <button className="primary-button" disabled={!bookmarkNameDraft.trim()} type="submit">
-                                  保存
-                                </button>
-                                <button className="ghost-button" onClick={() => setBookmarkEditingId(null)} type="button">
-                                  取消
-                                </button>
-                              </form>
-                            ) : (
-                              <>
-                                {/* The name is the control: one press returns to that view.
-                                    It wraps nowhere and says its whole self in a tooltip,
-                                    because a bookmark is a label, not a form field. */}
-                                <button
-                                  className="graph-bookmark-jump"
-                                  onClick={() => jumpToBookmark(bookmark)}
-                                  title={bookmark.name}
-                                  type="button"
-                                >
-                                  <span>{bookmark.name}</span>
-                                  <em>{Math.round(bookmark.view.k * 100)}%</em>
-                                </button>
-                                <button
-                                  aria-expanded={menuOpen}
-                                  aria-haspopup="menu"
-                                  aria-label={`书签 ${bookmark.name} 的更多操作`}
-                                  className="graph-bookmark-more"
-                                  onClick={() => setBookmarkMenuId(menuOpen ? null : bookmark.id)}
-                                  type="button"
-                                >
-                                  ⋯
-                                </button>
-                                {menuOpen && (
-                                  <div className="graph-bookmark-menu" role="menu">
-                                    <button
-                                      onClick={() => {
-                                        setBookmarkEditingId(bookmark.id);
-                                        setBookmarkNameDraft(bookmark.name);
-                                        setBookmarkMenuId(null);
-                                      }}
-                                      role="menuitem"
-                                      type="button"
-                                    >
-                                      重命名
-                                    </button>
-                                    <button
-                                      onClick={() => removeBookmark(bookmark)}
-                                      role="menuitem"
-                                      type="button"
-                                    >
-                                      删除
-                                    </button>
-                                  </div>
-                                )}
-                              </>
-                            )}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  {bookmarkNotice && (
-                    <p className="graph-bookmark-notice" role="status">
-                      <span>{bookmarkNotice.text}</span>
-                      {bookmarkNotice.removed && (
-                        <button className="ghost-button" onClick={undoRemoveBookmark} type="button">
-                          撤销
-                        </button>
-                      )}
-                    </p>
-                  )}
-                  <p className="muted">书签只记录视角，不复制任何角色数据。</p>
-                  </div>
-                  )}
+                  {surface === "explore" && explorePanelContent}
                 </aside>
               )}
             </>
@@ -7419,7 +7639,7 @@ export function RelationshipGraph({
               which single state is shown — a preview waiting for a decision, the
               current selection, or a notice about the last change — so a selection
               bar, an arrange panel and an undo notice can never stack up again. */}
-          <div className="graph-context-slot">
+          <div className="graph-context-slot" data-yielded={surfaceIsOpen(surface) ? "true" : undefined}>
             {contextBar === "preview" && preview && (
               <div className="graph-context preview" role="status">
                 <div className="graph-context-row">
@@ -7442,42 +7662,96 @@ export function RelationshipGraph({
             {contextBar === "selection" && (
               <div aria-label="所选角色" className="graph-context selection" role="group">
                 <div className="graph-context-row">
-                  <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
-                  <span className={`graph-context-mode${selectMode ? " on" : ""}`}>
-                    {selectMode ? "选择工具：点按加入或移出，空白处拖动框选" : "浏览：点按替换选择"}
-                  </span>
-                  <div className="graph-context-actions">
-                    <button className="ghost-button" onClick={fitSelection} type="button">
-                      适应选中
-                    </button>
-                    <button
-                      aria-expanded={isAlignOpen}
-                      className={isAlignOpen ? "ghost-button active" : "ghost-button"}
-                      disabled={selectedIds.length < 2}
-                      onClick={() => setIsAlignOpen((open) => !open)}
-                      title={arrangeAvailability(selectedIds.length).reason ?? "对齐与分布"}
-                      type="button"
-                    >
-                      排列
-                    </button>
-                    <button
-                      className="ghost-button"
-                      disabled={selectedIds.length < 2}
-                      onClick={() => {
-                        setGroupDraft({ name: "", editingId: null });
-                        setSurface("groups");
-                      }}
-                      type="button"
-                    >
-                      创建分组
-                    </button>
-                    <button className="ghost-button" onClick={() => setSurface("design")} type="button">
-                      外观
-                    </button>
-                    <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
-                      清除选择
-                    </button>
-                  </div>
+                  {selectedIds.length === 1 ? (
+                    (() => {
+                      const selectedChar = byId.get(selectedIds[0])?.character;
+                      return (
+                        <>
+                          <div className="graph-context-single">
+                            <span className="graph-context-char-name">
+                              {selectedChar ? characterDisplayName(selectedChar) : "已选 1 个角色"}
+                            </span>
+                            <span className="graph-context-badge">
+                              {degreeById.get(selectedIds[0]) ?? 0} 条关系
+                            </span>
+                          </div>
+                          <div className="graph-context-actions">
+                            <button className="ghost-button" onClick={fitSelection} type="button">
+                              聚焦
+                            </button>
+                            {selectedChar && (
+                              <button
+                                className="ghost-button"
+                                onClick={() => onOpenCharacter(selectedChar.id)}
+                                type="button"
+                              >
+                                编辑
+                              </button>
+                            )}
+                            <button className="ghost-button" onClick={() => setSurface("design")} type="button">
+                              外观
+                            </button>
+                            <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                              清除选择
+                            </button>
+                            {multiSelectMode && (
+                              <button className="ghost-button" onClick={() => setMultiSelectMode(false)} type="button">
+                                退出多选
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()
+                  ) : (
+                    <>
+                      <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
+                      <span className={`graph-context-mode${selectMode || multiSelectMode ? " on" : ""}`}>
+                        {multiSelectMode
+                          ? "多选模式：点按节点增删角色"
+                          : selectMode
+                            ? "选择工具：点按加入或移出，空白处拖动框选"
+                            : "浏览：点按替换选择"}
+                      </span>
+                      <div className="graph-context-actions">
+                        <button className="ghost-button" onClick={fitSelection} type="button">
+                          适应选中
+                        </button>
+                        <button
+                          aria-expanded={isAlignOpen}
+                          className={isAlignOpen ? "ghost-button active" : "ghost-button"}
+                          disabled={selectedIds.length < 2}
+                          onClick={() => setIsAlignOpen((open) => !open)}
+                          title={arrangeAvailability(selectedIds.length).reason ?? "对齐与分布"}
+                          type="button"
+                        >
+                          排列
+                        </button>
+                        <button
+                          className="ghost-button"
+                          disabled={selectedIds.length < 2}
+                          onClick={() => {
+                            setGroupDraft({ name: "", editingId: null });
+                            setSurface("groups");
+                          }}
+                          type="button"
+                        >
+                          创建分组
+                        </button>
+                        <button className="ghost-button" onClick={() => setSurface("design")} type="button">
+                          外观
+                        </button>
+                        <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                          取消选择
+                        </button>
+                        {multiSelectMode && (
+                          <button className="ghost-button" onClick={() => setMultiSelectMode(false)} type="button">
+                            退出多选
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
                   {arrangeUndo && (
                     <span className="graph-context-undo" role="status">
                       已应用{arrangeUndo.label}

@@ -7624,6 +7624,414 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
+
+    // ---------------------------------------------------------------- Sprint 53.2
+    // One drawer, one row shape: label on the left, one control block on the right,
+    // buttons side by side. A drawer can report zero horizontal scroll and still be
+    // laid out badly, so this measures the rows themselves at both desktop widths.
+    await check("设计抽屉：分段不断裂、368px 统一宽度、1024 不挤走画布（Sprint 53.2）", async () => {
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await OPEN_GRAPH(1440, 900);
+      await cdp.value(`(async () => {
+        const direct = document.querySelector('[aria-label="外观设置"]');
+        if (direct) { direct.click(); return true; }
+        const more = document.querySelector('[aria-label="更多工具"]');
+        if (!more) return false;
+        more.click();
+        await new Promise((r) => setTimeout(r, 200));
+        const item = [...document.querySelectorAll(".graph-more-menu button")].find((b) => b.textContent.includes("外观"));
+        if (item) item.click();
+        return Boolean(item);
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const shape = await cdp.value(`(() => {
+        const panel = document.querySelector(".graph-style-panel");
+        const drawer = panel.closest(".graph-page-drawer") || panel.closest(".graph-studio-drawer");
+        const rows = [...panel.querySelectorAll(".graph-panel-row")].map((row) => {
+          const segment = row.querySelector(".graph-segment");
+          const buttons = segment ? [...segment.querySelectorAll("button")] : [];
+          const tops = buttons.map((b) => Math.round(b.getBoundingClientRect().top));
+          return {
+            label: (row.querySelector(".graph-control-label")?.textContent || "").trim(),
+            buttons: buttons.length,
+            stacked: new Set(tops).size > 1,
+            width: segment ? Math.round(segment.getBoundingClientRect().width) : 0,
+            rowWidth: Math.round(row.getBoundingClientRect().width),
+          };
+        });
+        return {
+          drawerWidth: drawer ? Math.round(drawer.getBoundingClientRect().width) : null,
+          scroll: panel.scrollWidth - panel.clientWidth,
+          drawerScroll: drawer ? drawer.scrollWidth - drawer.clientWidth : null,
+          rows,
+        };
+      })()`);
+
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1024, height: 900, deviceScaleFactor: 1, mobile: false });
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const narrow = await cdp.value(`(() => {
+        const drawer = document.querySelector(".graph-page-drawer") || document.querySelector(".graph-studio-drawer");
+        return {
+          drawer: drawer ? Math.round(drawer.getBoundingClientRect().width) : null,
+          drawerScroll: drawer ? drawer.scrollWidth - drawer.clientWidth : null,
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      })()`);
+
+      await cdp.value(`(() => {
+        const b = document.querySelector(".graph-page-drawer-close") || document.querySelector(".graph-studio-drawer-close");
+        if (b) b.click();
+        return Boolean(b);
+      })()`);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      const restored = await cdp.value(`(() => {
+        const canvas = document.querySelector(".graph-canvas-frame");
+        return {
+          canvas: canvas ? Math.round(canvas.getBoundingClientRect().width) : null,
+          nodes: document.querySelectorAll(".relationship-node").length,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      })()`);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+
+      const wide = shape.rows.filter((row) => row.buttons >= 2);
+      const broken = wide.filter((row) => row.stacked);
+      const tooWide = wide.filter((row) => row.width > row.rowWidth + 1);
+
+      const pass =
+        shape.drawerWidth >= 356 && shape.drawerWidth <= 384 &&
+        shape.scroll <= 0 && shape.drawerScroll <= 0 &&
+        wide.length >= 5 && broken.length === 0 && tooWide.length === 0 &&
+        narrow.drawer >= 356 && narrow.drawer <= 384 &&
+        narrow.drawerScroll <= 0 && narrow.pageOverflow <= 0 &&
+        restored.canvas > 600 && restored.nodes >= 5 && restored.overflow <= 0;
+
+      return {
+        pass,
+        detail: `1440 抽屉 ${shape.drawerWidth}px 正文溢出 ${shape.scroll} 抽屉溢出 ${shape.drawerScroll}；多按钮行 ${wide.length} 纵向断裂 ${broken.map((r) => r.label).join("/") || "无"} 超宽 ${tooWide.map((r) => r.label).join("/") || "无"}；1024 抽屉 ${narrow.drawer}px 溢出 ${narrow.pageOverflow}；关闭后画布 ${restored.canvas}px 节点 ${restored.nodes}`,
+      };
+    });
+
+    // Three phone widths, the same first screen: the dock reachable, the task sheet
+    // reachable, the sheet taking over the state line while the dock steps aside.
+    await check("手机 320/375/430：工具坞与任务抽屉可达、让位后仍有状态（Sprint 53.2）", async () => {
+      const widths = [320, 375, 430];
+      const results = [];
+
+      for (const width of widths) {
+        await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+        await OPEN_GRAPH(width, 812);
+        await cdp.waitFor(`!!document.querySelector(".relationship-node")`, 5000);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        const reach = await cdp.value(`(() => {
+          const dock = document.querySelector(".graph-canvas-tools");
+          const more = document.querySelector('[aria-label="更多工具"]');
+          const multi = document.querySelector(".graph-touch-select");
+          const node = document.querySelector(".relationship-node");
+          const box = node ? node.getBoundingClientRect() : null;
+          return {
+            dockVisible: dock ? getComputedStyle(dock).visibility !== "hidden" : false,
+            more: more ? more.getBoundingClientRect().width > 0 : false,
+            multi: multi ? multi.getBoundingClientRect().width > 0 : false,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            point: box ? { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) } : null,
+          };
+        })()`);
+
+        if (reach.point) {
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [reach.point] });
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await new Promise((resolve) => setTimeout(resolve, 420));
+        }
+
+        const opened = await cdp.value(`(async () => {
+          const direct = document.querySelector('[aria-label="外观设置"]');
+          if (direct) { direct.click(); return true; }
+          const more = document.querySelector('[aria-label="更多工具"]');
+          if (!more) return false;
+          more.click();
+          await new Promise((r) => setTimeout(r, 200));
+          const item = [...document.querySelectorAll(".graph-more-menu button")].find((b) => b.textContent.includes("外观"));
+          if (!item) return false;
+          item.click();
+          return true;
+        })()`);
+        if (opened) {
+          await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+
+        const sheet = await cdp.value(`(() => {
+          const dock = document.querySelector(".graph-canvas-tools");
+          const slot = document.querySelector(".graph-context-slot");
+          const state = document.querySelector(".graph-page-drawer-state");
+          const drawer = document.querySelector(".graph-page-drawer");
+          const close = document.querySelector(".graph-page-drawer-close");
+          const closeBox = close ? close.getBoundingClientRect() : null;
+          return {
+            dockYielded: dock ? getComputedStyle(dock).visibility === "hidden" : true,
+            slotYielded: slot ? getComputedStyle(slot).visibility === "hidden" : true,
+            state: state ? state.textContent.replace(/\s+/g, " ").trim() : "",
+            drawerOverflow: drawer ? drawer.scrollWidth - drawer.clientWidth : null,
+            closeReachable: Boolean(closeBox && closeBox.top >= 0 && closeBox.top < window.innerHeight && closeBox.width > 0),
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          };
+        })()`);
+
+        await cdp.value(`(() => { const b = document.querySelector(".graph-page-drawer-close"); if (b) b.click(); })()`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const after = await cdp.value(`(() => {
+          const dock = document.querySelector(".graph-canvas-tools");
+          return {
+            selected: document.querySelectorAll('.relationship-node[data-selected="true"]').length,
+            dockVisible: dock ? getComputedStyle(dock).visibility !== "hidden" : false,
+            overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          };
+        })()`);
+
+        results.push({ width, opened, reach, sheet, after });
+      }
+
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+
+      const allowance = (width) => (width === 320 ? 12 : 0);
+      const pass = results.every((r) =>
+        r.opened &&
+        r.reach.dockVisible && r.reach.more && r.reach.multi &&
+        r.reach.overflow <= allowance(r.width) &&
+        r.sheet.dockYielded && r.sheet.slotYielded &&
+        r.sheet.state.includes("已选") &&
+        r.sheet.drawerOverflow <= 0 &&
+        r.sheet.closeReachable &&
+        r.sheet.overflow <= allowance(r.width) &&
+        r.after.dockVisible &&
+        r.after.overflow <= allowance(r.width),
+      );
+
+      return {
+        pass,
+        detail: results.map((r) => {
+          const failing = [
+            !r.opened && "drawerUnreachable",
+            !r.reach.dockVisible && "dockHidden",
+            !r.reach.more && "moreMissing",
+            !r.reach.multi && "multiMissing",
+            r.reach.overflow > allowance(r.width) && "overflow",
+            !r.sheet.dockYielded && "dockNotYielded",
+            !r.sheet.slotYielded && "slotNotYielded",
+            !r.sheet.state.includes("已选") && "noState",
+            r.sheet.drawerOverflow > 0 && "drawerOverflow",
+            !r.sheet.closeReachable && "closeUnreachable",
+            r.sheet.overflow > allowance(r.width) && "sheetOverflow",
+            !r.after.dockVisible && "dockStaysHidden",
+            r.after.overflow > allowance(r.width) && "afterOverflow",
+          ].filter(Boolean);
+          return `${r.width}px 失败=${failing.join("+") || "无"} 溢出=${r.reach.overflow} 抽屉溢出=${r.sheet.drawerOverflow} Header="${r.sheet.state}" 关后选中=${r.after.selected}`;
+        }).join(" ｜ "),
+      };
+    });
+
+    // Six pages, one masthead: the drawing band is allowed to be smaller than a roster
+    // hero, but every page has to come from the same scale and keep its counts on the
+    // title's left edge.
+    await check("全站 Hero：标题同尺度、统计副标题对齐、无横向溢出（Sprint 53.2）", async () => {
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_GRAPH);
+      await cdp.goto(base);
+
+      const measure = async () => cdp.value(`(() => {
+        const title = document.querySelector(".workspace-header-title");
+        const summary = document.querySelector(".workspace-header-summary");
+        if (!title) return null;
+        const titleBox = title.getBoundingClientRect();
+        const summaryBox = summary ? summary.getBoundingClientRect() : null;
+        return {
+          title: title.textContent.trim(),
+          size: parseFloat(getComputedStyle(title).fontSize),
+          summarySize: summary ? parseFloat(getComputedStyle(summary).fontSize) : null,
+          aligned: summaryBox ? Math.abs(summaryBox.left - titleBox.left) <= 1 : true,
+          overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      })()`);
+
+      const visit = async (label) => {
+        const ok = await cdp.value(`(async () => {
+          const trigger = document.querySelector(".workspace-switch");
+          if (!trigger) return false;
+          trigger.click();
+          await new Promise((r) => setTimeout(r, 220));
+          const row = [...document.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith(${JSON.stringify(label)}));
+          if (!row) return false;
+          row.click();
+          await new Promise((r) => setTimeout(r, 450));
+          return true;
+        })()`);
+        return ok ? { label, ...(await measure()) } : { label, missing: true };
+      };
+
+      const pages = [{ label: "角色创作工作台", ...(await measure()) }];
+      for (const label of ["角色关系网", "世界观时间线", "世界观管理"]) {
+        pages.push(await visit(label));
+      }
+
+      const seen = pages.filter((page) => !page.missing && page.size);
+      const scale = [20, 24, 26, 28];
+      const offScale = seen.filter((page) => !scale.includes(page.size));
+      const misaligned = seen.filter((page) => page.aligned === false);
+      const overflowing = seen.filter((page) => page.overflow > 0);
+
+      return {
+        pass: seen.length >= 4 && offScale.length === 0 && misaligned.length === 0 && overflowing.length === 0,
+        detail: seen.map((p) => `${p.label}:${p.size}px/副${p.summarySize ?? "-"}px`).join(" · ") +
+          `；越界字号 ${offScale.map((p) => p.label).join("/") || "无"}；左缘不齐 ${misaligned.map((p) => p.label).join("/") || "无"}；溢出 ${overflowing.map((p) => `${p.label}${p.overflow}px`).join("/") || "无"}`,
+      };
+    });
+
+    // Two fingers, one view update: a pure pan must not change zoom, a pure pinch must
+    // not move the drawing, and neither may write a coordinate.
+    await check("手机双指：中点平移只改视角、捏合以中心缩放、取消不写坐标（Sprint 53.2）", async () => {
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+      await OPEN_GRAPH(375, 812);
+      await cdp.waitFor(`!!document.querySelector(".relationship-node")`, 4000);
+
+      const read = async () => cdp.value(`(() => {
+        const stored = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "{}");
+        const box = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+        return {
+          positions: stored.positions || {},
+          readout: (document.querySelector(".graph-zoom-readout")?.textContent || "").trim(),
+          centre: { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) },
+        };
+      })()`);
+
+      const before = await read();
+      const pair = (dx, ox) => [
+        { x: Math.round(before.centre.x - dx + ox), y: Math.round(before.centre.y) },
+        { x: Math.round(before.centre.x + dx + ox), y: Math.round(before.centre.y) },
+      ];
+
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pair(40, 0) });
+      for (const step of [1, 2, 3, 4]) {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pair(40, 10 * step) });
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const panned = await read();
+
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pair(30, 0) });
+      for (const step of [1, 2, 3, 4]) {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pair(30 + 12 * step, 0) });
+        await new Promise((resolve) => setTimeout(resolve, 60));
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const pinched = await read();
+
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: pair(40, 0) });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: pair(80, 0) });
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const cancelled = await read();
+
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+      const pass =
+        same(before.positions, panned.positions) &&
+        same(before.positions, pinched.positions) &&
+        same(before.positions, cancelled.positions) &&
+        panned.readout === before.readout &&
+        pinched.readout !== before.readout;
+
+      return {
+        pass,
+        detail: `平移 ${before.readout}→${panned.readout} 坐标未变 ${same(before.positions, panned.positions)}；捏合→${pinched.readout} 坐标未变 ${same(before.positions, pinched.positions)}；取消后坐标未变 ${same(before.positions, cancelled.positions)}`,
+      };
+    });
+
+    // No modifier key on a phone, so the mode is the modifier: taps add and remove,
+    // dragging one member carries the set, and leaving the mode restores replacement.
+    await check("手机多选：点按增删、整组拖动写坐标、退出恢复单选（Sprint 53.2）", async () => {
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+      await OPEN_GRAPH(375, 812);
+      await cdp.waitFor(`!!document.querySelector(".relationship-node")`, 4000);
+
+      const boxes = async () => cdp.value(`(() => [...document.querySelectorAll(".relationship-node")].slice(0, 2).map((node) => {
+        const box = node.getBoundingClientRect();
+        return { id: node.getAttribute("data-character-id"), x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2), left: Math.round(box.left * 10) / 10 };
+      }))()`);
+      const selected = async () => cdp.value(`document.querySelectorAll('.relationship-node[data-selected="true"]').length`);
+      const tap = async (point) => {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: point.x, y: point.y }] });
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await new Promise((resolve) => setTimeout(resolve, 520));
+      };
+
+      await cdp.value(`(document.querySelector(".graph-touch-select")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      let points = await boxes();
+      await tap(points[0]);
+      await tap(points[1]);
+      const two = await selected();
+
+      points = await boxes();
+      await tap(points[0]);
+      const one = await selected();
+      points = await boxes();
+      await tap(points[0]);
+      const back = await selected();
+
+      const beforeBoxes = await boxes();
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: points[1].x, y: points[1].y }] });
+      for (const step of [1, 2, 3, 4, 5]) {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: points[1].x + 10 * step, y: points[1].y }] });
+        await new Promise((resolve) => setTimeout(resolve, 70));
+      }
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await new Promise((resolve) => setTimeout(resolve, 420));
+
+      const afterBoxes = await boxes();
+      const shifts = beforeBoxes.map((node, index) => Math.round((afterBoxes[index].left - node.left) * 10) / 10);
+      const stored = await cdp.value(`(() => {
+        const raw = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "{}");
+        return Object.keys(raw.positions || {}).length;
+      })()`);
+
+      await cdp.value(`(document.querySelector(".graph-touch-select")).click()`);
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      const third = await cdp.value(`(() => {
+        const node = [...document.querySelectorAll(".relationship-node")].find((el) => el.getAttribute("data-selected") !== "true");
+        if (!node) return null;
+        const box = node.getBoundingClientRect();
+        return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) };
+      })()`);
+      if (third) await tap(third);
+      const afterExit = await selected();
+
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+
+      const pass =
+        two === 2 && one === 1 && back === 2 &&
+        shifts.every((dx) => Math.abs(dx) > 20) &&
+        Math.abs(shifts[0] - shifts[1]) <= 1.5 &&
+        stored >= 2 &&
+        afterExit === 1;
+
+      return {
+        pass,
+        detail: `选中 ${two}→点掉 ${one}→补回 ${back}；整组位移 ${JSON.stringify(shifts)}；落盘坐标 ${stored}；退出后单击选中 ${afterExit}`,
+      };
+    });
+
     // Not a check: an opt-in capture, so the result of a visual change can be looked
     // at rather than only asserted. Runs only with SHOTS=1 so CI writes no files.
     if (process.env.SHOTS) {

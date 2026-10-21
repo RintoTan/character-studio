@@ -20,6 +20,7 @@ import { defaultCollapseState, type EditorSectionId } from "../storage/editorUiS
 import type { Character, CharacterDraft } from "../types/character";
 import { useAvatarEditing } from "../hooks/useAvatarEditing";
 import { useCharacterSave } from "../hooks/useCharacterSave";
+import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { useEditorSections } from "../hooks/useEditorSections";
 import { useIdentityEditing } from "../hooks/useIdentityEditing";
 import { useTransientMessage } from "../hooks/useTransientMessage";
@@ -1283,6 +1284,24 @@ export function CharacterForm({
   const [pendingFormAction, setPendingFormAction] = useState<"clear" | "delete" | null>(null);
   const [isEditorMoreOpen, setIsEditorMoreOpen] = useState(false);
   const actionBarRef = useRef<HTMLDivElement>(null);
+
+  const cropDialogRef = useDialogKeyboard({
+    active: Boolean(cropDraft),
+    onClose: closeCropDialog,
+    onConfirm: () => void confirmCropAvatar(),
+  });
+  const assetLibraryDialogRef = useDialogKeyboard({
+    active: isAssetLibraryOpen,
+    onClose: () => setIsAssetLibraryOpen(false),
+  });
+  const helperConfirmDialogRef = useDialogKeyboard({
+    active: Boolean(isHelperReplaceConfirmOpen && helperSuggestion),
+    onClose: () => setIsHelperReplaceConfirmOpen(false),
+    onConfirm: () => {
+      setIsHelperReplaceConfirmOpen(false);
+      applyHelperSuggestion("replace");
+    },
+  });
   // Building a character, watching whether it is saved, and the two ways the
   // browser is told about it -- the autosave timer and the unload prompt -- are one
   // domain, so they are one hook.
@@ -2803,7 +2822,7 @@ export function CharacterForm({
       )}
       {isHelperReplaceConfirmOpen && helperSuggestion && (
         <div className="modal-backdrop" role="presentation">
-          <div className="confirm-dialog" role="dialog" aria-modal="true">
+          <div className="confirm-dialog" ref={helperConfirmDialogRef} role="dialog" aria-modal="true">
             <h2>替换当前字段</h2>
             <p>确定要用这条辅助内容替换当前字段吗？原内容会被覆盖。</p>
             <div className="form-actions">
@@ -2830,7 +2849,7 @@ export function CharacterForm({
       )}
       {cropDraft && (
         <div className="modal-backdrop" role="presentation">
-          <div className="crop-dialog" role="dialog" aria-modal="true">
+          <div className="crop-dialog" ref={cropDialogRef} role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
                 <p className="eyebrow">Avatar Crop</p>
@@ -2966,7 +2985,7 @@ export function CharacterForm({
           }}
           role="presentation"
         >
-          <div className="asset-library-dialog" role="dialog" aria-modal="true">
+          <div className="asset-library-dialog" ref={assetLibraryDialogRef} role="dialog" aria-modal="true">
             <div className="preview-card-title">
               <div>
                 <p className="eyebrow">Local Assets</p>

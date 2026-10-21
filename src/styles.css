@@ -30,6 +30,20 @@
   --pad-surface: 24px;
   --pad-card: 16px;
   --pad-rail: 12px;
+
+  /* The page frame. One gutter and four named widths: a workspace picks a container
+     instead of declaring its own cap, so Hero, search and body share an edge by
+     construction rather than by three matching magic numbers. */
+  --page-inset: 24px;
+  --page-inset-compact: 16px;
+  --container-wide: 1440px;
+  --container-standard: 1120px;
+  --container-reading: 880px;
+  --container-form: 760px;
+  --section-gap: 20px;
+  --control-h: 34px;
+  /* One gap between a search/filter strip and the body it filters. */
+  --toolbar-gap: 14px;
   --control-height: 42px;
   /* The icon tier.
      The three icon classes are one visual language, so they get one number, stated
@@ -93,6 +107,12 @@
      timestamps. */
   --text-page-title: 28px;
   --text-page-title-phone: 22px;
+  /* Two steps below the full hero. The drawing page and the editor's compact header
+     use these instead of declaring their own sizes, so every masthead sits on one
+     type scale. */
+  --text-hero-band: 20px;
+  --text-hero-band-phone: 17px;
+  --text-hero-compact: 24px;
   --text-section-title: 20px;
   --text-body: 14px;
   --text-meta: 12px;
@@ -8451,7 +8471,7 @@ body:has([aria-modal="true"]) .floating-actions {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 14px 0 0;
+  margin: var(--toolbar-gap) 0 0;
 }
 
 .timeline-search {
@@ -9034,7 +9054,7 @@ body:has([aria-modal="true"]) .floating-actions {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  margin: 14px 0 0;
+  margin: var(--toolbar-gap) 0 0;
 }
 
 .world-search {
@@ -9954,7 +9974,7 @@ body:has([aria-modal="true"]) .floating-actions {
 }
 
 .workspace-header--compact .workspace-header-title {
-  font-size: 24px;
+  font-size: var(--text-hero-compact);
 }
 
 .workspace-header-summary {
@@ -9992,7 +10012,7 @@ body:has([aria-modal="true"]) .floating-actions {
 .relationship-page,
 .timeline-page,
 .world-page {
-  --workspace-inset: 24px;
+  --workspace-inset: var(--page-inset);
 }
 
 .relationship-page > :not(.workspace-header),
@@ -10007,7 +10027,7 @@ body:has([aria-modal="true"]) .floating-actions {
    stays as the minimum gutter; the auto margins take over once the cap is reached. */
 .timeline-page > :not(.workspace-header) {
   width: calc(100% - 2 * var(--workspace-inset));
-  max-width: 880px;
+  max-width: var(--container-reading);
   margin-inline: auto;
 }
 
@@ -10016,20 +10036,20 @@ body:has([aria-modal="true"]) .floating-actions {
    dropped because the column already carries the gutter. */
 .timeline-page > .workspace-header {
   width: calc(100% - 2 * var(--workspace-inset));
-  max-width: 880px;
+  max-width: var(--container-reading);
   margin-inline: auto;
   padding-inline: 0;
 }
 
 .world-page .world-detail {
-  max-width: 720px;
+  max-width: var(--container-form);
 }
 
 @media (max-width: 720px) {
   .relationship-page,
   .timeline-page,
   .world-page {
-    --workspace-inset: 16px;
+    --workspace-inset: var(--page-inset-compact);
   }
 }
 
@@ -10570,7 +10590,7 @@ body:has([aria-modal="true"]) .floating-actions {
 
 /* Search and zoom sit on the canvas they act on, as one strip. */
 .graph-canvas-tools {
-  margin: 12px 0 8px;
+  margin: var(--toolbar-gap) 0 var(--toolbar-gap);
 }
 
 /* --- Dark theme: separate the layers ---------------------------------------- */
@@ -11404,9 +11424,9 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
    night need different ink to stay a background. */
 :root {
   --grid-dot: rgba(15, 23, 42, 0.22);
-  /* One width for a task drawer in both modes: the same panel should not change size
-     because the studio was opened. */
-  --drawer-width: 336px;
+  /* One width for a task drawer in both modes: 368px gives comfortable breathing
+     room for labels and multi-button segments without crowding the canvas. */
+  --drawer-width: 368px;
 }
 
 :root[data-theme="dark"] {
@@ -12130,6 +12150,13 @@ circle.graph-grid-dot {
 
 .graph-style-grid input[type="range"] {
   width: 100%;
+  /* A range input carries a default margin and an intrinsic min width; inside a grid
+     cell that is exactly one column wide, those two pixels were the only horizontal
+     overflow left in the drawer. */
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  box-sizing: border-box;
 }
 
 .graph-canvas-tools .graph-grid-plane path {
@@ -12615,6 +12642,9 @@ circle.graph-grid-dot {
 }
 
 .graph-studio-drawer {
+  /* `--drawer-width` is the outer width of the panel, not its content width: without
+     this the 1px border on each side made the drawer 372px wherever it was measured. */
+  box-sizing: border-box;
   position: relative;
   z-index: var(--z-overlay-6);
   display: flex;
@@ -13711,6 +13741,10 @@ circle.graph-grid-dot {
   margin-left: 0;
 }
 
+.graph-touch-select {
+  display: none;
+}
+
 .graph-toolbar {
   display: flex;
   align-items: center;
@@ -13906,6 +13940,7 @@ circle.graph-grid-dot {
 }
 
 .graph-page-drawer {
+  box-sizing: border-box;
   position: sticky;
   top: 84px;
   display: flex;
@@ -13944,6 +13979,98 @@ circle.graph-grid-dot {
   font-size: 12px;
   color: var(--muted);
   line-height: 1.4;
+}
+
+/* Selection and preview, one line: this is the replacement for a hidden dock, so it
+   is a statement about state (not a control) and never wraps into the tools row. */
+.graph-page-drawer-state {
+  justify-self: start;
+  margin-top: 2px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--text-soft);
+  font-size: 11.5px;
+  line-height: 1.5;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The selected character's direct relations, listed before the lens and the
+   spotlight: on a small drawing this is the answer, on a large one it is the starting
+   point. */
+.graph-explore-focus {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  min-width: 0;
+}
+
+.graph-explore-focus-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+
+.graph-explore-focus-head strong {
+  font-size: 13px;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-explore-focus-head span {
+  font-size: 11.5px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.graph-explore-neighbours {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-explore-neighbours li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.graph-explore-neighbour-name {
+  color: var(--text-soft);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-explore-neighbour-kind {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.graph-page-drawer-state.is-preview {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--text);
 }
 
 .graph-page-drawer-close {
@@ -14166,7 +14293,7 @@ circle.graph-grid-dot {
 }
 
 .graph-studio-drawer.right[data-tab="arrange"] {
-  width: 336px;
+  width: var(--drawer-width);
 }
 
 /* The preview and selection card floats over the drawing inside the studio, in the
@@ -14240,6 +14367,28 @@ circle.graph-grid-dot {
      dock at the bottom edge, where a thumb reaches it. */
   .relationship-page:not(.graph-studio) {
     padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* The dock and the selection bar yield to an open task sheet instead of stacking
+     under it. `data-yielded` is written by the page from the same surface state that
+     renders the sheet, so there is one owner of this decision; the sheet's own header
+     then carries the selection summary so nothing about the current state is lost. */
+  .graph-canvas-tools[data-yielded="true"],
+  .graph-context-slot[data-yielded="true"] {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* One slot, two tools. A marquee needs a pointer that can hold a button down; a
+     thumb gets the explicit multi-select mode in the same place, so the dock keeps
+     exactly as many controls as it had before. */
+  .graph-desktop-select {
+    display: none;
+  }
+
+  .graph-touch-select {
+    display: grid;
   }
 
   .relationship-page:not(.graph-studio) .graph-canvas-tools {
@@ -14466,7 +14615,7 @@ circle.graph-grid-dot {
 }
 
 .relationship-page .workspace-header-title {
-  font-size: 20px;
+  font-size: var(--text-hero-band);
 }
 
 @media (max-width: 720px) {
@@ -14487,7 +14636,7 @@ circle.graph-grid-dot {
   }
 
   .relationship-page .workspace-header-title {
-    font-size: 17px;
+    font-size: var(--text-hero-band-phone);
     line-height: 1.3;
   }
 
@@ -15064,32 +15213,61 @@ circle.graph-grid-dot {
    so 名称 sat six pixels from one edge and 头像形态 from another. */
 .graph-style-panel .graph-panel-row {
   display: grid;
-  /* Label plus one flexible control column. A max-content second column let a
-     three-button segment push past the drawer edge and produce a horizontal
-     scrollbar; a flexible column makes the segment wrap instead. */
   grid-template-columns: 74px minmax(0, 1fr);
   gap: 8px 10px;
   align-items: center;
 }
 
-.graph-style-panel .graph-segment,
+.graph-style-panel .graph-panel-row.graph-panel-row-stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.graph-style-panel .graph-segment {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  max-width: 100%;
+  min-width: 0;
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.graph-style-panel .graph-segment.graph-segment-full {
+  width: 100%;
+  display: flex;
+}
+
 .graph-style-panel .graph-arrow-options {
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex-wrap: nowrap;
   max-width: 100%;
   min-width: 0;
 }
 
+/* The segment decides how its buttons share the row; the button keeps the one
+   height, padding and type size every other segment uses. */
 .graph-style-panel .graph-segment-button {
+  flex: 1 1 auto;
   min-width: 0;
   white-space: nowrap;
 }
 
 .graph-style-panel .graph-panel-row .graph-control-label {
   min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
 }
 
 .graph-style-panel .graph-panel-row .graph-segment {
   justify-self: start;
+}
+
+.graph-style-panel .graph-panel-row.graph-panel-row-stacked .graph-segment {
+  justify-self: stretch;
+  width: 100%;
 }
 
 /* The counts are a status line, not a headline. */
