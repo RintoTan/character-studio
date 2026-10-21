@@ -1452,6 +1452,15 @@ const GRAPH_SEARCH_AND_FOCUS = `
         state: (option.querySelector(".graph-search-state")?.textContent || "").trim(),
       }));
 
+    // Search is a compact control until it is opened, so a probe that expects the
+    // field has to take the same first step a reader takes.
+    if (!document.querySelector(".graph-search-field input")) {
+      document.querySelector(".graph-search-trigger")?.click();
+      for (let waited = 0; waited < 2000 && !document.querySelector(".graph-search-field input"); waited += 50) {
+        await sleep(50);
+      }
+    }
+
     const field = document.querySelector(".graph-search-field input");
     if (!field) throw new Error("graph search field missing");
 
@@ -1522,6 +1531,15 @@ const GRAPH_SEARCH_OFF_CANVAS = `
       setter.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     };
+
+    // Search is a compact control until it is opened, so a probe that expects the
+    // field has to take the same first step a reader takes.
+    if (!document.querySelector(".graph-search-field input")) {
+      document.querySelector(".graph-search-trigger")?.click();
+      for (let waited = 0; waited < 2000 && !document.querySelector(".graph-search-field input"); waited += 50) {
+        await sleep(50);
+      }
+    }
 
     const field = document.querySelector(".graph-search-field input");
     setValue(field, "梵高");
@@ -4662,7 +4680,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
           activeEdges: document.querySelectorAll(".relationship-edge.active").length,
           dimmed: document.querySelectorAll(".relationship-node.dimmed").length,
           nodes: document.querySelectorAll(".relationship-node").length,
-          searchEmpty: (document.querySelector(".graph-search-field input") || {}).value ?? "n/a",
+          // With the compact search the field may be closed; a trigger that says
+          // plain 搜索 is the same fact as an empty field.
+          searchEmpty: (() => {
+            const field = document.querySelector(".graph-search-field input");
+            if (field) return field.value;
+            const trigger = document.querySelector(".graph-search-trigger");
+            if (!trigger) return "n/a";
+            return trigger.textContent.trim() === "搜索" ? "" : "n/a";
+          })(),
           historyGrowth: window.history.length - before,
         };
       })()`);
@@ -5778,6 +5804,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(SEED_GRAPH_LARGE);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.value(`(() => { if (!document.querySelector(".graph-search-field input")) document.querySelector(".graph-search-trigger")?.click(); return true; })()`);
       await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
       const sketch = await cdp.value(READ_GRAPH_CANVAS);
       // 显示全部角色 moved from the page header into 视图, because it changes what the
@@ -5848,6 +5875,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.value(`(() => { if (!document.querySelector(".graph-search-field input")) document.querySelector(".graph-search-trigger")?.click(); return true; })()`);
       await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
       const state = await cdp.value(GRAPH_SEARCH_OFF_CANVAS);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
@@ -6137,6 +6165,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       const focused = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        if (!document.querySelector(".graph-search-field input")) {
+          document.querySelector(".graph-search-trigger")?.click();
+          await sleep(250);
+        }
         const input = document.querySelector(".graph-search-field input");
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
         setter.call(input, "沈砚");
@@ -6578,7 +6610,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
       });
 
-      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
+      // 取消 keeps the panel open now (a preview is compared inside it), so 整理 is
+      // pressed only when the panel is actually closed.
+      await cdp.value(`(() => {
+        if (!document.querySelector(".graph-arrange-panel")) {
+          document.querySelector('.graph-toolbar button[aria-label="整理画布"]').click();
+        }
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-arrange-panel")`, 3000);
       await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "环形布局")).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-context.preview")`, 3000);
       await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "确认应用")).click()`);
@@ -6838,7 +6878,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return start && Math.abs(start.cx - node.cx) < 0.5 && Math.abs(start.cy - node.cy) < 0.5;
       });
 
-      await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="整理画布"]')).click()`);
+      // 取消 keeps the panel open now (a preview is compared inside it), so 整理 is
+      // pressed only when the panel is actually closed.
+      await cdp.value(`(() => {
+        if (!document.querySelector(".graph-arrange-panel")) {
+          document.querySelector('.graph-toolbar button[aria-label="整理画布"]').click();
+        }
+        return true;
+      })()`);
+      await cdp.waitFor(`!!document.querySelector(".graph-arrange-panel")`, 3000);
       await cdp.value(`([...document.querySelectorAll(".graph-arrange-panel button")].find((b) => b.textContent.trim() === "环形布局")).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-context.preview")`, 3000);
       await cdp.value(`([...document.querySelectorAll(".graph-context.preview button")].find((b) => b.textContent.trim() === "确认应用")).click()`);
@@ -7069,6 +7117,13 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(clickWorkspace("角色关系网"));
       await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
       await new Promise((resolve) => setTimeout(resolve, 400));
+      // Truncation is a fact about a name that is drawn. At the 375px fit the label
+      // floor hides small names, so the check zooms in first — the question is whether
+      // a drawn long name is shortened, not whether an unreadable one exists.
+      for (let step = 0; step < 4; step += 1) {
+        await cdp.value(`(document.querySelector('button[aria-label="放大画布"]')).click()`);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
       const longShown = await cdp.value(`[...document.querySelectorAll(".relationship-node-name")].some((node) => node.textContent.includes("…"))`);
       const longCentre = await cdp.value(NODE_CENTRE("g-2"));
       await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: longCentre.x, y: longCentre.y }] });
@@ -7421,7 +7476,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       }
       await cdp.value(`([...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "排列")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await cdp.value(`([...document.querySelectorAll(".graph-align-panel button")].find((b) => b.textContent.trim() === "顶对齐")).click()`);
+      // The align tools are icons: the label lives on aria-label, which is also what a
+      // screen reader announces. Reading the accessible name rather than the text keeps
+      // the check tied to what the control is called.
+      await cdp.value(`(document.querySelector('.graph-align-panel button[aria-label="顶对齐"]')).click()`);
       await new Promise((resolve) => setTimeout(resolve, 250));
       const aligned = await cdp.value(`(() => {
         const y = (id) => {
@@ -7468,7 +7526,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
     });
 
 
-    await check("外观：五种预设真实改变节点、连线与网格，刷新后保留（Sprint 50）", async () => {
+    await check("外观：八个预设真实改变节点、连线与网格，刷新后保留（Sprint 50）", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await OPEN_GRAPH();
       const look = async () => cdp.value(`(() => {
@@ -7488,6 +7546,9 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="外观设置"]')).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
       const presetCount = await cdp.value(`document.querySelectorAll(".graph-preset").length`);
+      // The shipped set, by name: a preset that disappears or arrives without a
+      // thumbnail is a change in the product, not a test detail.
+      const presetNames = await cdp.value(`[...document.querySelectorAll(".graph-preset")].map((b) => b.textContent.trim())`);
       await cdp.value(`([...document.querySelectorAll(".graph-preset")].find((b) => b.textContent.trim() === "档案研究")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 350));
       const archive = await look();
@@ -7508,7 +7569,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const restored = await look();
 
       const pass =
-        presetCount === 5 &&
+        presetCount === 8 &&
+        presetNames.includes("故事脉络") &&
+        presetNames.includes("关系档案") &&
+        presetNames.includes("柔和展示") &&
         archive.r < base.r &&
         Math.abs(archive.width - 1) < 0.15 &&
         String(archive.grid).includes("line-grid") &&
@@ -8598,7 +8662,13 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
             body: body ? +body.getBoundingClientRect().width.toFixed(0) : 0,
             bodyText: body ? body.textContent.slice(0, 12) : "",
             bodyFont: parseFloat(getComputedStyle(body || detail).fontSize),
-            bottom: +(workspace.bottom - detail.getBoundingClientRect().bottom).toFixed(0),
+            // Measured against the explorer, not the page: the reading guide now sits
+            // under the work as a line of the page, so page-bottom would count the
+            // guide as empty space below the detail. The question this answers is still
+            // "does the detail pane leave a large blank under its own content".
+            bottom: +(
+              (explorer.getBoundingClientRect().bottom - detail.getBoundingClientRect().bottom) || 0
+            ).toFixed(0),
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           };
         })()`);
