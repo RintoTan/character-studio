@@ -6105,11 +6105,15 @@ export function RelationshipGraph({
           </div>
 
           {!showAll && visibleCharacters.length < connectedIds.size && (
-            <p className="graph-scope-note" role="status">
-              画布显示 {visibleCharacters.length} / {connectedIds.size} 个有连接的角色（共{" "}
-              {characters.length} 个），另有 {connectedIds.size - visibleCharacters.length} 个未画出。
-              这是核心视图的密度上限（{isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT}），
-              不是数据过滤：搜索这些角色可以直接聚焦，或在设计里切到「所有角色」。
+            <p
+              className="graph-scope-note"
+              role="status"
+              title={`核心视图上限 ${
+                isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT
+              }，不是数据过滤：搜索这些角色可以直接聚焦，或在设计里切到「所有角色」。`}
+            >
+              画布 {visibleCharacters.length} / {characters.length} 个角色 ·{" "}
+              {prefs.showEdges ? `${drawnRelationships.length} 条关系` : "关系线已隐藏"}
             </p>
           )}
 

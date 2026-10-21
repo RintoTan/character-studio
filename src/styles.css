@@ -7596,7 +7596,11 @@ body:has([aria-modal="true"]) .floating-actions {
   cursor: pointer;
 }
 
-.relationship-node circle {
+.relationship-node circle,
+/* A rounded picture frame is a rect, not a circle: without its own fill it fell back
+   to SVG's default black, which is the black square an emoji node showed whenever a
+   wide picture turned the whole drawing rounded. */
+.relationship-node .relationship-node-rounded {
   /* A per-node override travels as a variable, so the hover and selected rules
      below can still win: an inline stroke would beat all of them. */
   fill: var(--node-fill, var(--surface-subtle));
@@ -7605,7 +7609,9 @@ body:has([aria-modal="true"]) .floating-actions {
 }
 
 .relationship-node:hover circle,
-.relationship-node:focus-visible circle {
+.relationship-node:hover .relationship-node-rounded,
+.relationship-node:focus-visible circle,
+.relationship-node:focus-visible .relationship-node-rounded {
   stroke: var(--primary);
 }
 
@@ -15058,12 +15064,24 @@ circle.graph-grid-dot {
    so 名称 sat six pixels from one edge and 头像形态 from another. */
 .graph-style-panel .graph-panel-row {
   display: grid;
-  /* Label, then up to two control groups on the same line: 名称 and 头像 each pair a
-     switch with a size, and the size was previously pushed onto its own unlabelled
-     row. */
-  grid-template-columns: 74px repeat(2, max-content);
+  /* Label plus one flexible control column. A max-content second column let a
+     three-button segment push past the drawer edge and produce a horizontal
+     scrollbar; a flexible column makes the segment wrap instead. */
+  grid-template-columns: 74px minmax(0, 1fr);
   gap: 8px 10px;
   align-items: center;
+}
+
+.graph-style-panel .graph-segment,
+.graph-style-panel .graph-arrow-options {
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.graph-style-panel .graph-segment-button {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .graph-style-panel .graph-panel-row .graph-control-label {
@@ -15133,4 +15151,9 @@ circle.graph-grid-dot {
 
 .graph-style-panel .graph-legend .graph-legend-note {
   grid-column: 2 / -1;
+}
+
+/* The status line belongs to the toolbar above the drawing, not to the drawing. */
+.graph-scope-note {
+  margin: 2px 0 10px;
 }
