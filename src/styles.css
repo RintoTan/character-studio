@@ -14476,3 +14476,15 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   margin-right: auto;
   margin-left: auto;
 }
+
+/* The export panel is placed by measurement (see popoverPosition), so it is fixed to
+   the viewport and scrolls inside itself when the window is short. Nothing may clip
+   it: it is portalled to the body, outside the header's overflow. */
+.graph-export-panel {
+  position: fixed;
+  z-index: var(--z-overlay-6);
+  width: min(320px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

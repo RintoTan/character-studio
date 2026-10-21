@@ -6183,6 +6183,48 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return true;
     };
 
+      // The export panel is measured, not assumed: at every width its four edges have
+      // to sit inside the window, and when the content is taller than the window it
+      // has to scroll inside itself rather than run off the top.
+      await check("导出面板：1440/1024/375/320 四边都在视口内且可滚动", async () => {
+        const rows = [];
+        for (const [w, h, m] of [[1440, 900, false], [1024, 768, false], [375, 812, true], [320, 640, true]]) {
+          await OPEN_GRAPH(w, h, m);
+          await cdp.waitFor(
+            `[...document.querySelectorAll(".workspace-header button")].some((b) => b.textContent.trim() === "导出")`,
+            6000,
+          );
+          await cdp.value(
+            `[...document.querySelectorAll(".workspace-header button")].find((b) => b.textContent.trim() === "导出").click()`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 420));
+          const rect = await cdp.value(`(() => {
+            const panel = document.querySelector(".graph-export-panel");
+            if (!panel) return null;
+            const r = panel.getBoundingClientRect();
+            return {
+              top: r.top, bottom: r.bottom, left: r.left, right: r.right,
+              scrollH: panel.scrollHeight, clientH: panel.clientHeight,
+            };
+          })()`);
+          rows.push({ w, h, rect });
+        }
+        const bad = rows.filter(
+          ({ w, h, rect }) =>
+            !rect || rect.top < -0.5 || rect.bottom > h + 0.5 || rect.left < -0.5 || rect.right > w + 0.5,
+        );
+        return {
+          pass: bad.length === 0,
+          detail: rows
+            .map(({ w, h, rect }) =>
+              rect
+                ? `${w}×${h}: ${Math.round(rect.top)}–${Math.round(rect.bottom)}, 可滚动 ${rect.scrollH > rect.clientH}`
+                : `${w}×${h}: 面板未出现`,
+            )
+            .join("; "),
+        };
+      });
+
     const NODE_CENTRE = (id) => `(() => {
       const node = document.querySelector('.relationship-node[data-character-id="${id}"]');
       if (!node) return null;

@@ -9,7 +9,9 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { useEscapeDismiss } from "../hooks/useLightDismiss";
+import { popoverPosition } from "../utils/popover";
 import {
   createRelationship,
   deleteRelationship,
@@ -1186,6 +1188,12 @@ export function RelationshipGraph({
   // Output is set once and used rarely, so it lives behind its own toggle: the bar
   // keeps 显示设置 and 导出 at one height instead of five controls in a row.
   const [isExportOpen, setIsExportOpen] = useState(false);
+  // The export panel is placed from its trigger's measured rectangle rather than by
+  // CSS alone: it used to be an `absolute` panel pinned above its button, which was
+  // right when the button sat under the drawing and wrong the moment it moved to the
+  // header — there the panel opened 157px above the top of the window.
+  const [exportBox, setExportBox] = useState<{ left: number; top: number; maxHeight: number } | null>(null);
+  const exportPanelRef = useRef<HTMLDivElement | null>(null);
   // Both bar panels close outside already; Escape closes the one on top, and the
   // last one opened is the one the shared light-layer stack sees first.
   useEscapeDismiss(isExportOpen, () => setIsExportOpen(false));
@@ -3254,7 +3262,8 @@ export function RelationshipGraph({
     }
 
     function onPointerDown(event: MouseEvent) {
-      if (!exportWrapRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!exportWrapRef.current?.contains(target) && !exportPanelRef.current?.contains(target)) {
         setIsExportOpen(false);
       }
     }
@@ -3262,6 +3271,34 @@ export function RelationshipGraph({
     window.addEventListener("mousedown", onPointerDown);
     return () => window.removeEventListener("mousedown", onPointerDown);
   }, [isExportOpen]);
+
+  // Place the export panel against the real viewport: below the trigger when it fits,
+  // above when it does not, and never outside a 12px safe margin on any side.
+  useLayoutEffect(() => {
+    if (!isExportOpen) {
+      setExportBox(null);
+      return;
+    }
+
+    function place() {
+      const trigger = exportWrapRef.current?.getBoundingClientRect();
+      const panel = exportPanelRef.current;
+      if (!trigger || !panel) {
+        return;
+      }
+      const placement = popoverPosition(
+        { top: trigger.top, left: trigger.left, right: trigger.right, bottom: trigger.bottom },
+        { width: panel.offsetWidth || 320, height: panel.scrollHeight || 320 },
+        { width: window.innerWidth, height: window.innerHeight },
+        12,
+      );
+      setExportBox({ left: placement.left, top: placement.top, maxHeight: placement.maxHeight });
+    }
+
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [isExportOpen, exportRatio, exportScope, prefs.exportScale]);
 
   // Where the hover card sits: under the node it describes, placed from the node's own
   // projected position rather than from the cursor, so it does not jump while the
@@ -4273,8 +4310,27 @@ export function RelationshipGraph({
                 <Icon name="download" size={15} />
                 导出
               </button>
-              {isExportOpen && (
-                <div aria-label="导出关系网" className="graph-panel" role="group">
+              {isExportOpen &&
+                createPortal(
+                <div
+                  aria-label="导出关系网"
+                  className="graph-panel graph-export-panel"
+                  ref={exportPanelRef}
+                  role="group"
+                  style={
+                    exportBox
+                      ? {
+                          position: "fixed",
+                          left: exportBox.left,
+                          top: exportBox.top,
+                          maxHeight: exportBox.maxHeight,
+                          overflowY: "auto",
+                          bottom: "auto",
+                          right: "auto",
+                        }
+                      : { visibility: "hidden" }
+                  }
+                >
                   <div className="graph-panel-row">
                     <span className="graph-control-label">比例</span>
                     <div className="graph-segment">
@@ -4363,8 +4419,9 @@ export function RelationshipGraph({
                   <p className="muted graph-export-note">
                     PNG / SVG 按所选范围导出；JPG / PDF 导出当前画面。
                   </p>
-                </div>
-              )}
+                </div>,
+                  document.body,
+                )}
             </div>
   );
 
