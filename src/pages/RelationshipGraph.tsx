@@ -4559,6 +4559,18 @@ export function RelationshipGraph({
     setExporting(true);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
+    // The legend is a DOM layer inside the frame, and html2canvas captures whatever is
+    // there when it is called. Two frames cover a React commit, not a commit plus an
+    // image decode, so when a legend is owed the capture waits until it exists —
+    // bounded, because an export must not hang on a missing decoration.
+    if (prefs.exportLegend) {
+      const deadline = performance.now() + 400;
+
+      while (!frameRef.current?.querySelector(".export-legend") && performance.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 16));
+      }
+    }
+
     try {
       const options = {
         background: surfaceBackground(),
@@ -4943,47 +4955,6 @@ export function RelationshipGraph({
                   />
                   按关系类型着色
                 </label>
-                {/* The head is a drawing choice, not a fact about the relationship: a
-                    symmetric kind never draws one, and 无箭头 hides the head while the
-                    direction stays in the data and in 管理. */}
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">箭头</span>
-                  <div className="graph-arrow-options">
-                    {([
-                      ["concise", "简洁", "8 7 5"],
-                      ["thin", "细线", "7 5 3"],
-                      ["soft", "柔和", "8 9 8"],
-                      ["none", "无", ""],
-                    ] as Array<[ArrowStyle, string, string]>).map(([value, label, head]) => (
-                      <button
-                        aria-pressed={style.edge.arrow === value}
-                        className={
-                          style.edge.arrow === value ? "graph-arrow-option selected" : "graph-arrow-option"
-                        }
-                        key={value}
-                        onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, arrow: value } })}
-                        title={label}
-                        type="button"
-                      >
-                        {/* The head is drawn, not described: four words in a row read the
-                            same at a glance, four heads do not. */}
-                        <svg aria-hidden="true" viewBox="0 0 46 14">
-                          <line x1="2" x2={head ? "30" : "42"} y1="7" y2="7" />
-                          {head ? (
-                            <polygon
-                              points={(() => {
-                                const [h, w] = head.split(" ").map(Number);
-                                return `30,7 ${30 - h},${7 - w / 2} ${30 - h},${7 + w / 2}`;
-                              })()}
-                            />
-                          ) : null}
-                        </svg>
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
               </div>
             </section>
   );
@@ -5049,8 +5020,9 @@ export function RelationshipGraph({
                       </button>
                     ))}
                   </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">头像形态</span>
+                </div>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">头像形态</span>
                     <div className="graph-segment" role="group" aria-label="头像形态">
                       {([
                         ["auto", "自动"],
@@ -5079,7 +5051,9 @@ export function RelationshipGraph({
                         </button>
                       ))}
                     </div>
-                  </div>
+                </div>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">头像大小</span>
                   <div className="graph-segment">
                     {AVATAR_SIZES.map((size) => (
                       <button
@@ -5122,15 +5096,15 @@ export function RelationshipGraph({
                     in scope, how many of them the core view draws, and whether the lines
                     are painted. One switch used to answer all three. */}
                 <p className="graph-scope-stats" role="status">
-                  角色 {characters.length} · 有关联 {connectedIds.size} · 画布显示{" "}
+                  角色 {characters.length} · 有关联 {connectedIds.size} · 画布{" "}
                   {visibleCharacters.length}
                   {visibleCharacters.length < connectedIds.size
-                    ? `（核心视图上限 ${isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT}，其余可搜索或切到所有角色）`
+                    ? `/${connectedIds.size}（上限 ${isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT}）`
                     : ""}
                   {" · "}关系线{" "}
                   {prefs.showEdges
-                    ? `画出 ${drawnRelationships.length} / ${relationships.length}`
-                    : `已隐藏（共 ${relationships.length}）`}
+                    ? `${drawnRelationships.length}/${relationships.length}`
+                    : `隐藏（共 ${relationships.length}）`}
                 </p>
                 <div className="graph-panel-row">
                   <span className="graph-control-label">关系线</span>
@@ -5411,6 +5385,47 @@ export function RelationshipGraph({
                     <input aria-label="网格强度" max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
                   </label>
                 </div>
+                {/* The head is a drawing choice, not a fact about the relationship: a
+                    symmetric kind never draws one, and 无箭头 hides the head while the
+                    direction stays in the data and in 管理. */}
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">箭头</span>
+                  <div className="graph-arrow-options">
+                    {([
+                      ["concise", "简洁", "8 7 5"],
+                      ["thin", "细线", "7 5 3"],
+                      ["soft", "柔和", "8 9 8"],
+                      ["none", "无", ""],
+                    ] as Array<[ArrowStyle, string, string]>).map(([value, label, head]) => (
+                      <button
+                        aria-pressed={style.edge.arrow === value}
+                        className={
+                          style.edge.arrow === value ? "graph-arrow-option selected" : "graph-arrow-option"
+                        }
+                        key={value}
+                        onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, arrow: value } })}
+                        title={label}
+                        type="button"
+                      >
+                        {/* The head is drawn, not described: four words in a row read the
+                            same at a glance, four heads do not. */}
+                        <svg aria-hidden="true" viewBox="0 0 46 14">
+                          <line x1="2" x2={head ? "30" : "42"} y1="7" y2="7" />
+                          {head ? (
+                            <polygon
+                              points={(() => {
+                                const [h, w] = head.split(" ").map(Number);
+                                return `30,7 ${30 - h},${7 - w / 2} ${30 - h},${7 + w / 2}`;
+                              })()}
+                            />
+                          ) : null}
+                        </svg>
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
               </details>
 
               <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复整体画布默认外观</button>
