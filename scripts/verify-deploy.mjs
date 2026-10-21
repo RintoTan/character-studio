@@ -70,7 +70,11 @@ if (!info) {
 
 // Deep-link fallback: an unknown subpath must still return the app shell.
 const deep = await get("developer");
-const looksLikeShell = deep.body.includes("/assets/") && deep.body.includes('id="root"');
+// A 404 page can contain the app's markup and still mean the fallback is missing.
+// The status is part of "returns the shell", not a detail beside it — without this an
+// unpublished route passed the check that exists to catch exactly that.
+const looksLikeShell =
+  deep.status === 200 && deep.body.includes("/assets/") && deep.body.includes('id="root"');
 looksLikeShell
   ? ok("deep link fallback", `/developer returns shell (HTTP ${deep.status})`)
   : bad("deep link fallback", `/developer did not return the app shell (HTTP ${deep.status})`);

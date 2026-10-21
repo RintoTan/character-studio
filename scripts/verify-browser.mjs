@@ -6494,6 +6494,15 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const centre = await cdp.value(NODE_CENTRE("g-1"));
       if (!centre) throw new Error("沈青梧 节点缺失");
 
+      // What is actually under the press: a miss here explains a drag that pans the
+      // canvas instead of moving the node, without blaming the product.
+      const hit = await cdp.value(`(() => {
+        const node = document.elementFromPoint(${Math.round(centre.x)}, ${Math.round(centre.y)});
+        if (!node) return "none";
+        const owner = node.closest("[data-character-id]");
+        return (node.tagName + "." + String(node.getAttribute("class") || "")).slice(0, 60) +
+          (owner ? " → " + owner.getAttribute("data-character-id") : " → no node");
+      })()`);
       const mid = await DRAG(centre, 150, 80, { hold: () => cdp.value(CANVAS_STATE) });
       const storedDuringDrag = mid.layout;
       const liveNode = mid.nodes.find((node) => node.id === "g-1");
@@ -6535,7 +6544,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(pass),
-        detail: `拖动中 存储 ${storedDuringDrag === null ? "未写入" : "已写入"}、节点 cx ${startNode?.cx}→${liveNode?.cx}、连线 ${edgeFollowed ? "跟随" : "未变"}；松手后 g-1 ${JSON.stringify(moved)}、其余 ${before.nodes.length - 1} 个未变 ${othersUnchanged}；刷新后 cx ${reloadedNode?.cx} / 存储 ${stored?.x}；关系与角色存储未变 ${after.relationships === before.relationships && after.characters === before.characters}`,
+        detail: `按下处 ${hit}；坐标 ${Math.round(centre.x)},${Math.round(centre.y)}；拖动中 存储 ${storedDuringDrag === null ? "未写入" : "已写入"}、节点 cx ${startNode?.cx}→${liveNode?.cx}、连线 ${edgeFollowed ? "跟随" : "未变"}；松手后 g-1 ${JSON.stringify(moved)}、其余 ${before.nodes.length - 1} 个未变 ${othersUnchanged}；刷新后 cx ${reloadedNode?.cx} / 存储 ${stored?.x}；关系与角色存储未变 ${after.relationships === before.relationships && after.characters === before.characters}`,
       };
     });
 
