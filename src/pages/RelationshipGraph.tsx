@@ -348,6 +348,120 @@ export function measureNameWidth(name: string, fontSize: number): number {
   return units * fontSize;
 }
 
+/**
+ * A small shift that keeps a relationship label off what it would otherwise cover.
+ *
+ * The label belongs to one wire, so its candidates stay close: a step above or below
+ * the midpoint, then the same step along the wire's normal. The first candidate that
+ * touches nothing wins — node frames, name blocks, labels already placed. If every
+ * candidate collides the label stays where it was: a readable word on a line beats a
+ * word parked where nobody can connect it to its wire.
+ */
+export function chooseLabelOffset(
+  baseX: number,
+  baseY: number,
+  normalX: number,
+  normalY: number,
+  width: number,
+  height: number,
+  obstacles: { x: number; y: number; width: number; height: number }[],
+): { x: number; y: number } {
+  const candidates: Array<[number, number]> = [
+    [0, 0],
+    [0, -height - 4],
+    [0, height + 4],
+    [normalX * (width / 2 + 14), normalY * (width / 2 + 14)],
+    [-normalX * (width / 2 + 14), -normalY * (width / 2 + 14)],
+    [0, -2 * (height + 4)],
+    [0, 2 * (height + 4)],
+  ];
+
+  const overlaps = (x: number, y: number) =>
+    obstacles.some(
+      (rect) =>
+        x < rect.x + rect.width &&
+        x + width > rect.x &&
+        y < rect.y + rect.height &&
+        y + height > rect.y,
+    );
+
+  for (const [dx, dy] of candidates) {
+    if (!overlaps(baseX + dx, baseY + dy)) {
+      return { x: baseX + dx, y: baseY + dy };
+    }
+  }
+
+  return { x: baseX, y: baseY };
+}
+
+/**
+ * A name broken into at most two lines that fit the node it belongs to.
+ *
+ * Character counts are not a rule — a twelve-character Chinese name and a sixteen-letter
+ * Latin one occupy very different widths — so lines are filled against the measured
+ * width. Latin words are preferred as break points, CJK breaks anywhere, and the last
+ * line ends in an ellipsis rather than running out of the node. The full name stays
+ * available through the text's own tooltip and the detail page.
+ */
+export function wrapNameLines(
+  name: string,
+  maxWidth: number,
+  fontSize: number,
+  maxLines = 2,
+): string[] {
+  const characters = [...name];
+
+  if (characters.length === 0) {
+    return [];
+  }
+
+  if (maxWidth <= 0) {
+    return [name];
+  }
+
+  const lines: string[] = [];
+  let index = 0;
+
+  while (index < characters.length && lines.length < maxLines) {
+    let line = "";
+
+    while (index < characters.length) {
+      const candidate = `${line}${characters[index]}`;
+
+      if (line === "" || measureNameWidth(candidate, fontSize) <= maxWidth) {
+        line = candidate;
+        index += 1;
+      } else {
+        break;
+      }
+    }
+
+    // Latin words read badly split mid-word: step back to the last space and carry the
+    // unfinished word to the next line. CJK has no spaces and breaks anywhere.
+    const space = line.lastIndexOf(" ");
+
+    if (index < characters.length && space > 0 && space < line.length - 1) {
+      const carry = line.slice(space + 1);
+      line = line.slice(0, space);
+      index -= carry.length;
+    }
+
+    lines.push(line);
+  }
+
+  if (index < characters.length && lines.length > 0) {
+    let last = lines[lines.length - 1];
+
+    while (last.length > 0 && measureNameWidth(`${last}…`, fontSize) > maxWidth) {
+      last = last.slice(0, -1);
+    }
+
+    lines[lines.length - 1] = `${last}…`;
+  }
+
+  return lines.filter((line, position) => line.length > 0 || position === 0);
+}
+
 export function widestNameHalfWidth(names: string[], fontSize: number): number {
   return names.reduce((widest, name) => Math.max(widest, measureNameWidth(name, fontSize)), 0) / 2;
 }
@@ -3691,6 +3805,107 @@ export function RelationshipGraph({
     () => relationships.filter((relationship) => byId.has(relationship.fromId) && byId.has(relationship.toId)),
     [relationships, byId],
   );
+
+  /**
+   * Where each relationship label is drawn, after moving it off anything it would
+   * cover. Only labels that are actually drawn are placed, and only while the graph is
+   * small enough to draw them at all — at a hundred nodes the work would be wasted.
+   */
+  const labelPlacements = useMemo(() => {
+    const placements = new Map<string, { x: number; y: number }>();
+
+    if (!style.edge.showLabel || visibleCharacters.length > 60) {
+      return placements;
+    }
+
+    const obstacles: { x: number; y: number; width: number; height: number }[] = [];
+
+    visibleCharacters.forEach((character, index) => {
+      const geom = nodeVisuals[character.id]?.geom;
+      const point = positions[index];
+      if (!geom || !point) {
+        return;
+      }
+      obstacles.push({
+        x: point.x - geom.halfWidth - 6,
+        y: point.y - geom.halfHeight - 6,
+        width: geom.halfWidth * 2 + 12,
+        height: geom.halfHeight * 2 + 12,
+      });
+      obstacles.push({
+        x: point.x - geom.halfWidth - 14,
+        y: point.y + geom.halfHeight + 4,
+        width: geom.halfWidth * 2 + 28,
+        height: nameSize * 2.6 + 6,
+      });
+    });
+
+    const bendsForLabels = edgeBends(drawnRelationships);
+    const size = style.edge.labelSize;
+    const height = size * 1.15;
+
+    drawnRelationships.forEach((relationship) => {
+      const from = byId.get(relationship.fromId);
+      const to = byId.get(relationship.toId);
+      if (!from || !to) {
+        return;
+      }
+      const fromGeom = nodeVisuals[relationship.fromId]?.geom;
+      const toGeom = nodeVisuals[relationship.toId]?.geom;
+      const geometry = edgeGeometry(from, to, {
+        fromBox: fromGeom?.card || fromGeom?.rounded ? fromGeom : undefined,
+        toBox: toGeom?.card || toGeom?.rounded ? toGeom : undefined,
+        fromRadius: fromGeom?.radius,
+        toRadius: toGeom?.radius,
+        weight: style.edge.width,
+        bend: bendsForLabels.get(relationship.id) ?? 0,
+        metrics,
+        symmetrical: isSymmetricKind(relationship.kind),
+        arrowStyle: style.edge.arrow,
+        arrowScale: style.edge.arrowSize,
+      });
+      const label = relationshipKindLabel(relationship.kind);
+      const width = measureNameWidth(label, size);
+      const normal = (() => {
+        const dx = to.x - from.x;
+        const dy = to.y - from.y;
+        const length = Math.hypot(dx, dy) || 1;
+        return { x: -dy / length, y: dx / length };
+      })();
+      const placement = chooseLabelOffset(
+        geometry.labelX,
+        geometry.labelY,
+        normal.x,
+        normal.y,
+        width,
+        height,
+        obstacles,
+      );
+
+      placements.set(relationship.id, placement);
+      obstacles.push({
+        x: placement.x - width / 2 - 3,
+        y: placement.y - height - 2,
+        width: width + 6,
+        height: height + 4,
+      });
+    });
+
+    return placements;
+  }, [
+    byId,
+    drawnRelationships,
+    metrics,
+    nodeVisuals,
+    positions,
+    style.edge.arrow,
+    style.edge.arrowSize,
+    style.edge.labelSize,
+    style.edge.showLabel,
+    style.edge.width,
+    nameSize,
+    visibleCharacters,
+  ]);
   const hoveredEntry = hoveredId ? byId.get(hoveredId) : undefined;
 
   // How many relationships a character is an end of: the fourth field the hover card
@@ -6079,7 +6294,11 @@ export function RelationshipGraph({
                     (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
                       touchesHovered ||
                       touchesActiveSelection) && (
-                    <text style={{ fontSize: `${style.edge.labelSize}px` }} x={geometry.labelX} y={geometry.labelY}>
+                    <text
+                      style={{ fontSize: `${style.edge.labelSize}px` }}
+                      x={labelPlacements.get(relationship.id)?.x ?? geometry.labelX}
+                      y={labelPlacements.get(relationship.id)?.y ?? geometry.labelY}
+                    >
                       {relationshipKindLabel(relationship.kind)}
                     </text>
                   )}
@@ -6346,12 +6565,27 @@ export function RelationshipGraph({
                     >
                       {(() => {
                         const name = characterDisplayName(character);
-                        // A phone cannot draw twenty characters of name without
-                        // covering its neighbours. The selected node always shows the
-                        // whole name; the rest are shortened for legibility.
-                        return compactViewport && !isSelected && name.length > 9
-                          ? `${name.slice(0, 8)}…`
-                          : name;
+                        const width = geom.rounded
+                          ? geom.halfWidth * 2 + 12
+                          : Math.max(geom.halfWidth * 2 + 26, compactViewport ? 104 : 132);
+                        // Two lines by default; a name being read gets a third. The
+                        // whole name is also in the tooltip and the detail page, so
+                        // this never becomes an infinite zoom.
+                        const lines = wrapNameLines(name, width, nameSize, isSelected || isHovered ? 3 : 2);
+                        return (
+                          <>
+                            <title>{name}</title>
+                            {lines.map((line, lineIndex) => (
+                              <tspan
+                                dy={lineIndex === 0 ? 0 : nameSize * 1.18}
+                                key={lineIndex}
+                                x={positions[index].x}
+                              >
+                                {line}
+                              </tspan>
+                            ))}
+                          </>
+                        );
                       })()}
                     </text>
                   )}
