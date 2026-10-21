@@ -14490,16 +14490,80 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 /* ===========================================================================
+   The page, the drawing, and the guide under it.
+
+   The page was a bordered card holding the header, the drawing and the guide: two
+   nested rectangles around an infinite canvas, and a frame three times taller than
+   the drawing it held. The card keeps its rhythm but loses its own edge; the canvas
+   is one surface with one border; the guide is a block of the page rather than the
+   bottom of the canvas' box, so the two never share a container.
+   ========================================================================= */
+
+.relationship-page:not(.graph-studio) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  /* Space between the guide and the site footer, inside the page's own column. */
+  padding-bottom: 24px;
+}
+
+/* The selection strip only exists while something is selected. Empty, it was still
+   charging 10px of margin between the drawing and the guide, which made the one gap
+   on the page the sum of two elements instead of the guide's own spacing. */
+.relationship-page:not(.graph-studio) .graph-context-slot:empty {
+  display: none;
+}
+
+/* One frame, not two: the surface ends where the drawing ends. The height used to
+   be declared on the frame (576) and again on the <svg> (468), which is where the
+   empty band under the drawing came from. */
+.relationship-page:not(.graph-studio) .graph-canvas-frame {
+  height: auto;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.relationship-page:not(.graph-studio) .relationship-canvas {
+  height: clamp(420px, 66vh, 760px);
+  max-height: none;
+}
+
+@media (max-width: 720px) {
+  /* The dock is fixed to the bottom edge on a phone, so the page keeps the space
+     it occupies — declared after the desktop rule so it is not overwritten. */
+  .relationship-page:not(.graph-studio) {
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .relationship-page:not(.graph-studio) .relationship-canvas {
+    height: clamp(340px, 56dvh, 560px);
+  }
+}
+
+/* ===========================================================================
    The guide under the drawing.
 
-   One flat band, aligned with the canvas above it: a section title, one card, and
-   the pager. No stack of cards, no shadow, no overlap — a help block is a line of
-   the page, not a window over the work.
+   One flat block, aligned with the canvas above it: a section title, one tip, and
+   the pager. No stack of cards, no shadow, no divider, no collapse — a help block
+   is a line of the page, not a window over the work.
+
+   The tips are a loop, so the pager is two circular buttons that never disable.
+   The block takes focus itself; arrows are handled only while focus is inside it.
    ========================================================================= */
 .graph-guide {
-  margin: 24px 0 4px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
+  margin: 28px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.graph-guide:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 6px;
+  border-radius: 8px;
 }
 
 .graph-guide-head {
@@ -14507,30 +14571,28 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 32px;
+  min-height: 30px;
 }
 
 .graph-guide-head h2 {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
   color: var(--text-soft);
 }
 
 .graph-guide-tools {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .graph-guide-count {
-  min-width: 40px;
+  min-width: 34px;
   text-align: right;
   font-size: 12px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
@@ -14540,122 +14602,76 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   place-items: center;
   width: 30px;
   height: 30px;
+  padding: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 50%;
   background: transparent;
   color: var(--text-soft);
   cursor: pointer;
 }
 
-.graph-guide-step:hover:not(:disabled) {
-  background: var(--surface-subtle);
+.graph-guide-step:hover {
+  border-color: var(--border-strong, var(--border));
+  background: var(--surface);
   color: var(--text);
 }
 
-.graph-guide-step:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.graph-guide-step:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 2px;
 }
 
-.graph-guide-divider {
-  width: 1px;
-  height: 18px;
-  margin: 0 4px;
-  background: var(--border);
-}
-
-.graph-guide-collapse {
-  min-height: 30px;
-  padding: 0 6px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--muted);
-  font-size: 12.5px;
-  cursor: pointer;
-}
-
-.graph-guide-collapse:hover {
-  background: var(--surface-subtle);
-  color: var(--text);
-}
-
-.graph-guide-body {
-  display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
-  gap: 12px;
-  margin-top: 10px;
+.graph-guide-card {
+  margin-top: 8px;
   max-width: 720px;
 }
 
-.graph-guide-icon {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--surface-subtle);
-  color: var(--text-soft);
-}
-
-.graph-guide-copy {
-  min-width: 0;
-}
-
-.graph-guide-copy h3 {
-  margin: 0 0 4px;
-  font-size: 14.5px;
+.graph-guide-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 5px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
-.graph-guide-copy p {
-  margin: 0 0 4px;
+.graph-guide-card h3 .ui-icon {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.graph-guide-card p {
+  margin: 0;
   font-size: 13px;
-  line-height: 1.65;
+  line-height: 1.7;
   color: var(--text-soft);
   overflow-wrap: anywhere;
 }
 
-.graph-guide-copy .graph-guide-hint {
+.graph-guide-card p + p {
+  margin-top: 4px;
+}
+
+.graph-guide-card .graph-guide-hint {
   color: var(--muted);
-  font-size: 12.5px;
-}
-
-.graph-guide.is-collapsed {
-  display: flex;
-  margin: 20px 0 4px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-
-.graph-guide-open {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 32px;
   font-size: 12.5px;
 }
 
 @media (max-width: 720px) {
   .graph-guide {
-    margin-top: 20px;
+    margin-top: 24px;
   }
 
   .graph-guide-head {
     gap: 8px;
   }
 
-  .graph-guide-body {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+  .graph-guide-card {
+    max-width: none;
   }
 
-  .graph-guide-icon {
-    display: none;
-  }
-
-  .graph-guide-copy p {
+  .graph-guide-card p {
     font-size: 12.5px;
   }
 }

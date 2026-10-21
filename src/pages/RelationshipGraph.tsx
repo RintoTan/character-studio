@@ -873,20 +873,13 @@ export function fitZoom(
     (frame.width * (1 - margin)) / (content.width * screenScale),
     (frame.height * (1 - margin)) / (content.height * screenScale),
   );
-  // Whether the drawing fits at natural size, ignoring the margin.
-  const hardFit = Math.min(
-    frame.width / (content.width * screenScale),
-    frame.height / (content.height * screenScale),
-  );
 
-  // Zooming out is for drawings that do not fit: forty nodes at natural size inside a
-  // 325px phone canvas were a screen of edges with the ring outside it. A drawing that
-  // does fit keeps its size — scaling it down only made names fall under the readable
-  // threshold, which is how a five-node graph lost its labels.
-  if (hardFit >= 1) {
-    return clampZoom(Math.max(1, Math.min(allowance, max)));
-  }
-
+  // `allowance` is the fit with the margin kept. `meet` makes the limiting axis
+  // exactly the size of the frame, so a drawing that is not comfortably smaller than
+  // its frame lands on a fit of 1.0 — and a floor of 1 threw the margin away, which
+  // is how a hundred-node ring opened with its top label three pixels from the edge.
+  // A drawing with room to spare still grows into the frame (up to `max`); one that
+  // only just fits is drawn a fraction smaller instead of flush.
   return clampZoom(Math.min(allowance, max));
 }
 

@@ -401,9 +401,14 @@ describe("fitting the canvas to the drawing", () => {
     expect(wide).toBeCloseTo(0.45, 4);
     expect(4000 * wide * 0.5).toBeLessThanOrEqual(frame.width);
 
-    // One that fits without the margin keeps its natural size: shrinking it would only
-    // put its names under the readable threshold.
-    expect(fitZoom({ width: 2000, height: 1000 }, frame, 0.5)).toBe(1);
+    // A drawing that already has a tenth of the frame in hand keeps its natural size:
+    // scaling it down would only put its names under the readable threshold.
+    expect(fitZoom({ width: 1800, height: 900 }, frame, 0.5)).toBe(1);
+
+    // One that is exactly the size of the frame is drawn a tenth smaller. The old
+    // floor of 1 returned here too, so the margin was silently dropped and a
+    // hundred-node ring opened three pixels from the top edge.
+    expect(fitZoom({ width: 2000, height: 1000 }, frame, 0.5)).toBeCloseTo(0.9, 4);
   });
 
   it("stops short of filling the frame mechanically", () => {

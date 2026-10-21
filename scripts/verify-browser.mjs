@@ -2891,6 +2891,11 @@ async function main() {
         return;
       }
 
+      // Printed before the check runs: a check that never returns used to leave the
+      // whole suite silent until the end, so a hang could not be told apart from a
+      // slow run. The name is the progress bar.
+      console.log(`RUN   ${name}`);
+
       try {
         const detail = await run();
         results.push({ name, pass: detail.pass, detail: detail.detail });
@@ -6186,9 +6191,11 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       // The export panel is measured, not assumed: at every width its four edges have
       // to sit inside the window, and when the content is taller than the window it
       // has to scroll inside itself rather than run off the top.
-      // The guide is one flat band under the drawing: a titled section, one card at a
-      // time, no stack and no overlap. Its state is a reading preference, never data.
-      await check("使用指南：切换、首尾边界、收起重开、全屏不重复、数据不变", async () => {
+      // The guide is one flat band under the drawing: a titled section, one tip at a
+      // time, and a pager that loops. It is not part of the canvas' box, it does not
+      // collapse, and it reads arrow keys only while it holds focus. Its state is a
+      // reading preference, never data.
+      await check("使用指南：四张循环翻页、聚焦后方向键生效、画布下方独立区块、数据不变", async () => {
         await OPEN_GRAPH(1440, 900, false);
         const before = await cdp.value(`JSON.stringify({
           chars: document.querySelectorAll(".relationship-node").length,
@@ -6200,38 +6207,66 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
           if (!guide) return null;
           const r = guide.getBoundingClientRect();
           const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+          const footer = document.querySelector(".app-footer")?.getBoundingClientRect() ?? null;
+          const page = document.querySelector(".relationship-page");
+          const pageStyle = getComputedStyle(page);
+          const guideStyle = getComputedStyle(guide);
           return {
-            title: guide.querySelector("h3")?.textContent.trim() ?? "",
             section: guide.querySelector("h2")?.textContent.trim() ?? "",
+            title: guide.querySelector("h3")?.textContent.trim() ?? "",
             count: guide.querySelector(".graph-guide-count")?.textContent.trim() ?? "",
-            below: r.top >= frame.bottom + 8,
+            below: r.top >= frame.bottom + 20,
             overlap: r.top < frame.bottom,
+            gapCanvas: Math.round(r.top - frame.bottom),
+            gapFooter: footer ? Math.round(footer.top - r.bottom) : null,
+            aligned: Math.abs(r.left - frame.left) <= 2 && Math.abs(r.right - frame.right) <= 2,
+            border: guideStyle.borderTopWidth,
+            shadow: guideStyle.boxShadow,
+            bg: guideStyle.backgroundColor,
             stacks: document.querySelectorAll(".graph-guide-edge").length,
-            shadow: getComputedStyle(guide).boxShadow,
-            prevDisabled: guide.querySelector('[aria-label="上一张提示"]')?.disabled ?? null,
-            nextDisabled: guide.querySelector('[aria-label="下一张提示"]')?.disabled ?? null,
+            pageBorder: pageStyle.borderTopWidth,
+            pageBg: pageStyle.backgroundColor,
+            sharesCanvas: Boolean(guide.closest(".graph-canvas-frame, .graph-canvas-row")),
+            parentIsPage: guide.parentElement === page,
+            collapseControls: document.querySelectorAll(".graph-guide-collapse, .graph-guide-open").length,
+            disabledSteps: [...guide.querySelectorAll(".graph-guide-step")].filter((button) => button.disabled).length,
             overflow: document.documentElement.scrollWidth - innerWidth,
           };
         })()`);
 
-        const first = await read();
-        await cdp.value(`document.querySelector('.graph-guide [aria-label="下一张提示"]').click()`);
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        const second = await read();
-        await cdp.value(`document.querySelector('.graph-guide [aria-label="下一张提示"]').click()`);
-        await cdp.value(`document.querySelector('.graph-guide [aria-label="下一张提示"]').click()`);
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        const last = await read();
-        await cdp.value(`document.querySelector('.graph-guide [aria-label="上一张提示"]').click()`);
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        const back = await read();
+        const click = async (label) => {
+          await cdp.value(`document.querySelector('.graph-guide [aria-label=${JSON.stringify(label)}]').click()`);
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        };
+        const arrow = async (key) => {
+          const code = key === "ArrowRight" ? 39 : 37;
+          await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code });
+          await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: code, nativeVirtualKeyCode: code });
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        };
 
-        await cdp.value(`document.querySelector(".graph-guide-collapse").click()`);
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        const collapsed = await cdp.value(`!!document.querySelector(".graph-guide-open") && !document.querySelector(".graph-guide h3")`);
-        await cdp.value(`document.querySelector(".graph-guide-open").click()`);
-        await new Promise((resolve) => setTimeout(resolve, 220));
-        const reopened = await read();
+        const first = await read();
+        await click("下一张提示");
+        const second = await read();
+        await click("下一张提示");
+        await click("下一张提示");
+        const fourth = await read();
+        await click("下一张提示");
+        const wrapped = await read();
+        await click("上一张提示");
+        const backWrapped = await read();
+
+        // Arrows belong to the guide only while it holds focus: with focus on the page
+        // body the same key must not page it, or the canvas would lose its arrows.
+        await cdp.value(`document.activeElement instanceof HTMLElement && document.activeElement.blur(), true`);
+        await arrow("ArrowRight");
+        const unfocused = await read();
+        await cdp.value(`document.querySelector(".graph-guide").focus(), true`);
+        const focused = await cdp.value(`document.activeElement === document.querySelector(".graph-guide")`);
+        await arrow("ArrowRight");
+        const keyedForward = await read();
+        await arrow("ArrowLeft");
+        const keyedBack = await read();
 
         await cdp.value(`[...document.querySelectorAll(".graph-toolbar button")].find((b) => b.getAttribute("aria-label") === "全屏编辑").click()`);
         await new Promise((resolve) => setTimeout(resolve, 700));
@@ -6253,23 +6288,38 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
             Boolean(first) &&
             first.section === "使用指南" &&
             first.count === "1 / 4" &&
-            first.prevDisabled === true &&
+            Boolean(first.title) &&
+            first.disabledSteps === 0 &&
+            second.count === "2 / 4" &&
+            fourth.count === "4 / 4" &&
+            wrapped.count === "1 / 4" &&
+            backWrapped.count === "4 / 4" &&
+            unfocused.count === "4 / 4" &&
+            focused &&
+            keyedForward.count === "1 / 4" &&
+            keyedBack.count === "4 / 4" &&
             first.below &&
             !first.overlap &&
-            first.stacks === 0 &&
+            first.gapCanvas >= 20 &&
+            first.gapFooter !== null &&
+            first.gapFooter >= 20 &&
+            first.aligned &&
+            first.border === "0px" &&
             first.shadow === "none" &&
-            second.count === "2 / 4" &&
-            last.count === "4 / 4" &&
-            last.nextDisabled === true &&
-            back.count === "3 / 4" &&
-            collapsed &&
-            Boolean(reopened) &&
+            first.bg === "rgba(0, 0, 0, 0)" &&
+            first.stacks === 0 &&
+            first.pageBorder === "0px" &&
+            first.pageBg === "rgba(0, 0, 0, 0)" &&
+            !first.sharesCanvas &&
+            first.parentIsPage &&
+            first.collapseControls === 0 &&
             inStudio === 0 &&
             studioFrame > 400 &&
             Boolean(narrow) &&
             narrow.overflow <= 0 &&
+            narrow.gapCanvas >= 20 &&
             before === after,
-          detail: `区标题「${first?.section}」${first?.count}；次张 ${second?.count}；末张 ${last?.count}（下一张禁用 ${last?.nextDisabled}）；回退 ${back?.count}；堆叠层 ${first?.stacks}、阴影 ${first?.shadow}；在画布下方 ${first?.below}；收起/重开 ${collapsed}/${reopened?.count}；全屏内 ${inStudio} 个；375 溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
+          detail: `区标题「${first?.section}」${first?.count}；次张 ${second?.count}、末张 ${fourth?.count} → 下一张回到 ${wrapped?.count} → 上一张到 ${backWrapped?.count}；未聚焦时方向键 ${unfocused?.count}、聚焦 ${focused} 后 → ${keyedForward?.count} / ${keyedBack?.count}；画布下方 ${first?.gapCanvas}px、页脚上方 ${first?.gapFooter}px、左右对齐 ${first?.aligned}、边框 ${first?.border}、阴影 ${first?.shadow}、底色 ${first?.bg}；页面边框 ${first?.pageBorder}、底色 ${first?.pageBg}；与画布同容器 ${first?.sharesCanvas}；折叠入口 ${first?.collapseControls}；全屏内 ${inStudio} 个（画布 ${studioFrame}px）；375 间距 ${narrow?.gapCanvas}px、溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
         };
       });
 

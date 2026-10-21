@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 
 /**
@@ -7,17 +7,18 @@ import { Icon } from "./Icon";
  * It used to be a stack of three cards, which read as a window floating over the
  * canvas and put three white edges between the drawing and the footer. A help block
  * is not a thing to be looked *through*: it is one line of the page, aligned with the
- * canvas above it, titled like a section, and it shows one card at a time.
+ * canvas above it, titled like a section, and it shows one tip at a time.
  *
- * The collapsed state is a reading preference, so it lives in sessionStorage and
- * nowhere near the character data: closing the guide must not touch the graph, and a
- * backup must not carry it.
+ * The four tips are a loop, not a film strip: there is no first or last step, so the
+ * pager never disables. The article element is focusable, and arrows are read only
+ * while focus is inside it — the canvas, the toolbar and a text field all keep their
+ * own arrow keys.
  */
-const STORAGE_KEY = "character-studio.graph-guide";
+const LEGACY_KEY = "character-studio.graph-guide";
 
-type Card = { title: string; body: string; hint: string; icon: "select" | "fit" | "layout" | "sliders" };
+type Tip = { title: string; body: string; hint: string; icon: "select" | "fit" | "layout" | "sliders" };
 
-const CARDS: Card[] = [
+const TIPS: Tip[] = [
   {
     icon: "select",
     title: "自由选择和移动角色",
@@ -46,43 +47,22 @@ const CARDS: Card[] = [
 
 export default function GraphGuide() {
   const [index, setIndex] = useState(0);
-  const [collapsed, setCollapsed] = useState(() => {
-    try {
-      return sessionStorage.getItem(STORAGE_KEY) === "collapsed";
-    } catch {
-      return false;
-    }
-  });
-  const sectionRef = useRef<HTMLElement | null>(null);
 
+  // The previous build wrote "collapsed" here. The guide no longer collapses, so the
+  // key is cleared instead of read: someone returning in the same session must not
+  // open the page onto an empty band that has no control to bring it back.
   useEffect(() => {
     try {
-      if (collapsed) {
-        sessionStorage.setItem(STORAGE_KEY, "collapsed");
-      } else {
-        sessionStorage.removeItem(STORAGE_KEY);
-      }
+      sessionStorage.removeItem(LEGACY_KEY);
     } catch {
       // A blocked storage is not a reason to lose the guide.
     }
-  }, [collapsed]);
+  }, []);
 
-  if (collapsed) {
-    return (
-      <div className="graph-guide is-collapsed">
-        <button className="ghost-button graph-guide-open" onClick={() => setCollapsed(false)} type="button">
-          <Icon name="sparkles" size={15} />
-          使用指南
-        </button>
-      </div>
-    );
-  }
-
-  const card = CARDS[index];
+  const tip = TIPS[index];
 
   function go(delta: number) {
-    setIndex((current) => Math.min(CARDS.length - 1, Math.max(0, current + delta)));
-    sectionRef.current?.focus();
+    setIndex((current) => (current + delta + TIPS.length) % TIPS.length);
   }
 
   return (
@@ -90,61 +70,46 @@ export default function GraphGuide() {
       aria-labelledby="graph-guide-title"
       className="graph-guide"
       onKeyDown={(event) => {
+        const target = event.target as HTMLElement | null;
+
+        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+          return;
+        }
+
         if (event.key === "ArrowRight") {
           event.preventDefault();
           go(1);
         }
+
         if (event.key === "ArrowLeft") {
           event.preventDefault();
           go(-1);
         }
       }}
-      ref={sectionRef}
-      tabIndex={-1}
+      tabIndex={0}
     >
       <header className="graph-guide-head">
-        <h2 id="graph-guide-title">
-          <Icon name="sparkles" size={15} />
-          使用指南
-        </h2>
+        <h2 id="graph-guide-title">使用指南</h2>
         <div className="graph-guide-tools">
-          <span aria-live="polite" className="graph-guide-count">
-            {index + 1} / {CARDS.length}
+          <span className="graph-guide-count">
+            {index + 1} / {TIPS.length}
           </span>
-          <button
-            aria-label="上一张提示"
-            className="graph-guide-step"
-            disabled={index === 0}
-            onClick={() => go(-1)}
-            type="button"
-          >
+          <button aria-label="上一张提示" className="graph-guide-step" onClick={() => go(-1)} type="button">
             <Icon name="chevronLeft" size={16} />
           </button>
-          <button
-            aria-label="下一张提示"
-            className="graph-guide-step"
-            disabled={index === CARDS.length - 1}
-            onClick={() => go(1)}
-            type="button"
-          >
+          <button aria-label="下一张提示" className="graph-guide-step" onClick={() => go(1)} type="button">
             <Icon name="chevronRight" size={16} />
-          </button>
-          <span aria-hidden="true" className="graph-guide-divider" />
-          <button className="graph-guide-collapse" onClick={() => setCollapsed(true)} type="button">
-            收起
           </button>
         </div>
       </header>
 
-      <div className="graph-guide-body">
-        <span aria-hidden="true" className="graph-guide-icon">
-          <Icon name={card.icon} size={18} />
-        </span>
-        <div className="graph-guide-copy">
-          <h3>{card.title}</h3>
-          <p>{card.body}</p>
-          <p className="graph-guide-hint">{card.hint}</p>
-        </div>
+      <div aria-live="polite" className="graph-guide-card">
+        <h3>
+          <Icon name={tip.icon} size={15} />
+          {tip.title}
+        </h3>
+        <p>{tip.body}</p>
+        <p className="graph-guide-hint">{tip.hint}</p>
       </div>
     </section>
   );
