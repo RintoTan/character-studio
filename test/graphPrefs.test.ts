@@ -29,6 +29,8 @@ describe("graph size preferences", () => {
       showNames: true,
       showEdges: false,
       exportScale: 3,
+      exportLegend: false,
+      exportLegendCorner: "auto",
     });
 
     expect(loadGraphPrefs()).toEqual({
@@ -38,6 +40,8 @@ describe("graph size preferences", () => {
       showNames: true,
       showEdges: false,
       exportScale: 3,
+      exportLegend: false,
+      exportLegendCorner: "auto",
     });
     expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}")).toEqual({
       avatarSize: "large",
@@ -46,6 +50,8 @@ describe("graph size preferences", () => {
       showNames: true,
       showEdges: false,
       exportScale: 3,
+      exportLegend: false,
+      exportLegendCorner: "auto",
     });
   });
 
@@ -59,6 +65,8 @@ describe("graph size preferences", () => {
       showNames: defaultGraphPrefs.showNames,
       showEdges: defaultGraphPrefs.showEdges,
       exportScale: defaultGraphPrefs.exportScale,
+      exportLegend: defaultGraphPrefs.exportLegend,
+      exportLegendCorner: defaultGraphPrefs.exportLegendCorner,
     });
   });
 
@@ -72,6 +80,8 @@ describe("graph size preferences", () => {
       showNames: true,
       showEdges: true,
       exportScale: 3,
+      exportLegend: false,
+      exportLegendCorner: "auto",
     });
 
     // The same for a value of the wrong type: only an explicit boolean is honoured,

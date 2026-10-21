@@ -28,6 +28,12 @@ export type GraphPrefs = {
    * one that can produce a several-megabyte PNG.
    */
   exportScale: GraphExportScale;
+  /**
+   * Whether an exported picture carries a key for its relationship kinds. Off by
+   * default: an export from before this option must not start gaining a panel.
+   */
+  exportLegend: boolean;
+  exportLegendCorner: "auto" | "tl" | "tr" | "bl" | "br";
 };
 
 export type GraphExportScale = 1 | 2 | 3;
@@ -96,6 +102,8 @@ export const defaultGraphPrefs: GraphPrefs = {
   showNames: true,
   showEdges: true,
   exportScale: 2,
+  exportLegend: false,
+  exportLegendCorner: "auto",
 };
 
 function isSizeValue(value: unknown): value is GraphSizeValue {
@@ -129,6 +137,14 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
     exportScale: isExportScale(candidate.exportScale)
       ? candidate.exportScale
       : defaultGraphPrefs.exportScale,
+    exportLegend: isBoolean(candidate.exportLegend) ? candidate.exportLegend : defaultGraphPrefs.exportLegend,
+    exportLegendCorner:
+      candidate.exportLegendCorner === "tl" ||
+      candidate.exportLegendCorner === "tr" ||
+      candidate.exportLegendCorner === "bl" ||
+      candidate.exportLegendCorner === "br"
+        ? candidate.exportLegendCorner
+        : defaultGraphPrefs.exportLegendCorner,
   };
 }
 

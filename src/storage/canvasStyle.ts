@@ -15,6 +15,13 @@ export type CanvasPresetId =
   | "soft";
 
 export type NodeShape = "circle" | "square";
+/**
+ * How an uploaded picture sits in its node. The picture is content, not decoration:
+ * a portrait cropped to a circle loses the top of a head, and a wide scene loses both
+ * ends. `auto` reads the picture's own proportions; the other two are the author's
+ * decision and win over it.
+ */
+export type AvatarShape = "auto" | "circle" | "rounded";
 
 /**
  * How much of a person a node shows. Not a size: a compact node answers "who is
@@ -37,6 +44,7 @@ export type CanvasStyle = {
     size: number; // multiplier of the base radius
     form: NodeForm;
     shape: NodeShape;
+    avatarShape: AvatarShape;
     showAvatars: boolean;
     showNames: boolean;
     /** Multiplier on the size the display settings already chose, not a second
@@ -94,6 +102,7 @@ const BASE: CanvasStyle = {
     size: 1,
     form: "avatar",
     shape: "circle",
+    avatarShape: "auto",
     showAvatars: true,
     showNames: true,
     nameScale: 1,
@@ -248,6 +257,10 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
       size: num(node.size, base.node.size, 0.6, 2),
       form: node.form === "compact" || node.form === "card" ? node.form : "avatar",
       shape: node.shape === "square" ? "square" : "circle",
+      avatarShape:
+        node.avatarShape === "circle" || node.avatarShape === "rounded"
+          ? node.avatarShape
+          : base.node.avatarShape,
       showAvatars: typeof node.showAvatars === "boolean" ? node.showAvatars : base.node.showAvatars,
       showNames: typeof node.showNames === "boolean" ? node.showNames : base.node.showNames,
       // A Sprint 50 build stored an absolute size here. It is read as a ratio of the

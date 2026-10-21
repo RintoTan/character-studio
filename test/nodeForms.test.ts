@@ -42,6 +42,10 @@ describe("nodeGeometry", () => {
       halfWidth: R,
       halfHeight: R,
       card: false,
+      // A circle is its own rounded frame: the drawing, the hit area and the edges
+      // read one geometry, and the frame carries the radius as its corner.
+      rounded: false,
+      rx: R,
     });
   });
 

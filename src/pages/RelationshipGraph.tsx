@@ -74,6 +74,7 @@ import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
 import { labelDensity, namesNode, pickSpacedLabels } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
+import { planLegend, type LegendBox } from "../utils/exportLegend";
 import {
   beginArrange,
   cancelArrangeSession,
@@ -161,9 +162,37 @@ function PresetThumb({ presetId }: { presetId: CanvasPresetId }) {
         y1="28"
         y2="42"
       />
-      <circle cx="26" cy="28" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
-      <circle cx="70" cy="18" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
-      <circle cx="62" cy="42" fill={fill} r={radius} stroke={border} strokeWidth="1.4" />
+      {/* The cover shows the node form the preset actually draws: a card preset that
+          previewed three circles looked the same as the one beside it. */}
+      {[
+        [26, 28],
+        [70, 18],
+        [62, 42],
+      ].map(([x, y]) =>
+        preset.node.form === "card" ? (
+          <rect
+            fill={fill}
+            height="12"
+            key={`${x}-${y}`}
+            rx="3"
+            stroke={border}
+            strokeWidth="1.4"
+            width="20"
+            x={x - 10}
+            y={y - 6}
+          />
+        ) : (
+          <circle
+            cx={x}
+            cy={y}
+            fill={fill}
+            key={`${x}-${y}`}
+            r={preset.node.form === "compact" ? radius * 0.55 : radius}
+            stroke={border}
+            strokeWidth="1.4"
+          />
+        ),
+      )}
       {/* Drawn, not typed: an emoji in the swatch would become part of the button's
           text, and the swatch is decoration for a control whose name is 档案研究. */}
       {preset.node.showAvatars &&
@@ -379,6 +408,21 @@ function surfaceBackground() {
   const transparent = !background || background === "transparent" || background === "rgba(0, 0, 0, 0)";
 
   return transparent ? "#ffffff" : background;
+}
+
+/** Perceived brightness of a CSS colour, for choosing ink on top of it. */
+export function luminanceOf(color: string): number {
+  const rgba = color.match(/rgba?\(([^)]+)\)/);
+  const hex = color.match(/^#([0-9a-f]{6})$/i);
+  const channels = rgba
+    ? rgba[1].split(",").slice(0, 3).map((part) => Number(part.trim()))
+    : hex
+      ? [0, 2, 4].map((offset) => parseInt(hex[1].slice(offset, offset + 2), 16))
+      : [255, 255, 255];
+
+  const [r, g, b] = channels;
+
+  return (r * 299 + g * 587 + b * 114) / 1000;
 }
 
 /**
@@ -747,6 +791,8 @@ export function cardGeometry(level: CardLevel, metrics: GraphMetrics, size: numb
     halfWidth: width / 2,
     halfHeight: height / 2,
     card: true,
+    rounded: false,
+    rx: 12,
   };
 }
 
@@ -754,23 +800,83 @@ export function cardGeometry(level: CardLevel, metrics: GraphMetrics, size: numb
  * The geometry a node is drawn with. One function for drawing, hit bounds, edges and
  * the fitted frame, so a card cannot be laid out by one rule and trimmed by another.
  */
+/** The band of proportions that reads as a face rather than a scene. */
+export const AVATAR_ROUND_MIN = 0.85;
+export const AVATAR_ROUND_MAX = 1.18;
+
+/**
+ * Circle or rounded frame for a picture.
+ *
+ * The picture's own proportions decide, because that is the thing that gets cut: a
+ * portrait loses a chin in a circle, a wide scene loses both ends. `auto` is a read of
+ * the file, not a preference — an explicit 圆形/圆角矩形 always wins, including when the
+ * image has not loaded yet and there is nothing to measure.
+ */
+export function avatarShapeFor(
+  setting: "auto" | "circle" | "rounded" | undefined,
+  ratio: number | undefined,
+): "circle" | "rounded" {
+  if (setting === "circle" || setting === "rounded") {
+    return setting;
+  }
+  if (!ratio || !Number.isFinite(ratio) || ratio <= 0) {
+    return "circle";
+  }
+
+  return ratio >= AVATAR_ROUND_MIN && ratio <= AVATAR_ROUND_MAX ? "circle" : "rounded";
+}
+
+/**
+ * The frame a picture occupies. A rounded frame keeps the same visual weight as the
+ * circle it replaces: the long side grows a little, the short side follows the picture,
+ * and the ratio is clamped so a panorama cannot become a strip.
+ */
+export function avatarFrame(shape: "circle" | "rounded", radius: number, ratio = 1) {
+  if (shape === "circle") {
+    return { halfWidth: radius, halfHeight: radius, rx: radius };
+  }
+
+  const clamped = Math.min(1.7, Math.max(0.62, ratio));
+  const long = radius * 1.16;
+  const halfWidth = clamped >= 1 ? long : long * clamped;
+  const halfHeight = clamped >= 1 ? long / clamped : long;
+
+  return { halfWidth, halfHeight, rx: Math.min(halfWidth, halfHeight) * 0.28 };
+}
+
 export function nodeGeometry(
   form: NodeForm,
   metrics: GraphMetrics,
   size: number,
-): { radius: number; halfWidth: number; halfHeight: number; card: boolean } {
+  avatar?: { shape: "circle" | "rounded"; ratio?: number },
+): {
+  radius: number;
+  halfWidth: number;
+  halfHeight: number;
+  card: boolean;
+  rounded: boolean;
+  rx: number;
+} {
   if (form === "card") {
     return {
       radius: (metrics.radius * size),
       halfWidth: (CARD_WIDTH * size) / 2,
       halfHeight: (CARD_HEIGHT * size) / 2,
       card: true,
+      rounded: false,
+      rx: 12,
     };
   }
 
   const radius = form === "compact" ? metrics.radius * 0.62 * size : metrics.radius * size;
 
-  return { radius, halfWidth: radius, halfHeight: radius, card: false };
+  if (form === "avatar" && avatar?.shape === "rounded") {
+    const frame = avatarFrame("rounded", radius, avatar.ratio ?? 1);
+
+    return { radius, ...frame, card: false, rounded: true };
+  }
+
+  return { radius, halfWidth: radius, halfHeight: radius, card: false, rounded: false, rx: radius };
 }
 
 /**
@@ -783,6 +889,7 @@ export function boxHalfWidthFor(
   metrics: GraphMetrics,
   labelHalfWidth: number,
   size = 1,
+  extraHalfWidth = 0,
 ): number {
   const cardHalf = (CARD_WIDTH * size) / 2;
   const widestCard = forms.reduce(
@@ -790,7 +897,7 @@ export function boxHalfWidthFor(
     0,
   );
 
-  return Math.max(labelHalfWidth, widestCard);
+  return Math.max(labelHalfWidth, widestCard, extraHalfWidth);
 }
 
 /**
@@ -1165,6 +1272,62 @@ function useGraphAvatarUrls(characters: Character[]) {
   return urls;
 }
 
+/**
+ * The proportions of each loaded picture, keyed by character.
+ *
+ * A picture's shape is only knowable once it has decoded, so this measures off-DOM and
+ * reports nothing for a picture that has not arrived — which leaves 自动 on 圆形 until
+ * there is evidence, rather than guessing from a file name.
+ */
+function useAvatarRatios(urls: Record<string, string>) {
+  const key = Object.keys(urls)
+    .sort()
+    .map((id) => `${id}:${urls[id].length}:${urls[id].slice(-24)}`)
+    .join("|");
+  const [ratios, setRatios] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const entries = Object.entries(urls);
+
+    if (entries.length === 0) {
+      setRatios({});
+      return;
+    }
+
+    let cancelled = false;
+
+    void Promise.all(
+      entries.map(
+        ([id, url]) =>
+          new Promise<[string, number] | null>((resolve) => {
+            const image = new Image();
+            image.onload = () =>
+              resolve(image.naturalHeight > 0 ? [id, image.naturalWidth / image.naturalHeight] : null);
+            image.onerror = () => resolve(null);
+            image.src = url;
+          }),
+      ),
+    ).then((loaded) => {
+      if (cancelled) {
+        return;
+      }
+      const next: Record<string, number> = {};
+      for (const entry of loaded) {
+        if (entry) {
+          next[entry[0]] = entry[1];
+        }
+      }
+      setRatios(next);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [key]);
+
+  return ratios;
+}
+
 export function RelationshipGraph({
   characters,
   onBack,
@@ -1238,6 +1401,7 @@ export function RelationshipGraph({
   const exportWrapRef = useRef<HTMLDivElement | null>(null);
   const searchWrapRef = useRef<HTMLDivElement | null>(null);
   const avatarUrls = useGraphAvatarUrls(characters);
+  const avatarRatios = useAvatarRatios(avatarUrls);
   const isNarrowScreen = useMediaQuery("(max-width: 720px)");
 
   // Written on change rather than inside the setter: a state updater can be called
@@ -1591,6 +1755,30 @@ export function RelationshipGraph({
   const visibleIds = visibleCharacters.map((character) => character.id);
   // A card is wider than any label it would have carried, and the widest card wins:
   // the frame has to contain the drawing, not the names of the round nodes.
+  // A rounded picture frame is wider than the circle it replaces, so it adds its own
+  // bleed; without it the widest portrait is clipped at the edge of the canvas.
+  const avatarHalfBleed = useMemo(
+    () =>
+      visibleCharacters.reduce((widest, character) => {
+        if ((layout.nodeStyles?.[character.id]?.form ?? style.node.form) !== "avatar") {
+          return widest;
+        }
+        const shape = avatarShapeFor(
+          layout.nodeStyles?.[character.id]?.avatarShape ?? style.node.avatarShape,
+          avatarRatios[character.id],
+        );
+        if (shape === "circle") {
+          return widest;
+        }
+        const geom = nodeGeometry("avatar", metrics, style.node.size, {
+          shape,
+          ratio: avatarRatios[character.id],
+        });
+
+        return Math.max(widest, geom.halfWidth - metrics.radius * style.node.size);
+      }, 0),
+    [visibleCharacters, layout.nodeStyles, style.node.form, style.node.avatarShape, style.node.size, metrics, avatarRatios],
+  );
   const boxHalfWidth = useMemo(
     () =>
       boxHalfWidthFor(
@@ -1600,8 +1788,17 @@ export function RelationshipGraph({
         metrics,
         labelHalfWidth,
         style.node.size,
+        avatarHalfBleed,
       ),
-    [visibleCharacters, layout.nodeStyles, style.node.form, style.node.size, metrics, labelHalfWidth],
+    [
+      visibleCharacters,
+      layout.nodeStyles,
+      style.node.form,
+      style.node.size,
+      metrics,
+      labelHalfWidth,
+      avatarHalfBleed,
+    ],
   );
   const stableBoxRef = useRef<{ key: string; viewBox: string; width: number } | null>(null);
   const canvas = useMemo(() => {
@@ -1707,13 +1904,27 @@ export function RelationshipGraph({
     });
     const out: Record<string, { form: NodeForm; level: CardLevel | null; geom: ReturnType<typeof nodeGeometry> }> = {};
 
+    // The author's explicit choice wins; 自动 reads the picture. A picture that has not
+    // decoded yet stays circular, which is the shape that was there before this option.
+    const shapeOf = (id: string) =>
+      avatarShapeFor(
+        layout.nodeStyles?.[id]?.avatarShape ?? style.node.avatarShape,
+        avatarRatios[id],
+      );
+
     visibleCharacters.forEach((character) => {
       const form = forms.get(character.id) ?? "avatar";
       const level = form === "card" ? (levels[character.id] ?? "full") : null;
       out[character.id] = {
         form,
         level,
-        geom: form === "card" ? cardGeometry(level ?? "full", metrics, size) : nodeGeometry(form, metrics, size),
+        geom:
+          form === "card"
+            ? cardGeometry(level ?? "full", metrics, size)
+            : nodeGeometry(form, metrics, size, {
+                shape: form === "avatar" ? shapeOf(character.id) : "circle",
+                ratio: avatarRatios[character.id],
+              }),
       };
     });
 
@@ -1729,6 +1940,8 @@ export function RelationshipGraph({
     relationships,
     focusId,
     cardCap,
+    style.node.avatarShape,
+    avatarRatios,
   ]);
 
 
@@ -3765,6 +3978,122 @@ export function RelationshipGraph({
     });
   }
 
+  /**
+   * The key an exported picture may carry: one row per relationship kind that is
+   * actually drawn, with the same colour and dash the lines have.
+   *
+   * Rows are counted from what the export contains, not from the kind list, so a
+   * graph with no 对手 edges does not advertise one.
+   */
+  function planExportLegend(
+    bounds: { x: number; y: number; width: number; height: number },
+    scope: ExportScope,
+  ) {
+    if (!prefs.exportLegend) {
+      return null;
+    }
+
+    const byIdNow = new Map(visibleCharacters.map((character, index) => [character.id, positions[index]]));
+    const exported = drawnRelationships.filter((relationship) =>
+      scope === "selection"
+        ? selectedIds.includes(relationship.fromId) && selectedIds.includes(relationship.toId)
+        : true,
+    );
+    const kinds = [...new Set(exported.map((relationship) => relationship.kind))];
+
+    if (kinds.length === 0) {
+      return null;
+    }
+
+    const boxes: LegendBox[] = visibleCharacters
+      .map((character, index) => {
+        const geom = nodeVisuals[character.id]?.geom;
+        const point = positions[index];
+
+        if (!geom || !point) {
+          return null;
+        }
+
+        return {
+          x: point.x - geom.halfWidth,
+          y: point.y - geom.halfHeight,
+          width: geom.halfWidth * 2,
+          height: geom.halfHeight * 2 + 22,
+        };
+      })
+      .filter((box): box is LegendBox => Boolean(box));
+
+    const plan = planLegend({
+      bounds,
+      rowCount: kinds.length + 1,
+      nodes: boxes,
+      corner: prefs.exportLegendCorner,
+    });
+
+    const svgNs = "http://www.w3.org/2000/svg";
+    const node = document.createElementNS(svgNs, "g");
+    node.setAttribute("class", "export-legend");
+    node.setAttribute("data-export-legend", "true");
+
+    const rowHeight = plan.panel.height / (kinds.length + 0.9);
+    const pad = rowHeight * 0.5;
+    // The legend belongs to the picture, so it sits on the picture's own surface. A
+    // white panel on a dark canvas made every sample line invisible; matching the
+    // background keeps the key and the drawing in one palette.
+    const panelFill = style.canvas.background || surfaceBackground();
+    const dark = luminanceOf(panelFill) < 140;
+
+    const panel = document.createElementNS(svgNs, "rect");
+    panel.setAttribute("x", String(plan.panel.x));
+    panel.setAttribute("y", String(plan.panel.y));
+    panel.setAttribute("width", String(plan.panel.width));
+    panel.setAttribute("height", String(plan.panel.height));
+    panel.setAttribute("rx", String(rowHeight * 0.45));
+    panel.setAttribute("fill", panelFill);
+    panel.setAttribute("stroke", dark ? "rgba(255,255,255,0.16)" : "rgba(17,24,39,0.10)");
+    panel.setAttribute("stroke-width", String(Math.max(1, rowHeight * 0.05)));
+    panel.setAttribute("opacity", "0.94");
+    node.appendChild(panel);
+
+    const title = document.createElementNS(svgNs, "text");
+    title.setAttribute("x", String(plan.panel.x + pad));
+    title.setAttribute("y", String(plan.panel.y + rowHeight * 0.92));
+    title.setAttribute("fill", dark ? "#e5e7eb" : "#1f2937");
+    title.setAttribute("font-family", "system-ui, sans-serif");
+    title.setAttribute("font-size", String(rowHeight * 0.52));
+    title.setAttribute("font-weight", "600");
+    title.textContent = style.edge.byKind ? "关系类型" : "关系类型（同一线色）";
+    node.appendChild(title);
+
+    kinds.forEach((kind, index) => {
+      const y = plan.panel.y + rowHeight * (index + 1.55);
+      const line = document.createElementNS(svgNs, "line");
+      line.setAttribute("x1", String(plan.panel.x + pad));
+      line.setAttribute("x2", String(plan.panel.x + pad + rowHeight * 1.5));
+      line.setAttribute("y1", String(y));
+      line.setAttribute("y2", String(y));
+      line.setAttribute("stroke", style.edge.byKind ? `hsl(${kindHue(kind)} 42% 48%)` : style.edge.color || "#98a2b3");
+      line.setAttribute("stroke-width", String(Math.max(1.2, style.edge.width)));
+      if (style.edge.dash === "dashed") {
+        line.setAttribute("stroke-dasharray", "7 5");
+      } else if (style.edge.dash === "dotted") {
+        line.setAttribute("stroke-dasharray", "2 4");
+      }
+      node.appendChild(line);
+
+      const label = document.createElementNS(svgNs, "text");
+      label.setAttribute("x", String(plan.panel.x + pad + rowHeight * 2));
+      label.setAttribute("y", String(y + rowHeight * 0.2));
+      label.setAttribute("fill", dark ? "#d1d5db" : "#374151");
+      label.setAttribute("font-family", "system-ui, sans-serif");
+      label.setAttribute("font-size", String(rowHeight * 0.46));
+      label.textContent = relationshipKindLabel(kind);
+      node.appendChild(label);
+    });
+
+    return { plan, node };
+  }
+
   function buildExportSvg(scope: ExportScope, ratio = 0): { text: string; bounds: WorldBounds } | null {
     const svg = svgRef.current;
     if (!svg) {
@@ -3804,17 +4133,39 @@ export function RelationshipGraph({
     const content = Array.from(clone.children).find((child) => child.tagName === "g");
     content?.setAttribute("transform", "translate(0 0) scale(1)");
 
+    // The legend is part of the picture, so it is drawn into the clone after the
+    // transient editor marks have been stripped — never in the live canvas.
+    const legend = planExportLegend(bounds, scope);
+    const exportedBounds = legend
+      ? {
+          x: bounds.x - legend.plan.extra.left,
+          y: bounds.y - legend.plan.extra.top,
+          width: bounds.width + legend.plan.extra.left + legend.plan.extra.right,
+          height: bounds.height + legend.plan.extra.top + legend.plan.extra.bottom,
+        }
+      : bounds;
+
+    if (legend) {
+      clone.setAttribute("viewBox", `${exportedBounds.x} ${exportedBounds.y} ${exportedBounds.width} ${exportedBounds.height}`);
+      clone.setAttribute("width", String(Math.round(exportedBounds.width)));
+      clone.setAttribute("height", String(Math.round(exportedBounds.height)));
+    }
+
     // A transparent PNG has no surface of its own, and an SVG opened in a viewer
     // that defaults to white would lose a dark canvas. The colour is written in.
     const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-    background.setAttribute("x", String(bounds.x));
-    background.setAttribute("y", String(bounds.y));
-    background.setAttribute("width", String(bounds.width));
-    background.setAttribute("height", String(bounds.height));
+    background.setAttribute("x", String(exportedBounds.x));
+    background.setAttribute("y", String(exportedBounds.y));
+    background.setAttribute("width", String(exportedBounds.width));
+    background.setAttribute("height", String(exportedBounds.height));
     background.setAttribute("fill", style.canvas.background || surfaceBackground());
     clone.insertBefore(background, clone.firstChild);
 
-    return { text: new XMLSerializer().serializeToString(clone), bounds };
+    if (legend) {
+      clone.appendChild(legend.node);
+    }
+
+    return { text: new XMLSerializer().serializeToString(clone), bounds: exportedBounds };
   }
 
   async function runCanvasExport(scope: ExportScope, format: "png" | "svg") {
@@ -4251,21 +4602,37 @@ export function RelationshipGraph({
                     direction stays in the data and in 管理. */}
                 <div className="graph-panel-row">
                   <span className="graph-control-label">箭头</span>
-                  <div className="graph-segment">
+                  <div className="graph-arrow-options">
                     {([
-                      ["concise", "简洁"],
-                      ["thin", "细线"],
-                      ["soft", "柔和"],
-                      ["none", "无"],
-                    ] as Array<[ArrowStyle, string]>).map(([value, label]) => (
+                      ["concise", "简洁", "8 7 5"],
+                      ["thin", "细线", "7 5 3"],
+                      ["soft", "柔和", "8 9 8"],
+                      ["none", "无", ""],
+                    ] as Array<[ArrowStyle, string, string]>).map(([value, label, head]) => (
                       <button
                         aria-pressed={style.edge.arrow === value}
-                        className={style.edge.arrow === value ? "graph-segment-button selected" : "graph-segment-button"}
+                        className={
+                          style.edge.arrow === value ? "graph-arrow-option selected" : "graph-arrow-option"
+                        }
                         key={value}
                         onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, arrow: value } })}
+                        title={label}
                         type="button"
                       >
-                        {label}
+                        {/* The head is drawn, not described: four words in a row read the
+                            same at a glance, four heads do not. */}
+                        <svg aria-hidden="true" viewBox="0 0 46 14">
+                          <line x1="2" x2={head ? "30" : "42"} y1="7" y2="7" />
+                          {head ? (
+                            <polygon
+                              points={(() => {
+                                const [h, w] = head.split(" ").map(Number);
+                                return `30,7 ${30 - h},${7 - w / 2} ${30 - h},${7 + w / 2}`;
+                              })()}
+                            />
+                          ) : null}
+                        </svg>
+                        <span>{label}</span>
                       </button>
                     ))}
                   </div>
@@ -4335,6 +4702,37 @@ export function RelationshipGraph({
                         {option.label}
                       </button>
                     ))}
+                  </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">头像形态</span>
+                    <div className="graph-segment" role="group" aria-label="头像形态">
+                      {([
+                        ["auto", "自动"],
+                        ["circle", "圆形"],
+                        ["rounded", "圆角"],
+                      ] as const).map(([value, label]) => (
+                        <button
+                          aria-pressed={style.node.avatarShape === value}
+                          className={
+                            style.node.avatarShape === value ? "graph-segment-button selected" : "graph-segment-button"
+                          }
+                          key={value}
+                          onClick={() =>
+                            patchStyle({ ...style, preset: "custom", node: { ...style.node, avatarShape: value } })
+                          }
+                          title={
+                            value === "auto"
+                              ? "按图片比例决定：近似正方用圆形，明显偏长用圆角矩形"
+                              : value === "circle"
+                                ? "所有上传头像都裁成圆形"
+                                : "所有上传头像都用与图片比例一致的圆角矩形"
+                          }
+                          type="button"
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div className="graph-segment">
                     {AVATAR_SIZES.map((size) => (
@@ -4776,6 +5174,51 @@ export function RelationshipGraph({
                       ))}
                     </div>
                   </div>
+                  <div className="graph-panel-row">
+                    <span className="graph-control-label">关系图例</span>
+                    <div className="graph-segment">
+                      {[
+                        { value: false, label: "不显示" },
+                        { value: true, label: "显示" },
+                      ].map((option) => (
+                        <button
+                          aria-pressed={prefs.exportLegend === option.value}
+                          className={prefs.exportLegend === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={option.label}
+                          onClick={() => updatePrefs({ exportLegend: option.value })}
+                          type="button"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {prefs.exportLegend && (
+                    <div className="graph-panel-row">
+                      <span className="graph-control-label">图例位置</span>
+                      <div className="graph-segment">
+                        {([
+                          ["auto", "自动"],
+                          ["tl", "左上"],
+                          ["tr", "右上"],
+                          ["bl", "左下"],
+                          ["br", "右下"],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            aria-pressed={prefs.exportLegendCorner === value}
+                            className={
+                              prefs.exportLegendCorner === value ? "graph-segment-button selected" : "graph-segment-button"
+                            }
+                            key={value}
+                            onClick={() => updatePrefs({ exportLegendCorner: value })}
+                            type="button"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="graph-panel-row">
                     <span className="graph-control-label">范围</span>
                     <div className="graph-segment">
@@ -5387,19 +5830,34 @@ export function RelationshipGraph({
                       {(() => {
                         const form: NodeForm =
                           layout.nodeStyles?.[character.id]?.form ?? style.node.form;
-                        const geom = nodeGeometry(form, metrics, style.node.size);
+                        const shape = avatarShapeFor(
+                          layout.nodeStyles?.[character.id]?.avatarShape ?? style.node.avatarShape,
+                          avatarRatios[character.id],
+                        );
+                        const geom = nodeGeometry(form, metrics, style.node.size, {
+                          shape,
+                          ratio: avatarRatios[character.id],
+                        });
                         const centre = geom.card
                           ? {
                               x: positions[index].x - geom.halfWidth + geom.halfHeight - 4,
                               y: positions[index].y,
                             }
                           : { x: positions[index].x, y: positions[index].y };
-                        return (
-                          <circle
-                            cx={centre.x}
-                            cy={centre.y}
-                            r={geom.card ? geom.halfHeight - 6 : geom.radius}
+
+                        // The clip is the frame: a rounded picture is clipped by the same
+                        // rounded rectangle that is drawn as its border, so no corner of
+                        // the image can show outside it.
+                        return geom.card || geom.rounded ? (
+                          <rect
+                            height={(geom.halfHeight - (geom.card ? 6 : 0)) * 2}
+                            rx={geom.card ? 12 : geom.rx}
+                            width={(geom.halfWidth - (geom.card ? 0 : 0)) * 2}
+                            x={centre.x - (geom.halfWidth - (geom.card ? 0 : 0))}
+                            y={centre.y - (geom.halfHeight - (geom.card ? 6 : 0))}
                           />
+                        ) : (
+                          <circle cx={centre.x} cy={centre.y} r={geom.radius} />
                         );
                       })()}
                     </clipPath>
@@ -5465,8 +5923,8 @@ export function RelationshipGraph({
               const fromGeom = nodeVisuals[relationship.fromId]?.geom;
               const toGeom = nodeVisuals[relationship.toId]?.geom;
               const geometry = edgeGeometry(from, to, {
-                fromBox: fromGeom?.card ? fromGeom : undefined,
-                toBox: toGeom?.card ? toGeom : undefined,
+                fromBox: fromGeom?.card || fromGeom?.rounded ? fromGeom : undefined,
+                toBox: toGeom?.card || toGeom?.rounded ? toGeom : undefined,
                 fromRadius: fromGeom?.radius,
                 toRadius: toGeom?.radius,
                 weight: style.edge.width,
@@ -5656,11 +6114,11 @@ export function RelationshipGraph({
                       by restyling the node's own stroke would either hide that colour
                       or be hidden by it. */}
                    {isSelected &&
-                     (geom.card ? (
+                     (geom.card || geom.rounded ? (
                        <rect
                          className={`relationship-node-ring${renderedRadius < 12 ? " tight" : ""}`}
                          height={geom.halfHeight * 2 + 12}
-                         rx={16}
+                         rx={geom.rounded ? geom.rx + 6 : 16}
                          strokeWidth={ringStroke}
                          width={geom.halfWidth * 2 + 12}
                          x={nodeX - geom.halfWidth - 6}
@@ -5685,10 +6143,10 @@ export function RelationshipGraph({
                        // does not, so on a round node the tick rides the rim at 45°
                        // and stays attached to the shape it marks instead of
                        // floating off the bounding box.
-                       const bx = geom.card
+                       const bx = geom.card || geom.rounded
                          ? nodeX + geom.halfWidth - badgeR - 6
                          : nodeX + geom.radius * 0.707;
-                       const by = geom.card
+                       const by = geom.card || geom.rounded
                          ? nodeY - geom.halfHeight + badgeR + 6
                          : nodeY - geom.radius * 0.707;
 
@@ -5702,7 +6160,24 @@ export function RelationshipGraph({
                          </g>
                        );
                      })()}
-                  {geom.card ? (
+                  {geom.rounded ? (
+                    <rect
+                      className="relationship-node-circle relationship-node-rounded"
+                      height={geom.halfHeight * 2}
+                      rx={geom.rx}
+                      style={{
+                        ...(nodeOverride?.borderColor
+                          ? ({ "--node-stroke": nodeOverride.borderColor } as Record<string, string>)
+                          : {}),
+                        ...(nodeOverride?.background
+                          ? ({ "--node-fill": nodeOverride.background } as Record<string, string>)
+                          : {}),
+                      }}
+                      width={geom.halfWidth * 2}
+                      x={nodeX - geom.halfWidth}
+                      y={nodeY - geom.halfHeight}
+                    />
+                  ) : geom.card ? (
                     <rect
                       className="relationship-node-card"
                       height={geom.halfHeight * 2}
@@ -5747,19 +6222,23 @@ export function RelationshipGraph({
                     <image
                       className="relationship-node-image"
                       clipPath={`url(#${avatarClipId(character.id)})`}
-                      height={geom.card ? geom.halfHeight * 2 - 12 : metrics.radius * 2}
+                      height={(geom.card ? geom.halfHeight - 6 : geom.halfHeight) * 2}
                       href={avatarUrl}
                       preserveAspectRatio="xMidYMid slice"
-                      width={geom.card ? geom.halfHeight * 2 - 12 : metrics.radius * 2}
-                      x={avatarCentre.x - (geom.card ? geom.halfHeight - 6 : metrics.radius)}
-                      y={avatarCentre.y - (geom.card ? geom.halfHeight - 6 : metrics.radius)}
+                      width={(geom.card ? geom.halfHeight - 6 : geom.halfWidth) * 2}
+                      x={avatarCentre.x - (geom.card ? geom.halfHeight - 6 : geom.halfWidth)}
+                      y={avatarCentre.y - (geom.card ? geom.halfHeight - 6 : geom.halfHeight)}
                     />
                   )}
                   {level !== "plate" && prefs.showAvatars && style.node.showAvatars && !avatarUrl && (
                     <text
                       className="relationship-node-emoji"
                       style={{
-                        fontSize: `${geom.card ? geom.halfHeight * 1.0 : metrics.emojiSize * (geom.radius / Math.max(metrics.radius * style.node.size, 0.001))}px`,
+                        fontSize: `${
+                          geom.card || geom.rounded
+                            ? Math.min(geom.halfWidth, geom.halfHeight) * 1.05
+                            : metrics.emojiSize * (geom.radius / Math.max(metrics.radius * style.node.size, 0.001))
+                        }px`,
                       }}
                       x={avatarCentre.x}
                       y={avatarCentre.y}
@@ -5803,7 +6282,7 @@ export function RelationshipGraph({
                         fontSize: `${nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1)}px`,
                       }}
                       x={positions[index].x}
-                      y={positions[index].y + metrics.nameDrop}
+                      y={positions[index].y + Math.max(metrics.nameDrop, geom.halfHeight + 14)}
                     >
                       {(() => {
                         const name = characterDisplayName(character);
