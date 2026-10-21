@@ -1338,6 +1338,9 @@ export function RelationshipGraph({
   // whatever it starts on, including a node. It is a tool, not a mode of the data —
   // turning it off leaves selection and coordinates exactly as they were.
   const [panMode, setPanMode] = useState(false);
+  // The tooltip is the only place a shortcut is documented, so it has to name the key
+  // the reader's keyboard actually has.
+  const modKey = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
   // The group whose rectangle the pointer is down on. Selecting on release alone
   // left the border unmarked for the whole drag: `.dragging` is derived from this,
   // not from the member list, so pressing a group shows both states at once.
@@ -1961,6 +1964,10 @@ export function RelationshipGraph({
   // wheel ends up with a smear of 3px names.
   const measured = frameSize.width > 0 && frameSize.height > 0;
   const screenScale = measured ? canvasScreenScale(frameSize, canvas.viewBox) : 0;
+  // The percentage a reader understands is how large the drawing looks, not the
+  // number inside the transform. The same 90% draws at 60% on a narrow canvas because
+  // the view box is fitted into fewer pixels, so the readout multiplies by that fit.
+  const effectiveZoom = view.k * (measured ? screenScale : 1);
 
   // The grid is a reference plane, not a second drawing: its spacing is solved for a
   // constant on-screen step so a zoomed-out hundred-node wheel is not a coarse
@@ -2571,10 +2578,31 @@ export function RelationshipGraph({
       if (target?.closest("input, textarea, select, [contenteditable='true']")) {
         return;
       }
-      if (!(event.metaKey || event.ctrlKey)) {
+      // A dialog owns the keyboard while it is open.
+      if (target?.closest(".confirm-dialog, .modal-backdrop")) {
         return;
       }
       const key = event.key.toLowerCase();
+      // Single-key tools, the way a drawing app binds them. They never run while a
+      // modifier is held, so they cannot shadow the browser's own shortcuts.
+      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (key === "v") {
+          event.preventDefault();
+          setPanMode(false);
+          setSelectMode(true);
+        } else if (key === "h") {
+          event.preventDefault();
+          setSelectMode(false);
+          setPanMode(true);
+        } else if (key === "0") {
+          event.preventDefault();
+          resetView();
+        }
+        return;
+      }
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
       if (key === "z") {
         event.preventDefault();
         if (event.shiftKey) {
@@ -2589,7 +2617,7 @@ export function RelationshipGraph({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [layout]);
+  }, [layout, resetView]);
 
   /**
    * The stored layout with every visible node's current ring slot materialised.
@@ -5002,25 +5030,25 @@ export function RelationshipGraph({
                 <button
                   aria-label="缩小画布"
                   className="graph-icon-button"
-                  data-tooltip="缩小"
+                  data-tooltip="缩小（−）"
                   onClick={() => zoomBy(1 / 1.25)}
                   type="button"
                 >
                   <Icon name="minus" size={15} />
                 </button>
                 <button
-                  aria-label={`当前缩放 ${Math.round(view.k * 100)}%，点按适应画布`}
+                  aria-label={`当前缩放 ${Math.round(effectiveZoom * 100)}%，点按适应画布`}
                   className="graph-zoom-readout"
-                  data-tooltip="适应画布"
+                  data-tooltip="适应画布（0）"
                   onClick={resetView}
                   type="button"
                 >
-                  {Math.round(view.k * 100)}%
+                  {Math.round(effectiveZoom * 100)}%
                 </button>
                 <button
                   aria-label="放大画布"
                   className="graph-icon-button"
-                  data-tooltip="放大"
+                  data-tooltip="放大（+）"
                   onClick={() => zoomBy(1.25)}
                   type="button"
                 >
@@ -5031,7 +5059,7 @@ export function RelationshipGraph({
               <button
                 aria-label="适应画布"
                 className="graph-icon-button"
-                data-tooltip="适应画布：让全部角色与姓名进入视野"
+                data-tooltip="适应画布（0）：让全部角色与姓名进入视野"
                 onClick={resetView}
                 type="button"
               >
@@ -5046,7 +5074,7 @@ export function RelationshipGraph({
                   <button
                     aria-label="撤销"
                     className="graph-icon-button graph-tool-history"
-                    data-tooltip="撤销上一步布局改动"
+                    data-tooltip={`撤销（${modKey}Z）`}
                     disabled={undoRef.current.length === 0}
                     onClick={undoLayout}
                     type="button"
@@ -5056,7 +5084,7 @@ export function RelationshipGraph({
                   <button
                     aria-label="重做"
                     className="graph-icon-button graph-tool-history"
-                    data-tooltip="重做"
+                    data-tooltip={`重做（⇧${modKey}Z）`}
                     disabled={redoRef.current.length === 0}
                     onClick={redoLayout}
                     type="button"
@@ -5074,8 +5102,8 @@ export function RelationshipGraph({
                 className="graph-icon-button"
                 data-tooltip={
                   selectMode
-                    ? "选择工具已开启：在空白处拖动框选，Esc 退出"
-                    : "选择工具：从空白处拖动框选角色"
+                    ? "选择工具已开启（V）：空白处拖动框选，Esc 退出"
+                    : "选择工具（V）：从空白处拖动框选角色"
                 }
                 onClick={() => {
                   setSelectMode((current) => {
@@ -5100,7 +5128,11 @@ export function RelationshipGraph({
                 aria-label={panMode ? "平移工具（已开启）" : "平移工具"}
                 aria-pressed={panMode}
                 className="graph-icon-button"
-                data-tooltip={panMode ? "平移工具已开启：拖动即平移，Esc 退出" : "平移工具：拖动平移画布，不移动角色"}
+                data-tooltip={
+                  panMode
+                    ? "平移工具已开启（H）：拖动即平移，Esc 退出"
+                    : "平移工具（H）：拖动平移画布，不移动角色"
+                }
                 onClick={() => {
                   setPanMode((current) => {
                     if (!current) {
@@ -5924,6 +5956,7 @@ export function RelationshipGraph({
                   <div aria-label="历史与保存" className="graph-studio-toolgroup" role="group">
                   <button
                     aria-label="撤销"
+                    data-tooltip={`撤销（${modKey}Z）`}
                     disabled={undoRef.current.length === 0}
                     onClick={undoLayout}
                     type="button"
@@ -5932,6 +5965,7 @@ export function RelationshipGraph({
                   </button>
                   <button
                     aria-label="重做"
+                    data-tooltip={`重做（⇧${modKey}Z）`}
                     disabled={redoRef.current.length === 0}
                     onClick={redoLayout}
                     type="button"
@@ -6306,9 +6340,6 @@ export function RelationshipGraph({
                     >
                       {lensKinds.length ? `清除透镜（${lensKinds.length}）` : "未选择透镜"}
                     </button>
-                    <p className="graph-explore-hint">
-                      透镜只改变强调，不删除关系；关闭后搜索、聚光灯与选择保持原样。
-                    </p>
                   </div>
 
                   

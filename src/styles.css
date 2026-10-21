@@ -11398,6 +11398,9 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
    night need different ink to stay a background. */
 :root {
   --grid-dot: rgba(15, 23, 42, 0.22);
+  /* One width for a task drawer in both modes: the same panel should not change size
+     because the studio was opened. */
+  --drawer-width: 336px;
 }
 
 :root[data-theme="dark"] {
@@ -12611,7 +12614,7 @@ circle.graph-grid-dot {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  width: 320px;
+  width: var(--drawer-width);
   min-width: 0;
   max-height: 100%;
   margin: 0;
@@ -12633,6 +12636,17 @@ circle.graph-grid-dot {
 .graph-studio-drawer.right {
   grid-area: right;
   border-left: 1px solid var(--border);
+}
+
+/* The head stays put while the body scrolls: one header structure for every task
+   drawer, instead of a header that scrolls away in the longest panel. */
+.graph-studio-drawer-head {
+  position: sticky;
+  top: -14px;
+  z-index: 1;
+  margin: -14px 0 0;
+  padding: 14px 0 10px;
+  background: var(--surface-subtle);
 }
 
 .graph-studio-drawer-head {
@@ -13878,7 +13892,7 @@ circle.graph-grid-dot {
    visible and simply has less width, instead of losing the right-hand side of the
    graph under a panel. */
 .graph-canvas-row.has-drawer {
-  grid-template-columns: minmax(0, 1fr) 348px;
+  grid-template-columns: minmax(0, 1fr) var(--drawer-width);
 }
 
 .graph-page-drawer-layer {
@@ -14154,13 +14168,21 @@ circle.graph-grid-dot {
 .graph-studio .graph-context-slot {
   grid-area: canvas;
   order: 3;
-  align-self: end;
+  align-self: start;
   position: relative;
   z-index: var(--z-overlay-3);
-  /* Clears the floating dock: a selection bar or a preview that sat in the corner
-     would be the one thing the dock covers. */
-  margin: 0 14px calc(74px + env(safe-area-inset-bottom, 0px));
+  margin: 10px 14px 0;
   padding-bottom: 0;
+}
+
+/* The bar reads as a floating control strip, not a band across the drawing: only as
+   wide as its controls, with its own surface and a soft edge. */
+.graph-studio .graph-context {
+  justify-self: start;
+  max-width: calc(100% - 8px);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(8px);
 }
 
 .graph-studio .graph-context-slot:empty {
