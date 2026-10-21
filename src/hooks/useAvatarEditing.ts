@@ -38,6 +38,8 @@ type CropDraft = {
   offsetX: number;
   offsetY: number;
   zoom: number;
+  /** 填满容器 or 完整显示; see cropGeometry. */
+  fit?: "cover" | "contain";
 };
 
 type PendingAvatar = {
@@ -296,6 +298,36 @@ export function useAvatarEditing({
     return cropMetrics(image, stage.getBoundingClientRect(), frame.getBoundingClientRect(), zoom);
   }
 
+  /** 完整显示 / 填满容器. Switching modes re-frames the picture instead of cropping it. */
+  function setCropFit(fit: "cover" | "contain") {
+    const metrics = getCropMetrics();
+
+    setCropDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      if (fit === "contain") {
+        return clampCropDraft({ ...current, fit, zoom: metrics?.containZoom ?? current.zoom, offsetX: 0, offsetY: 0 });
+      }
+      return clampCropDraft({ ...current, fit });
+    });
+  }
+
+  /** Back to the framed picture, centred, at the smallest zoom that still covers it. */
+  function resetCrop() {
+    const metrics = getCropMetrics();
+    setCropDraft((current) =>
+      current
+        ? clampCropDraft({
+            ...current,
+            offsetX: 0,
+            offsetY: 0,
+            zoom: metrics?.minZoom ?? 1,
+          })
+        : current,
+    );
+  }
+
   function clampCropDraft(nextDraft: CropDraft | null) {
     return clampDraftToMetrics(nextDraft, nextDraft ? getCropMetrics(nextDraft.zoom) : null);
   }
@@ -322,7 +354,8 @@ export function useAvatarEditing({
     try {
       const blob = await compressImageToAvatarBlob(cropImageRef.current, {
         ...cropDraft,
-        ...visibleCrop,
+        ...(cropDraft.fit === "contain" ? {} : visibleCrop),
+        contain: cropDraft.fit === "contain",
       });
       const previewUrl = URL.createObjectURL(blob);
 
@@ -401,6 +434,8 @@ export function useAvatarEditing({
     pendingAvatar,
     setPendingAvatar,
     cropDraft,
+    setCropFit,
+    resetCrop,
     setCropDraft,
     cropDrag,
     setCropDrag,

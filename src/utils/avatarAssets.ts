@@ -118,6 +118,8 @@ export async function compressImageToAvatarBlob(image: HTMLImageElement, crop: {
   sourceX?: number;
   sourceY?: number;
   sourceSize?: number;
+  /** Keep the whole picture and pad the square, instead of cropping it. */
+  contain?: boolean;
 }) {
   const size = 512;
   const canvas = document.createElement("canvas");
@@ -147,7 +149,18 @@ export async function compressImageToAvatarBlob(image: HTMLImageElement, crop: {
     Math.min(image.naturalHeight - sourceSize, crop.sourceY ?? (image.naturalHeight - sourceSize) / 2),
   );
 
-  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+  if (crop.contain) {
+    // The whole picture, fitted inside the square. Nothing is filled behind it, so a
+    // transparent PNG keeps its transparency instead of gaining a white plate.
+    const scale = Math.min(size / image.naturalWidth, size / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+
+    context.clearRect(0, 0, size, size);
+    context.drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+  } else {
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, size, size);
+  }
 
   const webpBlob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, "image/webp", 0.8),

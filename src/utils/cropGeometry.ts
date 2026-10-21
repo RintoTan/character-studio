@@ -38,11 +38,19 @@ export type CropDraft = {
   offsetX: number;
   offsetY: number;
   zoom: number;
+  /**
+   * 填满容器 or 完整显示. Cover fills the square and may crop; contain keeps the whole
+   * picture and pads the frame. The mode is a decision about the picture, not a zoom
+   * level, so it is stored with the crop rather than inferred from it.
+   */
+  fit?: "cover" | "contain";
 };
 
 export type CropMetrics = {
   /** The smallest zoom at which the image still covers the frame. */
   minZoom: number;
+  /** The zoom at which the whole picture fits inside the frame. */
+  containZoom: number;
   /** `zoom`, raised to `minZoom` if it was smaller. */
   zoom: number;
   minX: number;
@@ -82,7 +90,12 @@ export function fitImage(image: PixelSize, stage: Rect): FittedImage {
  */
 export function cropMetrics(image: PixelSize, stage: Rect, frame: Rect, zoom: number): CropMetrics {
   const { baseWidth, baseHeight } = fitImage(image, stage);
-  const minZoom = Math.max(1, frame.width / baseWidth, frame.height / baseHeight);
+  // The floor is "covers the frame", not "covers the stage" and not 1. A square
+  // picture on a wide stage is fitted to the stage's height, so a square frame inside
+  // that stage needs a zoom below 1 to see the whole picture — and the old `max(1, …)`
+  // made that impossible, which is why the edges could never be included.
+  const minZoom = Math.max(frame.width / baseWidth, frame.height / baseHeight);
+  const containZoom = Math.min(frame.width / baseWidth, frame.height / baseHeight);
   const nextZoom = Math.max(zoom, minZoom);
   const renderedWidth = baseWidth * nextZoom;
   const renderedHeight = baseHeight * nextZoom;
@@ -95,6 +108,7 @@ export function cropMetrics(image: PixelSize, stage: Rect, frame: Rect, zoom: nu
 
   return {
     minZoom,
+    containZoom,
     zoom: nextZoom,
     minX: frameRight - renderedWidth / 2 - stage.width / 2,
     maxX: frameLeft + renderedWidth / 2 - stage.width / 2,
@@ -113,6 +127,12 @@ export function cropMetrics(image: PixelSize, stage: Rect, frame: Rect, zoom: nu
 export function clampCropDraft<T extends CropDraft>(draft: T | null, metrics: CropMetrics | null): T | null {
   if (!draft || !metrics) {
     return draft;
+  }
+
+  // 完整显示 has no panning to do: the picture is inside the frame by definition, and
+  // moving it would leave a strip of padding on one side only.
+  if (draft.fit === "contain") {
+    return { ...draft, zoom: metrics.containZoom, offsetX: 0, offsetY: 0 };
   }
 
   return {

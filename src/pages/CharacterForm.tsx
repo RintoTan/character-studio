@@ -1220,6 +1220,8 @@ export function CharacterForm({
     setPendingAvatar,
     cropDraft,
     setCropDraft,
+    setCropFit,
+    resetCrop,
     cropDrag,
     setCropDrag,
     recentAvatars,
@@ -2850,7 +2852,8 @@ export function CharacterForm({
                 setCropDrag({ x: event.clientX, y: event.clientY });
               }}
               onPointerMove={(event) => {
-                if (!cropDrag) {
+                // 完整显示 keeps the picture inside the frame; there is nothing to pan.
+                if (!cropDrag || cropDraft.fit === "contain") {
                   return;
                 }
                 const deltaX = event.clientX - cropDrag.x;
@@ -2881,9 +2884,30 @@ export function CharacterForm({
               />
               <div className="crop-frame" ref={cropFrameRef} />
             </div>
+            <div className="crop-fit" role="group" aria-label="头像裁剪方式">
+              <button
+                aria-pressed={cropDraft.fit !== "contain"}
+                className={cropDraft.fit !== "contain" ? "graph-segment-button selected" : "graph-segment-button"}
+                onClick={() => setCropFit("cover")}
+                title="图片填满画框，边缘可能被裁掉；可拖动选择保留的区域"
+                type="button"
+              >
+                填满容器
+              </button>
+              <button
+                aria-pressed={cropDraft.fit === "contain"}
+                className={cropDraft.fit === "contain" ? "graph-segment-button selected" : "graph-segment-button"}
+                onClick={() => setCropFit("contain")}
+                title="完整保留整张图片，比例不一致时周围留白"
+                type="button"
+              >
+                完整显示
+              </button>
+            </div>
             <label className="crop-slider">
               缩放
               <input
+                disabled={cropDraft.fit === "contain"}
                 max="8"
                 min="0.25"
                 onChange={(event) =>
@@ -2902,16 +2926,8 @@ export function CharacterForm({
               <button className="ghost-button" onClick={() => adjustCropZoom(-0.15)} type="button">
                 缩小
               </button>
-              <button
-                className="ghost-button"
-                onClick={() =>
-                  setCropDraft((current) =>
-                    clampCropDraft(current ? { ...current, zoom: 0.25 } : current),
-                  )
-                }
-                type="button"
-              >
-                最小
+              <button className="ghost-button" onClick={resetCrop} type="button">
+                重置
               </button>
               <span>{Math.round(cropDraft.zoom * 100)}%</span>
               <button

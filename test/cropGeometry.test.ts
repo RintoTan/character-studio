@@ -68,7 +68,8 @@ describe("fitImage", () => {
       const fitted = fitImage(size, stage);
       const metrics = cropMetrics(size, stage, frame, 0.01);
 
-      expect(metrics.minZoom).toBeGreaterThanOrEqual(1);
+      // The floor is the frame, not the stage: a square picture on a wider stage needs
+      // a zoom below 1 before the whole picture fits the square.
       expect(fitted.baseWidth * metrics.minZoom).toBeGreaterThanOrEqual(frame.width - 1e-9);
       expect(fitted.baseHeight * metrics.minZoom).toBeGreaterThanOrEqual(frame.height - 1e-9);
     }
@@ -83,7 +84,6 @@ describe("cropMetrics", () => {
 
     expect(metrics.minZoom).toBeGreaterThan(0);
     expect(metrics.zoom).toBeGreaterThanOrEqual(metrics.minZoom);
-    expect(metrics.zoom).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps the requested zoom when it is already large enough", () => {
@@ -203,5 +203,49 @@ describe("visibleCrop", () => {
     expect(Number.isFinite(crop.sourceX)).toBe(true);
     expect(Number.isFinite(crop.sourceY)).toBe(true);
     expect(Number.isFinite(crop.sourceSize)).toBe(true);
+  });
+});
+
+describe("a square picture can be selected to its edges", () => {
+  // The reported bug: a 1:1 picture on a wider stage was fitted to the stage's height,
+  // and the old floor of 1 meant the square frame always cut the sides. The floor is
+  // now the frame, so zoom can go below 1 and the whole picture is reachable.
+  const wideStage = { left: 0, top: 0, width: 420, height: 300 };
+  const squareFrame = { left: 90, top: 30, width: 240, height: 240 };
+  const square = { naturalWidth: 800, naturalHeight: 800 };
+  const fitted = fitImage(square, wideStage);
+
+  it("allows a zoom below 1 that exactly fits the frame", () => {
+    const metrics = cropMetrics(square, wideStage, squareFrame, 1);
+
+    expect(metrics.minZoom).toBeCloseTo(240 / fitted.baseHeight, 10);
+    expect(metrics.minZoom).toBeLessThan(1);
+  });
+
+  it("shows the whole picture at the floor", () => {
+    const metrics = cropMetrics(square, wideStage, squareFrame, 0.01);
+    const crop = visibleCrop(square, wideStage, squareFrame, {
+      offsetX: 0,
+      offsetY: 0,
+      zoom: metrics.zoom,
+    });
+
+    expect(crop.sourceSize).toBeCloseTo(800, 6);
+    expect(crop.sourceX).toBeCloseTo(0, 6);
+    expect(crop.sourceY).toBeCloseTo(0, 6);
+  });
+
+  it("still refuses to zoom out past the frame", () => {
+    const metrics = cropMetrics(square, wideStage, squareFrame, 0.01);
+
+    expect(fitted.baseWidth * metrics.zoom).toBeGreaterThanOrEqual(squareFrame.width - 1e-9);
+    expect(fitted.baseHeight * metrics.zoom).toBeGreaterThanOrEqual(squareFrame.height - 1e-9);
+  });
+
+  it("offers a contain zoom that keeps the whole picture inside the frame", () => {
+    const metrics = cropMetrics(square, wideStage, squareFrame, 1);
+
+    expect(metrics.containZoom).toBeLessThanOrEqual(metrics.minZoom);
+    expect(metrics.containZoom).toBeCloseTo(240 / fitted.baseWidth, 10);
   });
 });
