@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chooseLabelOffset, measureNameWidth, wrapNameLines } from "../src/pages/RelationshipGraph";
+import { chooseLabelOffset, dashArrayFor, edgeInk, measureNameWidth, wrapNameLines } from "../src/pages/RelationshipGraph";
 
 const widthOf = (lines: string[], size: number) => lines.map((line) => measureNameWidth(line, size));
 
@@ -84,5 +84,45 @@ describe("a relationship label steps off what it covers", () => {
       x: 100,
       y: 100,
     });
+  });
+});
+
+describe("one ink rule for the canvas and every legend", () => {
+  const style = (overrides: Record<string, unknown> = {}) =>
+    ({
+      edge: {
+        byKind: true,
+        color: "#7b87a8",
+        width: 1.4,
+        dash: "solid" as const,
+        arrow: "concise" as const,
+        arrowSize: 1,
+        ...overrides,
+      },
+    }) as never;
+
+  it("gives each kind its own colour when colouring by type", () => {
+    const friend = edgeInk("friend", style());
+    const rival = edgeInk("rival", style());
+
+    expect(friend.color).not.toBe(rival.color);
+  });
+
+  it("uses one colour for every kind when colouring is off", () => {
+    const single = style({ byKind: false, color: "#334155" });
+
+    expect(edgeInk("friend", single).color).toBe("#334155");
+    expect(edgeInk("rival", single).color).toBe("#334155");
+  });
+
+  it("lets a local override win without changing the style", () => {
+    expect(edgeInk("friend", style(), { color: "#ff0000", width: 3 }).color).toBe("#ff0000");
+    expect(edgeInk("friend", style(), { width: 3 }).width).toBe(3);
+  });
+
+  it("draws the same dash patterns the canvas uses", () => {
+    expect(dashArrayFor("solid")).toBeUndefined();
+    expect(dashArrayFor("dashed")).toBe("7 5");
+    expect(dashArrayFor("dotted")).toBe("2 4");
   });
 });

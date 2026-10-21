@@ -154,7 +154,9 @@ function PresetThumb({ presetId }: { presetId: CanvasPresetId }) {
         y2="18"
       />
       <line
-        stroke={stroke}
+        stroke={
+          preset.edge.byKind ? `hsl(${kindHue("rival")} 45% 52%)` : stroke
+        }
         strokeDasharray={dash}
         strokeWidth={Math.max(1, lineWidth * 0.8)}
         x1="26"
@@ -162,6 +164,12 @@ function PresetThumb({ presetId }: { presetId: CanvasPresetId }) {
         y1="28"
         y2="42"
       />
+      {/* The paper under the drawing is part of a style: a dotted preset that showed a
+          plain rectangle looked like the minimal one beside it. */}
+      {preset.canvas.grid === "dots" &&
+        [[10, 10], [20, 10], [30, 10], [10, 20], [10, 30], [86, 46], [76, 46]].map(([x, y]) => (
+          <circle cx={x} cy={y} fill={border} key={`dot-${x}-${y}`} opacity="0.45" r="0.9" />
+        ))}
       {/* The cover shows the node form the preset actually draws: a card preset that
           previewed three circles looked the same as the one beside it. */}
       {[
@@ -822,6 +830,29 @@ export function neighbourIdsOf(
   }
 
   return out;
+}
+
+/**
+ * The ink a relationship kind is drawn with. One rule, read by the canvas, by the SVG
+ * export and by every legend, so a legend cannot claim a colour the line does not use.
+ */
+export function edgeInk(
+  kind: string,
+  style: CanvasStyle,
+  local?: { color?: string; width?: number; dash?: "solid" | "dashed" | "dotted" },
+): { color: string; width: number; dash: "solid" | "dashed" | "dotted" } {
+  return {
+    color:
+      local?.color ||
+      (style.edge.byKind ? `hsl(${kindHue(kind)} 42% 48%)` : style.edge.color || "#98a2b3"),
+    width: local?.width ?? style.edge.width,
+    dash: local?.dash ?? style.edge.dash,
+  };
+}
+
+/** The dash pattern a line style is drawn with, in drawing units. */
+export function dashArrayFor(dash: "solid" | "dashed" | "dotted"): string | undefined {
+  return dash === "dashed" ? "7 5" : dash === "dotted" ? "2 4" : undefined;
 }
 
 export function ringStrokeFor(pxPerUnit: number): number {
@@ -3913,26 +3944,25 @@ export function RelationshipGraph({
    */
   const legendEntries = useMemo(() => {
     const kinds = [...new Set(drawnRelationships.map((relationship) => relationship.kind))];
-    const dash =
-      style.edge.dash === "dashed"
-        ? `${Math.max(2, style.edge.width * 3)} ${Math.max(2, style.edge.width * 2)}`
-        : style.edge.dash === "dotted"
-          ? `${Math.max(1, style.edge.width)} ${Math.max(2, style.edge.width * 2)}`
-          : "none";
-
-    return kinds.map((kind) => ({
-      kind,
-      label: relationshipKindLabel(kind),
-      color: style.edge.byKind ? `hsl(${kindHue(kind)} 55% 58%)` : style.edge.color || "currentColor",
-      dash,
-      width: Math.max(1, style.edge.width),
-    }));
+    return kinds.map((kind) => {
+      const ink = edgeInk(kind, style);
+      return {
+        kind,
+        label: relationshipKindLabel(kind),
+        color: ink.color,
+        dash: dashArrayFor(ink.dash),
+        width: Math.max(1, ink.width),
+        directed: !isSymmetricKind(kind) && style.edge.arrow !== "none" && style.edge.arrowSize > 0,
+      };
+    });
   }, [
     drawnRelationships,
     style.edge.byKind,
     style.edge.color,
     style.edge.dash,
     style.edge.width,
+    style.edge.arrow,
+    style.edge.arrowSize,
   ]);
   const hoveredEntry = hoveredId ? byId.get(hoveredId) : undefined;
 
@@ -4375,14 +4405,27 @@ export function RelationshipGraph({
       line.setAttribute("x2", String(plan.panel.x + pad + rowHeight * 1.5));
       line.setAttribute("y1", String(y));
       line.setAttribute("y2", String(y));
-      line.setAttribute("stroke", style.edge.byKind ? `hsl(${kindHue(kind)} 42% 48%)` : style.edge.color || "#98a2b3");
-      line.setAttribute("stroke-width", String(Math.max(1.2, style.edge.width)));
-      if (style.edge.dash === "dashed") {
-        line.setAttribute("stroke-dasharray", "7 5");
-      } else if (style.edge.dash === "dotted") {
-        line.setAttribute("stroke-dasharray", "2 4");
+      const ink = edgeInk(kind, style);
+      line.setAttribute("stroke", ink.color);
+      line.setAttribute("stroke-width", String(Math.max(1.2, ink.width)));
+      const dash = dashArrayFor(ink.dash);
+      if (dash) {
+        line.setAttribute("stroke-dasharray", dash);
       }
       node.appendChild(line);
+
+      // A directed kind gets a head in its sample; a mutual one must not, or the
+      // legend would promise a direction the drawing does not have.
+      if (!isSymmetricKind(kind) && style.edge.arrow !== "none" && style.edge.arrowSize > 0) {
+        const head = document.createElementNS(svgNs, "polygon");
+        const size = rowHeight * 0.26;
+        head.setAttribute(
+          "points",
+          `${plan.panel.x + pad + rowHeight * 1.5},${y} ${plan.panel.x + pad + rowHeight * 1.5 - size},${y - size * 0.55} ${plan.panel.x + pad + rowHeight * 1.5 - size},${y + size * 0.55}`,
+        );
+        head.setAttribute("fill", ink.color);
+        node.appendChild(head);
+      }
 
       const label = document.createElementNS(svgNs, "text");
       label.setAttribute("x", String(plan.panel.x + pad + rowHeight * 2));
@@ -4954,7 +4997,7 @@ export function RelationshipGraph({
               <div aria-label="视图" className="graph-style-view" role="group">
                 <div className="graph-style-section-head">
                   <strong>视图</strong>
-                  <span>只改本机显示；导出取当前画面，因此跟着一起变</span>
+                  <span>只改本机显示</span>
                 </div>
                 <div className="graph-panel-row">
                   <span className="graph-control-label">名称</span>
@@ -6171,10 +6214,13 @@ export function RelationshipGraph({
                         strokeDasharray={entry.dash}
                         strokeWidth={entry.width}
                         x1="1"
-                        x2="25"
+                        x2={entry.directed ? 21 : 25}
                         y1="4"
                         y2="4"
                       />
+                      {entry.directed && (
+                        <polygon fill={entry.color} points="25,4 20,1.4 20,6.6" />
+                      )}
                     </svg>
                     <em>{entry.label}</em>
                   </span>
@@ -6324,13 +6370,10 @@ export function RelationshipGraph({
               // A single edge may be recoloured, thickened or re-dashed without
               // touching the kind it records or any other line on the canvas.
               const localEdge = layout.edgeStyles?.[relationship.id];
-              const edgeColor =
-                localEdge?.color ||
-                (style.edge.byKind
-                  ? `hsl(${kindHue(relationship.kind)} 42% 48%)`
-                  : style.edge.color || undefined);
-              const edgeWidth = localEdge?.width ?? style.edge.width;
-              const edgeDash = localEdge?.dash ?? style.edge.dash;
+              const ink = edgeInk(relationship.kind, style, localEdge);
+              const edgeColor = ink.color;
+              const edgeWidth = ink.width;
+              const edgeDash = ink.dash;
               const isEdgeSelected = selectedEdgeId === relationship.id;
               // A lens and a spotlight are filters on the view: the edge keeps its
               // data, its kind and its endpoints, and only its ink changes.
@@ -6380,8 +6423,7 @@ export function RelationshipGraph({
                     d={edgePath}
                     style={{
                       stroke: edgeColor,
-                      strokeDasharray:
-                        edgeDash === "dashed" ? "7 5" : edgeDash === "dotted" ? "2 4" : undefined,
+                      strokeDasharray: dashArrayFor(edgeDash),
                       strokeWidth: edgeWidth,
                     }}
                   />
