@@ -6186,9 +6186,9 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       // The export panel is measured, not assumed: at every width its four edges have
       // to sit inside the window, and when the content is taller than the window it
       // has to scroll inside itself rather than run off the top.
-      // The guide sits under the drawing, pages through four cards, and stays out of
-      // the studio. Its state is a reading preference, never part of the graph data.
-      await check("使用指南：切换、边界、收起重开、全屏不重复、数据不变", async () => {
+      // The guide is one flat band under the drawing: a titled section, one card at a
+      // time, no stack and no overlap. Its state is a reading preference, never data.
+      await check("使用指南：切换、首尾边界、收起重开、全屏不重复、数据不变", async () => {
         await OPEN_GRAPH(1440, 900, false);
         const before = await cdp.value(`JSON.stringify({
           chars: document.querySelectorAll(".relationship-node").length,
@@ -6197,33 +6197,40 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
         const read = () => cdp.value(`(() => {
           const guide = document.querySelector(".graph-guide");
-          const card = document.querySelector(".graph-guide-card");
-          if (!guide || !card) return null;
+          if (!guide) return null;
           const r = guide.getBoundingClientRect();
           const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
           return {
-            title: card.querySelector("h3")?.textContent.trim() ?? "",
-            count: card.querySelector(".graph-guide-count")?.textContent.trim() ?? "",
-            below: r.top >= frame.bottom - 1,
-            prevDisabled: document.querySelector('.graph-guide-step[aria-label="上一张提示"]')?.disabled ?? null,
-            nextDisabled: document.querySelector('.graph-guide-step[aria-label="下一张提示"]')?.disabled ?? null,
+            title: guide.querySelector("h3")?.textContent.trim() ?? "",
+            section: guide.querySelector("h2")?.textContent.trim() ?? "",
+            count: guide.querySelector(".graph-guide-count")?.textContent.trim() ?? "",
+            below: r.top >= frame.bottom + 8,
+            overlap: r.top < frame.bottom,
+            stacks: document.querySelectorAll(".graph-guide-edge").length,
+            shadow: getComputedStyle(guide).boxShadow,
+            prevDisabled: guide.querySelector('[aria-label="上一张提示"]')?.disabled ?? null,
+            nextDisabled: guide.querySelector('[aria-label="下一张提示"]')?.disabled ?? null,
             overflow: document.documentElement.scrollWidth - innerWidth,
           };
         })()`);
 
         const first = await read();
-        await cdp.value(`document.querySelector('.graph-guide-step[aria-label="下一张提示"]').click()`);
-        await new Promise((resolve) => setTimeout(resolve, 260));
+        await cdp.value(`document.querySelector('.graph-guide [aria-label="下一张提示"]').click()`);
+        await new Promise((resolve) => setTimeout(resolve, 220));
         const second = await read();
-        await cdp.value(`[...document.querySelectorAll(".graph-guide-edge")][0].click()`);
-        await new Promise((resolve) => setTimeout(resolve, 260));
-        const jumped = await read();
+        await cdp.value(`document.querySelector('.graph-guide [aria-label="下一张提示"]').click()`);
+        await cdp.value(`document.querySelector('.graph-guide [aria-label="下一张提示"]').click()`);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        const last = await read();
+        await cdp.value(`document.querySelector('.graph-guide [aria-label="上一张提示"]').click()`);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        const back = await read();
 
         await cdp.value(`document.querySelector(".graph-guide-collapse").click()`);
-        await new Promise((resolve) => setTimeout(resolve, 240));
-        const collapsed = await cdp.value(`!!document.querySelector(".graph-guide-open") && !document.querySelector(".graph-guide-card")`);
+        await new Promise((resolve) => setTimeout(resolve, 220));
+        const collapsed = await cdp.value(`!!document.querySelector(".graph-guide-open") && !document.querySelector(".graph-guide h3")`);
         await cdp.value(`document.querySelector(".graph-guide-open").click()`);
-        await new Promise((resolve) => setTimeout(resolve, 240));
+        await new Promise((resolve) => setTimeout(resolve, 220));
         const reopened = await read();
 
         await cdp.value(`[...document.querySelectorAll(".graph-toolbar button")].find((b) => b.getAttribute("aria-label") === "全屏编辑").click()`);
@@ -6244,12 +6251,17 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return {
           pass:
             Boolean(first) &&
-            first.below &&
+            first.section === "使用指南" &&
             first.count === "1 / 4" &&
             first.prevDisabled === true &&
+            first.below &&
+            !first.overlap &&
+            first.stacks === 0 &&
+            first.shadow === "none" &&
             second.count === "2 / 4" &&
-            second.prevDisabled === false &&
-            jumped.count !== "2 / 4" &&
+            last.count === "4 / 4" &&
+            last.nextDisabled === true &&
+            back.count === "3 / 4" &&
             collapsed &&
             Boolean(reopened) &&
             inStudio === 0 &&
@@ -6257,7 +6269,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
             Boolean(narrow) &&
             narrow.overflow <= 0 &&
             before === after,
-          detail: `首张「${first?.title}」${first?.count}；次张 ${second?.count}；露边跳转 ${jumped?.count}；收起可用 ${collapsed}；重开 ${reopened?.count}；全屏内 ${inStudio} 个；全屏画布 ${studioFrame}px；375 溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
+          detail: `区标题「${first?.section}」${first?.count}；次张 ${second?.count}；末张 ${last?.count}（下一张禁用 ${last?.nextDisabled}）；回退 ${back?.count}；堆叠层 ${first?.stacks}、阴影 ${first?.shadow}；在画布下方 ${first?.below}；收起/重开 ${collapsed}/${reopened?.count}；全屏内 ${inStudio} 个；375 溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
         };
       });
 
