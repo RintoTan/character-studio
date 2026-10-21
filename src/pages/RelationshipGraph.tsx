@@ -1273,6 +1273,66 @@ function useGraphAvatarUrls(characters: Character[]) {
 }
 
 /**
+ * The proportions of what is actually visible in a picture.
+ *
+ * A saved avatar is always a square canvas: 填满容器 crops inside it, 完整显示 pads it
+ * with transparency. Measuring the file's width and height would call every avatar
+ * square and the automatic shape would never leave the circle. This measures the ink
+ * instead: the whole picture when it is opaque, the content box when the padding is
+ * transparent, so a wide picture kept whole still reads as wide.
+ */
+export function visibleAspect(image: HTMLImageElement): number {
+  const width = image.naturalWidth || 1;
+  const height = image.naturalHeight || 1;
+  const fileAspect = width / height;
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+
+  if (!context) {
+    return fileAspect;
+  }
+
+  try {
+    context.clearRect(0, 0, size, size);
+    context.drawImage(image, 0, 0, size, size);
+    const { data } = context.getImageData(0, 0, size, size);
+    let left = size;
+    let right = -1;
+    let top = size;
+    let bottom = -1;
+
+    for (let y = 0; y < size; y += 1) {
+      for (let x = 0; x < size; x += 1) {
+        if (data[(y * size + x) * 4 + 3] > 8) {
+          if (x < left) left = x;
+          if (x > right) right = x;
+          if (y < top) top = y;
+          if (y > bottom) bottom = y;
+        }
+      }
+    }
+
+    if (right < left || bottom < top) {
+      return fileAspect;
+    }
+
+    const contentWidth = right - left + 1;
+    const contentHeight = bottom - top + 1;
+
+    if (contentWidth >= size - 1 && contentHeight >= size - 1) {
+      return fileAspect;
+    }
+
+    return (contentWidth * (width / size)) / (contentHeight * (height / size));
+  } catch {
+    return fileAspect;
+  }
+}
+
+/**
  * The proportions of each loaded picture, keyed by character.
  *
  * A picture's shape is only knowable once it has decoded, so this measures off-DOM and
@@ -1302,7 +1362,7 @@ function useAvatarRatios(urls: Record<string, string>) {
           new Promise<[string, number] | null>((resolve) => {
             const image = new Image();
             image.onload = () =>
-              resolve(image.naturalHeight > 0 ? [id, image.naturalWidth / image.naturalHeight] : null);
+              resolve(image.naturalHeight > 0 ? [id, visibleAspect(image)] : null);
             image.onerror = () => resolve(null);
             image.src = url;
           }),
