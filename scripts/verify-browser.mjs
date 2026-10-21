@@ -5830,7 +5830,11 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         sketch.nodeCount === 40 &&
         sketch.scopeNote.includes("40 / 400") &&
         sketch.scopeNote.includes("360") &&
-        scope.pressed.includes("只看有关联的") &&
+        // The scope buttons now say 有关联角色 / 所有角色 and carry their counts: the
+        // old label was the ambiguity this round removed.
+        // `pressed` is a list of labels, so membership is exact: the button now reads
+        // 有关联角色（400）.
+        scope.pressed.some((label) => label.startsWith("有关联角色")) &&
         scope.labels.includes("范围");
 
       const searchOk =
@@ -5865,7 +5869,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(startingPoint && searchOk && focusOk && escapeOk),
-        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」、范围「${scope.pressed.join("/")}」；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name + "/" + entry.state).join(" ")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}`,
+        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」、范围「${scope.pressed.join("/")}」；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name + "/" + entry.state).join(" ")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}、面板已关 ${state.focused.panelClosed}、聚焦标「${state.focused.chip}」）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}`,
       };
     });
 
