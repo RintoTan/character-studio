@@ -4,7 +4,15 @@
 // This is presentation only. It never names or changes a relationship kind, and
 // nothing here is written into a character or a relationship record.
 
-export type CanvasPresetId = "classic" | "archive" | "portrait" | "faction" | "minimal";
+export type CanvasPresetId =
+  | "classic"
+  | "archive"
+  | "portrait"
+  | "faction"
+  | "minimal"
+  | "story"
+  | "dossier"
+  | "soft";
 
 export type NodeShape = "circle" | "square";
 
@@ -17,6 +25,11 @@ export type NodeForm = "avatar" | "compact" | "card";
 export type GridKind = "none" | "dots" | "lines";
 export type EdgeDash = "solid" | "dashed" | "dotted";
 export type EdgeCurve = "curved" | "straight";
+/**
+ * How a directed relationship's head is drawn. `none` hides the head and keeps the
+ * direction in the data, which is what 极简展示 needs: the arrow is ink, not semantics.
+ */
+export type ArrowStyle = "concise" | "thin" | "soft" | "none";
 
 export type CanvasStyle = {
   preset: CanvasPresetId | "custom";
@@ -41,6 +54,7 @@ export type CanvasStyle = {
     dash: EdgeDash;
     curve: EdgeCurve;
     arrowSize: number;
+    arrow: ArrowStyle;
     showLabel: boolean;
     labelSize: number;
     labelBackground: boolean;
@@ -69,6 +83,9 @@ export const CANVAS_PRESETS: Array<{ id: CanvasPresetId; name: string; hint: str
   { id: "portrait", name: "人物群像", hint: "大节点头像、名字醒目，以人物为主" },
   { id: "faction", name: "阵营关系", hint: "按关系类型着色，粗线、直线，阵营感" },
   { id: "minimal", name: "极简展示", hint: "无网格、无箭头、细线，只留结构" },
+  { id: "story", name: "故事脉络", hint: "暖纸底、带方向的曲线，讲事件与影响" },
+  { id: "dossier", name: "关系档案", hint: "卡片姓名加职业，细线方格，读细节" },
+  { id: "soft", name: "柔和展示", hint: "浅色底、无箭头，适合导出设定展示图" },
 ];
 
 const BASE: CanvasStyle = {
@@ -91,6 +108,7 @@ const BASE: CanvasStyle = {
     dash: "solid",
     curve: "curved",
     arrowSize: 1,
+    arrow: "concise",
     showLabel: true,
     labelSize: 10,
     labelBackground: false,
@@ -111,7 +129,7 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
   classic: {},
   archive: {
     node: { size: 0.92, form: "compact", showAvatars: false, nameScale: 1, borderColor: "#b6a899", background: "#fffdf8" },
-    edge: { color: "#7a6a58", width: 1, showLabel: true, labelBackground: true },
+    edge: { color: "#7a6a58", width: 1, showLabel: true, labelBackground: true, arrow: "thin" },
     canvas: { background: "#f7f2e8", grid: "lines", gridSize: 40, gridOpacity: 0.35 },
   },
   portrait: {
@@ -126,8 +144,60 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
   },
   minimal: {
     node: { size: 0.9, form: "compact", showAvatars: false, nameScale: 0.95 },
-    edge: { width: 0.8, arrowSize: 0.6, showLabel: false },
+    edge: { width: 0.8, arrowSize: 0.6, arrow: "none", showLabel: false },
     canvas: { grid: "none", background: "" },
+  },
+  // 故事脉络 reads as a page of a chronicle: warm paper, curves that carry the eye from
+  // cause to effect, and heads large enough to say which way the influence runs.
+  story: {
+    node: { size: 1.1, form: "avatar", showAvatars: true, nameScale: 1.08 },
+    edge: {
+      color: "#8a6f57",
+      width: 1.8,
+      curve: "curved",
+      arrowSize: 1.3,
+      arrow: "concise",
+      showLabel: true,
+      labelSize: 11,
+    },
+    canvas: { background: "#fbf7f0", grid: "dots", gridSize: 38, gridOpacity: 0.3 },
+  },
+  // 关系档案 is for reading a person and their neighbours: cards carry 姓名 + 职业,
+  // the lines stay thin so the text wins, and the label sits on its own background.
+  dossier: {
+    node: {
+      size: 1,
+      form: "card",
+      showAvatars: true,
+      nameScale: 1,
+      borderColor: "#c8ced8",
+      background: "#ffffff",
+    },
+    edge: {
+      color: "#5b6472",
+      width: 1.1,
+      curve: "straight",
+      arrowSize: 0.9,
+      arrow: "thin",
+      showLabel: true,
+      labelSize: 10,
+      labelBackground: true,
+    },
+    canvas: { background: "#f6f7f9", grid: "lines", gridSize: 44, gridOpacity: 0.22 },
+  },
+  // 柔和展示 is a picture to export, not a diagram to edit: soft light, no arrows, no
+  // grid, and kind colours used as a quiet palette rather than as a legend.
+  soft: {
+    node: {
+      size: 1.22,
+      form: "avatar",
+      showAvatars: true,
+      nameScale: 1.15,
+      borderColor: "#e6d9e8",
+      background: "#fffafc",
+    },
+    edge: { byKind: true, width: 1, curve: "curved", arrowSize: 0.9, arrow: "none", showLabel: false },
+    canvas: { background: "#fdf8f4", grid: "none", gridOpacity: 0.2 },
   },
 };
 
@@ -202,6 +272,14 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
       dash: edge.dash === "dashed" || edge.dash === "dotted" ? edge.dash : "solid",
       curve: edge.curve === "straight" ? "straight" : "curved",
       arrowSize: num(edge.arrowSize, base.edge.arrowSize, 0, 2.5),
+      // A style saved before the choice existed keeps the head it drew: the old
+      // `arrowSize: 0` meant "no head" and is read that way rather than as a hairline.
+      arrow:
+        edge.arrow === "thin" || edge.arrow === "soft" || edge.arrow === "none"
+          ? edge.arrow
+          : typeof edge.arrowSize === "number" && edge.arrowSize === 0
+            ? "none"
+            : base.edge.arrow,
       showLabel: typeof edge.showLabel === "boolean" ? edge.showLabel : base.edge.showLabel,
       labelSize: num(edge.labelSize, base.edge.labelSize, 8, 18),
       labelBackground:

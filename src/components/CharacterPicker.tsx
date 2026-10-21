@@ -297,6 +297,12 @@ export function CharacterSelect({ characters, legend, onChange, value }: Charact
     }
 
     if (event.key === "Escape") {
+      // Only while the list is open. A closed picker is just a button inside a dialog,
+      // and swallowing Escape there left the dialog unable to close from the keyboard —
+      // the one field a dialog focuses first was the one that trapped it.
+      if (!open) {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       close();

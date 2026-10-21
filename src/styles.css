@@ -7273,9 +7273,63 @@ body:has([aria-modal="true"]) .floating-actions {
 
 .graph-search {
   position: relative;
-  flex: 1 1 220px;
+  /* Closed, the search is one control the width of its own label; open, it takes the
+     room a field needs. It never reserves 320px of the strip while nobody is typing. */
+  flex: 0 0 auto;
   min-width: 0;
   max-width: 320px;
+}
+
+.graph-search.is-open {
+  flex: 1 1 220px;
+}
+
+.graph-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-height-icon);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-soft);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.graph-search-trigger:hover {
+  border-color: var(--border-strong, var(--border));
+  color: var(--text);
+}
+
+.graph-search-trigger:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 40%, transparent);
+  outline-offset: 2px;
+}
+
+/* Short and one-directional: the field slides the last four pixels while it fades in.
+   Anything longer reads as a panel opening rather than as a field appearing. */
+.graph-search-field {
+  animation: graph-search-in 140ms ease-out;
+}
+
+@keyframes graph-search-in {
+  from {
+    opacity: 0.35;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .graph-search-field {
+    animation: none;
+  }
 }
 
 .graph-search-field {
@@ -9647,8 +9701,14 @@ body:has([aria-modal="true"]) .floating-actions {
   /* The canvas tools take two rows: the search field on its own, then the zoom. The
      field first, because finding a character is what a phone user is here for. */
   .graph-canvas-tools .graph-search {
-    flex: 1 1 100%;
+    flex: 0 0 auto;
     max-width: none;
+  }
+
+  /* On a phone the closed search keeps a word beside the icon: an unlabelled magnifier
+     in a row of icons is the one entry a first visit cannot guess. */
+  .graph-canvas-tools .graph-search.is-open {
+    flex: 1 1 100%;
   }
 
   .graph-zoom {
@@ -11847,9 +11907,20 @@ circle.graph-grid-dot {
 .relationship-dialog {
   display: flex;
   flex-direction: column;
-  width: min(520px, 100%);
-  max-height: min(88dvh, 760px);
+  /* Two pickers, one select and one note do not need 520px. The narrower column keeps
+     the pair visually connected — A above the kind above B — instead of pushing them
+     to opposite edges of a wide box. */
+  width: min(468px, 100%);
+  max-height: min(84dvh, 720px);
   overflow: hidden;
+}
+
+.relationship-dialog-legend {
+  flex: 0 0 auto;
+  margin: -4px 0 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
 }
 
 .relationship-dialog > h2 {
@@ -11859,7 +11930,7 @@ circle.graph-grid-dot {
 .relationship-dialog-body {
   display: grid;
   flex: 1 1 auto;
-  gap: 12px;
+  gap: 10px;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -12741,6 +12812,14 @@ circle.graph-grid-dot {
     display: none;
   }
 
+  @media (max-width: 430px) {
+    /* At this width the title costs a whole control's room. The bar keeps the
+       commands; the drawing underneath says which page this is. */
+    .graph-studio-titles {
+      display: none;
+    }
+  }
+
   .graph-studio-exit span {
     display: none;
   }
@@ -13233,12 +13312,16 @@ circle.graph-grid-dot {
     font-weight: 600;
   }
 
-  /* A phone's bar is navigation and history only; the tasks live in the tool
-     menu, so the canvas is not squeezed by three more text buttons. */
-  .graph-studio-tasks,
+  /* A phone keeps every task, one swipe away rather than in a second menu: the bar
+     scrolls, so 角色 / 整理 / 设计 / 探索 are reachable without a 更多 that hides them
+     behind another tap. Only the separators and the save label step out. */
   .graph-studio-actions .graph-studio-sep,
   .graph-studio-save {
     display: none;
+  }
+
+  .graph-studio-tasks {
+    display: flex;
   }
 
   .graph-dock-optional,
@@ -13249,6 +13332,25 @@ circle.graph-grid-dot {
   .graph-studio-top {
     gap: 6px;
     padding-inline: 10px;
+    /* The bar scrolls instead of clipping: a phone is narrower than the studio's own
+       commands, and a label cut in half ("角") is worse than one a swipe away. */
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .graph-studio-top::-webkit-scrollbar {
+    display: none;
+  }
+
+  .graph-studio-top > * {
+    flex: 0 0 auto;
+  }
+
+  .graph-studio-titles strong,
+  .graph-studio-titles span {
+    white-space: nowrap;
   }
 
   .graph-studio-actions {
@@ -13569,7 +13671,11 @@ circle.graph-grid-dot {
 }
 
 .graph-tool-strip .graph-search {
-  flex: 1 1 180px;
+  flex: 0 0 auto;
+}
+
+.graph-tool-strip .graph-search.is-open {
+  flex: 1 1 220px;
 }
 
 .graph-tool-strip .graph-canvas-tools {

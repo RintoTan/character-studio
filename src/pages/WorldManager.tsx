@@ -13,6 +13,7 @@ import type { Character } from "../types/character";
 import { CharacterPicker } from "../components/CharacterPicker";
 import { RelatedCharacters } from "../components/RelatedCharacters";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import WorldGuide from "../components/WorldGuide";
 import { Icon } from "../components/Icon";
 import {
   WORLD_CATEGORIES,
@@ -710,6 +711,9 @@ export function WorldManager({
           </div>
         </div>
       )}
+
+      {/* Same block as the graph's: a flat line under the work, one tip at a time. */}
+      <WorldGuide />
     </section>
   );
 }

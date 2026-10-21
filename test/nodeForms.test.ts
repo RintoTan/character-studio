@@ -223,13 +223,25 @@ describe("style model compatibility", () => {
 
   it("maps each preset to the node form it is meant to read as", () => {
     const formOf = (id: string) => styleForPreset(id as never).node.form;
+    // The whole shipped set, and the form each one promises. A preset added without a
+    // deliberate form shows up here as a missing key rather than as a silent default.
+    const expected: Record<string, "avatar" | "compact" | "card"> = {
+      classic: "avatar",
+      portrait: "avatar",
+      faction: "avatar",
+      archive: "compact",
+      minimal: "compact",
+      story: "avatar",
+      dossier: "card",
+      soft: "avatar",
+    };
 
-    expect(formOf("classic")).toBe("avatar");
-    expect(formOf("portrait")).toBe("avatar");
-    expect(formOf("faction")).toBe("avatar");
-    expect(formOf("archive")).toBe("compact");
-    expect(formOf("minimal")).toBe("compact");
-    expect(CANVAS_PRESETS).toHaveLength(5);
+    expect(CANVAS_PRESETS).toHaveLength(Object.keys(expected).length);
+    expect(CANVAS_PRESETS.map((preset) => preset.id).sort()).toEqual(Object.keys(expected).sort());
+
+    for (const [id, form] of Object.entries(expected)) {
+      expect(formOf(id)).toBe(form);
+    }
   });
 
   it("keeps a per-node form override through normalisation", () => {

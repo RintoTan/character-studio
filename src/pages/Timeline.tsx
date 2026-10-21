@@ -5,6 +5,7 @@ import { CharacterPicker } from "../components/CharacterPicker";
 import { Icon } from "../components/Icon";
 import { RelatedCharacters } from "../components/RelatedCharacters";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import TimelineGuide from "../components/TimelineGuide";
 import {
   createTimelineEvent,
   deleteTimelineEvent,
@@ -657,6 +658,9 @@ export function Timeline({
           </div>
         </div>
       )}
+
+      {/* A line of the page under the list, not a card over it. */}
+      <TimelineGuide />
     </section>
   );
 }

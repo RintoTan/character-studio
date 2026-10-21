@@ -1,4 +1,4 @@
-import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
+import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
 import {
   useCallback,
   useEffect,
@@ -1022,6 +1022,10 @@ export function edgeGeometry(
     toRadius?: number;
     /** Stroke width, so the head grows with the line instead of floating beside it. */
     weight?: number;
+    /** Which head to draw. `none` keeps the direction in the data and out of the ink. */
+    arrowStyle?: ArrowStyle;
+    /** The stored 箭头大小 multiplier; 0 means no head. */
+    arrowScale?: number;
   } = {},
 ): EdgeGeometry {
   const metrics = options.metrics ?? DEFAULT_METRICS;
@@ -1069,8 +1073,10 @@ export function edgeGeometry(
     bend === 0 ? (startY + endY) / 2 : (startY + 2 * controlY + endY) / 4;
   const side = bend === 0 ? 1 : Math.sign(bend);
 
+  const arrowStyle = options.arrowStyle ?? "concise";
+  const arrowScale = options.arrowScale ?? 1;
   let arrow: string | null = null;
-  if (!options.symmetrical) {
+  if (!options.symmetrical && arrowStyle !== "none" && arrowScale > 0) {
     // Direction of travel at the target end: the curve's tangent at t = 1.
     const tangentX = bend === 0 ? ux : endX - controlX;
     const tangentY = bend === 0 ? uy : endY - controlY;
@@ -1079,8 +1085,11 @@ export function edgeGeometry(
     const ty = tangentY / tangentLength;
     // Bounded growth: a heavier line gets a slightly larger head, a hairline does
     // not disappear. Unbounded scaling is what made the head look like a flowchart.
-    const head = Math.max(8, Math.min(14, 8 + (options.weight ?? 1.4) * 1.6));
-    const wing = head * 0.45;
+    const base = Math.max(8, Math.min(14, 8 + (options.weight ?? 1.4) * 1.6)) * arrowScale;
+    // 简洁 is the reference; 细线 narrows and shortens it; 柔和 is a shorter, wider head
+    // that reads as a direction rather than as an instruction.
+    const head = arrowStyle === "thin" ? base * 0.84 : arrowStyle === "soft" ? base * 0.9 : base;
+    const wing = head * (arrowStyle === "thin" ? 0.3 : arrowStyle === "soft" ? 0.62 : 0.45);
     const backX = endX - tx * head;
     const backY = endY - ty * head;
     const wingX = -ty * wing;
@@ -1365,6 +1374,10 @@ export function RelationshipGraph({
   const [morePlacement, setMorePlacement] = useState<"up" | "down">("down");
   const moreWrapRef = useRef<HTMLDivElement | null>(null);
   const [isAlignOpen, setIsAlignOpen] = useState(false);
+  // Search is a tool, not a permanent field: closed it is one compact control, open it
+  // is the field with the results under it. The text survives closing, so reopening it
+  // never loses what was typed.
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   // One edge at a time: an edge has no box to marquee and its properties are a
   // different set from a node's, so it is its own selection.
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
@@ -1493,7 +1506,15 @@ export function RelationshipGraph({
     const typing = (target: EventTarget | null) => {
       const element = target as HTMLElement | null;
 
-      return Boolean(element && (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.isContentEditable));
+      return Boolean(
+        element &&
+          (element.tagName === "INPUT" ||
+            element.tagName === "TEXTAREA" ||
+            element.isContentEditable ||
+            // Space activates a focused control. A global shortcut must not take that
+            // away from the keyboard, which is the only way some people use the page.
+            element.closest("button, a, select, summary, [role='button'], [role='link'], [role='menuitem']")),
+      );
     };
     const down = (event: KeyboardEvent) => {
       if (typing(event.target)) {
@@ -2902,8 +2923,15 @@ export function RelationshipGraph({
   const dragThreshold = (pointerType: string) => (pointerType === "touch" ? 8 : 4);
 
   function beginPan(event: ReactPointerEvent<SVGSVGElement>) {
-    if (event.pointerType === "mouse" && event.button !== 0) {
+    // Left is the editing button; middle is a pan for mice that have one. Any other
+    // button belongs to the browser's own menus and is left alone.
+    if (event.pointerType === "mouse" && event.button !== 0 && event.button !== 1) {
       return;
+    }
+    const middlePan = event.pointerType === "mouse" && event.button === 1;
+
+    if (middlePan) {
+      event.preventDefault();
     }
 
     // Which node this press started on, read before the capture below is set.
@@ -2940,9 +2968,11 @@ export function RelationshipGraph({
       return;
     }
 
-    // The hand tool pans from anywhere, the way a space-drag does. Pressing a node
-    // with it never starts a move, so a pan cannot become an accidental edit.
-    if (panMode) {
+    // The hand tool, a held space and a middle-drag all pan from anywhere — including
+    // from on top of a node. Pressing a node with one of them never starts a move, so a
+    // pan cannot become an accidental edit, and a trackpad without a middle button is
+    // not left without a way to pan.
+    if (panMode || spaceRef.current || middlePan) {
       panRef.current = {
         pointerId: event.pointerId,
         lastX: event.clientX,
@@ -4188,6 +4218,31 @@ export function RelationshipGraph({
                   />
                   按关系类型着色
                 </label>
+                {/* The head is a drawing choice, not a fact about the relationship: a
+                    symmetric kind never draws one, and 无箭头 hides the head while the
+                    direction stays in the data and in 管理. */}
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">箭头</span>
+                  <div className="graph-segment">
+                    {([
+                      ["concise", "简洁"],
+                      ["thin", "细线"],
+                      ["soft", "柔和"],
+                      ["none", "无"],
+                    ] as Array<[ArrowStyle, string]>).map(([value, label]) => (
+                      <button
+                        aria-pressed={style.edge.arrow === value}
+                        className={style.edge.arrow === value ? "graph-segment-button selected" : "graph-segment-button"}
+                        key={value}
+                        onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, arrow: value } })}
+                        type="button"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
               </div>
             </section>
   );
@@ -4576,10 +4631,12 @@ export function RelationshipGraph({
                     </select>
                   </label>
                   <label>网格密度
-                    <input max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } }, "grid-size")} step={4} type="range" value={style.canvas.gridSize} />
+                    <span className="graph-style-label">间距<span className="graph-style-value">{style.canvas.gridSize}</span></span>
+                    <input aria-label="网格密度" max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } }, "grid-size")} step={4} type="range" value={style.canvas.gridSize} />
                   </label>
                   <label>网格强度
-                    <input max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
+                    <span className="graph-style-label">不透明度<span className="graph-style-value">{Math.round(style.canvas.gridOpacity * 100)}%</span></span>
+                    <input aria-label="网格强度" max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
                   </label>
                 </div>
               </details>
@@ -4833,25 +4890,57 @@ export function RelationshipGraph({
                 on a phone it keeps its own row above the canvas while the toolbar
                 moves to the bottom edge. */}
             {!isStudio && (
-            <div className="graph-search" ref={searchWrapRef}>
+            <div className={`graph-search${isSearchOpen ? " is-open" : ""}`} ref={searchWrapRef}>
+              {!isSearchOpen && (
+                <button
+                  aria-expanded={false}
+                  aria-label="搜索角色"
+                  className="graph-search-trigger"
+                  data-tooltip="搜索角色并定位"
+                  onClick={() => setIsSearchOpen(true)}
+                  type="button"
+                >
+                  <Icon name="search" size={15} />
+                  {/* A closed field still says what it is holding, so Escape hides the
+                      results without hiding the fact that a search is active. */}
+                  <span>{query.trim() ? `搜索：${query.trim().slice(0, 6)}` : "搜索"}</span>
+                </button>
+              )}
+              {isSearchOpen && (
               <label className="graph-search-field">
                 <Icon name="search" size={15} />
                 <input
                   aria-label="搜索角色并定位"
+                  autoFocus
                   onChange={(event) => {
                     setQuery(event.target.value);
                     setNotOnCanvas(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      // The search is the top layer while it is open: closing it must
+                      // not also drop the selection tool underneath.
+                      event.stopPropagation();
+                      // A `type="search"` field clears itself on Escape in Chrome. The
+                      // author asked to put the field away, not to lose the term they
+                      // typed — the × is the control that empties it.
+                      event.preventDefault();
+                      setIsSearchOpen(false);
+                    }
                   }}
                   placeholder="搜索角色名、职业、世界观"
                   type="search"
                   value={query}
                 />
-                {query && (
-                  <button aria-label="清除搜索" onClick={() => setQuery("")} type="button">
-                    <Icon name="close" size={13} />
-                  </button>
-                )}
+                <button
+                  aria-label={query ? "清除搜索" : "收起搜索"}
+                  onClick={() => (query ? setQuery("") : setIsSearchOpen(false))}
+                  type="button"
+                >
+                  <Icon name="close" size={13} />
+                </button>
               </label>
+              )}
               {query.trim() !== "" && (
                 <div aria-label="搜索结果" className="graph-search-panel" role="listbox">
                   {searchResults.length === 0 ? (
@@ -5234,6 +5323,12 @@ export function RelationshipGraph({
           <svg
             aria-hidden="true"
             className={`relationship-canvas${selectMode ? " is-selecting" : ""}${spaceHeld ? " is-panning" : ""}${panMode ? " is-pan-tool" : ""}`}
+            onAuxClick={(event) => event.preventDefault()}
+            onMouseDown={(event) => {
+              if (event.button === 1) {
+                event.preventDefault();
+              }
+            }}
             onPointerCancel={cancelPan}
             onPointerDown={beginPan}
             onPointerMove={movePan}
@@ -5346,6 +5441,8 @@ export function RelationshipGraph({
                 bend: bends.get(relationship.id) ?? 0,
                 metrics,
                 symmetrical: symmetric,
+                arrowStyle: style.edge.arrow,
+                arrowScale: style.edge.arrowSize,
               });
               // A single edge may be recoloured, thickened or re-dashed without
               // touching the kind it records or any other line on the canvas.
@@ -6807,6 +6904,11 @@ export function RelationshipGraph({
             aria-label={editingId ? "编辑关系" : "新建关系"}
           >
             <h2>{editingId ? "编辑关系" : "新建关系"}</h2>
+            <p className="relationship-dialog-legend">
+              {draftSymmetric
+                ? "两端对等，不区分方向。"
+                : "方向：A → B，箭头指向 B（师承时 B 是学习方）。"}
+            </p>
             <div className="relationship-dialog-body">
             {/* The ends and the kind are labelled for the kind chosen: a symmetric
                 relationship has two equal sides, a 师承 edge has a direction. The two

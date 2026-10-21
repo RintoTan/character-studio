@@ -1,116 +1,76 @@
-import { useEffect, useState } from "react";
-import { Icon } from "./Icon";
+import { useMemo } from "react";
+import GuideBlock, { type GuideTip } from "./GuideBlock";
+import { inputPlatformOf, type InputPlatform } from "../utils/inputPlatform";
 
 /**
- * The four things a first visit cannot guess, as a flat band under the drawing.
+ * The four things a first visit to the relationship graph cannot guess.
  *
- * It used to be a stack of three cards, which read as a window floating over the
- * canvas and put three white edges between the drawing and the footer. A help block
- * is not a thing to be looked *through*: it is one line of the page, aligned with the
- * canvas above it, titled like a section, and it shows one tip at a time.
- *
- * The four tips are a loop, not a film strip: there is no first or last step, so the
- * pager never disables. The article element is focusable, and arrows are read only
- * while focus is inside it — the canvas, the toolbar and a text field all keep their
- * own arrow keys.
+ * The mechanism — one tip at a time, a loop, focus-scoped arrows — lives in
+ * GuideBlock, because 时间线 and 世界观 need the same block. What is specific here is
+ * the wording, and the wording follows the input device: a phone has no Shift key and
+ * no wheel, a Mac has Command, and a Windows machine has Ctrl. Telling all three the
+ * same sentence is how a guide teaches a gesture that does not exist on the device
+ * being held.
  */
 const LEGACY_KEY = "character-studio.graph-guide";
 
-type Tip = { title: string; body: string; hint: string; icon: "select" | "fit" | "layout" | "sliders" };
+function tipsFor(platform: InputPlatform): GuideTip[] {
+  const mac = platform === "mac";
+  const touch = platform === "touch";
 
-const TIPS: Tip[] = [
-  {
-    icon: "select",
-    title: "自由选择和移动角色",
-    body: "点击角色进行选择，切到选择工具后在空白处拖动即可框选多个角色。按住 Shift 点击可以加选或取消。",
-    hint: "拖动任意一个已选角色，整组一起移动，关系线与分组边框会跟着走。",
-  },
-  {
-    icon: "fit",
-    title: "像白板一样探索关系",
-    body: "拖动空白区域平移画布，按住 Ctrl/Cmd 滚动滚轮以指针为中心缩放。",
-    hint: "找不到内容时点「适应画布」；空格加拖动是临时的平移，松开即恢复。",
-  },
-  {
-    icon: "layout",
-    title: "让关系图更有秩序",
-    body: "「整理」提供关系聚类、环形、网格、层级与按尺寸排开，选好后先预览，再决定是否应用。",
-    hint: "选中两个以上角色可以对齐，三个以上可以等距分布，撤销随时可用。",
-  },
-  {
-    icon: "sliders",
-    title: "打造自己的关系网",
-    body: "「外观」可以切换视觉预设、调整画布底色与单个角色或关系线的样式，改动即时生效。",
-    hint: "「导出」支持 PNG、SVG、JPG 与 PDF，可选比例与 1x/2x/3x 分辨率。",
-  },
-];
+  return [
+    {
+      icon: "select",
+      title: "自由选择和移动角色",
+      body: touch
+        ? "点按角色选中；切换到选择工具后，在空白处拖动可以框选多个角色。手机没有 Shift，多选就靠选择工具。"
+        : `点击角色选中；切换到选择工具后，在空白处拖动即可框选多个角色。按住 ${mac ? "Shift" : "Shift"} 点击可以加选或取消。`,
+      hint: "拖动任意一个已选角色，整组一起移动，关系线与分组边框会跟着走。",
+    },
+    {
+      icon: "fit",
+      title: "像白板一样探索关系",
+      body: touch
+        ? "单指拖动空白处平移画布，双指捏合缩放。缩放以两指中心为基准。"
+        : mac
+          ? "拖动空白处平移画布；Command（⌘）加滚轮以指针为中心缩放，触控板双指捏合同样有效。"
+          : "拖动空白处平移画布；按住 Ctrl 滚动滚轮，以指针为中心缩放。",
+      hint: touch
+        ? "找不到内容时点「适应画布」；缩放与适应都在左下工具坞里。"
+        : mac
+          ? "空格加拖动、或中键拖动都可以临时平移（触控板没有中键）。想回到全图时点「适应画布」。"
+          : "空格加拖动、或中键拖动都可以临时平移。想回到全图时点「适应画布」。",
+    },
+    {
+      icon: "layout",
+      title: "让关系图更有秩序",
+      body: "「整理」提供关系聚类、环形、网格、层级与按尺寸排开。选一种先看预览，确认后才写入坐标。",
+      hint: "预览期间可以继续切换布局比较；取消、关闭面板或改切其它工具，都会回到整理前的坐标与视角。",
+    },
+    {
+      icon: "sliders",
+      title: "打造自己的关系网",
+      body: "「设计」可以切换视觉预设、调整画布底色与网格，也能只改所选角色或关系线的样式。",
+      hint: "「导出」支持 PNG、SVG、JPG 与 PDF，可选比例与 1x/2x/3x 分辨率。",
+    },
+  ];
+}
 
 export default function GraphGuide() {
-  const [index, setIndex] = useState(0);
-
-  // The previous build wrote "collapsed" here. The guide no longer collapses, so the
-  // key is cleared instead of read: someone returning in the same session must not
-  // open the page onto an empty band that has no control to bring it back.
-  useEffect(() => {
-    try {
-      sessionStorage.removeItem(LEGACY_KEY);
-    } catch {
-      // A blocked storage is not a reason to lose the guide.
+  const platform = useMemo<InputPlatform>(() => {
+    if (typeof navigator === "undefined") {
+      return "windows";
     }
+
+    return inputPlatformOf({
+      userAgent: navigator.userAgent,
+      maxTouchPoints: navigator.maxTouchPoints ?? 0,
+      coarsePointer:
+        typeof window !== "undefined" && typeof window.matchMedia === "function"
+          ? window.matchMedia("(pointer: coarse)").matches
+          : false,
+    });
   }, []);
 
-  const tip = TIPS[index];
-
-  function go(delta: number) {
-    setIndex((current) => (current + delta + TIPS.length) % TIPS.length);
-  }
-
-  return (
-    <section
-      aria-labelledby="graph-guide-title"
-      className="graph-guide"
-      onKeyDown={(event) => {
-        const target = event.target as HTMLElement | null;
-
-        if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
-          return;
-        }
-
-        if (event.key === "ArrowRight") {
-          event.preventDefault();
-          go(1);
-        }
-
-        if (event.key === "ArrowLeft") {
-          event.preventDefault();
-          go(-1);
-        }
-      }}
-      tabIndex={0}
-    >
-      <header className="graph-guide-head">
-        <h2 id="graph-guide-title">使用指南</h2>
-        <div className="graph-guide-tools">
-          <span className="graph-guide-count">
-            {index + 1} / {TIPS.length}
-          </span>
-          <button aria-label="上一张提示" className="graph-guide-step" onClick={() => go(-1)} type="button">
-            <Icon name="chevronLeft" size={16} />
-          </button>
-          <button aria-label="下一张提示" className="graph-guide-step" onClick={() => go(1)} type="button">
-            <Icon name="chevronRight" size={16} />
-          </button>
-        </div>
-      </header>
-
-      <div aria-live="polite" className="graph-guide-card">
-        <h3>
-          <Icon name={tip.icon} size={15} />
-          {tip.title}
-        </h3>
-        <p>{tip.body}</p>
-        <p className="graph-guide-hint">{tip.hint}</p>
-      </div>
-    </section>
-  );
+  return <GuideBlock id="graph-guide" legacyKey={LEGACY_KEY} tips={tipsFor(platform)} />;
 }
