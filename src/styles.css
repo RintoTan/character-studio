@@ -15017,3 +15017,39 @@ circle.graph-grid-dot {
   outline: 2px solid color-mix(in srgb, var(--primary) 40%, transparent);
   outline-offset: 2px;
 }
+
+/* The captured-frame legend. It exists only while JPG/PDF export runs, sits inside the
+   frame so html2canvas picks it up, and never takes a pointer event. */
+.export-legend {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
+.export-legend strong {
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.export-legend-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.export-legend-row em {
+  overflow: hidden;
+  font-style: normal;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

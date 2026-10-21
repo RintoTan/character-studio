@@ -3906,6 +3906,34 @@ export function RelationshipGraph({
     nameSize,
     visibleCharacters,
   ]);
+
+  /**
+   * The rows a legend would show for the relationships actually being exported.
+   * Shared by the SVG legend and the captured JPG/PDF overlay so the two cannot drift.
+   */
+  const legendEntries = useMemo(() => {
+    const kinds = [...new Set(drawnRelationships.map((relationship) => relationship.kind))];
+    const dash =
+      style.edge.dash === "dashed"
+        ? `${Math.max(2, style.edge.width * 3)} ${Math.max(2, style.edge.width * 2)}`
+        : style.edge.dash === "dotted"
+          ? `${Math.max(1, style.edge.width)} ${Math.max(2, style.edge.width * 2)}`
+          : "none";
+
+    return kinds.map((kind) => ({
+      kind,
+      label: relationshipKindLabel(kind),
+      color: style.edge.byKind ? `hsl(${kindHue(kind)} 55% 58%)` : style.edge.color || "currentColor",
+      dash,
+      width: Math.max(1, style.edge.width),
+    }));
+  }, [
+    drawnRelationships,
+    style.edge.byKind,
+    style.edge.color,
+    style.edge.dash,
+    style.edge.width,
+  ]);
   const hoveredEntry = hoveredId ? byId.get(hoveredId) : undefined;
 
   // How many relationships a character is an end of: the fourth field the hover card
@@ -6070,6 +6098,90 @@ export function RelationshipGraph({
                the colour the exported file gets. */
             style={style.canvas.background ? { background: style.canvas.background } : undefined}
           >
+          {exporting && prefs.exportLegend && legendEntries.length > 0 && (() => {
+            // JPG/PDF capture this element, so the legend has to exist here while the
+            // capture runs. Its corner is chosen against the nodes' real screen boxes;
+            // a captured frame cannot grow a margin, so the least-busy corner wins
+            // even when every corner touches something.
+            const rowHeight = 16;
+            const padding = 9;
+            const panelWidth = 132;
+            const panelHeight = padding * 2 + 18 + legendEntries.length * rowHeight;
+            const margin = 8;
+            const corners = {
+              tl: { x: margin, y: margin },
+              tr: { x: frameSize.width - panelWidth - margin, y: margin },
+              bl: { x: margin, y: frameSize.height - panelHeight - margin },
+              br: {
+                x: frameSize.width - panelWidth - margin,
+                y: frameSize.height - panelHeight - margin,
+              },
+            } as const;
+            const scale = measured ? canvasScreenScale(frameSize, canvas.viewBox) : 0;
+            const [boxX, boxY] = canvas.viewBox.split(" ").map(Number);
+            const boxes = visibleCharacters.map((character, index) => {
+              const geom = nodeVisuals[character.id]?.geom;
+              if (!geom || !scale) {
+                return null;
+              }
+              const point = positions[index];
+              const cx = (point.x * view.k + view.x - boxX) * scale;
+              const cy = (point.y * view.k + view.y - boxY) * scale;
+              return {
+                x: cx - geom.halfWidth * view.k * scale,
+                y: cy - geom.halfHeight * view.k * scale,
+                width: geom.halfWidth * 2 * view.k * scale,
+                height: geom.halfHeight * 2 * view.k * scale,
+              };
+            }).filter(Boolean) as { x: number; y: number; width: number; height: number }[];
+            const overlapCount = (corner: { x: number; y: number }) =>
+              boxes.filter(
+                (box) =>
+                  corner.x < box.x + box.width + 6 &&
+                  corner.x + panelWidth > box.x - 6 &&
+                  corner.y < box.y + box.height + 6 &&
+                  corner.y + panelHeight > box.y - 6,
+              ).length;
+            const order: Array<keyof typeof corners> =
+              prefs.exportLegendCorner === "auto"
+                ? ["tl", "tr", "bl", "br"]
+                : [prefs.exportLegendCorner];
+            const chosen = order
+              .map((key) => ({ key, hits: overlapCount(corners[key]) }))
+              .sort((a, b) => a.hits - b.hits)[0].key;
+            const position = corners[chosen];
+
+            return (
+              <div
+                aria-hidden="true"
+                className="export-legend"
+                style={{
+                  background: surfaceBackground(),
+                  left: `${position.x}px`,
+                  top: `${position.y}px`,
+                  width: `${panelWidth}px`,
+                }}
+              >
+                <strong>关系类型</strong>
+                {legendEntries.map((entry) => (
+                  <span className="export-legend-row" key={entry.kind}>
+                    <svg aria-hidden="true" height="8" viewBox="0 0 26 8" width="26">
+                      <line
+                        stroke={entry.color}
+                        strokeDasharray={entry.dash}
+                        strokeWidth={entry.width}
+                        x1="1"
+                        x2="25"
+                        y1="4"
+                        y2="4"
+                      />
+                    </svg>
+                    <em>{entry.label}</em>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
           <svg
             aria-hidden="true"
             className={`relationship-canvas${selectMode ? " is-selecting" : ""}${spaceHeld ? " is-panning" : ""}${panMode ? " is-pan-tool" : ""}`}
