@@ -11334,9 +11334,18 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
    rather than floating over the drawing, so none of them can cover a node.
    --------------------------------------------------------------------------- */
 
-.graph-grid-dot {
-  fill: var(--border-strong);
-  opacity: 0.55;
+/* Two calibrations, not one colour at one opacity: paper in daylight and paper at
+   night need different ink to stay a background. */
+:root {
+  --grid-dot: rgba(15, 23, 42, 0.22);
+}
+
+:root[data-theme="dark"] {
+  --grid-dot: rgba(226, 232, 240, 0.20);
+}
+
+circle.graph-grid-dot {
+  fill: var(--grid-dot);
 }
 
 .graph-grid-plane {
@@ -12091,7 +12100,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
     "left canvas right"
     "dock dock dock";
   grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* The dock floats over the drawing, so its row reserves no band: a toolbar that
+     owned a full-width strip at the bottom made the canvas smaller for nothing and
+     turned the whole edge into chrome. */
+  grid-template-rows: auto minmax(0, 1fr) 0;
   width: 100%;
   max-width: none;
   height: 100dvh;
@@ -12457,16 +12469,38 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 .graph-studio .graph-canvas-tools {
   grid-area: dock;
   order: 4;
+  /* An island in the corner, not a bottom bar: it is as wide as its controls, it
+     leaves the drawing behind it interactive, and it has air on every side. */
+  position: absolute;
+  left: 14px;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-overlay-4);
+  width: auto;
+  max-width: calc(100% - 28px);
   flex: 0 0 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   gap: var(--studio-group-gap);
   margin: 0;
-  padding: 8px var(--studio-bar-pad);
-  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
-  border-top: 1px solid var(--border);
-  background: var(--surface);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* Only the controls take the pointer; the empty space around the island is the
+     canvas's, so a drag there still pans or selects. */
+  pointer-events: none;
   overflow: visible;
   scrollbar-width: none;
+}
+
+.graph-studio .graph-canvas-tools > * {
+  pointer-events: auto;
+}
+
+.graph-studio .graph-canvas-tools .graph-toolbar {
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(10px);
 }
 
 .graph-studio .graph-canvas-tools::-webkit-scrollbar {
@@ -12773,12 +12807,61 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 }
 
 .graph-lens-chip {
-  padding: 4px 9px;
+  /* One size for every kind, so the row reads as a set of equal choices rather than
+     as a word cloud whose length implies importance. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  height: 30px;
+  padding: 0 12px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
   color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+}
+
+.graph-lens-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.graph-lens-chip.active {
+  border-color: color-mix(in srgb, var(--primary) 46%, var(--border));
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+  color: var(--text);
+  font-weight: 600;
+}
+
+.graph-explore-note {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.graph-explore-count {
+  flex: 0 0 auto;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.graph-explore-hint {
+  margin: 6px 0 0;
+  color: var(--text-muted);
   font-size: 12px;
+  line-height: 1.55;
+}
+
+.graph-lens-clear {
+  margin-top: 8px;
 }
 
 .graph-lens-chip[aria-pressed="true"] {
@@ -12849,9 +12932,16 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 /* Spotlight and lens dimming are separate from hover dimming: exiting one must
    not require a second, invisible state to also be clear. */
 .relationship-node.spotlight-dim,
+.relationship-node.lens-dim,
 .relationship-edge.lens-dim,
 .relationship-edge.spotlight-dim {
   opacity: 0.16;
+}
+
+/* A lens is the lightest of the looking-tools: it recedes the rest without making the
+   drawing disappear, because the structure is still what is being read. */
+.relationship-node.lens-dim {
+  opacity: 0.3;
 }
 
 /* Pass A: the design panel opens with swatches, not names. */
@@ -13239,7 +13329,10 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   }
 
   .graph-canvas-tools.studio-dock {
-    margin: 8px 10px 0;
+    left: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    max-width: calc(100% - 20px);
+    margin: 0;
   }
 
   .graph-studio-dock {
@@ -13958,8 +14051,14 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
   align-self: end;
   position: relative;
   z-index: var(--z-overlay-3);
-  margin: 0 14px 12px;
+  /* Clears the floating dock: a selection bar or a preview that sat in the corner
+     would be the one thing the dock covers. */
+  margin: 0 14px calc(74px + env(safe-area-inset-bottom, 0px));
   padding-bottom: 0;
+}
+
+.graph-studio .graph-context-slot:empty {
+  display: none;
 }
 
 .graph-studio .graph-context {
@@ -14418,10 +14517,8 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
    where the drawing's centre is not. The page keeps its top strip.
    ------------------------------------------------------------------------- */
 .graph-studio .graph-canvas-tools.studio-dock {
-  justify-self: start;
   justify-content: flex-start;
-  padding-right: 14px;
-  padding-left: 14px;
+  padding: 0;
 }
 
 .graph-more-menu.opens-up {
@@ -14459,8 +14556,7 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
 /* The dock sits in the corner: margin-right:auto is what moves a flex item to the
    start, since justify-self has no effect inside the flex bar. */
 .graph-studio .graph-canvas-tools.studio-dock {
-  margin-right: auto;
-  margin-left: 14px;
+  margin: 0;
 }
 
 /* A kind chip is one word: it must never break into a vertical stack when the

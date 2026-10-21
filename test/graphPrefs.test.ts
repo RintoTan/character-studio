@@ -27,6 +27,7 @@ describe("graph size preferences", () => {
       nameSize: "small",
       showAvatars: false,
       showNames: true,
+      showEdges: false,
       exportScale: 3,
     });
 
@@ -35,6 +36,7 @@ describe("graph size preferences", () => {
       nameSize: "small",
       showAvatars: false,
       showNames: true,
+      showEdges: false,
       exportScale: 3,
     });
     expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}")).toEqual({
@@ -42,6 +44,7 @@ describe("graph size preferences", () => {
       nameSize: "small",
       showAvatars: false,
       showNames: true,
+      showEdges: false,
       exportScale: 3,
     });
   });
@@ -54,6 +57,7 @@ describe("graph size preferences", () => {
       nameSize: "large",
       showAvatars: defaultGraphPrefs.showAvatars,
       showNames: defaultGraphPrefs.showNames,
+      showEdges: defaultGraphPrefs.showEdges,
       exportScale: defaultGraphPrefs.exportScale,
     });
   });
@@ -66,6 +70,7 @@ describe("graph size preferences", () => {
       nameSize: "small",
       showAvatars: true,
       showNames: true,
+      showEdges: true,
       exportScale: 3,
     });
 
@@ -80,6 +85,19 @@ describe("graph size preferences", () => {
     }
 
     expect(normalizeGraphPrefs({ showAvatars: false, showNames: false }).showAvatars).toBe(false);
+  });
+
+  it("reads a record written before 显示关系线 existed as drawing the lines", () => {
+    // Hiding the lines is a new switch. A workspace saved by 2.40.0 has no key for it,
+    // and reading that as false would open every existing drawing with its
+    // relationships invisible.
+    expect(normalizeGraphPrefs({ avatarSize: "large", nameSize: "small", exportScale: 2 }).showEdges).toBe(
+      true,
+    );
+    expect(normalizeGraphPrefs({ showEdges: false }).showEdges).toBe(false);
+    for (const value of ["no", 0, 1, null, undefined]) {
+      expect(normalizeGraphPrefs({ showEdges: value }).showEdges).toBe(true);
+    }
   });
 
   it("only accepts the export resolutions it offers", () => {

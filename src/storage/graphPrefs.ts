@@ -17,6 +17,12 @@ export type GraphPrefs = {
   /** Whether nodes draw their name at all. */
   showNames: boolean;
   /**
+   * Whether the lines between nodes are drawn. Independent of which characters are in
+   * scope and of the density cap: hiding the lines is a way to read the roster, not a
+   * filter on the data and not a performance switch.
+   */
+  showEdges: boolean;
+  /**
    * Export resolution, as a multiple of the canvas on screen. 1 is what you see;
    * 2 is enough for a slide or a print at A4; 3 is for a large poster, and is the
    * one that can produce a several-megabyte PNG.
@@ -88,6 +94,7 @@ export const defaultGraphPrefs: GraphPrefs = {
   nameSize: "medium",
   showAvatars: true,
   showNames: true,
+  showEdges: true,
   exportScale: 2,
 };
 
@@ -118,6 +125,7 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
     nameSize: isSizeValue(candidate.nameSize) ? candidate.nameSize : defaultGraphPrefs.nameSize,
     showAvatars: isBoolean(candidate.showAvatars) ? candidate.showAvatars : defaultGraphPrefs.showAvatars,
     showNames: isBoolean(candidate.showNames) ? candidate.showNames : defaultGraphPrefs.showNames,
+    showEdges: isBoolean(candidate.showEdges) ? candidate.showEdges : defaultGraphPrefs.showEdges,
     exportScale: isExportScale(candidate.exportScale)
       ? candidate.exportScale
       : defaultGraphPrefs.exportScale,

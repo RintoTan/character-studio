@@ -98,8 +98,10 @@ const BASE: CanvasStyle = {
   canvas: {
     background: "",
     grid: "dots",
-    gridSize: 48,
-    gridOpacity: 0.5,
+    // A finer reference plane than the 48 it shipped with: at 48 the dots read as
+    // objects on a sparse canvas rather than as paper under a drawing.
+    gridSize: 36,
+    gridOpacity: 0.42,
     snap: false,
   },
 };

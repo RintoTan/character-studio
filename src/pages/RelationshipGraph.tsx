@@ -45,7 +45,6 @@ import {
   type GraphPrefs,
 } from "../storage/graphPrefs";
 import {
-  applyPositions,
   centroid,
   clusterLayout,
   gridLayout,
@@ -74,6 +73,16 @@ import {
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
 import { labelDensity, namesNode, pickSpacedLabels } from "../utils/labelDensity";
+import { emphasisLevel } from "../utils/emphasis";
+import {
+  beginArrange,
+  cancelArrangeSession,
+  commitArrangeSession,
+  pointsWithinView,
+  proposalChanges,
+  type ArrangeProposal,
+  type ArrangeSession,
+} from "../utils/arrangeTransaction";
 import {
   ARRANGE_NOTICE_MS,
   appearanceTarget,
@@ -1330,15 +1339,17 @@ export function RelationshipGraph({
   // up with two of them stacked over the drawing.
   const [surface, setSurface] = useState<GraphSurface>("none");
   const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
-  const [preview, setPreview] = useState<{
-    mode: ArrangeMode;
-    scope: "visible" | "all";
-    positions: Record<string, LayoutPoint>;
-  } | null>(null);
+  const [preview, setPreview] = useState<ArrangeProposal | null>(null);
   const [groupDraft, setGroupDraft] = useState<{ name: string; editingId: string | null } | null>(null);
   // One step of undo for a whole arrange, which is the only operation that moves
   // every node at once. A drag is undone by dragging back; an arrange is not.
-  const [arrangeUndo, setArrangeUndo] = useState<{ layout: CanvasLayout; label: string } | null>(null);
+  // Undoing an arrange puts the drawing back where it started, view included: the
+  // coordinates alone would be correct and the picture would still be somewhere else.
+  const [arrangeUndo, setArrangeUndo] = useState<{
+    layout: CanvasLayout;
+    view: { k: number; x: number; y: number };
+    label: string;
+  } | null>(null);
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [expandedNotes, setExpandedNotes] = useState<string[]>([]);
   // One row's action menu at a time: three text buttons per row was the widest
@@ -1415,7 +1426,7 @@ export function RelationshipGraph({
   // last, so declaration order here *is* the layering: the open surface is the lowest
   // of these, the two small menus sit above it, and a bookmark's own menu above them.
   // One key press therefore never closes a drawer and a popover together.
-  useEscapeDismiss(surface !== "none", () => setSurface("none"));
+  useEscapeDismiss(surface !== "none", closeSurface);
   useEffect(() => {
     if (!isMoreOpen) {
       return;
@@ -1765,9 +1776,12 @@ export function RelationshipGraph({
   // Zoom and pan live in the drawing's own coordinates, so the wheel stays on the
   // point under the cursor and the fit view is just k = 1 with no offset.
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
-  // The view a proposal interrupted, so 取消 can put the author back where they were.
-  const previewViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
-  const fitAfterEpochRef = useRef(false);
+  // The open 整理 transaction. The baseline inside it is captured once and never
+  // replaced, so comparing four layouts and then cancelling returns to the drawing the
+  // author started from rather than to the third proposal's framing.
+  const arrangeSessionRef = useRef<ArrangeSession | null>(null);
+  // 确认 is one press: a second press while the commit is running must not commit again.
+  const arrangeApplyingRef = useRef(false);
 
 
   // Secondary text inside a card appears at 1.0× and disappears at 0.9×: two
@@ -1900,6 +1914,22 @@ export function RelationshipGraph({
   }, [activeId, relationships, spotlightSet]);
 
   const lensActive = lensKinds.length > 0;
+  // Which nodes the lens keeps bright: those with at least one relationship of an
+  // included kind. A lens changes ink, never the data — an excluded kind is still
+  // stored, still exported when the lens is cleared, and still listed in 管理.
+  const lensNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (lensKinds.length === 0) {
+      return ids;
+    }
+    for (const relationship of relationships) {
+      if (lensKinds.includes(relationship.kind)) {
+        ids.add(relationship.fromId);
+        ids.add(relationship.toId);
+      }
+    }
+    return ids;
+  }, [lensKinds, relationships]);
   const presentKinds = useMemo(
     () => [...new Set(relationships.map((relationship) => relationship.kind))],
     [relationships],
@@ -1910,6 +1940,23 @@ export function RelationshipGraph({
   // wheel ends up with a smear of 3px names.
   const measured = frameSize.width > 0 && frameSize.height > 0;
   const screenScale = measured ? canvasScreenScale(frameSize, canvas.viewBox) : 0;
+
+  // The grid is a reference plane, not a second drawing: its spacing is solved for a
+  // constant on-screen step so a zoomed-out hundred-node wheel is not a coarse
+  // checkerboard and a close-up is not a field of dots. Clamped, because a pattern
+  // smaller than the stroke would disappear and a huge one would stop reading as paper.
+  const gridScale = Math.max(view.k * (screenScale > 0 ? screenScale : 1), 0.001);
+  const gridStep =
+    style.canvas.grid === "none"
+      ? style.canvas.gridSize
+      : Math.min(
+          style.canvas.gridSize * 2.4,
+          Math.max(style.canvas.gridSize * 0.45, style.canvas.gridSize / gridScale),
+        );
+  const gridDotRadius = Math.min(2.4, Math.max(0.8, 1.05 / gridScale));
+  // Distance is calmer than proximity: a far view keeps the paper but stops competing
+  // with the structure. Two ends, no oscillation, because this is a paint value.
+  const gridFade = 0.55 + 0.45 * Math.min(1, Math.max(0, (gridScale - 0.25) / 0.75));
 
   useEffect(() => {
     const scale = screenScale > 0 ? screenScale : 1;
@@ -1937,6 +1984,21 @@ export function RelationshipGraph({
       setLabelsFit(next);
     }
   }, [labelsFit, readability]);
+
+  // A name has to be readable to be drawn. The density rules decide *which* names, but at
+  // a 0.35x fit every one of them is four screen pixels tall - paint that and the drawing
+  // claims to be labelled while showing a grey texture. The floor is on rendered size,
+  // with two thresholds so a wheel parked on the boundary cannot flicker.
+  const nameScreenPx = nameSize * view.k * (measured ? screenScale : 1);
+  const [nameFloorOk, setNameFloorOk] = useState(true);
+
+  useEffect(() => {
+    const next = nameFloorOk ? nameScreenPx >= 5.5 : nameScreenPx >= 6.5;
+
+    if (next !== nameFloorOk) {
+      setNameFloorOk(next);
+    }
+  }, [nameScreenPx, nameFloorOk]);
 
   // An export is the fitted graph with every name on it, not whatever corner the
   // canvas happens to be zoomed into. The author's own switch still wins: names turned
@@ -2242,11 +2304,26 @@ export function RelationshipGraph({
    * surface, so opening a task cannot leave another one underneath it.
    */
   function openGraphSurface(next: SurfaceRequest) {
-    setSurface((current) => toggleSurface(current, next));
+    const target = toggleSurface(surface, next);
+    // Leaving 整理 — by closing it, by pressing 设计, by entering the studio — discards
+    // an unconfirmed proposal first. Otherwise the drawing would keep showing
+    // coordinates no open panel is asking about, and the next edit would be made
+    // against a picture that is not the stored one.
+    if (target !== "arrange") {
+      rollbackArrange();
+    }
+    setSurface(target);
     setIsMoreOpen(false);
   }
 
+  /** The one way a surface closes, so no path can leave a proposal behind. */
+  function closeSurface() {
+    rollbackArrange();
+    setSurface("none");
+  }
+
   function enterStudio() {
+    rollbackArrange();
     studioViewRef.current = view;
     setSheetLevel("half");
     setIsStudio(true);
@@ -2254,6 +2331,7 @@ export function RelationshipGraph({
   }
 
   function exitStudio() {
+    rollbackArrange();
     setIsStudio(false);
     setSurface("none");
   }
@@ -2566,12 +2644,58 @@ export function RelationshipGraph({
     };
   }
 
+  /**
+   * Frames a proposal the way 适应画布 frames the drawing.
+   *
+   * The drawer stays open while previewing, so the canvas is narrower than it was when
+   * the author was last looking at it; without this the proposal would be drawn past
+   * the right edge and look like the drawing had been lost. It moves the view only —
+   * the coordinates are still the stored ones until 确认.
+   */
+  function frameProposal(positionsById: Record<string, LayoutPoint>) {
+    if (frameSize.width <= 0 || frameSize.height <= 0) {
+      return;
+    }
+
+    const points = visibleCharacters.map(
+      (character, index) => positionsById[character.id] ?? basePositions[index],
+    );
+
+    if (points.length === 0) {
+      return;
+    }
+
+    const box = canvasBox(points, metrics, boxHalfWidth);
+    const bleed = groupBleed(layout.groups.length > 0, metrics, boxHalfWidth);
+    const [boxX, boxY, boxWidth, boxHeight] = box.viewBox.split(" ").map(Number);
+    const viewBox = `${round(boxX - bleed.x)} ${round(boxY - bleed.y)} ${round(boxWidth + bleed.x * 2)} ${round(
+      boxHeight + bleed.y * 2,
+    )}`;
+    const scale = canvasScreenScale(frameSize, viewBox);
+    const zoom = fitZoom(contentBounds(points, metrics, boxHalfWidth), frameSize, scale);
+
+    viewAutoRef.current = false;
+    setView(centreOn({ x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 }, zoom, viewBox));
+  }
+
+  /**
+   * A layout proposal. Never a write: the drawing shows the proposal, the coordinates in
+   * storage stay where they were, and 取消 or any other task puts the original back.
+   *
+   * Every proposal is computed from the session's baseline, not from the previous
+   * proposal, so consecutive switches compare alternatives rather than compounding.
+   */
   function proposeArrange(mode: ArrangeMode) {
+    const baseline = arrangeSessionRef.current?.baseline ?? {
+      layout: workingLayout(),
+      view,
+      selectedIds: [...selectedIds],
+    };
+    const base = baseline.layout;
     const ids =
       arrangeScope === "visible"
         ? visibleCharacters.map((character) => character.id)
         : characters.map((character) => character.id);
-    const base = workingLayout();
     const points = ids
       .map((id) => base.positions[id])
       .filter((point): point is LayoutPoint => Boolean(point));
@@ -2589,36 +2713,79 @@ export function RelationshipGraph({
                 ? gridLayout(ids, center, metrics.radius, 64, spreadCell())
                 : clusterLayout(ids, relationships, center, metrics.radius);
 
-    previewViewRef.current = view;
-    setPreview({ mode, scope: arrangeScope, positions });
-    // The preview is the one place that says 取消 / 确认应用, so the panel that asked
-    // for it steps aside and gives the drawing the whole width.
-    setSurface("none");
+    const session = beginArrange(arrangeSessionRef.current, {
+      baseline,
+      proposal: { mode, scope: arrangeScope, positions },
+    });
+    arrangeSessionRef.current = session;
+    setPreview(session.proposal);
+    frameProposal(positions);
+    // The drawer stays open: switching layouts to compare them is the point of a
+    // preview, and closing the panel would take the other layouts away.
+    setSurface("arrange");
   }
 
   /** 取消 is a view restore as much as a data one: the box goes back with it. */
   function cancelArrange() {
+    const baseline = cancelArrangeSession(arrangeSessionRef.current);
+    arrangeSessionRef.current = null;
+    arrangeApplyingRef.current = false;
     setPreview(null);
-    if (previewViewRef.current) {
-      const restore = previewViewRef.current;
-      previewViewRef.current = null;
-      viewAutoRef.current = false;
-      setView(restore);
-    }
-  }
 
-  function applyArrange() {
-    if (!preview) {
+    if (!baseline) {
       return;
     }
 
-    const base = workingLayout();
-    setArrangeUndo({ layout: base, label: arrangeLabel(preview.mode) });
-    // The preview already framed the new arrangement; the committed coordinates are
-    // the same, so the view stays exactly where it is.
-    previewViewRef.current = null;
-    commitLayout(applyPositions(base, preview.positions));
+    viewAutoRef.current = false;
+    setView(baseline.view);
+    setSelectedIds(baseline.selectedIds);
+  }
+
+  /**
+   * Any other task cancels a preview before it runs. Returns whether something was
+   * rolled back, so a caller can describe what happened rather than guess.
+   */
+  function rollbackArrange(): boolean {
+    if (!arrangeSessionRef.current && !preview) {
+      return false;
+    }
+
+    cancelArrange();
+    return true;
+  }
+
+  function applyArrange() {
+    const session = arrangeSessionRef.current;
+
+    if (!session || arrangeApplyingRef.current) {
+      return;
+    }
+
+    arrangeApplyingRef.current = true;
+    const { layout: next, baseline } = commitArrangeSession(session);
+    const changed = proposalChanges(session);
+
+    arrangeSessionRef.current = null;
     setPreview(null);
+    setSurface("none");
+
+    if (changed) {
+      setArrangeUndo({ layout: baseline.layout, view: baseline.view, label: arrangeLabel(session.proposal.mode) });
+      commitLayout(next);
+      // The preview already framed the result; a hand-composed view is left alone
+      // unless the new coordinates would sit outside it.
+      const committed = visibleCharacters.map(
+        (character, index) => next.positions[character.id] ?? basePositions[index],
+      );
+      if (!pointsWithinView(committed, view, canvas.viewBox)) {
+        frameProposal(session.proposal.positions);
+      }
+    } else {
+      // Nothing moved: no undo step, no "已应用" claim.
+      show("布局没有变化，未写入坐标");
+    }
+
+    arrangeApplyingRef.current = false;
   }
 
   function undoArrange() {
@@ -2626,9 +2793,13 @@ export function RelationshipGraph({
       return;
     }
 
-    fitAfterEpochRef.current = true;
+    const restored = arrangeUndo;
+    // The box is cached around the drawn coordinates, so a command that re-places
+    // everything has to rebuild it before the restored view can mean anything.
     setBoxEpoch((epoch) => epoch + 1);
-    commitLayout(arrangeUndo.layout);
+    viewAutoRef.current = false;
+    setView(restored.view);
+    commitLayout(restored.layout);
     setArrangeUndo(null);
   }
 
@@ -2898,6 +3069,14 @@ export function RelationshipGraph({
       return;
     }
 
+    // A proposal is on screen and nothing has been written yet: a node drag would be
+    // discarded by the next layout switch, or would commit a coordinate the author has
+    // not confirmed. Looking (pan, zoom, marquee, tap to select) stays available; a
+    // gesture that writes coordinates does not.
+    if (preview && (setDragRef.current || nodeDragRef.current || groupDragRef.current)) {
+      return;
+    }
+
     const setDrag = setDragRef.current;
     if (setDrag && setDrag.pointerId === event.pointerId) {
       const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
@@ -3059,7 +3238,7 @@ export function RelationshipGraph({
       commitLayout({ ...setGesture.base, positions: pendingDragRef.current ?? fallback });
       // Moving several people at once is a gesture with no "drag back", so it takes
       // the single step back the arrange path already owns.
-      setArrangeUndo({ layout: setGesture.base, label: "移动选择" });
+      setArrangeUndo({ layout: setGesture.base, view, label: "移动选择" });
       stopDragFrame();
     } else if (marqueeGesture?.moved) {
       const rect = dragRect(marqueeGesture.startX, marqueeGesture.startY, event.clientX, event.clientY);
@@ -3116,7 +3295,7 @@ export function RelationshipGraph({
       // A group is several nodes moving at once and there is no obvious "drag back" to
       // the exact previous arrangement, so this gesture offers the single step back the
       // arrange path already owns. A single node still keeps its drag-back.
-      setArrangeUndo({ layout: groupGesture.base, label: "分组移动" });
+      setArrangeUndo({ layout: groupGesture.base, view, label: "分组移动" });
       stopDragFrame();
     } else if (nodeGesture && tappedId) {
       // A press that never moved is a tap. Two taps on the same node inside the
@@ -3173,6 +3352,13 @@ export function RelationshipGraph({
         ]),
       ),
     [visibleCharacters, positions],
+  );
+  // The relationships the canvas can actually draw: both ends are in scope. This is the
+  // number the scope summary reports, so "40 shown of 95 connected" and "191
+  // relationships" cannot be read as the same thing.
+  const drawnRelationships = useMemo(
+    () => relationships.filter((relationship) => byId.has(relationship.fromId) && byId.has(relationship.toId)),
+    [relationships, byId],
   );
   const hoveredEntry = hoveredId ? byId.get(hoveredId) : undefined;
 
@@ -3763,6 +3949,11 @@ export function RelationshipGraph({
   const arrangePanel = (
     <div className="graph-panel graph-arrange-panel" role="group" aria-label="自动整理">
       <p className="graph-panel-title">先预览，确认后才写入布局</p>
+      {preview && (
+        <p className="graph-panel-preview" role="status">
+          正在预览「{arrangeLabel(preview.mode)}」，坐标尚未保存。继续点其它布局可直接比较。
+        </p>
+      )}
       <div className="graph-scope-switch" role="group" aria-label="整理范围">
         <button
           aria-pressed={arrangeScope === "visible"}
@@ -3782,22 +3973,52 @@ export function RelationshipGraph({
         </button>
       </div>
       <div className="graph-arrange-actions">
-        <button className="ghost-button" onClick={() => proposeArrange("cluster")} type="button">
+        <button
+          aria-pressed={preview?.mode === "cluster"}
+          className={preview?.mode === "cluster" ? "ghost-button active" : "ghost-button"}
+          onClick={() => proposeArrange("cluster")}
+          type="button"
+        >
           关系聚类
         </button>
-        <button className="ghost-button" onClick={() => proposeArrange("ring")} type="button">
+        <button
+          aria-pressed={preview?.mode === "ring"}
+          className={preview?.mode === "ring" ? "ghost-button active" : "ghost-button"}
+          onClick={() => proposeArrange("ring")}
+          type="button"
+        >
           环形布局
         </button>
-        <button className="ghost-button" onClick={() => proposeArrange("grid")} type="button">
+        <button
+          aria-pressed={preview?.mode === "grid"}
+          className={preview?.mode === "grid" ? "ghost-button active" : "ghost-button"}
+          onClick={() => proposeArrange("grid")}
+          type="button"
+        >
           网格布局
         </button>
-        <button className="ghost-button" onClick={() => proposeArrange("hierarchy")} type="button">
+        <button
+          aria-pressed={preview?.mode === "hierarchy"}
+          className={preview?.mode === "hierarchy" ? "ghost-button active" : "ghost-button"}
+          onClick={() => proposeArrange("hierarchy")}
+          type="button"
+        >
           层级布局
         </button>
-        <button className="ghost-button" onClick={() => proposeArrange("groups")} type="button">
+        <button
+          aria-pressed={preview?.mode === "groups"}
+          className={preview?.mode === "groups" ? "ghost-button active" : "ghost-button"}
+          onClick={() => proposeArrange("groups")}
+          type="button"
+        >
           按分组整理
         </button>
-        <button className="ghost-button" onClick={() => proposeArrange("spaced")} type="button">
+        <button
+          aria-pressed={preview?.mode === "spaced"}
+          className={preview?.mode === "spaced" ? "ghost-button active" : "ghost-button"}
+          onClick={() => proposeArrange("spaced")}
+          type="button"
+        >
           按尺寸排开
         </button>
       </div>
@@ -4058,7 +4279,7 @@ export function RelationshipGraph({
                       onClick={() => setShowAll(false)}
                       type="button"
                     >
-                      只看有关联的
+                      有关联角色（{connectedIds.size}）
                     </button>
                     <button
                       aria-pressed={showAll}
@@ -4066,8 +4287,43 @@ export function RelationshipGraph({
                       onClick={() => setShowAll(true)}
                       type="button"
                     >
-                      全部角色
+                      所有角色（{characters.length}）
                     </button>
+                  </div>
+                </div>
+                {/* Three different questions, three different answers: which people are
+                    in scope, how many of them the core view draws, and whether the lines
+                    are painted. One switch used to answer all three. */}
+                <p className="graph-scope-stats" role="status">
+                  角色 {characters.length} · 有关联 {connectedIds.size} · 画布显示{" "}
+                  {visibleCharacters.length}
+                  {visibleCharacters.length < connectedIds.size
+                    ? `（核心视图上限 ${isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT}，其余可搜索或切到所有角色）`
+                    : ""}
+                  {" · "}关系线{" "}
+                  {prefs.showEdges
+                    ? `画出 ${drawnRelationships.length} / ${relationships.length}`
+                    : `已隐藏（共 ${relationships.length}）`}
+                </p>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">关系线</span>
+                  <div className="graph-segment">
+                    {[
+                      { value: true, label: "显示" },
+                      { value: false, label: "隐藏" },
+                    ].map((option) => (
+                      <button
+                        aria-pressed={prefs.showEdges === option.value}
+                        className={
+                          prefs.showEdges === option.value ? "graph-segment-button selected" : "graph-segment-button"
+                        }
+                        key={option.label}
+                        onClick={() => updatePrefs({ showEdges: option.value })}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 {/* What the strokes mean. It belongs with the display switches — it is
@@ -4927,7 +5183,8 @@ export function RelationshipGraph({
             <p className="graph-scope-note" role="status">
               画布显示 {visibleCharacters.length} / {connectedIds.size} 个有连接的角色（共{" "}
               {characters.length} 个），另有 {connectedIds.size - visibleCharacters.length} 个未画出。
-              点「显示全部角色」可以看完整的网络。
+              这是核心视图的密度上限（{isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT}），
+              不是数据过滤：搜索这些角色可以直接聚焦，或在设计里切到「所有角色」。
             </p>
           )}
 
@@ -4989,11 +5246,11 @@ export function RelationshipGraph({
               {/* A dot grid, drawn in drawing coordinates so it pans and zooms with
                   the nodes. It is a reference for the eye, not a container: there is
                   no boundary to hit. */}
-              <pattern height={style.canvas.gridSize} id="graph-dot-grid" patternUnits="userSpaceOnUse" width={style.canvas.gridSize}>
-                <circle className="graph-grid-dot" cx="1" cy="1" r="1.1" />
+              <pattern height={gridStep} id="graph-dot-grid" patternUnits="userSpaceOnUse" width={gridStep}>
+                <circle className="graph-grid-dot" cx={gridStep / 2} cy={gridStep / 2} r={gridDotRadius} />
               </pattern>
-              <pattern height={style.canvas.gridSize} id="graph-line-grid" patternUnits="userSpaceOnUse" width={style.canvas.gridSize}>
-                <path className="graph-grid-dot" d={`M 0 0 L ${style.canvas.gridSize} 0 M 0 0 L 0 ${style.canvas.gridSize}`} fill="none" strokeWidth="0.6" />
+              <pattern height={gridStep} id="graph-line-grid" patternUnits="userSpaceOnUse" width={gridStep}>
+                <path className="graph-grid-dot" d={`M 0 0 L ${gridStep} 0 M 0 0 L 0 ${gridStep}`} fill="none" strokeWidth="0.6" />
               </pattern>
               {prefs.showAvatars &&
                 style.node.showAvatars &&
@@ -5028,7 +5285,7 @@ export function RelationshipGraph({
                 className="graph-grid-plane"
                 fill={`url(#${style.canvas.grid === "lines" ? "graph-line-grid" : "graph-dot-grid"})`}
                 height={12000}
-                opacity={style.canvas.gridOpacity}
+                opacity={style.canvas.gridOpacity * gridFade}
                 width={16000}
                 x={-8000}
                 y={-6000}
@@ -5066,7 +5323,7 @@ export function RelationshipGraph({
                 </text>
               </g>
             ))}
-            {relationships.map((relationship) => {
+            {(prefs.showEdges ? relationships : []).map((relationship) => {
               const from = byId.get(relationship.fromId);
               const to = byId.get(relationship.toId);
               if (!from || !to) {
@@ -5120,9 +5377,23 @@ export function RelationshipGraph({
                 focusId === relationship.toId ||
                 selectedIds.includes(relationship.fromId) ||
                 selectedIds.includes(relationship.toId);
+                // Selection and the person being read outrank every looking-tool: a lens that
+                // does not include this kind still leaves the selected edge legible.
+                const edgeExempt = isEdgeSelected || touchesActiveSelection || touchesHovered;
               return (
                 <g
-                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens ? "" : " lens-dim"}${inSpotlight ? "" : " spotlight-dim"}`}
+                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens || edgeExempt ? "" : " lens-dim"}${inSpotlight || edgeExempt ? "" : " spotlight-dim"}`}
+                  data-emphasis={
+                    isEdgeSelected
+                      ? "selected"
+                      : touchesActiveSelection || touchesHovered
+                        ? "search"
+                        : inSpotlight
+                          ? "neighbour"
+                          : inLens
+                            ? "lens"
+                            : "normal"
+                  }
                   data-edge-id={relationship.id}
                   data-from-id={relationship.fromId}
                   data-to-id={relationship.toId}
@@ -5157,6 +5428,7 @@ export function RelationshipGraph({
                       Hover and selection still name the edge. */}
                   {style.edge.showLabel && visibleCharacters.length <= 60 &&
                     inLens &&
+                    (exporting || style.edge.labelSize * view.k * (measured ? screenScale : 1) >= 6) &&
                     (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
                       touchesHovered ||
                       touchesActiveSelection) && (
@@ -5194,13 +5466,28 @@ export function RelationshipGraph({
                   : geom.halfWidth * 2 - (geom.halfHeight * 2 - 8) - 20,
                 Math.min(nameSize, 15),
               );
-              const labelled = namesNode(density, {
-                 hovered: isHovered,
-                 focused: isFocused,
-                 neighbour: isNeighbour,
-                 selected: isSelected,
-                 hub: hubIds.has(character.id),
-               });
+              // One level per node, decided by priority rather than by stacked classes:
+              // a selected person is never dimmed by a lens or a spotlight.
+              const emphasis = emphasisLevel({
+                selected: isSelected,
+                spotlightTarget: spotlightId === character.id,
+                searchHit: focusId === character.id,
+                spotlightNeighbour: isNeighbour,
+                lensMatch: lensActive && lensNodeIds.has(character.id),
+              });
+              const lensDimsNode = lensActive && emphasis === "normal";
+              // Below the floor, only the objects the author is working with keep a name,
+              // and only until even that would be illegible.
+              const mustName = isSelected || isFocused || isHovered;
+              const labelled =
+                namesNode(density, {
+                  hovered: isHovered,
+                  focused: isFocused,
+                  neighbour: isNeighbour,
+                  selected: isSelected,
+                  hub: hubIds.has(character.id),
+                }) &&
+                (exporting || nameFloorOk || (mustName && nameScreenPx >= 4));
               // Spotlight dimming is its own class. Sharing one with hover made
               // "I exited the spotlight" and "the pointer is still on a node" look
               // identical, and it made the exit look broken.
@@ -5208,13 +5495,13 @@ export function RelationshipGraph({
               // One function owns the priority. A hover used to be able to dim the
               // node the reader had just picked, which read as "the selection went
               // away"; selection now outranks hover by construction.
-              const state = nodeStateClass({
+              const state = `${nodeStateClass({
                 selected: isSelected,
                 focused: isFocused,
                 hovered: isHovered,
                 outsideSpotlight,
                 dimmedByHover: Boolean(activeId && character.id !== activeId && !isNeighbour),
-              });
+              })}${lensDimsNode ? " lens-dim" : ""}`;
               const avatarUrl = avatarUrls[character.id];
               // A ring drawn in world units disappears at the zoom a hundred-character
               // wheel is read at, which is exactly where "which one did I pick" matters.
@@ -5227,6 +5514,7 @@ export function RelationshipGraph({
                   className={state}
                   data-character-id={character.id}
                   data-character-name={characterDisplayName(character)}
+                  data-emphasis={emphasis}
                   data-local-border={nodeOverride?.borderColor ? "true" : undefined}
                   data-selected={isSelected ? "true" : undefined}
                   key={character.id}
@@ -5443,7 +5731,7 @@ export function RelationshipGraph({
               canvas, with the drawing still visible above it. */}
           {!isStudio && surface !== "none" && (
             <div className="graph-page-drawer-layer" data-surface={surface}>
-              <div aria-hidden="true" className="graph-page-drawer-scrim" onClick={() => setSurface("none")} />
+              <div aria-hidden="true" className="graph-page-drawer-scrim" onClick={closeSurface} />
               <aside
                 aria-label={
                   surface === "design"
@@ -5492,7 +5780,7 @@ export function RelationshipGraph({
                     <button
                       aria-label={`关闭${surface === "design" ? "外观设置" : surface === "arrange" ? "整理画布" : "视觉分组"}`}
                       className="graph-page-drawer-close"
-                      onClick={() => setSurface("none")}
+                      onClick={closeSurface}
                       type="button"
                     >
                       <Icon name="close" size={16} />
@@ -5642,7 +5930,7 @@ export function RelationshipGraph({
                 <aside aria-label="角色与分组" className="graph-studio-drawer left">
                   <div className="graph-studio-drawer-head">
                     <strong>角色与分组</strong>
-                    <button aria-label="关闭角色面板" onClick={() => setSurface("none")} type="button">
+                    <button aria-label="关闭角色面板" onClick={closeSurface} type="button">
                       <Icon name="close" size={14} />
                     </button>
                   </div>
@@ -5782,7 +6070,7 @@ export function RelationshipGraph({
                       >
                         {sheetLevel === "half" ? "展开" : "收起"}
                       </button>
-                      <button aria-label="关闭属性面板" onClick={() => setSurface("none")} type="button">
+                      <button aria-label="关闭属性面板" onClick={closeSurface} type="button">
                         <Icon name="close" size={14} />
                       </button>
                     </div>
@@ -5848,7 +6136,14 @@ export function RelationshipGraph({
 
                   {surface === "explore" && (
                   <div className="graph-explore-section">
-                  <strong className="graph-studio-section">探索</strong>
+<div className="graph-explore-note">
+                    <span className="graph-explore-count">透镜 {lensKinds.length ? `${lensKinds.length} 类` : "未开启"}</span>
+                    <span>
+                      {lensKinds.length
+                        ? `正在强调：${lensKinds.map((kind) => relationshipKindLabel(kind)).join("、")}`
+                        : "选中关系类型后，其它类型淡出但仍保留。"}
+                    </span>
+                  </div>
                   <div className="graph-studio-props">
                     <div className="graph-spotlight">
                       <button
@@ -5878,18 +6173,18 @@ export function RelationshipGraph({
                         </button>
                       )}
                     </div>
-                    <p className="muted">
+                    <p className="graph-explore-hint">
                       {spotlightId
                         ? `高亮 ${spotlightSet?.size ?? 0} 个角色，其余淡出；只改显示，不改关系。`
                         : "选中一个角色后开启，查看它的直接关系或两层关系。"}
                     </p>
 
                     <strong className="graph-studio-section">关系类型透镜</strong>
-                    <div className="graph-lens">
+                    <div className="graph-lens" role="group" aria-label="关系类型透镜">
                       {presentKinds.map((kind) => (
                         <button
                           aria-pressed={lensKinds.includes(kind)}
-                          className="graph-lens-chip"
+                          className={lensKinds.includes(kind) ? "graph-lens-chip active" : "graph-lens-chip"}
                           key={kind}
                           onClick={() =>
                             setLensKinds((current) =>
@@ -5903,15 +6198,23 @@ export function RelationshipGraph({
                           {relationshipKindLabel(kind)}
                         </button>
                       ))}
-                      {lensKinds.length > 0 && (
-                        <button className="ghost-button" onClick={() => setLensKinds([])} type="button">
-                          看全部
-                        </button>
-                      )}
                     </div>
-                    <p className="muted">透镜只让其它类型淡出，不删除任何关系。</p>
+                    {/* One control, one behaviour: 清除透镜 is the only way back to the
+                        whole drawing, and it says how many kinds it will clear. */}
+                    <button
+                      className="ghost-button graph-lens-clear"
+                      disabled={lensKinds.length === 0}
+                      onClick={() => setLensKinds([])}
+                      type="button"
+                    >
+                      {lensKinds.length ? `清除透镜（${lensKinds.length}）` : "未选择透镜"}
+                    </button>
+                    <p className="graph-explore-hint">
+                      透镜只改变强调，不删除关系；关闭后搜索、聚光灯与选择保持原样。
+                    </p>
                   </div>
 
+                  
                   <strong className="graph-studio-section">视角书签</strong>
                   <form
                     className="graph-bookmark-form"
@@ -6048,7 +6351,7 @@ export function RelationshipGraph({
                 <div className="graph-context-row">
                   <span className="graph-context-count">
                     预览：{arrangeLabel(preview.mode)} · {Object.keys(preview.positions).length} 个节点（
-                    {preview.scope === "visible" ? "当前可见" : "全部角色"}）
+                    {preview.scope === "visible" ? "当前可见" : "全部角色"}）· 未写入坐标
                   </span>
                   <div className="graph-context-actions">
                     <button className="ghost-button" onClick={cancelArrange} type="button">
