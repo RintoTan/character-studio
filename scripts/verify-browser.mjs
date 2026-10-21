@@ -6186,6 +6186,81 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       // The export panel is measured, not assumed: at every width its four edges have
       // to sit inside the window, and when the content is taller than the window it
       // has to scroll inside itself rather than run off the top.
+      // The guide sits under the drawing, pages through four cards, and stays out of
+      // the studio. Its state is a reading preference, never part of the graph data.
+      await check("使用指南：切换、边界、收起重开、全屏不重复、数据不变", async () => {
+        await OPEN_GRAPH(1440, 900, false);
+        const before = await cdp.value(`JSON.stringify({
+          chars: document.querySelectorAll(".relationship-node").length,
+          stored: Object.keys(localStorage).filter((k) => k.startsWith("character-studio.")).sort().join(","),
+        })`);
+
+        const read = () => cdp.value(`(() => {
+          const guide = document.querySelector(".graph-guide");
+          const card = document.querySelector(".graph-guide-card");
+          if (!guide || !card) return null;
+          const r = guide.getBoundingClientRect();
+          const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+          return {
+            title: card.querySelector("h3")?.textContent.trim() ?? "",
+            count: card.querySelector(".graph-guide-count")?.textContent.trim() ?? "",
+            below: r.top >= frame.bottom - 1,
+            prevDisabled: document.querySelector('.graph-guide-step[aria-label="上一张提示"]')?.disabled ?? null,
+            nextDisabled: document.querySelector('.graph-guide-step[aria-label="下一张提示"]')?.disabled ?? null,
+            overflow: document.documentElement.scrollWidth - innerWidth,
+          };
+        })()`);
+
+        const first = await read();
+        await cdp.value(`document.querySelector('.graph-guide-step[aria-label="下一张提示"]').click()`);
+        await new Promise((resolve) => setTimeout(resolve, 260));
+        const second = await read();
+        await cdp.value(`[...document.querySelectorAll(".graph-guide-edge")][0].click()`);
+        await new Promise((resolve) => setTimeout(resolve, 260));
+        const jumped = await read();
+
+        await cdp.value(`document.querySelector(".graph-guide-collapse").click()`);
+        await new Promise((resolve) => setTimeout(resolve, 240));
+        const collapsed = await cdp.value(`!!document.querySelector(".graph-guide-open") && !document.querySelector(".graph-guide-card")`);
+        await cdp.value(`document.querySelector(".graph-guide-open").click()`);
+        await new Promise((resolve) => setTimeout(resolve, 240));
+        const reopened = await read();
+
+        await cdp.value(`[...document.querySelectorAll(".graph-toolbar button")].find((b) => b.getAttribute("aria-label") === "全屏编辑").click()`);
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        const inStudio = await cdp.value(`document.querySelectorAll(".graph-guide").length`);
+        const studioFrame = await cdp.value(`Math.round(document.querySelector(".graph-canvas-frame").getBoundingClientRect().height)`);
+
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await cdp.value(`[...document.querySelectorAll("button")].find((b) => b.textContent.trim() === "退出全屏编辑")?.click()`);
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        const narrow = await read();
+        const after = await cdp.value(`JSON.stringify({
+          chars: document.querySelectorAll(".relationship-node").length,
+          stored: Object.keys(localStorage).filter((k) => k.startsWith("character-studio.")).sort().join(","),
+        })`);
+
+        return {
+          pass:
+            Boolean(first) &&
+            first.below &&
+            first.count === "1 / 4" &&
+            first.prevDisabled === true &&
+            second.count === "2 / 4" &&
+            second.prevDisabled === false &&
+            jumped.count !== "2 / 4" &&
+            collapsed &&
+            Boolean(reopened) &&
+            inStudio === 0 &&
+            studioFrame > 400 &&
+            Boolean(narrow) &&
+            narrow.overflow <= 0 &&
+            before === after,
+          detail: `首张「${first?.title}」${first?.count}；次张 ${second?.count}；露边跳转 ${jumped?.count}；收起可用 ${collapsed}；重开 ${reopened?.count}；全屏内 ${inStudio} 个；全屏画布 ${studioFrame}px；375 溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
+        };
+      });
+
       await check("导出面板：1440/1024/375/320 四边都在视口内且可滚动", async () => {
         const rows = [];
         for (const [w, h, m] of [[1440, 900, false], [1024, 768, false], [375, 812, true], [320, 640, true]]) {

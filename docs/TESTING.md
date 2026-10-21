@@ -116,3 +116,16 @@ pnpm verify:deploy
   - `/tmp/probe-explore.mjs`：聚光灯层数、透镜多选、书签保存/跳转/重命名/删除、不写业务数据。
   - `/tmp/probe-export.mjs`：SVG 范围与内容、缩放无关性、PNG 尺寸、导出不改数据。
 - 截图前置条件：`character-studio.about-seen` 必须是字符串 `"true"`；写成 `"1"` 会被产品判为首次访问并弹出 About，遮住整张截图（本轮已确认是脚本问题，不是产品缺陷）。
+
+
+## Sprint 50 最终回归（2.40.0，2026-10-21）
+
+| 命令 | 结果 |
+|---|---|
+| `npm run typecheck` | 通过 |
+| `npm test` | 57 文件 / 716 用例 |
+| `npm run build:pages` | 22 文件 |
+| `npm run verify:browser` | 82 项全部通过 |
+| `npm run verify:version` | 2.40.0 |
+
+新增断言：导出面板在 1440/1024/375/320 的 `boundingClientRect` 四边都在视口内；使用指南的切换、首尾边界、露边跳转、收起与重开、全屏不重复渲染、375 无横向溢出、操作前后角色与存储键不变。

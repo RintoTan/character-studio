@@ -20,6 +20,7 @@ import {
   saveRelationships,
 } from "../storage/relationshipStorage";
 import { Icon } from "../components/Icon";
+import GraphGuide from "../components/GraphGuide";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import type { Character } from "../types/character";
 import {
@@ -6450,6 +6451,10 @@ export function RelationshipGraph({
           </div>
         </div>
       )}
+
+      {/* Under the drawing, never over it, and never in the studio: full screen exists
+          to give the canvas the room the guide would take. */}
+      {!isStudio && <GraphGuide />}
     </section>
   );
 }
