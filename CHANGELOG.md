@@ -1,3 +1,14 @@
+## 2.47.1 —— Sprint 53.2：手机触控体系、抽屉排版与页面框架
+
+- **P0 桌面抽屉排版**：宽度 336 → **368px**（`--drawer-width` 单点定义，`[data-tab="arrange"]` 的 336px 硬编码删除）。「名称」行原先同时塞进显示开关与字号，三按钮分段在 `minmax(0,1fr)` 里被压成纵向；现拆为「名称」「字号」两行，「范围」整行独占（`graph-panel-row-stacked`）。抽屉内分段 `flex-wrap: nowrap`，按钮 `flex:1 1 auto`。实测：抽屉 368px、正文溢出 0、7 个多按钮行 0 纵向断裂；滑块的默认 `margin` 与固有最小宽是残留 2px 的来源，已用 `min-width:0; margin:0; box-sizing:border-box` 清掉。
+- **P0 手机双指**：新增 `pinchView()`，把「绕手势中心缩放」与「中点位移平移」合并为**一次** `setView`。此前分两次更新，第二次用的是上一帧的盒，表现为图形在指下滑移。实测 375px：纯平移 49%→49% 且坐标不变、纯捏合 49%→128%、`touchCancel` 后坐标与视角均不受损。
+- **P0 手机多选**：新增 `multiSelectMode`（手机端占用原「选择工具」的位置，坞内控件数不变）。修复**多选成员轻点被集合拖动分支吞掉**的缺陷：`setGesture && !moved` 现在按轻点处理。实测：点两下选中 2、再点减到 1、补回 2；拖动其中一个，两个节点同时位移 50px 且写入 `positions`；退出多选后单击恢复单选。
+- **P0 工具坞让位**：`display:none !important` 换成状态驱动的 `data-yielded`（与渲染抽屉读同一个 `surface`），并在抽屉 Header 新增 `.graph-page-drawer-state`，坞隐藏时仍显示「已选 N 个角色 · 姓名」或「预览「X」坐标未保存」。实测：抽屉关闭时坞可见、选择条显示角色名；打开后坞与选择条让位、Header 显示所选角色。
+- **P0 页面框架**：只新增一组框架 Token（`--page-inset`、`--page-inset-compact`、`--container-wide/standard/reading/form`、`--toolbar-gap`、`--section-gap`、`--control-h`），并替换时间线/世界观的 880px、720px 与三处工具栏间距；Hero 增加 `--text-hero-band(20)`、`--text-hero-band-phone(17)`、`--text-hero-compact(24)` 三档，消除关系网与工作台的硬编码字号。实测四个页面标题落在 24/20/28/28px，统计副标题同为 12px、左缘对齐、溢出 0。
+- **P1 探索面板**：抽出 `explorePanelContent`，新增「所选角色的直接关系」块；上限规则抽为纯函数 `neighbourPreview()`（8 条上限 + 余量计数），5 个单测覆盖小网络、100 人网络、双向关系与空选择。
+- **P1 弹层**：`CharacterForm` 的头像裁剪、素材库、AI 替换确认接入 `useDialogKeyboard`（Escape 关闭、Enter 确认、焦点恢复），保存语义未改。
+- **未完成**：Dashboard 与工作台的 Hero 结构未重做（仅统一字号与间距）；关系管理视图的筛选条未单独调整；320/430px 与深浅主题的截图证据、40/100 数据量的整理回滚复测留待下一轮。
+
 ## 2.47.0 —— Sprint 53.1：Emoji 黑底修复、抽屉溢出与移动工作室验证
 
 - **P0 黑块根因**：圆角头像外框是 `<rect>`，而填充规则只写在 `.relationship-node circle` 上，矩形因此落到 SVG 默认的 **黑色**。Emoji 角色在「圆角」形态下就出现了黑色方底。修复为 `circle, .relationship-node-rounded` 共用同一组填充/描边/悬停规则；实测 100 角色圆角模式 40 个矩形，0 个黑色（`rgb(32,36,45)`）。
