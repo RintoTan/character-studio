@@ -14675,3 +14675,71 @@ body:has(input:focus, textarea:focus, select:focus) .floating-actions {
     font-size: 12.5px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Studio top bar: the primary action and the view commands.
+
+   The studio dock used to keep a 更多 menu holding undo, reset and the drawer, while
+   the top bar — which is where a task belongs — offered neither 整理 nor 新建关系.
+   The dock is now the canvas only; these two sit with the tasks.
+   ------------------------------------------------------------------------- */
+.graph-studio-new {
+  min-height: 32px;
+  padding: 0 14px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.graph-studio-toolgroup > button[aria-label="重置视角"],
+.graph-studio-toolgroup > button[aria-label="回到上一个视角"] {
+  color: var(--text-soft);
+}
+
+/* The hand tool says so before the pointer is pressed. */
+.graph-canvas.is-pan-tool {
+  cursor: grab;
+}
+
+.graph-canvas.is-pan-tool:active {
+  cursor: grabbing;
+}
+
+/* The arrangement tools are a compact icon grid, not six text buttons stacked in a
+   popover. Two objects can be aligned; distribution needs a third, and says why. */
+.graph-align-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 32px);
+  gap: 4px;
+}
+
+.graph-align-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.graph-align-button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.graph-align-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.graph-align-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.graph-align-section + .graph-align-section .graph-align-grid {
+  grid-template-columns: repeat(6, 32px);
+}

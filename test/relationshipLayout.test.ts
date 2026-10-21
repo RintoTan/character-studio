@@ -9,6 +9,7 @@ import {
   fitZoom,
   groupBleed,
   labelReadability,
+  previewBoxKey,
   labelZoomNeeded,
   labelsFitAfter,
   labelsReadable,
@@ -502,5 +503,41 @@ describe("label switch hysteresis", () => {
     expect(labelsFitAfter(true, 0.89)).toBe(false);
     expect(labelsFitAfter(false, 0.99)).toBe(false);
     expect(labelsFitAfter(false, 1)).toBe(true);
+  });
+});
+
+
+describe("preview box key", () => {
+  it("changes when a proposal moves a node, so the canvas box is rebuilt", () => {
+    const first = previewBoxKey({ a: { x: 0, y: 0 }, b: { x: 10, y: 0 } });
+    const moved = previewBoxKey({ a: { x: 0, y: 0 }, b: { x: 12, y: 0 } });
+    expect(first).not.toBe(moved);
+  });
+
+  it("is stable for the same coordinates, whatever order the entries arrive in", () => {
+    const a = { a: { x: 1, y: 2 }, b: { x: 3, y: 4 } };
+    const b = { b: { x: 3, y: 4 }, a: { x: 1, y: 2 } };
+    expect(previewBoxKey(a)).toBe(previewBoxKey(b));
+  });
+});
+
+describe("edge endpoints on the drawn node geometry", () => {
+  const from = { x: 0, y: 0 };
+  const to = { x: 400, y: 0 };
+
+  const startX = (radius: number) => {
+    const geometry = edgeGeometry(from, to, { fromRadius: radius });
+    return Number(geometry.path.split(" ")[1]);
+  };
+
+  it("stops at the compact node's own radius, not the default one", () => {
+    // A compact node is drawn at 0.62 of the radius; the line used to stop at the full
+    // radius and left a visible gap beside a small node.
+    expect(startX(62)).toBeLessThan(startX(100));
+    expect(startX(62)).toBeCloseTo(64, 0);
+  });
+
+  it("follows a scaled-up node instead of running underneath it", () => {
+    expect(startX(140)).toBeGreaterThan(startX(100));
   });
 });

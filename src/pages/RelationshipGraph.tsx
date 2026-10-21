@@ -593,8 +593,21 @@ export function contentBounds(
  * group, changed what the box had to contain without changing who was on it, so the
  * cached box was reused and the new cards and borders were drawn outside it.
  */
-export function canvasBoxKey(ids: string[], boxHalfWidth: number, hasGroups: boolean): string {
-  return `${ids.join("|")}::${boxHalfWidth.toFixed(2)}::${hasGroups ? "groups" : "none"}`;
+export function canvasBoxKey(
+  ids: string[],
+  boxHalfWidth: number,
+  hasGroups: boolean,
+  extra = "committed",
+): string {
+  return `${ids.join("|")}::${boxHalfWidth.toFixed(2)}::${hasGroups ? "groups" : "none"}::${extra}`;
+}
+
+/** Where a proposed arrangement puts everything, so the box can follow it. */
+export function previewBoxKey(positions: Record<string, { x: number; y: number }>): string {
+  return `preview:${Object.keys(positions)
+    .sort()
+    .map((id) => `${id}@${Math.round(positions[id].x)},${Math.round(positions[id].y)}`)
+    .join(";")}`;
 }
 
 /** A card is wide enough for a four-character name and one short line under it. */
@@ -995,6 +1008,9 @@ export function edgeGeometry(
     /** Half extents of each end when it is not a circle (a card). */
     fromBox?: { halfWidth: number; halfHeight: number };
     toBox?: { halfWidth: number; halfHeight: number };
+    /** The circle radius each end is actually drawn at (size, compact form). */
+    fromRadius?: number;
+    toRadius?: number;
     /** Stroke width, so the head grows with the line instead of floating beside it. */
     weight?: number;
   } = {},
@@ -1011,15 +1027,22 @@ export function edgeGeometry(
   // Distance from the centre to the boundary along this direction. A circle is the
   // same in every direction; a card is not, and using its width everywhere left the
   // line floating beside its narrow side.
-  const reach = (box: { halfWidth: number; halfHeight: number } | undefined, pad: number) =>
+  // A circle is the radius it is drawn at — which is not `metrics.radius` when the
+  // author chose the compact form or a node size other than 1. Using the default
+  // radius left the line stopping short of a small node and running under a large one.
+  const reach = (
+    box: { halfWidth: number; halfHeight: number } | undefined,
+    pad: number,
+    radius: number,
+  ) =>
     box
       ? 1 / Math.max(Math.abs(ux) / box.halfWidth, Math.abs(uy) / box.halfHeight) + pad
-      : metrics.radius + pad;
+      : radius + pad;
 
-  const startX = from.x + ux * reach(options.fromBox, 2);
-  const startY = from.y + uy * reach(options.fromBox, 2);
-  const endX = to.x - ux * reach(options.toBox, 3);
-  const endY = to.y - uy * reach(options.toBox, 3);
+  const startX = from.x + ux * reach(options.fromBox, 2, options.fromRadius ?? metrics.radius);
+  const startY = from.y + uy * reach(options.fromBox, 2, options.fromRadius ?? metrics.radius);
+  const endX = to.x - ux * reach(options.toBox, 3, options.toRadius ?? metrics.radius);
+  const endY = to.y - uy * reach(options.toBox, 3, options.toRadius ?? metrics.radius);
   const bendAmount = bend * BEND_UNIT;
   const controlX = (startX + endX) / 2 + nx * bendAmount;
   const controlY = (startY + endY) / 2 + ny * bendAmount;
@@ -1285,9 +1308,18 @@ export function RelationshipGraph({
   // Free placement lives in its own store, keyed by character id: a rename moves
   // nothing, and a deleted character is pruned out rather than ghosted.
   const [layout, setLayout] = useState<CanvasLayout>(() => loadLayout());
+  // Bumped when a command moves nodes as a whole by more than a drag does (arrange,
+  // undo). The drawing box is cached so a drag cannot rescale the canvas under the
+  // pointer; a command that re-places everything has to rebuild it, or the new
+  // arrangement is drawn outside the cached box and clipped by the viewport.
+  const [boxEpoch, setBoxEpoch] = useState(0);
   const [livePositions, setLivePositions] = useState<Record<string, LayoutPoint> | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectMode, setSelectMode] = useState(false);
+  // A hand tool for trackpads without a middle button: while it is on, a drag pans
+  // whatever it starts on, including a node. It is a tool, not a mode of the data —
+  // turning it off leaves selection and coordinates exactly as they were.
+  const [panMode, setPanMode] = useState(false);
   // The group whose rectangle the pointer is down on. Selecting on release alone
   // left the border unmarked for the whole drag: `.dragging` is derived from this,
   // not from the member list, so pressing a group shows both states at once.
@@ -1471,10 +1503,11 @@ export function RelationshipGraph({
         isDirectionHelpOpen ||
         Boolean(document.querySelector('[aria-modal="true"]'));
 
-      if (event.key === "Escape" && selectMode && !layerAbove) {
+      if (event.key === "Escape" && (selectMode || panMode) && !layerAbove) {
         marqueeRef.current = null;
         setMarquee(null);
         setSelectMode(false);
+        setPanMode(false);
       }
     };
     const up = (event: KeyboardEvent) => {
@@ -1491,9 +1524,9 @@ export function RelationshipGraph({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [selectMode, surface, isMoreOpen, isAlignOpen, isDirectionHelpOpen]);
+  }, [selectMode, panMode, surface, isMoreOpen, isAlignOpen, isDirectionHelpOpen]);
   useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
-  useEscapeDismiss(Boolean(preview), () => setPreview(null));
+  useEscapeDismiss(Boolean(preview), () => cancelArrange());
   const style = layout.style ?? DEFAULT_CANVAS_STYLE;
   const metrics = useMemo(() => graphMetrics(prefs), [prefs]);
   // The ring the canvas starts as. It is still what a workspace with no saved layout
@@ -1537,14 +1570,25 @@ export function RelationshipGraph({
   );
   const stableBoxRef = useRef<{ key: string; viewBox: string; width: number } | null>(null);
   const canvas = useMemo(() => {
-    const boxKey = canvasBoxKey(visibleIds, boxHalfWidth, layout.groups.length > 0);
+    const boxKey = canvasBoxKey(
+      visibleIds,
+      boxHalfWidth,
+      layout.groups.length > 0,
+      preview ? previewBoxKey(preview.positions) : `epoch:${boxEpoch}`,
+    );
 
     if (stableBoxRef.current?.key === boxKey) {
       return stableBoxRef.current;
     }
 
+    // A proposed arrangement is drawn where the proposal puts it, so the box has to be
+    // built from those coordinates: a box built from the committed ones left 96 of 100
+    // nodes outside the viewport during 预览.
     const box = canvasBox(
-      visibleCharacters.map((character, index) => layout.positions[character.id] ?? ringPositions[index]),
+      visibleCharacters.map(
+        (character, index) =>
+          preview?.positions[character.id] ?? layout.positions[character.id] ?? ringPositions[index],
+      ),
       metrics,
       boxHalfWidth,
     );
@@ -1560,7 +1604,7 @@ export function RelationshipGraph({
       width: round(boxWidth + bleed.x * 2),
     };
     return stableBoxRef.current;
-  }, [visibleIds, visibleCharacters, layout, ringPositions, metrics, boxHalfWidth]);
+  }, [visibleIds, visibleCharacters, layout, ringPositions, metrics, boxHalfWidth, preview, boxEpoch]);
   const bends = useMemo(() => edgeBends(relationships), [relationships]);
 
   // What each drawn node's coordinates are right now: a preview (arrange) wins over
@@ -1721,6 +1765,11 @@ export function RelationshipGraph({
   // Zoom and pan live in the drawing's own coordinates, so the wheel stays on the
   // point under the cursor and the fit view is just k = 1 with no offset.
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
+  // The view a proposal interrupted, so 取消 can put the author back where they were.
+  const previewViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
+  const fitAfterEpochRef = useRef(false);
+
+
   // Secondary text inside a card appears at 1.0× and disappears at 0.9×: two
   // thresholds, so a viewport parked between them cannot make it flicker.
   const [cardMetaVisible, setCardMetaVisible] = useState(true);
@@ -2540,10 +2589,22 @@ export function RelationshipGraph({
                 ? gridLayout(ids, center, metrics.radius, 64, spreadCell())
                 : clusterLayout(ids, relationships, center, metrics.radius);
 
+    previewViewRef.current = view;
     setPreview({ mode, scope: arrangeScope, positions });
     // The preview is the one place that says 取消 / 确认应用, so the panel that asked
     // for it steps aside and gives the drawing the whole width.
     setSurface("none");
+  }
+
+  /** 取消 is a view restore as much as a data one: the box goes back with it. */
+  function cancelArrange() {
+    setPreview(null);
+    if (previewViewRef.current) {
+      const restore = previewViewRef.current;
+      previewViewRef.current = null;
+      viewAutoRef.current = false;
+      setView(restore);
+    }
   }
 
   function applyArrange() {
@@ -2553,6 +2614,9 @@ export function RelationshipGraph({
 
     const base = workingLayout();
     setArrangeUndo({ layout: base, label: arrangeLabel(preview.mode) });
+    // The preview already framed the new arrangement; the committed coordinates are
+    // the same, so the view stays exactly where it is.
+    previewViewRef.current = null;
     commitLayout(applyPositions(base, preview.positions));
     setPreview(null);
   }
@@ -2562,6 +2626,8 @@ export function RelationshipGraph({
       return;
     }
 
+    fitAfterEpochRef.current = true;
+    setBoxEpoch((epoch) => epoch + 1);
     commitLayout(arrangeUndo.layout);
     setArrangeUndo(null);
   }
@@ -2700,6 +2766,18 @@ export function RelationshipGraph({
     }
 
     if (pointersRef.current.size > 2) {
+      return;
+    }
+
+    // The hand tool pans from anywhere, the way a space-drag does. Pressing a node
+    // with it never starts a move, so a pan cannot become an accidental edit.
+    if (panMode) {
+      panRef.current = {
+        pointerId: event.pointerId,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        moved: false,
+      };
       return;
     }
 
@@ -4616,29 +4694,34 @@ export function RelationshipGraph({
               </button>
 
               {/* History is always one press away on a wide screen. A phone moves the
-                  same two commands into 更多 rather than shrinking the dock. */}
-              <button
-                aria-label="撤销"
-                className="graph-icon-button graph-tool-history"
-                data-tooltip="撤销上一步布局改动"
-                disabled={undoRef.current.length === 0}
-                onClick={undoLayout}
-                type="button"
-              >
-                <Icon name="undo" size={16} />
-              </button>
-              <button
-                aria-label="重做"
-                className="graph-icon-button graph-tool-history"
-                data-tooltip="重做"
-                disabled={redoRef.current.length === 0}
-                onClick={redoLayout}
-                type="button"
-              >
-                <Icon name="redo" size={16} />
-              </button>
+                  same two commands into 更多 rather than shrinking the dock. In the
+                  studio the top bar owns them, so the dock stays a canvas surface. */}
+              {!isStudio && (
+                <>
+                  <button
+                    aria-label="撤销"
+                    className="graph-icon-button graph-tool-history"
+                    data-tooltip="撤销上一步布局改动"
+                    disabled={undoRef.current.length === 0}
+                    onClick={undoLayout}
+                    type="button"
+                  >
+                    <Icon name="undo" size={16} />
+                  </button>
+                  <button
+                    aria-label="重做"
+                    className="graph-icon-button graph-tool-history"
+                    data-tooltip="重做"
+                    disabled={redoRef.current.length === 0}
+                    onClick={redoLayout}
+                    type="button"
+                  >
+                    <Icon name="redo" size={16} />
+                  </button>
 
-              <span aria-hidden="true" className="graph-tool-sep" />
+                  <span aria-hidden="true" className="graph-tool-sep" />
+                </>
+              )}
 
               <button
                 aria-label={selectMode ? "选择工具（已开启）" : "选择工具"}
@@ -4653,6 +4736,8 @@ export function RelationshipGraph({
                   setSelectMode((current) => {
                     if (current) {
                       setSelectedIds([]);
+                    } else {
+                      setPanMode(false);
                     }
                     return !current;
                   });
@@ -4663,16 +4748,42 @@ export function RelationshipGraph({
                 <Icon name="select" size={16} />
               </button>
 
+              {/* A trackpad has no middle button, so panning needs a tool as well as a
+                  key. It replaces the selection tool while it is on: two drag tools
+                  cannot share the same empty canvas. */}
               <button
-                aria-expanded={surface === "arrange"}
-                aria-label="整理画布"
+                aria-label={panMode ? "平移工具（已开启）" : "平移工具"}
+                aria-pressed={panMode}
                 className="graph-icon-button"
-                data-tooltip="整理：关系聚类、环形、网格、层级与按尺寸排开"
-                onClick={() => openGraphSurface("arrange")}
+                data-tooltip={panMode ? "平移工具已开启：拖动即平移，Esc 退出" : "平移工具：拖动平移画布，不移动角色"}
+                onClick={() => {
+                  setPanMode((current) => {
+                    if (!current) {
+                      setSelectMode(false);
+                      setMarquee(null);
+                      marqueeRef.current = null;
+                    }
+                    return !current;
+                  });
+                  setIsMoreOpen(false);
+                }}
                 type="button"
               >
-                <Icon name="layout" size={16} />
+                <Icon name="hand" size={16} />
               </button>
+
+              {!isStudio && (
+                <button
+                  aria-expanded={surface === "arrange"}
+                  aria-label="整理画布"
+                  className="graph-icon-button"
+                  data-tooltip="整理：关系聚类、环形、网格、层级与按尺寸排开"
+                  onClick={() => openGraphSurface("arrange")}
+                  type="button"
+                >
+                  <Icon name="layout" size={16} />
+                </button>
+              )}
 
               {/* The studio's top bar already owns 设计, so the dock does not repeat it. */}
               {!isStudio && (
@@ -4688,6 +4799,7 @@ export function RelationshipGraph({
                 </button>
               )}
 
+              {!isStudio && (
               <div className="graph-more-wrap" ref={moreWrapRef}>
                 <button
                   aria-expanded={isMoreOpen}
@@ -4793,6 +4905,7 @@ export function RelationshipGraph({
                   </div>
                 )}
               </div>
+              )}
 
               {!isStudio && (
                 <button
@@ -4863,7 +4976,7 @@ export function RelationshipGraph({
           >
           <svg
             aria-hidden="true"
-            className={`relationship-canvas${selectMode ? " is-selecting" : ""}${spaceHeld ? " is-panning" : ""}`}
+            className={`relationship-canvas${selectMode ? " is-selecting" : ""}${spaceHeld ? " is-panning" : ""}${panMode ? " is-pan-tool" : ""}`}
             onPointerCancel={cancelPan}
             onPointerDown={beginPan}
             onPointerMove={movePan}
@@ -4970,6 +5083,8 @@ export function RelationshipGraph({
               const geometry = edgeGeometry(from, to, {
                 fromBox: fromGeom?.card ? fromGeom : undefined,
                 toBox: toGeom?.card ? toGeom : undefined,
+                fromRadius: fromGeom?.radius,
+                toRadius: toGeom?.radius,
                 weight: style.edge.width,
                 bend: bends.get(relationship.id) ?? 0,
                 metrics,
@@ -5445,6 +5560,19 @@ export function RelationshipGraph({
                     <span className="graph-studio-save-dot" />
                     {livePositions ? "调整中…" : "已保存"}
                   </span>
+                  {previousView && (
+                    <button aria-label="回到上一个视角" data-tooltip="回到上一个视角" onClick={restoreView} type="button">
+                      <Icon name="refresh" size={16} />
+                    </button>
+                  )}
+                  <button
+                    aria-label="重置视角"
+                    data-tooltip="重置视角：回到进入全屏编辑时的画面"
+                    onClick={resetToDefaultView}
+                    type="button"
+                  >
+                    <Icon name="maximize" size={16} />
+                  </button>
                   </div>
 
                   <span aria-hidden="true" className="graph-studio-sep" />
@@ -5463,6 +5591,16 @@ export function RelationshipGraph({
                   >
                     <Icon name="layers" size={15} />
                     <span>角色</span>
+                  </button>
+                  <button
+                    aria-pressed={surface === "arrange"}
+                    className="graph-studio-toggle"
+                    data-tooltip="整理：先预览，确认后才写入布局"
+                    onClick={() => openGraphSurface("arrange")}
+                    type="button"
+                  >
+                    <Icon name="layout" size={15} />
+                    <span>整理</span>
                   </button>
                   <button
                     aria-pressed={isStudioRightOpen && studioTab === "design"}
@@ -5488,6 +5626,14 @@ export function RelationshipGraph({
                   </div>
 
                   <span aria-hidden="true" className="graph-studio-sep" />
+                  <button
+                    className="primary-button graph-studio-new"
+                    disabled={!canLink}
+                    onClick={openDraft}
+                    type="button"
+                  >
+                    新建关系
+                  </button>
                   {exportMenu}
                 </div>
               </div>
@@ -5905,7 +6051,7 @@ export function RelationshipGraph({
                     {preview.scope === "visible" ? "当前可见" : "全部角色"}）
                   </span>
                   <div className="graph-context-actions">
-                    <button className="ghost-button" onClick={() => setPreview(null)} type="button">
+                    <button className="ghost-button" onClick={cancelArrange} type="button">
                       取消
                     </button>
                     <button className="primary-button" onClick={applyArrange} type="button">
@@ -5969,24 +6115,57 @@ export function RelationshipGraph({
                     <div className="graph-align-section">
                       <span className="graph-align-title">对齐</span>
                       <div className="graph-align-grid">
-                        <button className="graph-tool-button" onClick={() => alignSelection("x", "start")} type="button">左对齐</button>
-                        <button className="graph-tool-button" onClick={() => alignSelection("x", "center")} type="button">水平居中</button>
-                        <button className="graph-tool-button" onClick={() => alignSelection("x", "end")} type="button">右对齐</button>
-                        <button className="graph-tool-button" onClick={() => alignSelection("y", "start")} type="button">顶对齐</button>
-                        <button className="graph-tool-button" onClick={() => alignSelection("y", "center")} type="button">垂直居中</button>
-                        <button className="graph-tool-button" onClick={() => alignSelection("y", "end")} type="button">底对齐</button>
+                        {[
+                          { icon: "alignLeft", label: "左对齐", run: () => alignSelection("x", "start") },
+                          { icon: "alignCenterH", label: "水平居中", run: () => alignSelection("x", "center") },
+                          { icon: "alignRight", label: "右对齐", run: () => alignSelection("x", "end") },
+                          { icon: "alignTop", label: "顶对齐", run: () => alignSelection("y", "start") },
+                          { icon: "alignCenterV", label: "垂直居中", run: () => alignSelection("y", "center") },
+                          { icon: "alignBottom", label: "底对齐", run: () => alignSelection("y", "end") },
+                        ].map((tool) => (
+                          <button
+                            aria-label={tool.label}
+                            className="graph-align-button"
+                            data-tooltip={tool.label}
+                            key={tool.label}
+                            onClick={tool.run}
+                            type="button"
+                          >
+                            <Icon name={tool.icon as Parameters<typeof Icon>[0]["name"]} size={16} />
+                          </button>
+                        ))}
                       </div>
                     </div>
                     <div className="graph-align-section">
                       <span className="graph-align-title">分布</span>
                       <div className="graph-align-grid">
-                        <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("x")} type="button">水平等距</button>
-                        <button className="graph-tool-button" disabled={selectedIds.length < 3} onClick={() => distributeSelection("y")} type="button">垂直等距</button>
+                        <button
+                          aria-label="水平等距"
+                          className="graph-align-button"
+                          data-tooltip={selectedIds.length < 3 ? "等距分布需要至少三个角色" : "水平等距"}
+                          disabled={selectedIds.length < 3}
+                          onClick={() => distributeSelection("x")}
+                          type="button"
+                        >
+                          <Icon name="distributeH" size={16} />
+                        </button>
+                        <button
+                          aria-label="垂直等距"
+                          className="graph-align-button"
+                          data-tooltip={selectedIds.length < 3 ? "等距分布需要至少三个角色" : "垂直等距"}
+                          disabled={selectedIds.length < 3}
+                          onClick={() => distributeSelection("y")}
+                          type="button"
+                        >
+                          <Icon name="distributeV" size={16} />
+                        </button>
                       </div>
                     </div>
                     <p className="graph-align-note">
                       {arrangeAvailability(selectedIds.length).reason ??
-                        "对齐与分布都按角色的实际外框计算，只改坐标，不改关系。"}
+                        (selectedIds.length < 3
+                          ? "两个角色可以对齐；等距分布需要三个以上。"
+                          : "对齐与分布都按角色的实际外框计算，只改坐标，不改关系。")}
                     </p>
                   </div>
                 )}

@@ -7,6 +7,12 @@ import type { ReactNode } from "react";
 // `currentColor` for theming, `aria-hidden` because the surrounding control
 // already carries the accessible name.
 export type IconName =
+  | "alignBottom"
+  | "alignCenterH"
+  | "alignCenterV"
+  | "alignLeft"
+  | "alignRight"
+  | "alignTop"
   | "arrowDown"
   | "arrowLeft"
   | "arrowUp"
@@ -23,6 +29,8 @@ export type IconName =
   | "component"
   | "contrast"
   | "copy"
+  | "distributeH"
+  | "distributeV"
   | "download"
   | "eye"
   | "file"
@@ -31,6 +39,7 @@ export type IconName =
   | "gear"
   | "globe"
   | "grid"
+  | "hand"
   | "heart"
   | "home"
   | "image"
@@ -75,6 +84,63 @@ const OPTICAL_OFFSET: Partial<Record<IconName, [number, number]>> = {
 };
 
 const ICONS: Record<IconName, ReactNode> = {
+  // Alignment: the rule is the line, the two bars are the objects. Drawn at the same
+  // weight as the rest of the set so eight of them in a grid do not read as noise.
+  alignLeft: (
+    <>
+      <path d="M4 4v16" />
+      <rect height="4" rx="1" width="12" x="8" y="7" />
+      <rect height="4" rx="1" width="8" x="8" y="14" />
+    </>
+  ),
+  alignCenterH: (
+    <>
+      <path d="M12 3v18" />
+      <rect height="4" rx="1" width="12" x="6" y="7" />
+      <rect height="4" rx="1" width="8" x="8" y="14" />
+    </>
+  ),
+  alignRight: (
+    <>
+      <path d="M20 4v16" />
+      <rect height="4" rx="1" width="12" x="4" y="7" />
+      <rect height="4" rx="1" width="8" x="8" y="14" />
+    </>
+  ),
+  alignTop: (
+    <>
+      <path d="M4 4h16" />
+      <rect height="12" rx="1" width="4" x="7" y="8" />
+      <rect height="8" rx="1" width="4" x="14" y="8" />
+    </>
+  ),
+  alignCenterV: (
+    <>
+      <path d="M3 12h18" />
+      <rect height="12" rx="1" width="4" x="7" y="6" />
+      <rect height="8" rx="1" width="4" x="14" y="8" />
+    </>
+  ),
+  alignBottom: (
+    <>
+      <path d="M4 20h16" />
+      <rect height="12" rx="1" width="4" x="7" y="4" />
+      <rect height="8" rx="1" width="4" x="14" y="8" />
+    </>
+  ),
+  distributeH: (
+    <>
+      <path d="M4 4v16M20 4v16" />
+      <rect height="10" rx="1" width="4" x="10" y="7" />
+    </>
+  ),
+  distributeV: (
+    <>
+      <path d="M4 4h16M4 20h16" />
+      <rect height="4" rx="1" width="10" x="7" y="10" />
+    </>
+  ),
+
   arrowDown: <path d="M12 5v14m0 0-5.5-5.5M12 19l5.5-5.5" />,
   arrowLeft: <path d="M19 12H5m0 0 6-6m-6 6 6 6" />,
   arrowUp: <path d="M12 19V5m0 0 5.5 5.5M12 5 6.5 10.5" />,
@@ -154,6 +220,15 @@ const ICONS: Record<IconName, ReactNode> = {
       <circle cx="12" cy="12" r="9" />
       <path d="M3 12h18" />
       <path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" />
+    </>
+  ),
+  // Pan: a hand, the one symbol every canvas uses for "drag the paper, not the
+  // drawing". Drawn open so it cannot be mistaken for the pointer tool.
+  hand: (
+    <>
+      <path d="M8.5 11V5.6a1.7 1.7 0 0 1 3.4 0V11" />
+      <path d="M11.9 10.6V4.6a1.7 1.7 0 0 1 3.4 0v6" />
+      <path d="M15.3 10.9V6.6a1.7 1.7 0 0 1 3.4 0v7.3c0 3.3-2.6 6-6 6h-.6a5 5 0 0 1-3.6-1.5l-3.3-3.5a1.7 1.7 0 0 1 2.4-2.4L8.5 14" />
     </>
   ),
   grid: (
