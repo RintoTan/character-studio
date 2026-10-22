@@ -62,6 +62,7 @@ import {
   ringLayout,
   saveLayout,
   setPosition,
+  trySaveLayout,
   translatePositions,
   GROUP_PADDING,
   type ArrangeMode,
@@ -74,6 +75,16 @@ import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
 import { labelDensity, namesNode, pickSpacedLabels } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
+import {
+  addSnapshot,
+  captureSnapshot,
+  removeSnapshot,
+  renameSnapshot,
+  snapshotCoverage,
+  snapshotPositions,
+  SNAPSHOT_LIMIT,
+  type LayoutSnapshot,
+} from "../utils/layoutSnapshots";
 import { planLegend, type LegendBox } from "../utils/exportLegend";
 import {
   beginArrange,
@@ -1726,6 +1737,9 @@ export function RelationshipGraph({
   // On a phone the studio bar keeps four controls and puts its tasks behind one
   // labelled menu; the bar used to let its own buttons scroll out of the viewport.
   const [studioMenuOpen, setStudioMenuOpen] = useState(false);
+  const [snapshotName, setSnapshotName] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const studioMenuRef = useRef<HTMLDivElement | null>(null);
   const studioMenuButtonRef = useRef<HTMLButtonElement | null>(null);
   const [studioMenuPos, setStudioMenuPos] = useState<{ top: number; right: number } | null>(null);
@@ -3328,7 +3342,9 @@ export function RelationshipGraph({
   }
 
   function arrangeLabel(mode: ArrangeMode) {
-    return mode === "ring"
+    return mode === "snapshot"
+      ? "恢复布局"
+      : mode === "ring"
       ? "环形布局"
       : mode === "grid"
         ? "网格布局"
@@ -3484,7 +3500,11 @@ export function RelationshipGraph({
     setSurface("none");
 
     if (changed) {
-      setArrangeUndo({ layout: baseline.layout, view: baseline.view, label: arrangeLabel(session.proposal.mode) });
+      setArrangeUndo({
+        layout: baseline.layout,
+        view: baseline.view,
+        label: session.proposal.label ?? arrangeLabel(session.proposal.mode),
+      });
       commitLayout(next);
       // The preview already framed the result; a hand-composed view is left alone
       // unless the new coordinates would sit outside it.
@@ -3500,6 +3520,58 @@ export function RelationshipGraph({
     }
 
     arrangeApplyingRef.current = false;
+  }
+
+  const snapshots = layout.snapshots ?? [];
+
+  function saveSnapshot() {
+    const now = new Date().toISOString();
+    const ids = characters.map((character) => character.id);
+    const { snapshot, error } = captureSnapshot(workingLayout(), snapshotName, view, ids, now);
+    if (error || !snapshot) {
+      show(error ?? "保存失败");
+      return;
+    }
+    const exists = snapshots.some((item) => item.name === snapshot.name);
+    if (exists && !window.confirm(`已有同名布局「${snapshot.name}」，覆盖它？`)) {
+      return;
+    }
+    const next = { ...workingLayout(), snapshots: addSnapshot(snapshots, snapshot, SNAPSHOT_LIMIT) };
+    if (!trySaveLayout(next)) {
+      show("保存失败：浏览器存储空间不足，请先删除旧布局");
+      return;
+    }
+    setLayout(next);
+    setSnapshotName("");
+    show(`已保存布局「${snapshot.name}」`);
+  }
+
+  /** A snapshot is a proposal like any layout command: preview first, then write. */
+  function previewSnapshot(snapshot: LayoutSnapshot) {
+    const ids = characters.map((character) => character.id);
+    const positions = snapshotPositions(snapshot, workingLayout().positions, ids);
+    const baseline = arrangeSessionRef.current?.baseline ?? {
+      layout: workingLayout(),
+      view,
+      selectedIds: [...selectedIds],
+    };
+    const session = beginArrange(arrangeSessionRef.current, {
+      baseline,
+      proposal: { label: `恢复布局「${snapshot.name}」`, mode: "snapshot", scope: "all", positions },
+    });
+    arrangeSessionRef.current = session;
+    setPreview(session.proposal);
+    frameProposal(positions);
+    setSurface("arrange");
+  }
+
+  function writeSnapshots(next: LayoutSnapshot[]) {
+    const updated = { ...workingLayout(), snapshots: next };
+    if (!trySaveLayout(updated)) {
+      show("保存失败：浏览器存储空间不足");
+      return;
+    }
+    setLayout(updated);
   }
 
   function undoArrange() {
@@ -4995,7 +5067,7 @@ export function RelationshipGraph({
       <p className="graph-panel-title">先预览，确认后才写入布局</p>
       {preview && (
         <p className="graph-panel-preview" role="status">
-          正在预览「{arrangeLabel(preview.mode)}」，坐标尚未保存。继续点其它布局可直接比较。
+          正在预览「{preview.label ?? arrangeLabel(preview.mode)}」，坐标尚未保存。继续点其它布局可直接比较。
         </p>
       )}
       <div className="graph-scope-switch" role="group" aria-label="整理范围">
@@ -5067,6 +5139,91 @@ export function RelationshipGraph({
         </button>
       </div>
       <p className="muted">只移动所选范围的节点，不改角色资料与关系。</p>
+
+      <div className="graph-snapshot-block" role="group" aria-label="我的布局">
+        <p className="graph-panel-title">我的布局</p>
+        <p className="muted">保存现在的摆放与取景，之后一键回到这里。与上方预设不同：预设改变外观，布局只改变位置。</p>
+        <form
+          className="graph-snapshot-save"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveSnapshot();
+          }}
+        >
+          <input
+            aria-label="布局名称"
+            maxLength={40}
+            onChange={(event) => setSnapshotName(event.target.value)}
+            placeholder={`布局 ${snapshots.length + 1}`}
+            value={snapshotName}
+          />
+          <button className="primary-button small" type="submit">保存当前布局</button>
+        </form>
+        {snapshots.length === 0 ? (
+          <p className="muted">还没有保存的布局。</p>
+        ) : (
+          <ul className="graph-snapshot-list">
+            {snapshots.map((snapshot) => {
+              const cover = snapshotCoverage(snapshot, characters.map((character) => character.id));
+              return (
+                <li className="graph-snapshot-row" key={snapshot.id}>
+                  {renamingId === snapshot.id ? (
+                    <form
+                      className="graph-snapshot-rename"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        writeSnapshots(renameSnapshot(snapshots, snapshot.id, renameDraft));
+                        setRenamingId(null);
+                      }}
+                    >
+                      <input
+                        aria-label="新的布局名称"
+                        autoFocus
+                        maxLength={40}
+                        onChange={(event) => setRenameDraft(event.target.value)}
+                        value={renameDraft}
+                      />
+                      <button className="ghost-button small" type="submit">改名</button>
+                      <button className="ghost-button small" onClick={() => setRenamingId(null)} type="button">取消</button>
+                    </form>
+                  ) : (
+                    <>
+                      <div className="graph-snapshot-meta">
+                        <strong title={snapshot.name}>{snapshot.name}</strong>
+                        <span>覆盖 {cover.covered}/{cover.total} 个角色</span>
+                      </div>
+                      <div className="graph-snapshot-actions">
+                        <button className="ghost-button small" onClick={() => previewSnapshot(snapshot)} type="button">预览</button>
+                        <button
+                          className="ghost-button small"
+                          onClick={() => {
+                            setRenamingId(snapshot.id);
+                            setRenameDraft(snapshot.name);
+                          }}
+                          type="button"
+                        >
+                          改名
+                        </button>
+                        <button
+                          className="ghost-button small"
+                          onClick={() => {
+                            if (window.confirm(`删除布局「${snapshot.name}」？`)) {
+                              writeSnapshots(removeSnapshot(snapshots, snapshot.id));
+                            }
+                          }}
+                          type="button"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 
@@ -7494,7 +7651,7 @@ export function RelationshipGraph({
                         whether a proposal is waiting. One line, no controls. */}
                     {preview ? (
                       <span className="graph-page-drawer-state is-preview">
-                        预览「{arrangeLabel(preview.mode)}」，坐标未保存
+                        预览「{preview.label ?? arrangeLabel(preview.mode)}」，坐标未保存
                       </span>
                     ) : selectedIds.length === 1 ? (
                       <span className="graph-page-drawer-state">

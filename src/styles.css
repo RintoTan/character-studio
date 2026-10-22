@@ -14343,6 +14343,79 @@ circle.graph-grid-dot {
 /* 整理 used to be six equal-width buttons in a nowrap flex row inside a 320px
    popover: each one shrank under its own label and the last ones were clipped.
    Two columns, wrapping, no horizontal scroll. */
+.graph-snapshot-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.graph-snapshot-save,
+.graph-snapshot-rename {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.graph-snapshot-save input,
+.graph-snapshot-rename input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.graph-snapshot-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.graph-snapshot-row {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.graph-snapshot-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.graph-snapshot-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-snapshot-meta span {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.graph-snapshot-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .graph-arrange-panel {
   width: 100%;
   min-width: 0;

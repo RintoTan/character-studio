@@ -14,6 +14,7 @@ import {
   type EdgeStylePatch,
   type NodeStylePatch,
 } from "./canvasStyle";
+import { normalizeSnapshots, type LayoutSnapshot } from "../utils/layoutSnapshots";
 
 // Positions are keyed by character id, so renaming a character moves nothing.
 // The layout is versioned on its own so a later shape can migrate rather than
@@ -43,6 +44,8 @@ export type CanvasLayout = {
   nodeStyles?: Record<string, NodeStylePatch>;
   edgeStyles?: Record<string, EdgeStylePatch>;
   bookmarks?: CanvasBookmark[];
+  /** Named arrangements of the same positions, kept apart from style presets. */
+  snapshots?: LayoutSnapshot[];
 };
 
 export const emptyLayout = (): CanvasLayout => ({
@@ -53,6 +56,7 @@ export const emptyLayout = (): CanvasLayout => ({
   nodeStyles: {},
   edgeStyles: {},
   bookmarks: [],
+  snapshots: [],
 });
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -168,6 +172,7 @@ export function normalizeLayout(value: unknown): CanvasLayout {
     schemaVersion: LAYOUT_SCHEMA_VERSION,
     positions,
     groups,
+    snapshots: normalizeSnapshots(value.snapshots),
     // Sprint 49 packages have no style block; they open in the accepted classic look.
     style: normalizeCanvasStyle(value.style),
     nodeStyles,
@@ -182,6 +187,16 @@ export function loadLayout(): CanvasLayout {
     return stored ? normalizeLayout(JSON.parse(stored)) : emptyLayout();
   } catch {
     return emptyLayout();
+  }
+}
+
+/** The same write, but the caller is told when the quota refused it. */
+export function trySaveLayout(layout: CanvasLayout): boolean {
+  try {
+    localStorage.setItem(RELATIONSHIP_LAYOUT_KEY, JSON.stringify(layout));
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -246,6 +261,7 @@ export function pruneLayout(
     nodeStyles,
     edgeStyles,
     bookmarks: layout.bookmarks,
+    snapshots: layout.snapshots,
   };
 }
 
@@ -343,6 +359,9 @@ export function materializeLayout(
     nodeStyles: layout.nodeStyles,
     edgeStyles: layout.edgeStyles,
     bookmarks: layout.bookmarks,
+    // Saved arrangements travel with the rest: rebuilding this record without them is
+    // how a drag used to erase every layout the author had saved.
+    snapshots: layout.snapshots,
   };
 }
 
@@ -380,7 +399,15 @@ export function applyPositions(
   return { ...layout, positions: { ...layout.positions, ...next } };
 }
 
-export type ArrangeMode = "cluster" | "ring" | "grid" | "hierarchy" | "groups" | "spaced";
+export type ArrangeMode =
+  | "cluster"
+  | "ring"
+  | "grid"
+  | "hierarchy"
+  | "groups"
+  | "spaced"
+  /** A saved arrangement being restored through the same preview transaction. */
+  | "snapshot";
 
 /**
  * The ring every canvas starts as, and the shape 环形整理 produces.
@@ -682,6 +709,7 @@ export function mergeImportedLayout(options: {
       nodeStyles: mappedNodeStyles,
       edgeStyles: mappedEdgeStyles,
       bookmarks: incoming.bookmarks,
+      snapshots: incoming.snapshots,
     });
   }
 
@@ -707,6 +735,8 @@ export function mergeImportedLayout(options: {
     // the local line styles win, exactly as the local node styles do
     edgeStyles: { ...mappedEdgeStyles, ...current.edgeStyles },
     bookmarks: current.bookmarks ?? [],
+    // An import without a snapshot list is not a request to delete the current one.
+    snapshots: incoming.snapshots ?? current.snapshots ?? [],
   };
 }
 

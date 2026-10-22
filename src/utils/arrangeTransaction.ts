@@ -28,6 +28,8 @@ export type ArrangeView = { k: number; x: number; y: number };
 
 export type ArrangeProposal = {
   mode: ArrangeMode;
+  /** Shown instead of the mode's name when the command has its own label. */
+  label?: string;
   scope: "visible" | "all";
   positions: Record<string, LayoutPoint>;
 };
