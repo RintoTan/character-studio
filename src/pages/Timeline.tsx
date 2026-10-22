@@ -5,6 +5,8 @@ import { CharacterPicker } from "../components/CharacterPicker";
 import { Icon } from "../components/Icon";
 import { RelatedCharacters } from "../components/RelatedCharacters";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import { useMediaQuery } from "../hooks/useMediaQuery";
+import { WorkspaceSearch } from "../components/WorkspaceSearch";
 import TimelineGuide from "../components/TimelineGuide";
 import {
   createTimelineEvent,
@@ -79,6 +81,7 @@ export function Timeline({
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TimelineEvent | null>(null);
+  const isNarrowScreen = useMediaQuery("(max-width: 720px)");
   const [filter, setFilter] = useState<TimelineFilter>(emptyTimelineFilter);
   // Which cards are showing their whole description. A view state, not a stored one:
   // what a reader opened to read is not a property of the event.
@@ -285,41 +288,46 @@ export function Timeline({
           </>
         }
         actions={
-          <>
-            <div className="toolbar-group">
-              <button className="ghost-button" onClick={onBack} type="button">
-                返回 Dashboard
-              </button>
-            </div>
+          isNarrowScreen ? (
             <div className="toolbar-group">
               <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
                 新建事件
               </button>
             </div>
-          </>
+          ) : (
+            <>
+              <div className="toolbar-group">
+                <button className="ghost-button" onClick={onBack} type="button">
+                  返回 Dashboard
+                </button>
+              </div>
+              <div className="toolbar-group">
+                <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
+                  新建事件
+                </button>
+              </div>
+            </>
+          )
         }
       />
       </div>
 
       <div className="panel timeline-workspace-card">
+      {isNarrowScreen && (
+        <button className="ws-back-link" onClick={onBack} type="button">
+          ← Dashboard
+        </button>
+      )}
       {/* Search and filtering, once, above the list: the four things a long timeline is
           looked through — a word, a year, a kind and a character are all covered here. */}
       <div className="timeline-toolbar" ref={filterWrapRef}>
-        <label className="timeline-search">
-          <Icon name="search" size={15} />
-          <input
-            aria-label="搜索事件"
-            onChange={(changeEvent) => setFilter({ ...filter, query: changeEvent.target.value })}
-            placeholder="搜索标题、描述、地点、角色"
-            type="search"
-            value={filter.query}
-          />
-          {filter.query !== "" && (
-            <button aria-label="清空搜索" onClick={() => setFilter({ ...filter, query: "" })} type="button">
-              <Icon name="close" size={13} />
-            </button>
-          )}
-        </label>
+        <WorkspaceSearch
+          label="搜索事件"
+          onChange={(query) => setFilter({ ...filter, query })}
+          placeholder="搜索标题、描述、地点、角色"
+          testId="timeline-search"
+          value={filter.query}
+        />
         {/* One entry that opens, instead of two selects and a clear button filling the
             first screen on a phone. On a desktop the row is always open and this
             control is not drawn at all. */}

@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.49.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布成员管理、布局快照事务与自动取景上限；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **54.1**（`APP_SPRINT`）—— 画布成员管理收尾；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.50.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 移动端信息架构与全站共享搜索；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **54.2**（`APP_SPRINT`）—— 移动端 Hero/工作区分工与共享搜索；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
@@ -21,6 +21,17 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 54.2（2.50.0）
+
+移动端信息架构与共享搜索。**代码、单元测试（813）、四页 375 截图、320/430 与深色检查均已完成**。
+
+| 事项 | 位置 | 验证 |
+| --- | --- | --- |
+| 共享搜索状态机 | `src/components/WorkspaceSearch.tsx`，四页接入 | 展开聚焦、收起留查询并显示芯片、清空保展开、Escape 只关搜索；无原生双 ✕ |
+| 手机 Hero 只留身份与主任务 | Dashboard / RelationshipGraph / WorldManager / Timeline | 图谱/管理进工作区；返回 Dashboard 为工作区轻量链接 |
+| 工作区工具栏分层 | `.list-toolbar`、`.graph-canvas-head`、世界/时间线工具栏 | 375 无孤立按钮行；关系网搜索独占一行 |
+| 手机回归 | `docs/sprint-54.2-acceptance/` | 375×8、320/430 各 4、深色 4、筛选生效 1、软键盘代理 1 |
 
 ### Sprint 54.1（2.49.0）
 

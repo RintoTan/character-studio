@@ -13,6 +13,7 @@ import type { Character } from "../types/character";
 import { CharacterPicker } from "../components/CharacterPicker";
 import { RelatedCharacters } from "../components/RelatedCharacters";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import { WorkspaceSearch } from "../components/WorkspaceSearch";
 import WorldGuide from "../components/WorldGuide";
 import { Icon } from "../components/Icon";
 import {
@@ -287,41 +288,49 @@ export function WorldManager({
           </>
         }
         actions={
-          <>
-            <div className="toolbar-group">
-              <button className="ghost-button" onClick={onBack} type="button">
-                返回 Dashboard
-              </button>
-            </div>
+          /* The hero keeps one job on a phone: creating an entry. Going back is
+             navigation, not a task, so it turns into a light link at the top of the
+             workspace instead of a second equally loud button. */
+          isNarrowScreen ? (
             <div className="toolbar-group">
               <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
                 新建条目
               </button>
             </div>
-          </>
+          ) : (
+            <>
+              <div className="toolbar-group">
+                <button className="ghost-button" onClick={onBack} type="button">
+                  返回 Dashboard
+                </button>
+              </div>
+              <div className="toolbar-group">
+                <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
+                  新建条目
+                </button>
+              </div>
+            </>
+          )
         }
       />
       </div>
 
       <div className="panel world-workspace-card">
+      {isNarrowScreen && (
+        <button className="ws-back-link" onClick={onBack} type="button">
+          ← Dashboard
+        </button>
+      )}
       {/* Search and filtering over the whole set, above the two panes: name, summary,
           details, tags and character names, plus the three structural filters. */}
       <div className="world-toolbar" ref={filterWrapRef}>
-        <label className="world-search">
-          <Icon name="search" size={15} />
-          <input
-            aria-label="搜索条目"
-            onChange={(changeEvent) => setFilter({ ...filter, query: changeEvent.target.value })}
-            placeholder="搜索名称、简介、详情、标签、关联角色"
-            type="search"
-            value={filter.query}
-          />
-          {filter.query !== "" && (
-            <button aria-label="清空搜索" onClick={() => setFilter({ ...filter, query: "" })} type="button">
-              <Icon name="close" size={13} />
-            </button>
-          )}
-        </label>
+        <WorkspaceSearch
+          label="搜索条目"
+          onChange={(query) => setFilter({ ...filter, query })}
+          placeholder="搜索名称、简介、详情、标签、关联角色"
+          testId="world-search"
+          value={filter.query}
+        />
         {/* The two structural filters live behind one entry on a phone: search plus the
             category row is what the first screen is for, and three controls plus the
             result count were pushing the tree off it. On desktop the row is always open

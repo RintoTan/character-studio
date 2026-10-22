@@ -76,6 +76,7 @@ import {
 import { defaultContent } from "../content/defaultContent";
 import { dashboardGroupRows, summarizeTags } from "./dashboard/dashboardGroups";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import { WorkspaceSearch } from "../components/WorkspaceSearch";
 import { planLegacyFavoriteMigration } from "./dashboard/legacyFavorites";
 
 type DashboardProps = {
@@ -270,12 +271,10 @@ export function Dashboard({
   const moreMenuRef = useRef<HTMLDivElement>(null);
   // The three triggers, so Escape can hand the keyboard back to the one that opened
   // the layer it just closed.
-  const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
   const cardMenuRef = useRef<HTMLDivElement>(null);
   const exportDialogRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   const searchSignalRef = useRef(searchSignal);
   const cardTagLimit = Math.max(0, Math.min(dashboardSettings?.cardTagCount ?? 5, 8));
 
@@ -555,7 +554,7 @@ export function Dashboard({
         // Escape is the one exit where the keyboard has nowhere else to go, so the
         // trigger that opened the layer takes focus back.
         if (closed === "search-box") {
-          searchTriggerRef.current?.focus();
+          document.querySelector<HTMLButtonElement>('[data-testid="dashboard-search"]')?.focus();
         } else if (closed === "search-panel") {
           filterTriggerRef.current?.focus();
         } else if (closed === "more-menu") {
@@ -646,14 +645,6 @@ export function Dashboard({
     // has to land on the field where the word can be typed.
     setIsSearchBoxOpen(true);
   }, [searchSignal]);
-
-  // Focused once it is on the page: the field is created by the same render that
-  // opens it, so the handler that opens it has nothing to focus yet.
-  useEffect(() => {
-    if (isSearchBoxOpen) {
-      window.setTimeout(() => searchInputRef.current?.focus(), 0);
-    }
-  }, [isSearchBoxOpen]);
 
   useEffect(() => {
     saveDashboardFlags(flags);
@@ -1447,8 +1438,10 @@ export function Dashboard({
       onCreate();
     }
     if (command === "search") {
-      setIsSearchPanelOpen(true);
-      window.setTimeout(() => searchInputRef.current?.focus(), 0);
+      // The field, not the filter panel: 「搜索」 means type a word. The shared control
+      // focuses itself once the field exists.
+      setIsSearchPanelOpen(false);
+      setIsSearchBoxOpen(true);
     }
     if (command === "drafts") {
       updatePrefs({ favoriteMode: "drafts" });
@@ -2585,48 +2578,23 @@ export function Dashboard({
   function renderListToolbar() {
     return (
       <div className="list-toolbar">
-        <div className={isSearchBoxOpen ? "list-search open" : "list-search"}>
-          {isSearchBoxOpen && (
-            <input
-              aria-label="搜索角色"
-              className="list-search-input"
-              onChange={(event) => updatePrefs({ searchTerm: event.target.value })}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  openFirstSearchResult();
-                }
-
-                // Closing the field keeps the keyword: it is the rule the panel had
-                // before this — reopening shows the same search, and 清空筛选 in the
-                // filter panel is what clears it.
-                if (event.key === "Escape") {
-                  setIsSearchBoxOpen(false);
-                }
-              }}
-              placeholder="搜索角色名、职业、世界观、性格标签"
-              ref={searchInputRef}
-              type="search"
-              value={prefs.searchTerm}
-            />
-          )}
-          <button
-            aria-expanded={isSearchBoxOpen}
-            aria-label="搜索"
-            className={
-              prefs.searchTerm ? "hero-icon-button active" : "hero-icon-button"
-            }
-            data-tooltip="搜索"
-            onClick={() => {
+        <WorkspaceSearch
+          className="list-search"
+          label="搜索角色"
+          onChange={(next) => updatePrefs({ searchTerm: next })}
+          onOpenChange={(next) => {
+            setIsSearchBoxOpen(next);
+            if (next) {
               setIsSearchPanelOpen(false);
               setIsMoreMenuOpen(false);
-              setIsSearchBoxOpen((current) => !current);
-            }}
-            ref={searchTriggerRef}
-            type="button"
-          >
-            <Icon name="search" />
-          </button>
-        </div>
+            }
+          }}
+          onSubmit={openFirstSearchResult}
+          open={isSearchBoxOpen}
+          placeholder="搜索角色名、职业、世界观、性格标签"
+          testId="dashboard-search"
+          value={prefs.searchTerm}
+        />
         <div className="list-filter-wrap">
           <button
             aria-expanded={isSearchPanelOpen}

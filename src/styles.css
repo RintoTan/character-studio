@@ -12964,6 +12964,243 @@ circle.graph-grid-dot {
   margin-bottom: 6px;
 }
 
+
+/* A navigation link, not a task: one step quieter than any button in the same card. */
+.ws-back-link {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ws-back-link:hover {
+  background: var(--control-fill);
+  color: var(--text);
+}
+
+/* The phone's scope switch (全部 / 收藏 / 草稿) with the list it scopes. */
+.list-scope-row {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+
+@media (max-width: 720px) {
+  .ws-back-link {
+    min-height: 40px;
+    margin: 0 0 8px;
+    padding: 8px 2px;
+  }
+
+  /* Tools on one line, the primary task on its own: four controls plus a wide
+     新建角色 cannot share 343px without pushing 更多 onto a line by itself. */
+  .list-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .list-toolbar .dashboard-actions {
+    order: 10;
+  }
+
+  .list-toolbar .list-create-button {
+    flex: 1 1 100%;
+    order: 20;
+    justify-content: center;
+  }
+
+  .list-scope-row {
+    padding-bottom: 10px;
+    scrollbar-width: none;
+  }
+
+  .list-scope-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .graph-mobile-views {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0 0 10px;
+  }
+
+  /* The canvas toolbar is a dock at the bottom on a phone, so the search takes a row of
+     its own above the drawing rather than competing for width beside it. */
+  .graph-search-wrap {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .graph-search {
+    width: 100%;
+  }
+
+  /* Keep the last row clear of the home indicator on both sheets. */
+  .graph-page-drawer,
+  .bottom-sheet {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ---------------------------------------------------------------- shared search */
+/* One control for five workspaces. Collapsed it is a compact button; open it is the
+   field itself plus a way back out; a query left behind while collapsed becomes a chip,
+   because an invisible filter is indistinguishable from a broken list. */
+.ws-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ws-search-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ws-search-trigger:hover {
+  background: var(--control-fill);
+}
+
+.ws-search.is-open {
+  flex: 1 1 auto;
+}
+
+.ws-search-field {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: var(--control-h);
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--control-radius);
+  background: var(--surface);
+}
+
+.ws-search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+}
+
+.ws-search-field input::placeholder {
+  color: var(--muted);
+}
+
+/* Chrome paints its own ✕ inside a search field. Paired with the one this component
+   draws, it read as two clear buttons a few pixels apart. */
+.ws-search-field input::-webkit-search-cancel-button,
+.ws-search-field input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ws-search-field button,
+.ws-search-active button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+}
+
+.ws-search-field button:hover,
+.ws-search-active button:hover {
+  background: var(--control-fill);
+  color: var(--text);
+}
+
+.ws-search-collapse {
+  height: var(--control-h);
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.ws-search-collapse:hover {
+  background: var(--control-fill);
+  color: var(--text);
+}
+
+/* The collapsed-but-filtering state: names the query, and clears it in one tap. */
+.ws-search-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 190px;
+  height: var(--control-h);
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.ws-search-active-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ws-search-summary {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  /* Touch targets: the trigger and the field are the two things a thumb aims at. */
+  .ws-search-trigger,
+  .ws-search-field,
+  .ws-search-collapse {
+    height: 44px;
+  }
+
+  .ws-search-trigger {
+    padding: 0 14px;
+    font-size: 14px;
+  }
+
+  .ws-search-active {
+    height: 30px;
+  }
+
+  .ws-search.is-open {
+    flex-wrap: nowrap;
+  }
+}
+
 /* The commands that act on the whole library, folded into one labelled menu. */
 .graph-members-more {
   display: flex;
@@ -12971,15 +13208,15 @@ circle.graph-grid-dot {
   gap: 2px;
   margin-bottom: 8px;
   padding: 4px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
   background: var(--surface);
 }
 
 .graph-members-more button {
   padding: 9px 10px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   background: transparent;
   color: var(--text);
   font-size: 13px;
@@ -12987,7 +13224,7 @@ circle.graph-grid-dot {
 }
 
 .graph-members-more button:hover {
-  background: var(--surface-muted);
+  background: var(--control-fill);
 }
 
 /* What can be done with the current selection, on its own line: the two actions share
@@ -12998,9 +13235,9 @@ circle.graph-grid-dot {
   gap: 6px;
   margin-bottom: 8px;
   padding: 6px 8px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--control-fill);
 }
 
 .graph-members-selection-count {
@@ -14806,13 +15043,24 @@ circle.graph-grid-dot {
 
   .relationship-page:not(.graph-studio) .graph-canvas-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     margin: 0 var(--workspace-inset) 6px;
   }
 
+  /* Search is a row, not a competitor: on a phone it takes the full width and the
+     dock's controls wrap underneath it, so neither is squeezed to 3px. */
   .relationship-page:not(.graph-studio) .graph-canvas-head .graph-tool-strip {
-    flex: 0 0 auto;
+    flex-wrap: wrap;
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-head .graph-tool-strip .graph-search-wrap {
+    flex: 1 1 100%;
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-head .graph-tool-strip {
+    flex: 1 1 100%;
     margin: 0;
   }
 

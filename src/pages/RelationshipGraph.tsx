@@ -22,6 +22,7 @@ import {
 import { Icon } from "../components/Icon";
 import GraphGuide from "../components/GraphGuide";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import { WorkspaceSearch } from "../components/WorkspaceSearch";
 import type { Character } from "../types/character";
 import {
   RELATIONSHIP_KINDS,
@@ -6774,7 +6775,7 @@ export function RelationshipGraph({
         {/* Two controls in the header, both about what the graph contains: which
             characters are drawn, and adding an edge. Everything that acts on the
             canvas itself sits with the canvas. */}
-        <div className="toolbar-group">
+        <div className="toolbar-group graph-wide-only">
           <div aria-label="关系网视图" className="graph-segment relationship-mode" role="group">
             <button
               aria-pressed={boardMode === "graph"}
@@ -6834,62 +6835,48 @@ export function RelationshipGraph({
               zooming, and what the nodes show. The header keeps what the graph
               contains. */}
           <div className="graph-canvas-head">
+          {/* On a phone the hero is identity only: which view you are in is a property
+              of the workspace, and it sits an inch above the list it switches. */}
+          {isNarrowScreen && !isStudio && (
+            <div aria-label="关系网视图" className="graph-segment relationship-mode graph-mobile-views" role="group">
+              <button
+                aria-pressed={boardMode === "graph"}
+                className={boardMode === "graph" ? "graph-segment-button selected" : "graph-segment-button"}
+                onClick={() => chooseBoardMode("graph")}
+                type="button"
+              >
+                图谱
+              </button>
+              <button
+                aria-pressed={(boardMode as string) === "manage"}
+                className={(boardMode as string) === "manage" ? "graph-segment-button selected" : "graph-segment-button"}
+                onClick={() => chooseBoardMode("manage")}
+                type="button"
+              >
+                管理
+                <span className="relationship-mode-count">{relationships.length}</span>
+              </button>
+            </div>
+          )}
           <div className={`graph-tool-strip${isStudio ? " is-studio" : ""}`}>
             {/* The search is the one entry that is not an icon: it is a field, and
                 on a phone it keeps its own row above the canvas while the toolbar
                 moves to the bottom edge. */}
             {!isStudio && (
-            <div className={`graph-search${isSearchOpen ? " is-open" : ""}`} ref={searchWrapRef}>
-              {!isSearchOpen && (
-                <button
-                  aria-expanded={false}
-                  aria-label="搜索角色"
-                  className="graph-search-trigger"
-                  data-tooltip="搜索角色并定位"
-                  onClick={() => setIsSearchOpen(true)}
-                  type="button"
-                >
-                  <Icon name="search" size={15} />
-                  {/* A closed field still says what it is holding, so Escape hides the
-                      results without hiding the fact that a search is active. */}
-                  <span>{query.trim() ? `搜索：${query.trim().slice(0, 6)}` : "搜索"}</span>
-                </button>
-              )}
-              {isSearchOpen && (
-              <label className="graph-search-field">
-                <Icon name="search" size={15} />
-                <input
-                  aria-label="搜索角色并定位"
-                  autoFocus
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    setNotOnCanvas(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      // The search is the top layer while it is open: closing it must
-                      // not also drop the selection tool underneath.
-                      event.stopPropagation();
-                      // A `type="search"` field clears itself on Escape in Chrome. The
-                      // author asked to put the field away, not to lose the term they
-                      // typed — the × is the control that empties it.
-                      event.preventDefault();
-                      setIsSearchOpen(false);
-                    }
-                  }}
-                  placeholder="搜索角色名、职业、世界观"
-                  type="search"
-                  value={query}
-                />
-                <button
-                  aria-label={query ? "清除搜索" : "收起搜索"}
-                  onClick={() => (query ? setQuery("") : setIsSearchOpen(false))}
-                  type="button"
-                >
-                  <Icon name="close" size={13} />
-                </button>
-              </label>
-              )}
+            <div className="graph-search-wrap" ref={searchWrapRef}>
+              <WorkspaceSearch
+                className="graph-search"
+                label="搜索角色并定位"
+                onChange={(next) => {
+                  setQuery(next);
+                  setNotOnCanvas(null);
+                }}
+                onOpenChange={setIsSearchOpen}
+                open={isSearchOpen}
+                placeholder="搜索角色名、职业、世界观"
+                testId="graph-search"
+                value={query}
+              />
               {query.trim() !== "" && (
                 <div aria-label="搜索结果" className="graph-search-panel" role="listbox">
                   {searchResults.length === 0 ? (
