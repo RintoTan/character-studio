@@ -274,6 +274,7 @@ docs/                 # 技术文档、状态、路线图、截图
 | [docs/DATA_FORMATS.md](docs/DATA_FORMATS.md) | 角色 / 关系 / 时间线 / 世界观字段与备份格式 |
 | [docs/FEATURES.md](docs/FEATURES.md) | 功能清单与实现状态 |
 | [docs/TESTING.md](docs/TESTING.md) | 单元测试与浏览器回归的范围和运行方式 |
+| [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) | 验收分层、各轮截图索引与回归入口 |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 构建、发布、回滚与线上校验 |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 近期与长期计划 |
 | [CHANGELOG.md](CHANGELOG.md) | 逐版本变更与验证边界 |

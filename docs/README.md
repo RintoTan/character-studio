@@ -1,7 +1,7 @@
 # Character Studio —— 项目文档索引
 
 > 本目录是项目的文档主目录。每个主题只有一份文档负责，其他文档只引用、不复制。
-> 最近整理：2026-10-19（2.37.1）。
+> 最近整理：2026-10-22（2.53.0）。
 
 ---
 
@@ -26,7 +26,8 @@
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | 路由、组件、状态域、存储键、数据流、部署结构 | 要改代码或理解全局 |
 | [`DATA_FORMATS.md`](DATA_FORMATS.md) | 四个数据域的字段、存储键、ZIP 结构、导入规则、恢复点 | 改数据模型、导入导出、备份兼容 |
 | [`FEATURES.md`](FEATURES.md) | 逐功能清单：状态、用户可见行为、数据依赖 | 确认某功能是否实现、在哪实现 |
-| [`TESTING.md`](TESTING.md) | 三层验证、用例范围、真机边界、提交前清单 | 改完代码要验证 |
+| [`TESTING.md`](TESTING.md) | 三层验证、用例范围、真机边界、提交前清单、仓库维护约定 | 改完代码要验证 |
+| [`ACCEPTANCE.md`](ACCEPTANCE.md) | 验收分层、各轮截图索引与属性（当前/历史）、回归入口 | 查证据是否还算数 |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Pages 子路径、CI、构建身份、发布与回滚、线上校验 | 发布或排查部署 |
 | [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) | 当前未解决 / 待验证的问题 | 修缺陷或确认观感是否已证实 |
 | [`ROADMAP.md`](ROADMAP.md) | 近期与长期计划、已取消与已替代的项 | 决定下一步做什么 |
