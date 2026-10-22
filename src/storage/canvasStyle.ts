@@ -28,6 +28,9 @@ export type AvatarShape = "auto" | "circle" | "rounded";
  * connected to whom", a card answers "who is this". An old layout has no value here
  * and keeps the avatar node it was drawn with.
  */
+/** Default gap between a relationship word and its line, in drawing units. */
+export const LABEL_OFFSET_DEFAULT = 13;
+
 export type NodeForm = "avatar" | "compact" | "card";
 export type GridKind = "none" | "dots" | "lines";
 export type EdgeDash = "solid" | "dashed" | "dotted";
@@ -65,6 +68,10 @@ export type CanvasStyle = {
     arrow: ArrowStyle;
     showLabel: boolean;
     labelSize: number;
+    /** Where along the line the word sits: 0 at the source, 1 at the target. */
+    labelT: number;
+    /** Perpendicular distance from the line, in drawing units. 0 sits on it. */
+    labelOffset: number;
     labelBackground: boolean;
   };
   canvas: {
@@ -120,6 +127,8 @@ const BASE: CanvasStyle = {
     arrow: "concise",
     showLabel: true,
     labelSize: 10,
+    labelT: 0.5,
+    labelOffset: LABEL_OFFSET_DEFAULT,
     labelBackground: false,
   },
   canvas: {
@@ -143,12 +152,20 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
   },
   portrait: {
     node: { size: 1.35, form: "avatar", nameScale: 1.2, showAvatars: true },
-    edge: { width: 1.2, labelSize: 11, showLabel: false },
+    edge: { width: 1.2, labelSize: 11, showLabel: false, labelT: 0.5, labelOffset: LABEL_OFFSET_DEFAULT },
     canvas: { grid: "none" },
   },
   faction: {
     node: { size: 1, form: "avatar", shape: "circle" },
-    edge: { byKind: true, width: 2.4, curve: "straight", arrowSize: 1.35, labelSize: 10.5 },
+    edge: {
+      byKind: true,
+      width: 2.4,
+      curve: "straight",
+      arrowSize: 1.35,
+      labelSize: 10.5,
+      labelT: 0.5,
+      labelOffset: LABEL_OFFSET_DEFAULT,
+    },
     canvas: { grid: "dots", gridSize: 56, gridOpacity: 0.35 },
   },
   minimal: {
@@ -295,6 +312,10 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
             : base.edge.arrow,
       showLabel: typeof edge.showLabel === "boolean" ? edge.showLabel : base.edge.showLabel,
       labelSize: num(edge.labelSize, base.edge.labelSize, 8, 18),
+      // A style saved before these existed sits where it always did: mid-line, just
+      // clear of it. Defaults are read here, not written into old records.
+      labelT: num(edge.labelT, 0.5, 0.1, 0.9),
+      labelOffset: num(edge.labelOffset, LABEL_OFFSET_DEFAULT, -24, 24),
       labelBackground:
         typeof edge.labelBackground === "boolean" ? edge.labelBackground : base.edge.labelBackground,
     },

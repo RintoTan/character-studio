@@ -7838,6 +7838,7 @@ body:has([aria-modal="true"]) .floating-actions {
   cursor: pointer;
   font-size: 12.5px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .graph-segment-button:hover:not(:disabled) {
@@ -13030,6 +13031,20 @@ circle.graph-grid-dot {
     margin: 0 0 10px;
   }
 
+  /* 「图谱」「管理 191」 are two labels, not two vertical stacks of glyphs. */
+  .graph-mobile-views .graph-segment-button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* The scope line is a secondary row: let it wrap instead of losing the count. */
+  .relationship-page:not(.graph-studio) .graph-scope-note {
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
   /* The canvas toolbar is a dock at the bottom on a phone, so the search takes a row of
      its own above the drawing rather than competing for width beside it. */
   .graph-search-wrap {
@@ -13046,6 +13061,38 @@ circle.graph-grid-dot {
   .bottom-sheet {
     padding-bottom: max(0px, env(safe-area-inset-bottom));
   }
+}
+
+
+/* Relationship word controls: four short rows, readouts on the right. */
+.graph-label-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+}
+
+.graph-label-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 46px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.graph-label-row input[type="range"] {
+  width: 100%;
+}
+
+.graph-label-row em {
+  font-style: normal;
+  text-align: right;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------------------------------------------------------------- shared search */
@@ -15460,6 +15507,12 @@ circle.graph-grid-dot {
   border-radius: 10px;
   background: var(--surface);
   box-shadow: var(--shadow-strong);
+}
+
+/* Opened upward when the row sits near the bottom of the window. */
+.manage-row-menu.flip-up {
+  top: auto;
+  bottom: calc(100% + 4px);
 }
 
 .manage-row-menu button {

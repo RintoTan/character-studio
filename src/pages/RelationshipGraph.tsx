@@ -1,4 +1,4 @@
-import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
+import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, LABEL_OFFSET_DEFAULT, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
 import {
   useCallback,
   useEffect,
@@ -1313,6 +1313,10 @@ export function edgeGeometry(
     arrowStyle?: ArrowStyle;
     /** The stored 箭头大小 multiplier; 0 means no head. */
     arrowScale?: number;
+    /** Where along the line the word sits. 0.5 is the middle. */
+    labelT?: number;
+    /** Distance from the line, in drawing units. */
+    labelOffset?: number;
   } = {},
 ): EdgeGeometry {
   const metrics = options.metrics ?? DEFAULT_METRICS;
@@ -1384,10 +1388,26 @@ export function edgeGeometry(
     arrow = `${round(endX)},${round(endY)} ${round(backX + wingX)},${round(backY + wingY)} ${round(backX - wingX)},${round(backY - wingY)}`;
   }
 
+  // The word's anchor. `labelT` evaluates the same quadratic the line is drawn with, so
+  // moving it slides the word along the curve rather than along the chord; the offset is
+  // applied on that point's own normal. Both are drawing units, so they keep their
+  // meaning under zoom.
+  const at = Math.min(Math.max(options.labelT ?? 0.5, 0), 1);
+  const anchorX =
+    (1 - at) * (1 - at) * startX + 2 * (1 - at) * at * controlX + at * at * endX;
+  const anchorY =
+    (1 - at) * (1 - at) * startY + 2 * (1 - at) * at * controlY + at * at * endY;
+  const tangentX = 2 * (1 - at) * (controlX - startX) + 2 * at * (endX - controlX);
+  const tangentY = 2 * (1 - at) * (controlY - startY) + 2 * at * (endY - controlY);
+  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+  const offset = options.labelOffset ?? LABEL_OFFSET;
+  const labelX = anchorX + (-tangentY / tangentLength) * offset * side;
+  const labelY = anchorY + (tangentX / tangentLength) * offset * side;
+
   return {
     path,
-    labelX: round(middleX + nx * side * LABEL_OFFSET),
-    labelY: round(middleY + ny * side * LABEL_OFFSET),
+    labelX: round(labelX),
+    labelY: round(labelY),
     arrow,
   };
 }
@@ -1671,7 +1691,6 @@ export function RelationshipGraph({
     setRelationshipsLoaded(true);
   }, [characters]);
 
-  const [showAll, setShowAll] = useState(false);
   // A character the default view left out is still findable: searching for one adds
   // them and their direct connections to the drawing, so focusing works in one step
   // instead of asking the reader to turn on the whole roster first. Cleared whenever
@@ -1726,20 +1745,14 @@ export function RelationshipGraph({
       return characters.filter((character) => onCanvas.has(character.id));
     }
 
-    const drawn = (() => {
-      if (showAll) {
-        return characters;
-      }
+    // No cap. The drawing used to keep only the forty most connected characters and
+    // call the rest "out of view", which made a product rule out of a density
+    // preference: a character the author put in a relationship was simply not drawn.
+    // Every connected character is on the canvas now; the ring gets denser and the
+    // labels thin out, which is what the zoom and the search are for.
+    const drawn = characters.filter((character) => connectedIds.has(character.id));
 
-      // No cap. The drawing used to keep only the forty most connected characters and
-      // call the rest "out of view", which made a product rule out of a density
-      // preference: a character the author put in a relationship was simply not drawn.
-      // Every connected character is on the canvas now; the ring gets denser and the
-      // labels thin out, which is what the zoom and the search are for.
-      return characters.filter((character) => connectedIds.has(character.id));
-    })();
-
-    if (showAll || focusExtraIds.length === 0) {
+    if (focusExtraIds.length === 0) {
       return drawn;
     }
 
@@ -1749,7 +1762,7 @@ export function RelationshipGraph({
     );
 
     return extras.length ? [...drawn, ...extras] : drawn;
-  }, [canvasMembers, characters, connectedIds, relationships, showAll, focusExtraIds]);
+  }, [canvasMembers, characters, connectedIds, relationships, focusExtraIds]);
   // Bumped when a command moves nodes as a whole by more than a drag does (arrange,
   // undo). The drawing box is cached so a drag cannot rescale the canvas under the
   // pointer; a command that re-places everything has to rebuild it, or the new
@@ -1826,6 +1839,8 @@ export function RelationshipGraph({
   // One row's action menu at a time: three text buttons per row was the widest
   // thing in the table and the least used.
   const [manageMenuId, setManageMenuId] = useState<string | null>(null);
+  // True when the row's menu has to open upward to stay on screen.
+  const [manageMenuFlip, setManageMenuFlip] = useState(false);
   // The small menus: 更多 and 对齐/分布. They are popovers, not surfaces, because they
   // hold one press each and close on the next click anywhere.
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -4398,6 +4413,8 @@ export function RelationshipGraph({
         bend: bendsForLabels.get(relationship.id) ?? 0,
         metrics,
         symmetrical: isSymmetricKind(relationship.kind),
+        labelT: style.edge.labelT,
+        labelOffset: style.edge.labelOffset,
         arrowStyle: style.edge.arrow,
         arrowScale: style.edge.arrowSize,
       });
@@ -5695,30 +5712,6 @@ export function RelationshipGraph({
                     ))}
                   </div>
                 </div>
-                {/* Which characters the drawing contains. It used to sit in the page
-                    header, where it read as a page-level filter; it is a property of
-                    the canvas, so it belongs with the other view switches. */}
-                <div className="graph-panel-row graph-panel-row-stacked">
-                  <span className="graph-control-label">范围</span>
-                  <div className="graph-segment graph-segment-full">
-                    <button
-                      aria-pressed={!showAll}
-                      className={!showAll ? "graph-segment-button selected" : "graph-segment-button"}
-                      onClick={() => setShowAll(false)}
-                      type="button"
-                    >
-                      有关联角色（{connectedIds.size}）
-                    </button>
-                    <button
-                      aria-pressed={showAll}
-                      className={showAll ? "graph-segment-button selected" : "graph-segment-button"}
-                      onClick={() => setShowAll(true)}
-                      type="button"
-                    >
-                      所有角色（{characters.length}）
-                    </button>
-                  </div>
-                </div>
                 {/* Three different questions, three different answers: which people are
                     in scope, how many of them the core view draws, and whether the lines
                     are painted. One switch used to answer all three. */}
@@ -5973,10 +5966,77 @@ export function RelationshipGraph({
                     <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
                     显示头像
                   </label>
-                  <label className="graph-style-check">
-                    <input checked={style.edge.showLabel} onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })} type="checkbox" />
-                    关系标签
-                  </label>
+                  {/* Relationship words: on/off, how big, where along the line, and how
+                      far off it. Global by design — a per-edge override still wins for
+                      colour and width, but the word belongs to the reading, not to one
+                      connection. */}
+                  <div className="graph-label-controls" data-testid="edge-labels">
+                    <div className="graph-panel-row">
+                      <span className="graph-control-label">关系标签</span>
+                      <label className="graph-style-check">
+                        <input
+                          checked={style.edge.showLabel}
+                          data-testid="edge-label-show"
+                          onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })}
+                          type="checkbox"
+                        />
+                        显示文字
+                      </label>
+                    </div>
+                    <label className="graph-label-row">
+                      <span>字号</span>
+                      <input
+                        data-testid="edge-label-size"
+                        max={18}
+                        min={8}
+                        onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelSize: Number(event.target.value) } })}
+                        step={0.5}
+                        type="range"
+                        value={style.edge.labelSize}
+                      />
+                      <em data-testid="edge-label-size-value">{style.edge.labelSize}px</em>
+                    </label>
+                    <label className="graph-label-row">
+                      <span>沿线位置</span>
+                      <input
+                        data-testid="edge-label-t"
+                        max={0.9}
+                        min={0.1}
+                        onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelT: Number(event.target.value) } })}
+                        step={0.05}
+                        type="range"
+                        value={style.edge.labelT}
+                      />
+                      <em data-testid="edge-label-t-value">{Math.round(style.edge.labelT * 100)}%</em>
+                    </label>
+                    <label className="graph-label-row">
+                      <span>垂直偏移</span>
+                      <input
+                        data-testid="edge-label-offset"
+                        max={24}
+                        min={-24}
+                        onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelOffset: Number(event.target.value) } })}
+                        step={1}
+                        type="range"
+                        value={style.edge.labelOffset}
+                      />
+                      <em data-testid="edge-label-offset-value">{style.edge.labelOffset}</em>
+                    </label>
+                    <button
+                      className="ghost-button small"
+                      data-testid="edge-label-reset"
+                      onClick={() =>
+                        patchStyle({
+                          ...style,
+                          preset: "custom",
+                          edge: { ...style.edge, showLabel: true, labelSize: 11, labelT: 0.5, labelOffset: LABEL_OFFSET_DEFAULT },
+                        })
+                      }
+                      type="button"
+                    >
+                      恢复默认
+                    </button>
+                  </div>
                   <label>线型
                     <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
                       <option value="solid">实线</option>
@@ -7263,11 +7323,11 @@ export function RelationshipGraph({
             </div>
           </div>
 
-          {!showAll && visibleCharacters.length < characters.length && (
+          {visibleCharacters.length < characters.length && (
             <p
               className="graph-scope-note"
               role="status"
-              title="有关联的角色已全部画上；没有关系的角色在设计里切到「所有角色」即可显示。"
+              title="画布上只画成员。要把没有关系的角色也放上画布，用「角色与分组」加入即可。"
             >
               可见 {visibleCharacters.length} / 画布 {currentMembers().length} 个角色 ·{" "}
               {prefs.showEdges ? `${drawnRelationships.length} 条关系` : "关系线已隐藏"}
@@ -7537,6 +7597,8 @@ export function RelationshipGraph({
                 weight: style.edge.width,
                 bend: bends.get(relationship.id) ?? 0,
                 metrics,
+                labelT: style.edge.labelT,
+                labelOffset: style.edge.labelOffset,
                 symmetrical: symmetric,
                 arrowStyle: style.edge.arrow,
                 arrowScale: style.edge.arrowSize,
@@ -8822,15 +8884,26 @@ export function RelationshipGraph({
                                  aria-label={`${fromName} ${symmetric ? "与" : "到"} ${toName} 的${relationshipKindLabel(relationship.kind)}关系：更多操作`}
                                  className="manage-row-more"
                                  data-tooltip="更多操作"
-                                 onClick={() =>
-                                   setManageMenuId((current) => (current === relationship.id ? null : relationship.id))
-                                 }
+                                 onClick={(event) => {
+                                   const willOpen = manageMenuId !== relationship.id;
+                                   setManageMenuId(willOpen ? relationship.id : null);
+                                   if (willOpen) {
+                                     // A row at the bottom of the table has no room below
+                                     // it. Measure before painting: opening downward there
+                                     // put 删除 under the pager and out of reach.
+                                     const rect = event.currentTarget.getBoundingClientRect();
+                                     setManageMenuFlip(rect.bottom + 200 > window.innerHeight);
+                                   }
+                                 }}
                                  type="button"
                                >
                                  <Icon name="more" size={16} />
                                </button>
                                {manageMenuId === relationship.id && (
-                                 <div className="manage-row-menu" role="menu">
+                                 <div
+                                   className={`manage-row-menu${manageMenuFlip ? " flip-up" : ""}`}
+                                   role="menu"
+                                 >
                                    <button
                                      aria-label={`编辑 ${fromName} 与 ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
                                      onClick={(event) => {
