@@ -4558,10 +4558,20 @@ export function RelationshipGraph({
    * cover. Only labels that are actually drawn are placed, and only while the graph is
    * small enough to draw them at all — at a hundred nodes the work would be wasted.
    */
+  // 始终 mode still has a ceiling: at a hundred roles every word at once would be a
+  // wall of overlapping text. The budget is deterministic (first sixty lines in canvas
+  // order), so the same drawing names the same lines on every render.
+  const alwaysLabelBudget = useMemo(() => {
+    const mode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
+    if (mode !== "always") return new Set<string>();
+    return new Set(relationships.slice(0, 60).map((relationship) => relationship.id));
+  }, [relationships, style.edge.labelMode, style.edge.showLabel]);
+
   const labelPlacements = useMemo(() => {
     const placements = new Map<string, { x: number; y: number }>();
 
-    if (!style.edge.showLabel || visibleCharacters.length > 60) {
+    const placementMode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
+    if (placementMode === "hidden" || (placementMode === "auto" && visibleCharacters.length > 60)) {
       return placements;
     }
 
@@ -5728,6 +5738,10 @@ export function RelationshipGraph({
             <section className="graph-design-tier">
               <strong className="graph-design-heading">快速调整</strong>
               <div className="graph-style-grid graph-style-quick">
+                <div className="graph-style-section-head">
+                  <strong>节点与姓名</strong>
+                  <span>大小与文字</span>
+                </div>
                 <NumericControl
                   ariaLabel="节点大小"
                   defaultValue={1}
@@ -5749,13 +5763,21 @@ export function RelationshipGraph({
                   label="姓名大小"
                   max={1.8}
                   min={0.8}
-                  onChange={(v) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: v } }, "name-scale")}
+                  onChange={(v) => {
+                    updatePrefs({ nameSize: "medium" });
+                    patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: v } }, "name-scale");
+                  }}
+                  hint="旧版的字号档位已并入此值"
                   precision={0}
                   step={0.05}
                   testId="name-scale"
                   unit="%"
                   value={style.node.nameScale}
                 />
+                <div className="graph-style-section-head">
+                  <strong>关系线与关系标签</strong>
+                  <span>线、颜色与文字</span>
+                </div>
                 <NumericControl
                   ariaLabel="连线宽度"
                   defaultValue={1.4}
@@ -5834,6 +5856,97 @@ export function RelationshipGraph({
                     </button>
                   </div>
                 )}
+                <div className="graph-label-controls" data-testid="edge-labels">
+                    <div className="graph-panel-row">
+                      <span className="graph-control-label">显示文字</span>
+                      <div aria-label="关系标签显示策略" className="graph-segment" data-testid="edge-label-mode" role="group">
+                        {[
+                          { value: "auto", label: "自动" },
+                          { value: "always", label: "始终" },
+                          { value: "hidden", label: "隐藏" },
+                        ].map((option) => {
+                          const mode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
+                          return (
+                            <button
+                              aria-pressed={mode === option.value}
+                              className={mode === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                              data-mode={option.value}
+                              key={option.value}
+                              onClick={() =>
+                                patchStyle({
+                                  ...style,
+                                  preset: "custom",
+                                  edge: { ...style.edge, labelMode: option.value as CanvasStyle["edge"]["labelMode"], showLabel: option.value !== "hidden" },
+                                })
+                              }
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {(style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden")) === "auto" && visibleCharacters.length > 60 && (
+                      <p className="muted" data-testid="edge-label-density-note">
+                        当前画布有 {visibleCharacters.length} 个角色，自动模式按密度简化：选中或指向某个角色时，它的关系线仍会显示文字；把成员减到 60 个以内则全部显示。想优先显示文字请切到「始终」。
+                      </p>
+                    )}
+                    <NumericControl
+                      ariaLabel="标签字号"
+                      defaultValue={11}
+                      label="字号"
+                      max={18}
+                      min={8}
+                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelSize: v } })}
+                      precision={1}
+                      step={0.5}
+                      testId="edge-label-size"
+                      unit="px"
+                      value={style.edge.labelSize}
+                    />
+                    <NumericControl
+                      ariaLabel="标签沿线位置"
+                      defaultValue={0.5}
+                      displayScale={100}
+                      label="沿线位置"
+                      max={0.9}
+                      min={0.1}
+                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelT: v } })}
+                      precision={0}
+                      step={0.05}
+                      testId="edge-label-t"
+                      unit="%"
+                      value={style.edge.labelT}
+                    />
+                    <NumericControl
+                      ariaLabel="标签垂直偏移"
+                      defaultValue={LABEL_OFFSET_DEFAULT}
+                      label="垂直偏移"
+                      max={24}
+                      min={-24}
+                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelOffset: v } })}
+                      precision={0}
+                      step={1}
+                      testId="edge-label-offset"
+                      unit="u"
+                      value={style.edge.labelOffset}
+                    />
+                    <button
+                      className="ghost-button small"
+                      data-testid="edge-label-reset"
+                      onClick={() =>
+                        patchStyle({
+                          ...style,
+                          preset: "custom",
+                          edge: { ...style.edge, showLabel: true, labelSize: 11, labelT: 0.5, labelOffset: LABEL_OFFSET_DEFAULT },
+                        })
+                      }
+                      type="button"
+                    >
+                      恢复默认
+                    </button>
+                  </div>
               </div>
             </section>
   );
@@ -5868,22 +5981,7 @@ export function RelationshipGraph({
                     ))}
                   </div>
                 </div>
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">字号</span>
-                  <div className="graph-segment">
-                    {NAME_SIZES.map((size) => (
-                      <button
-                        aria-pressed={prefs.nameSize === size.value}
-                        className={prefs.nameSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
-                        key={size.value}
-                        onClick={() => updatePrefs({ nameSize: size.value })}
-                        type="button"
-                      >
-                        {size.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                
                 <div className="graph-panel-row">
                   <span className="graph-control-label">头像</span>
                   <div className="graph-segment">
@@ -6276,7 +6374,7 @@ export function RelationshipGraph({
                   the way of the four controls above. Native <details> so the fold is a
                   browser guarantee rather than a class that hides a live control. */}
               <details className="graph-design-advanced">
-                <summary>高级自定义</summary>
+                <summary>高级选项</summary>
                 <div className="graph-style-grid">
                   <label className="graph-style-check">
                     <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
@@ -6286,80 +6384,7 @@ export function RelationshipGraph({
                       far off it. Global by design — a per-edge override still wins for
                       colour and width, but the word belongs to the reading, not to one
                       connection. */}
-                  <div className="graph-label-controls" data-testid="edge-labels">
-                    <div className="graph-panel-row">
-                      <span className="graph-control-label">关系标签</span>
-                      <label className="graph-style-check">
-                        <input
-                          checked={style.edge.showLabel}
-                          data-testid="edge-label-show"
-                          onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, showLabel: event.target.checked } })}
-                          type="checkbox"
-                        />
-                        显示文字
-                      </label>
-                    </div>
-                    {style.edge.showLabel && visibleCharacters.length > 60 && (
-                      <p className="muted" data-testid="edge-label-density-note">
-                        当前画布有 {visibleCharacters.length} 个角色，标签按密度简化：选中或指向某个角色时，
-                        它的关系线仍会显示文字；把成员减到 60 个以内则全部显示。
-                      </p>
-                    )}
-                    <NumericControl
-                      ariaLabel="标签字号"
-                      defaultValue={11}
-                      label="字号"
-                      max={18}
-                      min={8}
-                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelSize: v } })}
-                      precision={1}
-                      step={0.5}
-                      testId="edge-label-size"
-                      unit="px"
-                      value={style.edge.labelSize}
-                    />
-                    <NumericControl
-                      ariaLabel="标签沿线位置"
-                      defaultValue={0.5}
-                      displayScale={100}
-                      label="沿线位置"
-                      max={0.9}
-                      min={0.1}
-                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelT: v } })}
-                      precision={0}
-                      step={0.05}
-                      testId="edge-label-t"
-                      unit="%"
-                      value={style.edge.labelT}
-                    />
-                    <NumericControl
-                      ariaLabel="标签垂直偏移"
-                      defaultValue={LABEL_OFFSET_DEFAULT}
-                      label="垂直偏移"
-                      max={24}
-                      min={-24}
-                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelOffset: v } })}
-                      precision={0}
-                      step={1}
-                      testId="edge-label-offset"
-                      unit="u"
-                      value={style.edge.labelOffset}
-                    />
-                    <button
-                      className="ghost-button small"
-                      data-testid="edge-label-reset"
-                      onClick={() =>
-                        patchStyle({
-                          ...style,
-                          preset: "custom",
-                          edge: { ...style.edge, showLabel: true, labelSize: 11, labelT: 0.5, labelOffset: LABEL_OFFSET_DEFAULT },
-                        })
-                      }
-                      type="button"
-                    >
-                      恢复默认
-                    </button>
-                  </div>
+                  
                   <label>线型
                     <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
                       <option value="solid">实线</option>
@@ -8076,21 +8101,32 @@ export function RelationshipGraph({
                     // The word on the selected line is an answer, so it is drawn at a
                     // size that can be read even on a hundred-node wheel: the floor is
                     // ten screen pixels, and only the selected edge is allowed to grow.
+                    const mode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
                     const renderedPx = style.edge.labelSize * view.k * (measured ? screenScale : 1);
+                    // Readability floor: the selected line, and every line in 始终
+                    // mode, grows until the word is at least seven screen pixels.
+                    const floorPx = isEdgeSelected ? 10 : mode === "always" ? 7 : 0;
                     const labelFont =
-                      isEdgeSelected && !exporting && renderedPx > 0 && renderedPx < 10
-                        ? Math.min(60, (style.edge.labelSize * 10) / renderedPx)
+                      !exporting && floorPx > 0 && renderedPx > 0 && renderedPx < floorPx
+                        ? Math.min(48, (style.edge.labelSize * floorPx) / renderedPx)
                         : style.edge.labelSize;
-                    return style.edge.showLabel &&
-                    (visibleCharacters.length <= 60 || touchesHovered || touchesActiveSelection || isEdgeSelected) &&
-                    inLens &&
-                    (exporting || labelFont * view.k * (measured ? screenScale : 1) >= 6) &&
-                    (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
+                    // Three answers, one place: 隐藏 draws none; 始终显示 puts the
+                    // words ahead of the crowding rule; 自动 is the density policy.
+                    // A line the author picked always answers for itself.
+                    const wordsAllowed = mode !== "hidden";
+                    const densityAllows =
+                      mode === "always" || visibleCharacters.length <= 60 || touchesHovered || touchesActiveSelection || isEdgeSelected;
+                    const countAllows =
+                      (mode === "always" && alwaysLabelBudget.has(relationship.id)) ||
+                      (mode !== "always" && visibleCharacters.length <= EDGE_LABEL_LIMIT) ||
                       touchesHovered ||
                       touchesActiveSelection ||
-                      // A line the author picked is the one line they are asking about:
-                      // the density rule is about crowding, not about this answer.
-                      isEdgeSelected) && (
+                      isEdgeSelected;
+                    return wordsAllowed &&
+                    densityAllows &&
+                    inLens &&
+                    (exporting || labelFont * view.k * (measured ? screenScale : 1) >= 6) &&
+                    countAllows && (
                     <text
                       style={{ fontSize: `${labelFont}px` }}
                       x={labelPlacements.get(relationship.id)?.x ?? geometry.labelX}
@@ -8470,7 +8506,7 @@ export function RelationshipGraph({
                     <span>
                       {surface === "design"
                         ? appearanceSelection.kind === "canvas"
-                          ? "预设、快速调整与高级自定义"
+                          ? "预设、分组调整与高级选项"
                           : appearanceSelection.kind === "multi"
                             ? "批量外观暂不支持，这里只改整体画布"
                             : "这个对象自己的边框、底色与形态"
@@ -8955,15 +8991,7 @@ export function RelationshipGraph({
                             <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
                               清除选择
                             </button>
-                            {multiSelectMode && (
-                              <button
-                                className="ghost-button graph-wide-only"
-                                onClick={() => setMultiSelectMode(false)}
-                                type="button"
-                              >
-                                退出多选
-                              </button>
-                            )}
+
                           </div>
                         </>
                       );
@@ -8991,15 +9019,7 @@ export function RelationshipGraph({
                         <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
                           清除选择
                         </button>
-                        {multiSelectMode && (
-                          <button
-                            className="ghost-button graph-wide-only"
-                            onClick={() => setMultiSelectMode(false)}
-                            type="button"
-                          >
-                            退出多选
-                          </button>
-                        )}
+
                       </div>
                     </>
                   )}

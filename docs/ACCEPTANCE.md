@@ -18,9 +18,13 @@
 
 ## 2. 证据目录
 
+> **2026-10-22 起，历史截图不再存放在仓库**：全部 9 轮、143 张已打包到
+> `~/AccioWork/CharacterStudio-Acceptance/`（每轮 `screenshots.zip` + `archive-index.json`，
+> 校验方式 `unzip -t`）。仓库只保留文档、测试与源码；下表路径是归档内的目录名。
+
 | 目录 | 图 | 证明什么 | 属性 |
 | --- | --- | --- | --- |
-| `sprint-53.2-acceptance/` | 16 | 编辑器分节、Dashboard 状态收敛 | 历史 |
+| 归档 `sprint-53.2/` | 16 | 编辑器分节、Dashboard 状态收敛 | 历史 |
 | `sprint-53.3-acceptance/` | 41 | 数据资产管理、导入导出与恢复 | 历史 |
 | `sprint-54-acceptance/` | 15 | 画布成员管理（18 项验收、快照携带成员） | 历史 |
 | `sprint-54.2-acceptance/` | 23 | 移动优先布局、全站统一搜索（375/320/430、深色） | 历史 |

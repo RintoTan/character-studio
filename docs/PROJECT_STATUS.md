@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.54.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布编辑可靠性、移动端多选与关系标签验收；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **54.7**（`APP_SPRINT`）—— 吸附/辅助线数学修正、Shift 提示与设计抽屉布局、移动端单行多选栏、关系标签像素级验收；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.55.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布编辑可靠性、移动端多选与关系标签验收；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **54.8**（`APP_SPRINT`）—— 吸附/辅助线数学修正、Shift 提示与设计抽屉布局、移动端单行多选栏、关系标签像素级验收；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
@@ -21,6 +21,18 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 54.8（2.55.0）
+
+项目治理与关系网视觉整改。
+
+| 事项 | 结论 | 证据 |
+| --- | --- | --- |
+| 验收截图归档 | 已移出仓库 | 9 轮 143 张 → `CharacterStudio-Acceptance/`，体积 27 MB → 7.8 MB |
+| 标签显示策略 | 已实现 自动/始终/隐藏 | 8 角色 14 条；100 角色 始终 60 条、重叠 0、最小 22.8px |
+| 多选栏瘦身 | 已实现 | 457×60，无外观/退出多选，不压标签 |
+| 面板信息架构 | 已实现 | 分组头 + 标签控件回到关系线组 + 删除重复字号 |
+| 抽屉底部间距 | 已实现 | 滚到底距边 30px（手机 34px） |
 
 ### Sprint 54.7（2.54.0）
 

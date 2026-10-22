@@ -77,6 +77,12 @@ export type CanvasStyle = {
     arrowSize: number;
     arrow: ArrowStyle;
     showLabel: boolean;
+    /**
+     * How the words behave as the canvas fills up: auto simplifies by density,
+     * always prefers the words, hidden draws none. `showLabel` stays for older
+     * layouts and is kept in step with this flag.
+     */
+    labelMode: "auto" | "always" | "hidden";
     labelSize: number;
     /** Where along the line the word sits: 0 at the source, 1 at the target. */
     labelT: number;
@@ -138,6 +144,7 @@ const BASE: CanvasStyle = {
     arrowSize: 1,
     arrow: "concise",
     showLabel: true,
+    labelMode: "auto",
     labelSize: 10,
     labelT: 0.5,
     labelOffset: LABEL_OFFSET_DEFAULT,
@@ -196,6 +203,7 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
       arrowSize: 1.3,
       arrow: "concise",
       showLabel: true,
+    labelMode: "auto",
       labelSize: 11,
     },
     canvas: { background: "#fbf7f0", grid: "dots", gridSize: 38, gridOpacity: 0.3 },
@@ -218,6 +226,7 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
       arrowSize: 0.9,
       arrow: "thin",
       showLabel: true,
+    labelMode: "auto",
       labelSize: 10,
       labelBackground: true,
     },
@@ -324,7 +333,14 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
           : typeof edge.arrowSize === "number" && edge.arrowSize === 0
             ? "none"
             : base.edge.arrow,
-      showLabel: typeof edge.showLabel === "boolean" ? edge.showLabel : base.edge.showLabel,
+      showLabel:
+        edge.labelMode === "hidden" ? false : typeof edge.showLabel === "boolean" ? edge.showLabel : base.edge.showLabel,
+      labelMode:
+        edge.labelMode === "auto" || edge.labelMode === "always" || edge.labelMode === "hidden"
+          ? edge.labelMode
+          : edge.showLabel === false
+            ? "hidden"
+            : "auto",
       labelSize: num(edge.labelSize, base.edge.labelSize, 8, 18),
       // A style saved before these existed sits where it always did: mid-line, just
       // clear of it. Defaults are read here, not written into old records.

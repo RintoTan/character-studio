@@ -16461,3 +16461,38 @@ circle.graph-grid-dot {
   margin: 0;
   font-size: 12.5px;
 }
+
+/* ---------------------------------------------------------------------------
+   Drawer breathing room at the bottom.
+
+   The palette, the label controls and the snap switches all end the panel, and on
+   a phone the last one sat flush against the sheet edge (and under the home
+   indicator on a notched device). The padding lives on the scrolling content, not
+   on the frame, so it is present after scrolling to the end rather than only at
+   the start.
+   ------------------------------------------------------------------------- */
+.graph-studio-drawer .graph-style-panel {
+  padding-bottom: 16px;
+}
+
+.graph-studio-drawer .graph-design-advanced {
+  padding-bottom: 6px;
+}
+
+@media (max-width: 720px) {
+  .graph-studio-drawer .graph-style-panel {
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* The arrange-undo pill is feedback, not a command in the selection row: on a phone it
+   shared that row and pushed the bar into a second line. It hangs under the card. */
+@media (max-width: 720px) {
+  .graph-context-undo {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    left: 0;
+    justify-content: center;
+  }
+}

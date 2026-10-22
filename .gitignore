@@ -21,3 +21,7 @@ screenshots-tmp/
 .env
 .env.*
 !.env.example
+
+# 验收截图自 v2.54.0 起归档到项目外（CharacterStudio-Acceptance/），仓库只留正式文档与测试
+docs/sprint-*-acceptance/
+docs/*-acceptance.zip
