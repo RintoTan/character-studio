@@ -252,12 +252,6 @@ type RelationshipGraphProps = {
 /** Rows per page in the management list. Twenty fits a laptop screen without a scroll
  *  inside the page, and keeps the pager close to the row being edited. */
 const MANAGE_PAGE_SIZE = 20;
-/** Past this many connected characters, the default drawing keeps only the hubs. */
-const CORE_VIEW_LIMIT = 40;
-// A phone canvas is a third of the width. Forty nodes fitted into it are six-pixel
-// dots, so the drawn core is smaller there and the note says so.
-const CORE_VIEW_LIMIT_NARROW = 24;
-const CORE_VIEW_DEGREE = 2;
 /** Below this many drawn nodes every edge can carry its type word; above it, only the
  *  edges of the node being pointed at do. */
 const EDGE_LABEL_LIMIT = 18;
@@ -1674,24 +1668,12 @@ export function RelationshipGraph({
         return characters;
       }
 
-      const connected = characters.filter((character) => connectedIds.has(character.id));
-
-      const limit = isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT;
-
-      if (connected.length <= limit) {
-        return connected;
-      }
-
-      const degree = new Map<string, number>();
-      for (const relationship of relationships) {
-        degree.set(relationship.fromId, (degree.get(relationship.fromId) ?? 0) + 1);
-        degree.set(relationship.toId, (degree.get(relationship.toId) ?? 0) + 1);
-      }
-
-      return [...connected]
-        .filter((character) => (degree.get(character.id) ?? 0) >= CORE_VIEW_DEGREE)
-        .sort((left, right) => (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0))
-        .slice(0, limit);
+      // No cap. The drawing used to keep only the forty most connected characters and
+      // call the rest "out of view", which made a product rule out of a density
+      // preference: a character the author put in a relationship was simply not drawn.
+      // Every connected character is on the canvas now; the ring gets denser and the
+      // labels thin out, which is what the zoom and the search are for.
+      return characters.filter((character) => connectedIds.has(character.id));
     })();
 
     if (showAll || focusExtraIds.length === 0) {
@@ -1704,7 +1686,7 @@ export function RelationshipGraph({
     );
 
     return extras.length ? [...drawn, ...extras] : drawn;
-  }, [characters, connectedIds, relationships, showAll, focusExtraIds, isNarrowScreen]);
+  }, [characters, connectedIds, relationships, showAll, focusExtraIds]);
 
   // Free placement lives in its own store, keyed by character id: a rename moves
   // nothing, and a deleted character is pruned out rather than ghosted.
@@ -5536,7 +5518,7 @@ export function RelationshipGraph({
                   角色 {characters.length} · 有关联 {connectedIds.size} · 画布{" "}
                   {visibleCharacters.length}
                   {visibleCharacters.length < connectedIds.size
-                    ? `/${connectedIds.size}（上限 ${isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT}）`
+                    ? `/${connectedIds.size}`
                     : ""}
                   {" · "}关系线{" "}
                   {prefs.showEdges
@@ -6887,13 +6869,11 @@ export function RelationshipGraph({
             </div>
           </div>
 
-          {!showAll && visibleCharacters.length < connectedIds.size && (
+          {!showAll && visibleCharacters.length < characters.length && (
             <p
               className="graph-scope-note"
               role="status"
-              title={`核心视图上限 ${
-                isNarrowScreen ? CORE_VIEW_LIMIT_NARROW : CORE_VIEW_LIMIT
-              }，不是数据过滤：搜索这些角色可以直接聚焦，或在设计里切到「所有角色」。`}
+              title="有关联的角色已全部画上；没有关系的角色在设计里切到「所有角色」即可显示。"
             >
               画布 {visibleCharacters.length} / {characters.length} 个角色 ·{" "}
               {prefs.showEdges ? `${drawnRelationships.length} 条关系` : "关系线已隐藏"}
