@@ -4558,15 +4558,6 @@ export function RelationshipGraph({
    * cover. Only labels that are actually drawn are placed, and only while the graph is
    * small enough to draw them at all — at a hundred nodes the work would be wasted.
    */
-  // 始终 mode still has a ceiling: at a hundred roles every word at once would be a
-  // wall of overlapping text. The budget is deterministic (first sixty lines in canvas
-  // order), so the same drawing names the same lines on every render.
-  const alwaysLabelBudget = useMemo(() => {
-    const mode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
-    if (mode !== "always") return new Set<string>();
-    return new Set(relationships.slice(0, 60).map((relationship) => relationship.id));
-  }, [relationships, style.edge.labelMode, style.edge.showLabel]);
-
   const labelPlacements = useMemo(() => {
     const placements = new Map<string, { x: number; y: number }>();
 
@@ -5433,6 +5424,35 @@ export function RelationshipGraph({
     onConfirm: submitDraft,
     confirmDisabled: Boolean(draft) && (draft!.fromId === draft!.toId || Boolean(draftDuplicate)),
   });
+
+  // 始终显示 means "show the words", not "show the first sixty". Two limits, and the
+  // panel states which one applied: whether the drawing is zoomed in enough for a word
+  // to be legible at all, and whether the word lands on one already kept.
+  const alwaysLabelBudget = useMemo(() => {
+    const mode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
+    const ids = new Set<string>();
+    const perUnit = view.k * (measured ? screenScale : 1);
+    const screenPx = style.edge.labelSize * perUnit;
+    const readableAt = style.edge.labelSize > 0 ? Math.ceil((6 / style.edge.labelSize) * 100) : 100;
+    const zoom = Math.round(perUnit * 100);
+    if (mode !== "always") return { ids, kept: 0, total: relationships.length, zoom, zoomLimited: false, readableAt };
+    if (screenPx < 6) return { ids, kept: 0, total: relationships.length, zoom, zoomLimited: true, readableAt };
+    const font = style.edge.labelSize;
+    const boxes: { l: number; r: number; t: number; b: number }[] = [];
+    for (const relationship of relationships) {
+      const placement = labelPlacements.get(relationship.id);
+      if (!placement) continue;
+      const text = relationshipKindLabel(relationship.kind);
+      const w = Math.max(18, text.length * font * 1.02) + 3;
+      const h = font * 1.3 + 2;
+      const box = { l: placement.x - w / 2, r: placement.x + w / 2, t: placement.y - h / 2, b: placement.y + h / 2 };
+      if (boxes.some((b) => !(box.r < b.l || box.l > b.r || box.b < b.t || box.t > b.b))) continue;
+      boxes.push(box);
+      ids.add(relationship.id);
+    }
+    return { ids, kept: ids.size, total: relationships.length, zoom, zoomLimited: false, readableAt };
+  }, [labelPlacements, measured, relationships, screenScale, style.edge.labelMode, style.edge.labelSize, style.edge.showLabel, view.k]);
+
   const discardDialogRef = useDialogKeyboard({
     active: pendingDiscard,
     onClose: () => setPendingDiscard(false),
@@ -5742,6 +5762,10 @@ export function RelationshipGraph({
                   <strong>节点与姓名</strong>
                   <span>大小与文字</span>
                 </div>
+                                  <label className="graph-style-check">
+                    <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
+                    画作含头像
+                  </label>
                 <NumericControl
                   ariaLabel="节点大小"
                   defaultValue={1}
@@ -5856,6 +5880,50 @@ export function RelationshipGraph({
                     </button>
                   </div>
                 )}
+                                  <label>线型
+                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
+                      <option value="solid">实线</option>
+                      <option value="dashed">虚线</option>
+                      <option value="dotted">点线</option>
+                    </select>
+                  </label>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">箭头</span>
+                  <div className="graph-arrow-options">
+                    {([
+                      ["concise", "简洁", "8 7 5"],
+                      ["thin", "细线", "7 5 3"],
+                      ["soft", "柔和", "8 9 8"],
+                      ["none", "无", ""],
+                    ] as Array<[ArrowStyle, string, string]>).map(([value, label, head]) => (
+                      <button
+                        aria-pressed={style.edge.arrow === value}
+                        className={
+                          style.edge.arrow === value ? "graph-arrow-option selected" : "graph-arrow-option"
+                        }
+                        key={value}
+                        onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, arrow: value } })}
+                        title={label}
+                        type="button"
+                      >
+                        {/* The head is drawn, not described: four words in a row read the
+                            same at a glance, four heads do not. */}
+                        <svg aria-hidden="true" viewBox="0 0 46 14">
+                          <line x1="2" x2={head ? "30" : "42"} y1="7" y2="7" />
+                          {head ? (
+                            <polygon
+                              points={(() => {
+                                const [h, w] = head.split(" ").map(Number);
+                                return `30,7 ${30 - h},${7 - w / 2} ${30 - h},${7 + w / 2}`;
+                              })()}
+                            />
+                          ) : null}
+                        </svg>
+                        <span>{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="graph-label-controls" data-testid="edge-labels">
                     <div className="graph-panel-row">
                       <span className="graph-control-label">显示文字</span>
@@ -5887,6 +5955,13 @@ export function RelationshipGraph({
                         })}
                       </div>
                     </div>
+                    {(style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden")) === "always" && (
+                      <p className="graph-style-label" data-testid="edge-label-budget">
+                        {alwaysLabelBudget.zoomLimited
+                          ? `已请求 ${alwaysLabelBudget.total} 条 · 当前缩放 ${alwaysLabelBudget.zoom}%，文字会小到看不清；放大到约 ${alwaysLabelBudget.readableAt}% 或选中关系线即可阅读`
+                          : `已请求 ${alwaysLabelBudget.total} 条 · 当前可清楚阅读 ${alwaysLabelBudget.kept} 条（重叠处自动避让，放大可显示更多）`}
+                      </p>
+                    )}
                     {(style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden")) === "auto" && visibleCharacters.length > 60 && (
                       <p className="muted" data-testid="edge-label-density-note">
                         当前画布有 {visibleCharacters.length} 个角色，自动模式按密度简化：选中或指向某个角色时，它的关系线仍会显示文字；把成员减到 60 个以内则全部显示。想优先显示文字请切到「始终」。
@@ -5959,8 +6034,8 @@ export function RelationshipGraph({
                   say which of them travels into an export. */}
               <div aria-label="视图" className="graph-style-view" role="group">
                 <div className="graph-style-section-head">
-                  <strong>视图</strong>
-                  <span>只改本机显示</span>
+                  <strong>视图与显示</strong>
+                  <span>只改本机显示，不进导出</span>
                 </div>
                 <div className="graph-panel-row">
                   <span className="graph-control-label">名称</span>
@@ -5983,7 +6058,7 @@ export function RelationshipGraph({
                 </div>
                 
                 <div className="graph-panel-row">
-                  <span className="graph-control-label">头像</span>
+                  <span className="graph-control-label">本机头像</span>
                   <div className="graph-segment">
                     {[
                       { value: true, label: "显示" },
@@ -6084,7 +6159,7 @@ export function RelationshipGraph({
                     the same question ("what am I looking at") — and it is read once,
                     so it does not get a permanent corner of the drawing. */}
                 <div className="graph-panel-row graph-legend">
-                  <span className="graph-control-label">线型</span>
+                  <span className="graph-control-label">线型说明</span>
                   <ul className="graph-legend-list">
                     <li>
                       <span aria-hidden="true" className="graph-legend-line legend-primary" />
@@ -6376,22 +6451,13 @@ export function RelationshipGraph({
               <details className="graph-design-advanced">
                 <summary>高级选项</summary>
                 <div className="graph-style-grid">
-                  <label className="graph-style-check">
-                    <input checked={style.node.showAvatars} onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, showAvatars: event.target.checked } })} type="checkbox" />
-                    显示头像
-                  </label>
+
                   {/* Relationship words: on/off, how big, where along the line, and how
                       far off it. Global by design — a per-edge override still wins for
                       colour and width, but the word belongs to the reading, not to one
                       connection. */}
                   
-                  <label>线型
-                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, dash: event.target.value as CanvasStyle["edge"]["dash"] } })} value={style.edge.dash}>
-                      <option value="solid">实线</option>
-                      <option value="dashed">虚线</option>
-                      <option value="dotted">点线</option>
-                    </select>
-                  </label>
+
                   <label>走向
                     <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
                       <option value="curved">曲线</option>
@@ -6430,43 +6496,7 @@ export function RelationshipGraph({
                 {/* The head is a drawing choice, not a fact about the relationship: a
                     symmetric kind never draws one, and 无箭头 hides the head while the
                     direction stays in the data and in 管理. */}
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">箭头</span>
-                  <div className="graph-arrow-options">
-                    {([
-                      ["concise", "简洁", "8 7 5"],
-                      ["thin", "细线", "7 5 3"],
-                      ["soft", "柔和", "8 9 8"],
-                      ["none", "无", ""],
-                    ] as Array<[ArrowStyle, string, string]>).map(([value, label, head]) => (
-                      <button
-                        aria-pressed={style.edge.arrow === value}
-                        className={
-                          style.edge.arrow === value ? "graph-arrow-option selected" : "graph-arrow-option"
-                        }
-                        key={value}
-                        onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, arrow: value } })}
-                        title={label}
-                        type="button"
-                      >
-                        {/* The head is drawn, not described: four words in a row read the
-                            same at a glance, four heads do not. */}
-                        <svg aria-hidden="true" viewBox="0 0 46 14">
-                          <line x1="2" x2={head ? "30" : "42"} y1="7" y2="7" />
-                          {head ? (
-                            <polygon
-                              points={(() => {
-                                const [h, w] = head.split(" ").map(Number);
-                                return `30,7 ${30 - h},${7 - w / 2} ${30 - h},${7 + w / 2}`;
-                              })()}
-                            />
-                          ) : null}
-                        </svg>
-                        <span>{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+
                 <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
               </details>
 
@@ -8117,7 +8147,7 @@ export function RelationshipGraph({
                     const densityAllows =
                       mode === "always" || visibleCharacters.length <= 60 || touchesHovered || touchesActiveSelection || isEdgeSelected;
                     const countAllows =
-                      (mode === "always" && alwaysLabelBudget.has(relationship.id)) ||
+                      (mode === "always" && alwaysLabelBudget.ids.has(relationship.id)) ||
                       (mode !== "always" && visibleCharacters.length <= EDGE_LABEL_LIMIT) ||
                       touchesHovered ||
                       touchesActiveSelection ||
