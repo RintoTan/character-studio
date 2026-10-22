@@ -5437,6 +5437,12 @@ export function RelationshipGraph({
     const zoom = Math.round(perUnit * 100);
     if (mode !== "always") return { ids, kept: 0, total: relationships.length, zoom, zoomLimited: false, readableAt };
     if (screenPx < 6) return { ids, kept: 0, total: relationships.length, zoom, zoomLimited: true, readableAt };
+    // At a size where 自动 draws every line, 尽量 must draw them too — otherwise the
+    // "prefer the words" option would show fewer words than the default.
+    if (relationships.length <= 60) {
+      for (const relationship of relationships) ids.add(relationship.id);
+      return { ids, kept: ids.size, total: relationships.length, zoom, zoomLimited: false, readableAt };
+    }
     const font = style.edge.labelSize;
     const boxes: { l: number; r: number; t: number; b: number }[] = [];
     for (const relationship of relationships) {
@@ -5924,13 +5930,14 @@ export function RelationshipGraph({
                     ))}
                   </div>
                 </div>
+                <p className="graph-style-subhead">关系标签</p>
                 <div className="graph-label-controls" data-testid="edge-labels">
                     <div className="graph-panel-row">
                       <span className="graph-control-label">显示文字</span>
                       <div aria-label="关系标签显示策略" className="graph-segment" data-testid="edge-label-mode" role="group">
                         {[
                           { value: "auto", label: "自动" },
-                          { value: "always", label: "始终" },
+                          { value: "always", label: "尽量显示" },
                           { value: "hidden", label: "隐藏" },
                         ].map((option) => {
                           const mode = style.edge.labelMode ?? (style.edge.showLabel ? "auto" : "hidden");
@@ -8626,8 +8633,64 @@ export function RelationshipGraph({
                     </span>
                   </div>
                 </div>
+                {/* Selection lives in the toolbar, not in a card over the drawing: the
+                    author's eye is already here, and a second control surface floating on
+                    the canvas hid labels and nodes. Same handlers as before. */}
+                {selectedIds.length > 0 && (
+                  <div aria-label="当前选择" className="graph-studio-selection" data-testid="studio-selection" role="group">
+                    <span className="graph-studio-selection-count">
+                      <span className="graph-wide-only">
+                        {selectedIds.length === 1
+                          ? (() => {
+                              const one = byId.get(selectedIds[0])?.character;
+                              return one ? characterDisplayName(one) : "已选 1 个角色";
+                            })()
+                          : `已选 ${selectedIds.length} 个`}
+                      </span>
+                      {/* On a phone the count is a number: the words cost the width the
+                          commands need, and the commands are what the hand is doing. */}
+                      <span aria-hidden="true" className="graph-mobile-only">
+                        {selectedIds.length}
+                      </span>
+                    </span>
+                    <div className="graph-studio-selection-actions">
+                      <button className="graph-studio-selection-button graph-selection-fit" onClick={fitSelection} type="button">
+                        {selectedIds.length === 1 ? "聚焦" : "适应选中"}
+                      </button>
+                      {selectedIds.length === 1 ? (
+                        <button
+                          className="graph-studio-selection-button"
+                          onClick={() => {
+                            const one = byId.get(selectedIds[0])?.character;
+                            if (one) onOpenCharacter(one.id);
+                          }}
+                          type="button"
+                        >
+                          编辑
+                        </button>
+                      ) : (
+                        <button
+                          aria-expanded={isAlignOpen}
+                          className="graph-studio-selection-button"
+                          onClick={() => setIsAlignOpen((open) => !open)}
+                          type="button"
+                        >
+                          排列
+                        </button>
+                      )}
+                      <button
+                        aria-label="清除选择"
+                        className="graph-studio-selection-button"
+                        onClick={() => setSelectedIds([])}
+                        type="button"
+                      >
+                        清除
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="graph-studio-actions">
-                  <div aria-label="历史与保存" className="graph-studio-toolgroup" role="group">
+                  <div aria-label="历史与保存" className="graph-studio-toolgroup graph-history-group" role="group">
                   <button
                     aria-label="撤销"
                     data-tooltip={`撤销（${modKey}Z）`}
@@ -9143,6 +9206,9 @@ export function RelationshipGraph({
                       type="button"
                     >
                       完成
+                    </button>
+                    <button className="ghost-button small" onClick={fitSelection} type="button">
+                      适应选中
                     </button>
                     <p className="graph-align-note">
                       {arrangeAvailability(selectedIds.length).reason ??

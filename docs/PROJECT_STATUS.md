@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.55.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布编辑可靠性、移动端多选与关系标签验收；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.55.2**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布编辑可靠性、移动端多选与关系标签验收；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.8**（`APP_SPRINT`）—— 吸附/辅助线数学修正、Shift 提示与设计抽屉布局、移动端单行多选栏、关系标签像素级验收；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |

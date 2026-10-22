@@ -16496,3 +16496,169 @@ circle.graph-grid-dot {
     justify-content: center;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Selection belongs to the toolbar.
+
+   The card that used to float at the top-left of the drawing duplicated the task bar
+   and, at 456×136 with the arrange panel open, covered a column of nodes and labels.
+   In the studio the same commands now sit in the top bar; the card is kept only as the
+   host of the arrange panel, and only while that panel is open.
+   ------------------------------------------------------------------------- */
+.graph-studio .graph-context-slot {
+  top: 8px;
+  right: auto;
+  bottom: auto;
+  left: 12px;
+  width: max-content;
+  max-width: min(560px, calc(100% - 24px));
+}
+
+.graph-studio .graph-context-slot .graph-context-row {
+  display: none;
+}
+
+.graph-studio .graph-context-slot:not(:has(.graph-align-panel)) {
+  display: none;
+}
+
+.graph-studio-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  min-width: 0;
+}
+
+.graph-studio-selection-count {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 132px;
+}
+
+.graph-studio-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.graph-studio-selection-button {
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.graph-studio-selection-button:hover {
+  background: var(--control-hover, rgba(255, 255, 255, 0.08));
+}
+
+@media (max-width: 720px) {
+  .graph-studio-selection {
+    gap: 4px;
+    padding: 3px 4px 3px 8px;
+  }
+
+  .graph-studio-selection-count {
+    max-width: 76px;
+    font-size: 12px;
+  }
+
+  .graph-studio-selection-button {
+    padding: 6px 8px;
+    min-height: 34px;
+  }
+}
+
+/* A sub-head for the label block: after the palette it read as an unlabelled run of
+   sliders ("which of these is a line setting?"). */
+.graph-style-subhead {
+  margin: 4px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+/* At 375 the toolbar ran 116px past the edge once a selection group joined it: the
+   history/save group and the secondary task buttons have to yield, the 任务 menu keeps
+   them reachable. */
+@media (max-width: 720px) {
+  .graph-studio-top {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .graph-studio-actions {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .graph-studio-top .graph-history-group,
+  .graph-studio-top .graph-studio-sep,
+  .graph-studio-top .graph-studio-actions > .graph-studio-toolgroup:not(.graph-studio-tasks) {
+    display: none;
+  }
+
+  .graph-studio-selection-count {
+    max-width: 64px;
+  }
+}
+
+@media (max-width: 720px) {
+  /* The drawing's name and counts repeat what the canvas already shows; on a phone the
+     width they take is the width the selection group needs. */
+  .graph-studio-titles {
+    display: none;
+  }
+
+  .graph-studio-selection-count {
+    max-width: 56px;
+  }
+
+  .graph-studio-selection-button {
+    padding: 6px 7px;
+  }
+}
+
+@media (max-width: 360px) {
+  /* At 320 the toolbar keeps the count, 排列 and 清除; 适应选中 is one tap away inside
+     the arrange sheet rather than pushing 导出 off the edge. */
+  .graph-studio-top .graph-selection-fit {
+    display: none;
+  }
+
+  .graph-studio-selection {
+    gap: 2px;
+    padding: 2px 2px 2px 7px;
+  }
+
+  .graph-studio-selection-button {
+    padding: 6px 6px;
+    font-size: 12px;
+  }
+}
+
+/* The label-mode explanation is a sentence, not a caption: at 375 it ran off the sheet
+   edge and read as "文字会小到看". It wraps, and keeps clear of the sheet's bottom. */
+.graph-label-controls .graph-style-label {
+  display: block;
+  margin: 2px 0 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  font-size: 11.5px;
+  color: var(--muted);
+}
