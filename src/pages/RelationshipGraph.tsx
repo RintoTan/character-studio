@@ -1723,6 +1723,38 @@ export function RelationshipGraph({
   // exclusive: 设计, 整理, 角色, 探索 and 分组 all live here, so there is no way to end
   // up with two of them stacked over the drawing.
   const [surface, setSurface] = useState<GraphSurface>("none");
+  // On a phone the studio bar keeps four controls and puts its tasks behind one
+  // labelled menu; the bar used to let its own buttons scroll out of the viewport.
+  const [studioMenuOpen, setStudioMenuOpen] = useState(false);
+  const studioMenuRef = useRef<HTMLDivElement | null>(null);
+  const studioMenuButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [studioMenuPos, setStudioMenuPos] = useState<{ top: number; right: number } | null>(null);
+
+  useEffect(() => {
+    if (!studioMenuOpen) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (studioMenuRef.current?.contains(target) || studioMenuButtonRef.current?.contains(target)) {
+        return;
+      }
+      setStudioMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setStudioMenuOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [studioMenuOpen]);
+
   const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
   const [preview, setPreview] = useState<ArrangeProposal | null>(null);
   const [groupDraft, setGroupDraft] = useState<{ name: string; editingId: string | null } | null>(null);
@@ -7637,6 +7669,99 @@ export function RelationshipGraph({
                     新建关系
                   </button>
                   {exportMenu}
+                  <div className="graph-studio-menu-wrap">
+                    <button
+                      aria-expanded={studioMenuOpen}
+                      aria-haspopup="menu"
+                      aria-label="任务菜单"
+                      className="graph-studio-menu-toggle"
+                      onClick={() => {
+                        const rect = studioMenuButtonRef.current?.getBoundingClientRect();
+                        setStudioMenuPos(rect ? { top: rect.bottom + 8, right: Math.max(10, innerWidth - rect.right) } : null);
+                        setStudioMenuOpen((open) => !open);
+                      }}
+                      ref={studioMenuButtonRef}
+                      type="button"
+                    >
+                      <Icon name="more" size={16} />
+                      <span>任务</span>
+                    </button>
+                    {studioMenuOpen && createPortal(
+                      <div
+                        aria-label="任务菜单"
+                        className="graph-studio-menu"
+                        ref={studioMenuRef}
+                        role="menu"
+                        style={studioMenuPos ? { position: "fixed", top: studioMenuPos.top, right: studioMenuPos.right } : { position: "fixed", visibility: "hidden" }}
+                      >
+                        {([
+                          ["characters", "layers", "角色", "搜索、定位与视觉分组"],
+                          ["arrange", "layout", "整理", "先预览，确认后才写入布局"],
+                          ["design", "sliders", "设计", "所选对象、关系线与整体画布"],
+                          ["explore", "compass", "探索", "聚光灯、关系透镜与视角书签"],
+                        ] as const).map(([target, icon, label, hint]) => (
+                          <button
+                            aria-pressed={surface === target}
+                            className="graph-studio-menu-item"
+                            key={target}
+                            onClick={() => {
+                              setStudioMenuOpen(false);
+                              openGraphSurface(target);
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <Icon name={icon} size={15} />
+                            <span>
+                              <strong>{label}</strong>
+                              <em>{hint}</em>
+                            </span>
+                          </button>
+                        ))}
+                        <span aria-hidden="true" className="graph-studio-menu-sep" />
+                        <button
+                          className="graph-studio-menu-item"
+                          disabled={!canLink}
+                          onClick={() => {
+                            setStudioMenuOpen(false);
+                            openDraft();
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          <Icon name="plus" size={15} />
+                          <span><strong>新建关系</strong><em>在两个角色之间连一条线</em></span>
+                        </button>
+                        {previousView && (
+                          <button
+                            className="graph-studio-menu-item"
+                            onClick={() => {
+                              setStudioMenuOpen(false);
+                              restoreView();
+                            }}
+                            role="menuitem"
+                            type="button"
+                          >
+                            <Icon name="refresh" size={15} />
+                            <span><strong>回到上一个视角</strong><em>撤销刚才的取景变化</em></span>
+                          </button>
+                        )}
+                        <button
+                          className="graph-studio-menu-item"
+                          onClick={() => {
+                            setStudioMenuOpen(false);
+                            resetToDefaultView();
+                          }}
+                          role="menuitem"
+                          type="button"
+                        >
+                          <Icon name="maximize" size={15} />
+                          <span><strong>重置视角</strong><em>回到进入全屏编辑时的画面</em></span>
+                        </button>
+                      </div>,
+                      document.body,
+                    )}
+                  </div>
                 </div>
               </div>
 
