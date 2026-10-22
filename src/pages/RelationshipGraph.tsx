@@ -1796,6 +1796,17 @@ export function RelationshipGraph({
   // state — not the same thing as 适应画布, which re-fits whatever is visible now.
   const studioEntryViewRef = useRef<{ k: number; x: number; y: number } | null>(null);
   const rightDrawerRef = useRef<HTMLElement | null>(null);
+  // The page's own task drawer (not the studio's). It is a grid column above 1024 and
+  // an overlay below it; either way the drawing only has `width - drawerInset` to work
+  // with, and the fit has to know that.
+  const pageDrawerRef = useRef<HTMLElement | null>(null);
+  const [drawerInset, setDrawerInset] = useState(0);
+  // The view the drawer opened on. Restoring it on close is only allowed while the
+  // reader has not touched the view in between.
+  const drawerViewRef = useRef<{
+    before: { k: number; x: number; y: number };
+    applied: { k: number; x: number; y: number };
+  } | null>(null);
   // Whether the current view is the system's fit, which follows the room the drawing
   // has, or a view the author composed by panning and zooming, which nothing may
   // take back. Every user gesture sets this to false; 适应画布 sets it back.
@@ -2223,6 +2234,50 @@ export function RelationshipGraph({
   // Zoom and pan live in the drawing's own coordinates, so the wheel stays on the
   // point under the cursor and the fit view is just k = 1 with no offset.
   const [view, setView] = useState({ k: 1, x: 0, y: 0 });
+  // Reading one character: the pick and everyone directly connected to it stay at full
+  // weight, the rest of the roster steps back. A way of looking, like the lens — it
+  // changes emphasis, never coordinates.
+  const focusNeighbourhood = useMemo(() => {
+    if (selectedIds.length !== 1) {
+      return null;
+    }
+
+    const id = selectedIds[0];
+    const set = new Set<string>([id]);
+
+    for (const relationship of relationships) {
+      if (relationship.fromId === id) {
+        set.add(relationship.toId);
+      } else if (relationship.toId === id) {
+        set.add(relationship.fromId);
+      }
+    }
+
+    return set;
+  }, [selectedIds, relationships]);
+
+  // Where the drawing was when this single selection started. 返回总览 goes back to
+  // it without touching a single node position.
+  const [focusOverview, setFocusOverview] = useState<{ k: number; x: number; y: number } | null>(null);
+  const selectionCountRef = useRef(0);
+  const viewNowRef = useRef(view);
+  viewNowRef.current = view;
+
+  useEffect(() => {
+    const count = selectedIds.length;
+    if (count === 1 && selectionCountRef.current === 0) {
+      setFocusOverview(viewNowRef.current);
+    }
+    selectionCountRef.current = count;
+  }, [selectedIds.length]);
+
+  function returnToOverview() {
+    if (!focusOverview) {
+      return;
+    }
+    viewAutoRef.current = false;
+    setView(focusOverview);
+  }
   // The open 整理 transaction. The baseline inside it is captured once and never
   // replaced, so comparing four layouts and then cancelling returns to the drawing the
   // author started from rather than to the third proposal's framing.
@@ -2667,11 +2722,15 @@ export function RelationshipGraph({
     }
 
     const inset = Math.max(0, options.insetBottom ?? (isStudio ? studioInset : 0));
+    // A page drawer is an overlay below 1024, so part of the frame is covered rather
+    // than taken out of the layout. Fitting into the full width there would put the
+    // outer nodes under the panel.
+    const insetRight = isStudio ? 0 : drawerInset;
     // A sheet that covers nearly all of the canvas leaves no room to frame anything
     // in: the view is left where it was rather than squeezed into a letterbox.
-    const room = { width: frame.width, height: frame.height - inset };
+    const room = { width: frame.width - insetRight, height: frame.height - inset };
 
-    if (room.height < 160) {
+    if (room.height < 160 || room.width < 160) {
       return null;
     }
 
@@ -2698,6 +2757,11 @@ export function RelationshipGraph({
       zoom,
       canvas.viewBox,
     );
+    // Centre inside what can be seen, not inside the frame: half the covered width,
+    // expressed in viewBox units (one unit is `scale` pixels).
+    if (insetRight > 0) {
+      next.x -= insetRight / 2 / scale;
+    }
     setView(next);
     return next;
   }
@@ -2707,6 +2771,130 @@ export function RelationshipGraph({
     viewAutoRef.current = true;
     applyFitView();
   }
+
+  // How much of the canvas the page drawer covers. Zero above 1024 (the drawer is a
+  // grid column, so the frame already ends where the panel begins) and the panel's
+  // width below it (the panel is an overlay there).
+  useEffect(() => {
+    if (isStudio || surface === "none") {
+      setDrawerInset(0);
+      return;
+    }
+
+    const frame = frameRef.current;
+    const drawer = pageDrawerRef.current;
+
+    if (!frame || !drawer) {
+      setDrawerInset(0);
+      return;
+    }
+
+    const measure = () => {
+      const f = frame.getBoundingClientRect();
+      const d = drawer.getBoundingClientRect();
+      const covered = Math.min(f.right, d.right) - Math.max(f.left, d.left);
+      setDrawerInset(Math.max(0, Math.round(covered)));
+    };
+
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    observer.observe(drawer);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isStudio, surface]);
+
+  /**
+   * Opening the drawer must not move a single node, but it can hide the one being
+   * read. This pans the view by the few pixels needed to bring that node back inside
+   * the visible strip — nothing else, and only once per opening.
+   *
+   * Closing restores the view it opened on, but only while the view is still the one
+   * this effect produced: a reader who panned in the meantime keeps their view.
+   */
+  useEffect(() => {
+    if (isStudio) {
+      return;
+    }
+
+    const same = (a: { k: number; x: number; y: number }, b: { k: number; x: number; y: number }) =>
+      Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.k - b.k) < 0.001;
+
+    if (surface === "none") {
+      const remembered = drawerViewRef.current;
+      drawerViewRef.current = null;
+
+      if (!remembered) {
+        return;
+      }
+
+      // Restore unless the reader took the view over while the panel was open: a view
+      // they composed themselves is theirs, and 适应画布 (which also lands here) was
+      // composed for a strip that no longer exists.
+      const keptByReader = !viewAutoRef.current && !same(view, remembered.applied);
+
+      if (!keptByReader) {
+        viewAutoRef.current = false;
+        setView(remembered.before);
+      }
+      return;
+    }
+
+    // Opened. Remember where the drawing was even if nothing has to move, so closing
+    // can put it back.
+    if (!drawerViewRef.current) {
+      drawerViewRef.current = { before: view, applied: view };
+    }
+
+    if (drawerInset <= 0) {
+      return;
+    }
+
+    // The inset arrives one render after the panel does, so this effect runs twice on
+    // opening. Compensate once: only while nothing has been applied yet.
+    if (!same(drawerViewRef.current.applied, drawerViewRef.current.before)) {
+      return;
+    }
+
+    const frame = frameRef.current;
+    const rect = frame?.getBoundingClientRect();
+    const targetId = selectedIds.length === 1 ? selectedIds[0] : focusId;
+    const targetIndex = targetId ? visibleCharacters.findIndex((c) => c.id === targetId) : -1;
+    const point = targetIndex >= 0 ? positions[targetIndex] : null;
+
+    if (!frame || !rect || !point || frameSize.width <= 0) {
+      return;
+    }
+
+    const scale = canvasScreenScale(frameSize, canvas.viewBox);
+    if (scale <= 0) {
+      return;
+    }
+
+    const screen = projectToScreen(point, view, canvas.viewBox, rect);
+    const pad = 56;
+    const left = rect.left + pad;
+    const right = rect.right - drawerInset - pad;
+    const dx = screen.x > right ? right - screen.x : screen.x < left ? left - screen.x : 0;
+
+    if (Math.abs(dx) < 1) {
+      return;
+    }
+
+    const applied = { ...view, x: view.x + dx / scale };
+    drawerViewRef.current = { before: view, applied };
+    viewAutoRef.current = false;
+    setView(applied);
+  }, [surface, drawerInset, isStudio, view, selectedIds, focusId, positions, frameSize]);
 
   /**
    * 重置视角 returns to the observation this surface started from: the studio's
@@ -2728,8 +2916,15 @@ export function RelationshipGraph({
 
   /** Frame just the selected nodes, with the same margin the full fit uses. */
   function fitSelection() {
+    // Reading one character is reading their direct relations too: framing a single
+    // node zooms to it and leaves the names that answer "who is this to them" out of
+    // the picture.
+    const targetIds =
+      selectedIds.length === 1 && focusNeighbourhood
+        ? visibleCharacters.filter((character) => focusNeighbourhood.has(character.id)).map((character) => character.id)
+        : selectedIds;
     const chosen = visibleCharacters
-      .filter((character) => selectedIds.includes(character.id))
+      .filter((character) => targetIds.includes(character.id))
       .map((character) => layout.positions[character.id] ?? ringPositions[visibleCharacters.indexOf(character)]);
     if (!chosen.length) {
       return;
@@ -5518,7 +5713,7 @@ export function RelationshipGraph({
                 type="button"
               >
                 <Icon name="download" size={15} />
-                导出
+                <span>导出</span>
               </button>
               {isExportOpen &&
                 createPortal(
@@ -6073,6 +6268,7 @@ export function RelationshipGraph({
           {/* What acts on the canvas sits with the canvas: finding a character,
               zooming, and what the nodes show. The header keeps what the graph
               contains. */}
+          <div className="graph-canvas-head">
           <div className={`graph-tool-strip${isStudio ? " is-studio" : ""}`}>
             {/* The search is the one entry that is not an icon: it is a field, and
                 on a phone it keeps its own row above the canvas while the toolbar
@@ -6500,6 +6696,7 @@ export function RelationshipGraph({
               {prefs.showEdges ? `${drawnRelationships.length} 条关系` : "关系线已隐藏"}
             </p>
           )}
+          </div>
 
           {notOnCanvas && (
             <div className="graph-notice" role="status">
@@ -6802,7 +6999,12 @@ export function RelationshipGraph({
                 const edgeExempt = isEdgeSelected || touchesActiveSelection || touchesHovered;
               return (
                 <g
-                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens || edgeExempt ? "" : " lens-dim"}${inSpotlight || edgeExempt ? "" : " spotlight-dim"}`}
+                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens || edgeExempt ? "" : " lens-dim"}${inSpotlight || edgeExempt ? "" : " spotlight-dim"}${
+                    focusNeighbourhood &&
+                    !(focusNeighbourhood.has(relationship.fromId) && focusNeighbourhood.has(relationship.toId))
+                      ? " focus-dim"
+                      : ""
+                  }`}
                   data-emphasis={
                     isEdgeSelected
                       ? "selected"
@@ -6901,7 +7103,10 @@ export function RelationshipGraph({
               const lensDimsNode = lensActive && emphasis === "normal";
               // Below the floor, only the objects the author is working with keep a name,
               // and only until even that would be illegible.
-              const mustName = isSelected || isFocused || isHovered;
+              // While one character is being read, their direct relations keep a name
+              // even under the hub rule — that list is the point of the selection.
+              const mustName =
+                isSelected || isFocused || isHovered || (focusNeighbourhood !== null && isNeighbour);
               const labelled =
                 namesNode(density, {
                   hovered: isHovered,
@@ -6924,7 +7129,9 @@ export function RelationshipGraph({
                 hovered: isHovered,
                 outsideSpotlight,
                 dimmedByHover: Boolean(activeId && character.id !== activeId && !isNeighbour),
-              })}${lensDimsNode ? " lens-dim" : ""}`;
+              })}${lensDimsNode ? " lens-dim" : ""}${
+                focusNeighbourhood && !focusNeighbourhood.has(character.id) ? " focus-dim" : ""
+              }`;
               const avatarUrl = avatarUrls[character.id];
               // A ring drawn in world units disappears at the zoom a hundred-character
               // wheel is read at, which is exactly where "which one did I pick" matters.
@@ -7205,6 +7412,7 @@ export function RelationshipGraph({
                 }
                 className="graph-page-drawer"
                 data-level={sheetLevel}
+                ref={pageDrawerRef}
                 role="dialog"
               >
                 <div className="graph-page-drawer-head">
@@ -7695,6 +7903,11 @@ export function RelationshipGraph({
                             <button className="ghost-button" onClick={() => setSurface("design")} type="button">
                               外观
                             </button>
+                            {focusOverview && (
+                              <button className="ghost-button" onClick={returnToOverview} type="button">
+                                返回总览
+                              </button>
+                            )}
                             <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
                               清除选择
                             </button>

@@ -14053,6 +14053,21 @@ circle.graph-grid-dot {
   flex: 0 0 auto;
 }
 
+/* Reading one character: the pick and its one-hop neighbourhood keep full weight,
+   everything else steps back so names and edge labels are legible at the fit zoom.
+   It is a way of looking (like the lens), so it never touches coordinates. */
+.relationship-node.focus-dim,
+.relationship-edge.focus-dim {
+  opacity: 0.22;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .relationship-node,
+  .relationship-edge {
+    transition: opacity 160ms var(--ease-standard);
+  }
+}
+
 .graph-explore-neighbours {
   display: grid;
   gap: 4px;
@@ -14381,11 +14396,56 @@ circle.graph-grid-dot {
   }
 }
 
+/* The search row and the scope note are one line of context above the drawing. On a
+   phone they share that line instead of charging two: the note truncates, the search
+   keeps its target size. */
+.graph-canvas-head {
+  display: contents;
+}
+
 @media (max-width: 720px) {
   /* Canvas first: the row of controls leaves the top of the page and becomes a
      dock at the bottom edge, where a thumb reaches it. */
   .relationship-page:not(.graph-studio) {
     padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .relationship-page:not(.graph-studio) .workspace-header {
+    padding: 10px 12px 9px;
+  }
+
+  /* One hero, one action row. The export keeps its icon and its aria-label; its word
+     was the widest thing in a row that also has to hold 图谱/管理 and 新建关系. */
+  .graph-export-wrap .graph-toggle span {
+    display: none;
+  }
+
+  .graph-export-wrap .graph-toggle {
+    width: var(--control-h);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 var(--workspace-inset) 8px;
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-head .graph-tool-strip {
+    flex: 0 0 auto;
+    margin: 0;
+  }
+
+  .relationship-page:not(.graph-studio) .graph-canvas-head .graph-scope-note {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
   }
 
   /* The dock and the selection bar yield to an open task sheet instead of stacking
@@ -14897,10 +14957,12 @@ circle.graph-grid-dot {
    bottom of the canvas' box, so the two never share a container.
    ========================================================================= */
 
+/* Sprint 53.3: this page keeps its card. Dropping the edge made the relationship
+   graph the only workspace whose header was a divider on the page background; every
+   other screen states its identity inside a 1px-bordered surface. The nested-rectangle
+   worry is handled below — the canvas keeps its own frame, which is the same thing the
+   world manager does with its list panel. */
 .relationship-page:not(.graph-studio) {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
   /* Space between the guide and the site footer, inside the page's own column. */
   padding-bottom: 24px;
 }
