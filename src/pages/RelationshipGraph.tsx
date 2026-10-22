@@ -8511,10 +8511,6 @@ export function RelationshipGraph({
         </div>
       )}
 
-      {/* Under the drawing, never over it, and never in the studio: full screen exists
-          to give the canvas the room the guide would take. */}
-      {!isStudio && <GraphGuide />}
-
     </>
   );
 
@@ -8536,6 +8532,8 @@ export function RelationshipGraph({
               the card that holds the module. Two siblings, never one box around both. */}
           <div className="panel hero-card">{heroHeader}</div>
           <div className="panel relationship-workspace-card">{pageBody}</div>
+          {/* Under the work, outside the card: a line of the page, not another panel. */}
+          <GraphGuide />
         </>
       )}
     </section>

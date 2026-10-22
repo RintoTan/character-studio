@@ -1,0 +1,518 @@
+[
+ {
+  "label": "1440 Dashboard",
+  "m": {
+   "vp": "1440x900",
+   "hero": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 94,
+    "b": 203.8,
+    "w": 1120
+   },
+   "work": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 223.8,
+    "b": 6695.5,
+    "w": 1120
+   },
+   "heroTitle": {
+    "l": 179.5,
+    "r": 383.5,
+    "t": 137,
+    "b": 165.8,
+    "w": 204
+   },
+   "toolbar": null,
+   "searchInset": null,
+   "toolsRightInset": null,
+   "body": null,
+   "bodyInsetLeft": null,
+   "worldDetail": null,
+   "timelineToolbar": null,
+   "guide": null,
+   "guideText": null,
+   "guideInset": null,
+   "footer": null,
+   "footerText": null,
+   "guideToFooterText": null,
+   "footerPaddingTop": null,
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "1440 关系网",
+  "m": {
+   "vp": "1440x900",
+   "hero": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 94,
+    "b": 203.8,
+    "w": 1120
+   },
+   "work": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 223.8,
+    "b": 937.8,
+    "w": 1120
+   },
+   "heroTitle": {
+    "l": 179.5,
+    "r": 308.3,
+    "t": 137,
+    "b": 165.8,
+    "w": 128.8
+   },
+   "toolbar": {
+    "l": 179.5,
+    "r": 1249.5,
+    "t": 250.8,
+    "b": 294.8,
+    "w": 1070
+   },
+   "searchInset": 25,
+   "toolsRightInset": 25,
+   "body": {
+    "l": 179.5,
+    "r": 1249.5,
+    "t": 324.8,
+    "b": 920.8,
+    "w": 1070
+   },
+   "bodyInsetLeft": 25,
+   "worldDetail": null,
+   "timelineToolbar": null,
+   "guide": {
+    "l": 178.5,
+    "r": 1250.5,
+    "t": 989.8,
+    "b": 1101.9,
+    "w": 1072
+   },
+   "guideText": {
+    "l": 178.5,
+    "r": 232.6,
+    "t": 996.3,
+    "b": 1013.2,
+    "w": 54.1
+   },
+   "guideInset": 24,
+   "footer": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 1101.9,
+    "b": 1177.9,
+    "w": 1120
+   },
+   "footerText": 1141.9,
+   "guideToFooterText": 40,
+   "footerPaddingTop": "40px",
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "1440 世界观",
+  "m": {
+   "vp": "1440x900",
+   "hero": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 94,
+    "b": 214.6,
+    "w": 1120
+   },
+   "work": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 234.6,
+    "b": 896.8,
+    "w": 1120
+   },
+   "heroTitle": {
+    "l": 179.5,
+    "r": 319.5,
+    "t": 141,
+    "b": 174.6,
+    "w": 140
+   },
+   "toolbar": null,
+   "searchInset": null,
+   "toolsRightInset": null,
+   "body": {
+    "l": 179.5,
+    "r": 499.5,
+    "t": 411.8,
+    "b": 879.8,
+    "w": 320
+   },
+   "bodyInsetLeft": 25,
+   "worldDetail": {
+    "l": 519.5,
+    "r": 1249.5,
+    "t": 323.8,
+    "b": 861.6,
+    "w": 730
+   },
+   "timelineToolbar": null,
+   "guide": {
+    "l": 178.5,
+    "r": 1250.5,
+    "t": 948.8,
+    "b": 1060.9,
+    "w": 1072
+   },
+   "guideText": {
+    "l": 178.5,
+    "r": 232.6,
+    "t": 955.4,
+    "b": 972.3,
+    "w": 54.1
+   },
+   "guideInset": 24,
+   "footer": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 1060.9,
+    "b": 1136.9,
+    "w": 1120
+   },
+   "footerText": 1100.9,
+   "guideToFooterText": 40,
+   "footerPaddingTop": "40px",
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "1440 时间线",
+  "m": {
+   "vp": "1440x900",
+   "hero": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 94,
+    "b": 214.6,
+    "w": 1120
+   },
+   "work": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 234.6,
+    "b": 11810.1,
+    "w": 1120
+   },
+   "heroTitle": {
+    "l": 179.5,
+    "r": 347.5,
+    "t": 141,
+    "b": 174.6,
+    "w": 168
+   },
+   "toolbar": null,
+   "searchInset": null,
+   "toolsRightInset": null,
+   "body": {
+    "l": 205.5,
+    "r": 1249.5,
+    "t": 429.9,
+    "b": 582.7,
+    "w": 1044
+   },
+   "bodyInsetLeft": 51,
+   "worldDetail": null,
+   "timelineToolbar": {
+    "l": 179.5,
+    "r": 1249.5,
+    "t": 263.6,
+    "b": 309.8,
+    "w": 1070
+   },
+   "guide": {
+    "l": 178.5,
+    "r": 1250.5,
+    "t": 11862.1,
+    "b": 11974.2,
+    "w": 1072
+   },
+   "guideText": {
+    "l": 178.5,
+    "r": 232.6,
+    "t": 11868.6,
+    "b": 11885.5,
+    "w": 54.1
+   },
+   "guideInset": 24,
+   "footer": {
+    "l": 154.5,
+    "r": 1274.5,
+    "t": 11974.2,
+    "b": 12050.2,
+    "w": 1120
+   },
+   "footerText": 12014.2,
+   "guideToFooterText": 40,
+   "footerPaddingTop": "40px",
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "375 Dashboard",
+  "m": {
+   "vp": "375x812",
+   "hero": {
+    "l": 8,
+    "r": 356,
+    "t": 74,
+    "b": 147.4,
+    "w": 348
+   },
+   "work": {
+    "l": 8,
+    "r": 356,
+    "t": 167.4,
+    "b": 19624.6,
+    "w": 348
+   },
+   "heroTitle": {
+    "l": 23,
+    "r": 177,
+    "t": 111,
+    "b": 137.4,
+    "w": 154
+   },
+   "toolbar": null,
+   "searchInset": null,
+   "toolsRightInset": null,
+   "body": null,
+   "bodyInsetLeft": null,
+   "worldDetail": null,
+   "timelineToolbar": null,
+   "guide": null,
+   "guideText": null,
+   "guideInset": null,
+   "footer": null,
+   "footerText": null,
+   "guideToFooterText": null,
+   "footerPaddingTop": null,
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "375 关系网",
+  "m": {
+   "vp": "375x812",
+   "hero": {
+    "l": 8,
+    "r": 356,
+    "t": 74,
+    "b": 176,
+    "w": 348
+   },
+   "work": {
+    "l": 8,
+    "r": 356,
+    "t": 196,
+    "b": 726.7,
+    "w": 348
+   },
+   "heroTitle": {
+    "l": 67.7,
+    "r": 177.7,
+    "t": 85,
+    "b": 113.6,
+    "w": 110
+   },
+   "toolbar": {
+    "l": 25,
+    "r": 94,
+    "t": 211,
+    "b": 247,
+    "w": 69
+   },
+   "searchInset": 17,
+   "toolsRightInset": 262,
+   "body": {
+    "l": 25,
+    "r": 339,
+    "t": 253,
+    "b": 709.7,
+    "w": 314
+   },
+   "bodyInsetLeft": 17,
+   "worldDetail": null,
+   "timelineToolbar": null,
+   "guide": {
+    "l": 24,
+    "r": 340,
+    "t": 770.7,
+    "b": 924.5,
+    "w": 316
+   },
+   "guideText": {
+    "l": 24,
+    "r": 78.1,
+    "t": 777.3,
+    "b": 794.2,
+    "w": 54.1
+   },
+   "guideInset": 16,
+   "footer": {
+    "l": 8,
+    "r": 356,
+    "t": 986.5,
+    "b": 1090.5,
+    "w": 348
+   },
+   "footerText": 1026.5,
+   "guideToFooterText": 102,
+   "footerPaddingTop": "40px",
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "375 世界观",
+  "m": {
+   "vp": "375x812",
+   "hero": {
+    "l": 8,
+    "r": 356,
+    "t": 74,
+    "b": 231.4,
+    "w": 348
+   },
+   "work": {
+    "l": 8,
+    "r": 356,
+    "t": 251.4,
+    "b": 1313.6,
+    "w": 348
+   },
+   "heroTitle": {
+    "l": 25,
+    "r": 135.5,
+    "t": 115,
+    "b": 141.4,
+    "w": 110.5
+   },
+   "toolbar": null,
+   "searchInset": null,
+   "toolsRightInset": null,
+   "body": {
+    "l": 25,
+    "r": 339,
+    "t": 432.6,
+    "b": 1296.6,
+    "w": 314
+   },
+   "bodyInsetLeft": 17,
+   "worldDetail": {
+    "l": 0,
+    "r": 0,
+    "t": 0,
+    "b": 0,
+    "w": 0
+   },
+   "timelineToolbar": null,
+   "guide": {
+    "l": 24,
+    "r": 340,
+    "t": 1357.6,
+    "b": 1511.3,
+    "w": 316
+   },
+   "guideText": {
+    "l": 24,
+    "r": 78.1,
+    "t": 1364.1,
+    "b": 1381,
+    "w": 54.1
+   },
+   "guideInset": 16,
+   "footer": {
+    "l": 8,
+    "r": 356,
+    "t": 1595.3,
+    "b": 1699.3,
+    "w": 348
+   },
+   "footerText": 1635.3,
+   "guideToFooterText": 124,
+   "footerPaddingTop": "40px",
+   "docOverflow": 0
+  }
+ },
+ {
+  "label": "375 时间线",
+  "m": {
+   "vp": "375x812",
+   "hero": {
+    "l": 8,
+    "r": 356,
+    "t": 74,
+    "b": 231.4,
+    "w": 348
+   },
+   "work": {
+    "l": 8,
+    "r": 356,
+    "t": 251.4,
+    "b": 12914.2,
+    "w": 348
+   },
+   "heroTitle": {
+    "l": 25,
+    "r": 157,
+    "t": 115,
+    "b": 141.4,
+    "w": 132
+   },
+   "toolbar": null,
+   "searchInset": null,
+   "toolsRightInset": null,
+   "body": {
+    "l": 45,
+    "r": 339,
+    "t": 477.7,
+    "b": 649.5,
+    "w": 294
+   },
+   "bodyInsetLeft": 37,
+   "worldDetail": null,
+   "timelineToolbar": {
+    "l": 25,
+    "r": 339,
+    "t": 280.4,
+    "b": 368.6,
+    "w": 314
+   },
+   "guide": {
+    "l": 24,
+    "r": 340,
+    "t": 12958.2,
+    "b": 13112,
+    "w": 316
+   },
+   "guideText": {
+    "l": 24,
+    "r": 78.1,
+    "t": 12964.8,
+    "b": 12981.7,
+    "w": 54.1
+   },
+   "guideInset": 16,
+   "footer": {
+    "l": 8,
+    "r": 356,
+    "t": 13196,
+    "b": 13300,
+    "w": 348
+   },
+   "footerText": 13236,
+   "guideToFooterText": 124,
+   "footerPaddingTop": "40px",
+   "docOverflow": 0
+  }
+ }
+]

@@ -3188,7 +3188,9 @@ h2 {
   /* auto, not a fixed gap: on a short page this is what carries the footer to
      the bottom edge rather than leaving it mid-screen. */
   margin-top: auto;
-  padding: 18px 4px 18px;
+  /* `auto` still pushes the footer to the bottom of a short page; the padding is what
+     keeps the guide's last line from touching it on a long one. */
+  padding: 40px 4px 18px;
   text-align: center;
 }
 
@@ -10057,10 +10059,17 @@ body:has([aria-modal="true"]) .floating-actions {
 /* The reading column is now inside the module card, so it narrows the events without
    narrowing the card: the hero and the workspace keep one outer edge, and the reading
    measure stays 880px in the middle of it. */
+/* The 880px column used to wrap the toolbar, the year rail and every event, which left
+   120px of dead space on both sides of a 1120px card. The card is the column now; the
+   measure that matters — a line of prose — is capped inside the event instead. */
 .timeline-page > .timeline-workspace-card > :not(.workspace-header) {
-  width: calc(100% - 2 * var(--workspace-inset));
-  max-width: var(--container-reading);
-  margin-inline: auto;
+  margin-inline: var(--workspace-inset);
+}
+
+.timeline-page .timeline-card-title,
+.timeline-page .timeline-card p,
+.timeline-page .timeline-card-body {
+  max-width: 68ch;
 }
 
 .world-page .world-detail {
@@ -14404,8 +14413,13 @@ circle.graph-grid-dot {
 /* The search row and the scope note are one line of context above the drawing. On a
    phone they share that line instead of charging two: the note truncates, the search
    keeps its target size. */
+/* Desktop keeps the same single row, but as a box with the card's own insets: with
+   `display: contents` the strip was a child of the card without the 24px inset the
+   canvas below it had, so search sat on the card border and the tool cluster ended on
+   the opposite border. */
 .graph-canvas-head {
-  display: contents;
+  display: block;
+  margin-inline: var(--workspace-inset);
 }
 
 @media (max-width: 720px) {
@@ -14966,8 +14980,9 @@ circle.graph-grid-dot {
    dashboard's own hero class; the workspace card is the equivalent of the roster card.
    Nothing wraps both. */
 .relationship-page:not(.graph-studio) {
-  /* Space between the guide and the site footer, inside the page's own column. */
-  padding-bottom: 24px;
+  /* No extra bottom padding: the footer's own top padding is the one gap every page
+     uses, otherwise this page's guide sat 24px further from it than the others. */
+  padding-bottom: 0;
 }
 
 .relationship-page:not(.graph-studio) .relationship-workspace-card {
@@ -15026,8 +15041,14 @@ circle.graph-grid-dot {
    The tips are a loop, so the pager is two circular buttons that never disable.
    The block takes focus itself; arrows are handled only while focus is inside it.
    ========================================================================= */
+.relationship-page > .graph-guide,
+.world-page > .graph-guide,
+.timeline-page > .graph-guide {
+  margin-inline: var(--workspace-inset);
+}
+
 .graph-guide {
-  margin: 28px 0 0;
+  margin: 32px 0 0;
   padding: 0;
   border: 0;
   background: none;
