@@ -2457,6 +2457,10 @@ export function RelationshipGraph({
   // Neither is persisted: both end with the pointer.
   const axisLockRef = useRef<"x" | "y" | null>(null);
   const [dragGuides, setDragGuides] = useState<DragGuides | null>(null);
+  // Which axis Shift is holding right now, or null. Separate from the guides: a lock
+  // with no neighbour nearby still has to say so, and it must stop saying so the
+  // instant the key or the gesture ends.
+  const [shiftAxis, setShiftAxis] = useState<"x" | "y" | null>(null);
 
   const setDragRef = useRef<{
     pointerId: number;
@@ -2578,13 +2582,15 @@ export function RelationshipGraph({
   // checkerboard and a close-up is not a field of dots. Clamped, because a pattern
   // smaller than the stroke would disappear and a huge one would stop reading as paper.
   const gridScale = Math.max(view.k * (screenScale > 0 ? screenScale : 1), 0.001);
+  // The lines are solved for a constant on-screen step, but they stay tied to the
+  // author's spacing by a power of two: every line is either a snap point or a
+  // subdivision of one. Solving the step freely (40 / 1.5 = 26.67) drew a grid the
+  // snap could never land on, which reads as "snapping is broken" rather than as
+  // "the paper is a reference".
+  const wantedGridStep = style.canvas.gridSize / gridScale;
+  const gridRatio = Math.max(-2, Math.min(2, Math.round(Math.log2(wantedGridStep / style.canvas.gridSize))));
   const gridStep =
-    style.canvas.grid === "none"
-      ? style.canvas.gridSize
-      : Math.min(
-          style.canvas.gridSize * 2.4,
-          Math.max(style.canvas.gridSize * 0.45, style.canvas.gridSize / gridScale),
-        );
+    style.canvas.grid === "none" ? style.canvas.gridSize : style.canvas.gridSize * 2 ** gridRatio;
   const gridDotRadius = Math.min(2.4, Math.max(0.8, 1.05 / gridScale));
   // Distance is calmer than proximity: a far view keeps the paper but stops competing
   // with the structure. Two ends, no oscillation, because this is a paint value.
@@ -3911,7 +3917,7 @@ export function RelationshipGraph({
     const moving = new Set(args.ids);
     const points = args.ids.map((id) => args.base[id]).filter(Boolean);
     if (points.length === 0) {
-      return { positions: args.base, guides: null as DragGuides | null };
+      return { positions: args.base, guides: null as DragGuides | null, snapped: false };
     }
 
     const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length + dx;
@@ -3941,20 +3947,41 @@ export function RelationshipGraph({
     // Explicit beats implicit: with 网格吸附 on, the lattice decides and the guides are
     // only a read-out. On a hundred-node canvas a 6px catch radius finds a neighbour
     // almost every frame, so letting guides win would make the grid appear broken.
+    //
+    // `centerX`/`centerY` already include the drag delta, so the lattice is solved
+    // against them directly. Adding the delta a second time (as this did) snapped the
+    // point the pointer would reach at twice the distance, and the released node landed
+    // an arbitrary remainder away from every grid line.
     const step = style.canvas.gridSize;
+    // `axisLockRef` names the axis the gesture is free to move on; the other one is
+    // frozen. A locked axis is a promise, so nothing may nudge it — not the lattice and
+    // not a neighbour's centre. (It was enough to watch the axis, and the old code
+    // snapped the frozen one back onto the grid the moment Shift was held.)
+    const frozenX = args.shiftKey && axisLockRef.current === "y";
+    const frozenY = args.shiftKey && axisLockRef.current === "x";
     if (style.canvas.snap && step > 0) {
-      const targetX = centerX + dx;
-      const targetY = centerY + dy;
-      dx += Math.round(targetX / step) * step - targetX;
-      dy += Math.round(targetY / step) * step - targetY;
+      if (!frozenX) {
+        dx += Math.round(centerX / step) * step - centerX;
+      }
+      if (!frozenY) {
+        dy += Math.round(centerY / step) * step - centerY;
+      }
     } else {
-      if (guideX !== null) {
+      if (guideX !== null && !frozenX) {
         dx += guideX - centerX;
       }
-      if (guideY !== null) {
+      if (guideY !== null && !frozenY) {
         dy += guideY - centerY;
       }
     }
+
+    // The guides report where the node actually ended up, not where it could have
+    // gone: a lattice snap rarely lands on a neighbour's centre, and drawing a line
+    // there would claim an alignment the drop did not make.
+    const finalX = centerX + dx;
+    const finalY = centerY + dy;
+    const shownX = guideX !== null && Math.abs(guideX - finalX) <= 0.5 ? guideX : null;
+    const shownY = guideY !== null && Math.abs(guideY - finalY) <= 0.5 ? guideY : null;
 
     const positions: Record<string, LayoutPoint> = { ...args.base };
     for (const id of args.ids) {
@@ -3969,8 +3996,9 @@ export function RelationshipGraph({
 
     return {
       positions,
-      guides: guideX === null && guideY === null ? null : { x: guideX, y: guideY },
-    } as { positions: Record<string, LayoutPoint>; guides: DragGuides | null };
+      snapped: style.canvas.snap && step > 0,
+      guides: shownX === null && shownY === null ? null : { x: shownX, y: shownY },
+    } as { positions: Record<string, LayoutPoint>; guides: DragGuides | null; snapped: boolean };
   }
 
   /**
@@ -4202,10 +4230,15 @@ export function RelationshipGraph({
           ids: setDrag.members,
           delta,
           shiftKey: event.shiftKey,
+          // Screen pixels, not view-box units: the drawing is scaled by `view.k`, so a
+          // 6px pull was a 6k-unit pull and felt looser the further the author zoomed in.
           worldPerPx:
-            Number(canvas.viewBox.split(" ")[2]) / event.currentTarget.getBoundingClientRect().width,
+            Number(canvas.viewBox.split(" ")[2]) /
+            event.currentTarget.getBoundingClientRect().width /
+            (view.k || 1),
         });
         setDragGuides(constrained.guides);
+        setShiftAxis(event.shiftKey ? axisLockRef.current : null);
         scheduleDrag(constrained.positions);
       }
       return;
@@ -4242,10 +4275,15 @@ export function RelationshipGraph({
             y: world.y + nodeDrag.grab.y - (basePoint?.y ?? world.y + nodeDrag.grab.y),
           },
           shiftKey: event.shiftKey,
+          // Screen pixels, not view-box units: the drawing is scaled by `view.k`, so a
+          // 6px pull was a 6k-unit pull and felt looser the further the author zoomed in.
           worldPerPx:
-            Number(canvas.viewBox.split(" ")[2]) / event.currentTarget.getBoundingClientRect().width,
+            Number(canvas.viewBox.split(" ")[2]) /
+            event.currentTarget.getBoundingClientRect().width /
+            (view.k || 1),
         });
         setDragGuides(constrained.guides);
+        setShiftAxis(event.shiftKey ? axisLockRef.current : null);
         scheduleDrag(constrained.positions);
       }
       return;
@@ -4267,21 +4305,19 @@ export function RelationshipGraph({
           ids: groupDrag.members,
           delta,
           shiftKey: event.shiftKey,
+          // Screen pixels, not view-box units: the drawing is scaled by `view.k`, so a
+          // 6px pull was a 6k-unit pull and felt looser the further the author zoomed in.
           worldPerPx:
-            Number(canvas.viewBox.split(" ")[2]) / event.currentTarget.getBoundingClientRect().width,
+            Number(canvas.viewBox.split(" ")[2]) /
+            event.currentTarget.getBoundingClientRect().width /
+            (view.k || 1),
         });
+        // `constrainedDrag` already applies the gesture delta to every member; adding
+        // it again here moved a dragged group at twice the pointer's speed and made
+        // the lattice unreachable from this path.
         setDragGuides(constrained.guides);
-        const next = { ...constrained.positions };
-        for (const id of groupDrag.members) {
-          const point = constrained.positions[id];
-          if (point) {
-            next[id] = {
-              x: Math.round((point.x + delta.x) * 100) / 100,
-              y: Math.round((point.y + delta.y) * 100) / 100,
-            };
-          }
-        }
-        scheduleDrag(next);
+        setShiftAxis(event.shiftKey ? axisLockRef.current : null);
+        scheduleDrag(constrained.positions);
       }
       return;
     }
@@ -4327,11 +4363,15 @@ export function RelationshipGraph({
     pressedNodeRef.current = null;
     setPressedGroupId(null);
     setLivePositions(null);
+    setDragGuides(null);
+    setShiftAxis(null);
+    axisLockRef.current = null;
     stopDragFrame();
   }
 
   function endPan(event: ReactPointerEvent<SVGSVGElement>) {
     setDragGuides(null);
+    setShiftAxis(null);
     axisLockRef.current = null;
     const nodeDrag = nodeDragRef.current;
     const groupDrag = groupDragRef.current;
@@ -7503,7 +7543,7 @@ export function RelationshipGraph({
 
           {/* State, not actions: which tool is on and whether moves snap. Shown only
               when it differs from the default, so a phone does not pay for it. */}
-          {(selectMode || multiSelectMode || style.canvas.snap || dragGuides) && (
+          {(selectMode || multiSelectMode || style.canvas.snap || shiftAxis) && (
             <div className="graph-status-row" data-testid="graph-status">
               {multiSelectMode || selectMode ? (
                 <span className="graph-status-chip on" data-testid="status-tool">
@@ -7515,7 +7555,11 @@ export function RelationshipGraph({
                   吸附 {style.canvas.gridSize}
                 </span>
               )}
-              {dragGuides && <span className="graph-status-chip on">Shift 锁定</span>}
+              {shiftAxis && (
+                <span className="graph-status-chip on" data-testid="status-shift">
+                  Shift 锁定{shiftAxis === "x" ? "水平" : "垂直"}
+                </span>
+              )}
             </div>
           )}
 
@@ -7900,21 +7944,34 @@ export function RelationshipGraph({
                   {/* Density gate, with a way through it: on a large canvas the words
                       are simplified, but the edges of whatever is selected or pointed at
                       still name themselves. Otherwise the setting looks broken. */}
-                  {style.edge.showLabel &&
-                    (visibleCharacters.length <= 60 || touchesHovered || touchesActiveSelection) &&
+                  {(() => {
+                    // The word on the selected line is an answer, so it is drawn at a
+                    // size that can be read even on a hundred-node wheel: the floor is
+                    // ten screen pixels, and only the selected edge is allowed to grow.
+                    const renderedPx = style.edge.labelSize * view.k * (measured ? screenScale : 1);
+                    const labelFont =
+                      isEdgeSelected && !exporting && renderedPx > 0 && renderedPx < 10
+                        ? Math.min(60, (style.edge.labelSize * 10) / renderedPx)
+                        : style.edge.labelSize;
+                    return style.edge.showLabel &&
+                    (visibleCharacters.length <= 60 || touchesHovered || touchesActiveSelection || isEdgeSelected) &&
                     inLens &&
-                    (exporting || style.edge.labelSize * view.k * (measured ? screenScale : 1) >= 6) &&
+                    (exporting || labelFont * view.k * (measured ? screenScale : 1) >= 6) &&
                     (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
                       touchesHovered ||
-                      touchesActiveSelection) && (
+                      touchesActiveSelection ||
+                      // A line the author picked is the one line they are asking about:
+                      // the density rule is about crowding, not about this answer.
+                      isEdgeSelected) && (
                     <text
-                      style={{ fontSize: `${style.edge.labelSize}px` }}
+                      style={{ fontSize: `${labelFont}px` }}
                       x={labelPlacements.get(relationship.id)?.x ?? geometry.labelX}
                       y={labelPlacements.get(relationship.id)?.y ?? geometry.labelY}
                     >
                       {relationshipKindLabel(relationship.kind)}
                     </text>
-                  )}
+                    );
+                  })()}
                 </g>
               );
             })}
@@ -8762,9 +8819,6 @@ export function RelationshipGraph({
                                 编辑
                               </button>
                             )}
-                            <button className="ghost-button" onClick={() => setSurface("design")} type="button">
-                              外观
-                            </button>
                             {focusOverview && (
                               <button className="ghost-button" onClick={returnToOverview} type="button">
                                 返回总览
@@ -8774,7 +8828,11 @@ export function RelationshipGraph({
                               清除选择
                             </button>
                             {multiSelectMode && (
-                              <button className="ghost-button" onClick={() => setMultiSelectMode(false)} type="button">
+                              <button
+                                className="ghost-button graph-wide-only"
+                                onClick={() => setMultiSelectMode(false)}
+                                type="button"
+                              >
                                 退出多选
                               </button>
                             )}
@@ -8803,10 +8861,14 @@ export function RelationshipGraph({
                           排列
                         </button>
                         <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
-                          取消选择
+                          清除选择
                         </button>
                         {multiSelectMode && (
-                          <button className="ghost-button" onClick={() => setMultiSelectMode(false)} type="button">
+                          <button
+                            className="ghost-button graph-wide-only"
+                            onClick={() => setMultiSelectMode(false)}
+                            type="button"
+                          >
                             退出多选
                           </button>
                         )}
@@ -8896,6 +8958,14 @@ export function RelationshipGraph({
                         </button>
                       </div>
                     </div>
+                    <button
+                      className="ghost-button small graph-mobile-only"
+                      data-testid="align-close"
+                      onClick={() => setIsAlignOpen(false)}
+                      type="button"
+                    >
+                      完成
+                    </button>
                     <p className="graph-align-note">
                       {arrangeAvailability(selectedIds.length).reason ??
                         (selectedIds.length < 3

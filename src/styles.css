@@ -13104,6 +13104,15 @@ circle.graph-grid-dot {
   width: 100%;
 }
 
+/* The relationship-label controls are one object (a switch, three sliders and a
+   note). Dropped into one cell of the two-column style grid they were 157px wide and
+   sat in the right-hand column with an empty cell beside them, which is the broken
+   layout the design drawer showed. They take the full width of the section. */
+.graph-style-grid > .graph-label-controls {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .graph-label-row em {
   font-style: normal;
   text-align: right;
@@ -14161,6 +14170,25 @@ circle.graph-grid-dot {
     grid-template-areas: none;
   }
 
+  /* The studio is a column on a phone, so a grid area no longer places the state
+     chips: without this they were a flex item and took 35px of the drawing the moment
+     a tool was switched on — the picture jumped every time the mode changed. They
+     float above the dock instead. */
+  /* Top corner, not the bottom one: the selection card floats above the dock, and a
+     chip sharing that corner was drawn behind the card's edge, so "多选" read as "5选". */
+  .graph-studio .graph-status-row {
+    position: absolute;
+    top: 66px;
+    right: 12px;
+    bottom: auto;
+    left: 12px;
+    max-width: none;
+    margin: 0;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+
   /* The stack again, with the drawing taking what the chrome leaves. */
   .graph-studio .graph-canvas-holder {
     flex: 1 1 auto;
@@ -15050,6 +15078,23 @@ circle.graph-grid-dot {
   display: none;
 }
 
+/* State chips are a corner read-out, not a column. Without an area of their own they
+   were auto-placed into an implicit fourth column and stretched to the row's height —
+   a 68x836 band down the right edge of the drawing, which is what "Shift 锁定" was
+   drawing behind. They are pinned to the end of the canvas cell instead, sized to
+   their own content and inert to the pointer so a drag can pass through them. */
+.graph-studio .graph-status-row {
+  grid-area: canvas;
+  order: 5;
+  align-self: end;
+  justify-self: end;
+  max-width: min(70%, 420px);
+  margin: 0 14px calc(14px + env(safe-area-inset-bottom, 0px)) 0;
+  justify-content: flex-end;
+  pointer-events: none;
+  z-index: var(--z-overlay-3);
+}
+
 .graph-studio .graph-context {
   box-shadow: var(--shadow-strong);
 }
@@ -15293,13 +15338,74 @@ circle.graph-grid-dot {
     margin-bottom: 6px;
   }
 
-  .graph-context-row {
-    gap: 8px;
+  /* The selection bar on a phone is one line: what is selected on the left, the three
+     commands that act on that selection on the right. It used to be a desktop row
+     that wrapped — a count, then a row of buttons, then the leftovers — 136px of
+     stacked chrome over the drawing. Everything that is not about this selection
+     (appearance, grouping, exit) is one press away in the dock or the 排列 sheet. */
+  .graph-context.selection .graph-context-row {
+    flex-wrap: nowrap;
+    gap: 6px;
+    align-items: center;
   }
 
-  .graph-context-actions {
-    margin-left: 0;
-    width: 100%;
+  .graph-context.selection .graph-context-actions {
+    flex-wrap: nowrap;
+    margin-left: auto;
+    width: auto;
+    gap: 6px;
+  }
+
+  .graph-context-count {
+    white-space: nowrap;
+    font-size: 12.5px;
+  }
+
+  .graph-context.selection .ghost-button {
+    min-height: 44px;
+    padding: 0 10px;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+
+  /* The single-selection bar names its object; a long name yields before the
+     commands do. The degree badge is the first thing to go — the drawing already
+     shows the lines. */
+  .graph-context.selection .graph-context-single {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .graph-context.selection .graph-context-char-name {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .graph-context.selection .graph-context-badge {
+    display: none;
+  }
+
+  /* The align panel opens inside the card it belongs to and scrolls in place, so the
+     bar's own row is never pushed off the top of the screen. */
+  .graph-context .graph-align-panel {
+    max-height: min(46dvh, 340px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* Only worth a row on a phone: on a desktop the panel is already in view and the
+   button is the 排列 toggle that opened it. */
+.graph-mobile-only {
+  display: none;
+}
+
+@media (max-width: 720px) {
+  .graph-mobile-only {
+    display: inline-flex;
   }
 }
 
@@ -15307,6 +15413,33 @@ circle.graph-grid-dot {
    the answer is smaller controls, not fewer of them — each one here is a distinct
    job, and hiding one would only move the problem to 更多. */
 @media (max-width: 360px) {
+  /* The selection bar keeps one row at the narrowest width by shrinking the type and
+     the padding, not by wrapping: three stacked rows over the drawing was the thing
+     this bar had to stop doing. */
+  .graph-context.selection {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .graph-context.selection .graph-context-count {
+    font-size: 12px;
+  }
+
+  .graph-context.selection .ghost-button {
+    min-height: 40px;
+    padding: 0 7px;
+    font-size: 12.5px;
+  }
+
+  .graph-context.selection .graph-context-actions {
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .graph-context.selection .graph-context-actions .ghost-button {
+    flex: 0 0 auto;
+  }
+
   .relationship-page:not(.graph-studio) .graph-canvas-tools {
     gap: 0;
     padding: 4px 6px calc(4px + env(safe-area-inset-bottom, 0px));
@@ -16161,4 +16294,39 @@ circle.graph-grid-dot {
 /* The status line belongs to the toolbar above the drawing, not to the drawing. */
 .graph-scope-note {
   margin: 2px 0 10px;
+}
+
+/* ---------------------------------------------------------------------------
+   Phone studio: the selection card floats above the dock.
+
+   Declared last on purpose. The studio's desktop rule gives the card a place in the
+   canvas cell and `position: relative`; on a phone the studio is a flex column, so
+   that cell is meaningless and the card became a flex item — every selection took
+   its own height out of the drawing and the picture jumped by 72px. Same markup,
+   same state; only the geometry differs, and it has to be stated after the desktop
+   rule that it overrides.
+   ------------------------------------------------------------------------- */
+@media (max-width: 720px) {
+  .graph-studio .graph-context-slot {
+    position: absolute;
+    right: 12px;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    align-self: auto;
+    margin: 0;
+    z-index: var(--z-overlay-4);
+  }
+
+  /* The arrange panel opens upward from the card, so it can never be pushed off the
+     bottom edge by the card's own position. */
+  .graph-studio .graph-context .graph-align-panel {
+    position: absolute;
+    top: auto;
+    right: 0;
+    bottom: calc(100% + 6px);
+    left: 0;
+    max-height: min(46dvh, 340px);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
 }
