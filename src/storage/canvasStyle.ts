@@ -148,12 +148,12 @@ const PRESET_PATCHES: Record<CanvasPresetId, DeepPartial<CanvasStyle>> = {
   archive: {
     node: { size: 0.92, form: "compact", showAvatars: false, nameScale: 1, borderColor: "#b6a899", background: "#fffdf8" },
     edge: { color: "#7a6a58", width: 1, showLabel: true, labelBackground: true, arrow: "thin" },
-    canvas: { background: "#f7f2e8", grid: "lines", gridSize: 40, gridOpacity: 0.35 },
+    canvas: { background: "#f7f2e8", grid: "lines", gridSize: 40, gridOpacity: 0.35, snap: false },
   },
   portrait: {
     node: { size: 1.35, form: "avatar", nameScale: 1.2, showAvatars: true },
     edge: { width: 1.2, labelSize: 11, showLabel: false, labelT: 0.5, labelOffset: LABEL_OFFSET_DEFAULT },
-    canvas: { grid: "none" },
+    canvas: { grid: "none", snap: true },
   },
   faction: {
     node: { size: 1, form: "avatar", shape: "circle" },
@@ -323,8 +323,8 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
       background: typeof canvas.background === "string" ? canvas.background : base.canvas.background,
       grid: canvas.grid === "none" || canvas.grid === "lines" ? canvas.grid : base.canvas.grid,
       gridSize: num(canvas.gridSize, base.canvas.gridSize, 16, 120),
-      gridOpacity: num(canvas.gridOpacity, base.canvas.gridOpacity, 0.05, 0.8),
       snap: typeof canvas.snap === "boolean" ? canvas.snap : base.canvas.snap,
+      gridOpacity: num(canvas.gridOpacity, base.canvas.gridOpacity, 0.05, 0.8),
     },
   };
 }

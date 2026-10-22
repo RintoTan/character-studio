@@ -298,6 +298,9 @@ const LABEL_GAP_MIN = 12;
 const FOCUS_MAX_ZOOM = 4;
 // The fit view: a tenth of the frame left as margin, and never more than this much
 // magnification, so a two-node graph is not drawn as two plates.
+/** How near a centre has to come before an alignment line appears, in screen px. */
+const GUIDE_PX = 6;
+
 const FIT_MARGIN = 0.1;
 const FIT_MAX_ZOOM = 1.6;
 // Automatic framing stops at a *visible* zoom, not at a multiple of the drawing's own
@@ -1588,6 +1591,8 @@ function useAvatarRatios(urls: Record<string, string>) {
   return ratios;
 }
 
+type DragGuides = { x: number | null; y: number | null };
+
 export function RelationshipGraph({
   characters,
   onBack,
@@ -2433,6 +2438,11 @@ export function RelationshipGraph({
   // A press on one member of a multi-selection moves the whole set. It is a
   // different gesture from a group border: a group is a saved fact, a selection is
   // what the reader has picked right now, and they must not share state.
+  // Shift axis lock for the current gesture, and the alignment lines it produces.
+  // Neither is persisted: both end with the pointer.
+  const axisLockRef = useRef<"x" | "y" | null>(null);
+  const [dragGuides, setDragGuides] = useState<DragGuides | null>(null);
+
   const setDragRef = useRef<{
     pointerId: number;
     start: LayoutPoint;
@@ -3851,6 +3861,104 @@ export function RelationshipGraph({
   }, [canvas.viewBox]);
 
   /**
+   * Shift-lock and alignment snapping, applied to whatever is being dragged.
+   *
+   * The axis is chosen once, from the direction the drag already leans, and only while
+   * Shift is held: releasing it resumes free movement, pressing it again re-reads the
+   * lean. Guides are measured in screen pixels (`worldPerPx` converts), so a 6px pull
+   * feels the same at 20% and at 200%. Grid rounding is the fallback — an explicit
+   * alignment is a stronger statement than a lattice — and only applies when the style
+   * has snapping on, which is a separate decision from showing the grid.
+   */
+  function constrainedDrag(args: {
+    base: Record<string, LayoutPoint>;
+    ids: string[];
+    delta: { x: number; y: number };
+    shiftKey: boolean;
+    worldPerPx: number;
+  }) {
+    let dx = args.delta.x;
+    let dy = args.delta.y;
+
+    if (args.shiftKey) {
+      if (!axisLockRef.current) {
+        axisLockRef.current = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+      }
+      if (axisLockRef.current === "x") {
+        dy = 0;
+      } else {
+        dx = 0;
+      }
+    } else {
+      axisLockRef.current = null;
+    }
+
+    const moving = new Set(args.ids);
+    const points = args.ids.map((id) => args.base[id]).filter(Boolean);
+    if (points.length === 0) {
+      return { positions: args.base, guides: null as DragGuides | null };
+    }
+
+    const centerX = points.reduce((sum, point) => sum + point.x, 0) / points.length + dx;
+    const centerY = points.reduce((sum, point) => sum + point.y, 0) / points.length + dy;
+    const reach = args.worldPerPx * GUIDE_PX;
+
+    let guideX: number | null = null;
+    let guideY: number | null = null;
+    let bestX = reach;
+    let bestY = reach;
+    for (const [id, point] of Object.entries(args.base)) {
+      if (moving.has(id)) {
+        continue;
+      }
+      const gapX = Math.abs(point.x - centerX);
+      if (gapX <= bestX) {
+        bestX = gapX;
+        guideX = point.x;
+      }
+      const gapY = Math.abs(point.y - centerY);
+      if (gapY <= bestY) {
+        bestY = gapY;
+        guideY = point.y;
+      }
+    }
+
+    // Explicit beats implicit: with 网格吸附 on, the lattice decides and the guides are
+    // only a read-out. On a hundred-node canvas a 6px catch radius finds a neighbour
+    // almost every frame, so letting guides win would make the grid appear broken.
+    const step = style.canvas.gridSize;
+    if (style.canvas.snap && step > 0) {
+      const targetX = centerX + dx;
+      const targetY = centerY + dy;
+      dx += Math.round(targetX / step) * step - targetX;
+      dy += Math.round(targetY / step) * step - targetY;
+    } else {
+      if (guideX !== null) {
+        dx += guideX - centerX;
+      }
+      if (guideY !== null) {
+        dy += guideY - centerY;
+      }
+    }
+
+    const positions: Record<string, LayoutPoint> = { ...args.base };
+    for (const id of args.ids) {
+      const point = args.base[id];
+      if (point) {
+        positions[id] = {
+          x: Math.round((point.x + dx) * 100) / 100,
+          y: Math.round((point.y + dy) * 100) / 100,
+        };
+      }
+    }
+
+    return {
+      positions,
+      guides: guideX === null && guideY === null ? null : { x: guideX, y: guideY },
+    } as { positions: Record<string, LayoutPoint>; guides: DragGuides | null };
+  }
+
+  /**
    * How far a press may travel before it counts as a drag.
    *
    * A finger rolls by a few pixels when it taps, so the touch threshold is larger
@@ -4074,7 +4182,16 @@ export function RelationshipGraph({
       }
 
       if (setDrag.moved) {
-        scheduleDrag(translateMemberPositions(setDrag.base.positions, setDrag.members, delta));
+        const constrained = constrainedDrag({
+          base: setDrag.base.positions,
+          ids: setDrag.members,
+          delta,
+          shiftKey: event.shiftKey,
+          worldPerPx:
+            Number(canvas.viewBox.split(" ")[2]) / event.currentTarget.getBoundingClientRect().width,
+        });
+        setDragGuides(constrained.guides);
+        scheduleDrag(constrained.positions);
       }
       return;
     }
@@ -4101,13 +4218,20 @@ export function RelationshipGraph({
 
       if (nodeDrag.moved) {
         const world = drawingPoint(event.clientX, event.clientY, event.currentTarget);
-        scheduleDrag({
-          ...nodeDrag.base.positions,
-          [nodeDrag.id]: {
-            x: Math.round((world.x + nodeDrag.grab.x) * 100) / 100,
-            y: Math.round((world.y + nodeDrag.grab.y) * 100) / 100,
+        const basePoint = nodeDrag.base.positions[nodeDrag.id];
+        const constrained = constrainedDrag({
+          base: nodeDrag.base.positions,
+          ids: [nodeDrag.id],
+          delta: {
+            x: world.x + nodeDrag.grab.x - (basePoint?.x ?? world.x + nodeDrag.grab.x),
+            y: world.y + nodeDrag.grab.y - (basePoint?.y ?? world.y + nodeDrag.grab.y),
           },
+          shiftKey: event.shiftKey,
+          worldPerPx:
+            Number(canvas.viewBox.split(" ")[2]) / event.currentTarget.getBoundingClientRect().width,
         });
+        setDragGuides(constrained.guides);
+        scheduleDrag(constrained.positions);
       }
       return;
     }
@@ -4123,9 +4247,18 @@ export function RelationshipGraph({
       }
 
       if (groupDrag.moved) {
-        const next = { ...groupDrag.base.positions };
+        const constrained = constrainedDrag({
+          base: groupDrag.base.positions,
+          ids: groupDrag.members,
+          delta,
+          shiftKey: event.shiftKey,
+          worldPerPx:
+            Number(canvas.viewBox.split(" ")[2]) / event.currentTarget.getBoundingClientRect().width,
+        });
+        setDragGuides(constrained.guides);
+        const next = { ...constrained.positions };
         for (const id of groupDrag.members) {
-          const point = groupDrag.base.positions[id];
+          const point = constrained.positions[id];
           if (point) {
             next[id] = {
               x: Math.round((point.x + delta.x) * 100) / 100,
@@ -4183,6 +4316,8 @@ export function RelationshipGraph({
   }
 
   function endPan(event: ReactPointerEvent<SVGSVGElement>) {
+    setDragGuides(null);
+    axisLockRef.current = null;
     const nodeDrag = nodeDragRef.current;
     const groupDrag = groupDragRef.current;
     const pan = panRef.current;
@@ -6060,6 +6195,16 @@ export function RelationshipGraph({
                       <option value="none">无</option>
                     </select>
                   </label>
+                  <label className="graph-style-switch">
+                    位置吸附
+                    <input
+                      checked={style.canvas.snap}
+                      data-testid="grid-snap"
+                      onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, snap: event.target.checked } })}
+                      type="checkbox"
+                    />
+                    <span className="graph-style-value">{style.canvas.snap ? `吸附 ${style.canvas.gridSize}` : "自由"}</span>
+                  </label>
                   <label>网格密度
                     <span className="graph-style-label">间距<span className="graph-style-value">{style.canvas.gridSize}</span></span>
                     <input aria-label="网格密度" max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } }, "grid-size")} step={4} type="range" value={style.canvas.gridSize} />
@@ -7531,6 +7676,36 @@ export function RelationshipGraph({
                   ) : null,
                 )}
             </defs>
+            {/* Alignment lines exist only while a drag is snapping. They are derived,
+                never stored: nothing about them reaches the layout record. */}
+            {dragGuides &&
+              (() => {
+                const [viewX, viewY, viewWidth, viewHeight] = canvas.viewBox.split(" ").map(Number);
+                return (
+                  <g className="graph-guides" pointerEvents="none">
+                    {dragGuides.x !== null && (
+                      <line
+                        className="graph-guide-line"
+                        vectorEffect="non-scaling-stroke"
+                        x1={dragGuides.x}
+                        x2={dragGuides.x}
+                        y1={viewY}
+                        y2={viewY + viewHeight}
+                      />
+                    )}
+                    {dragGuides.y !== null && (
+                      <line
+                        className="graph-guide-line"
+                        vectorEffect="non-scaling-stroke"
+                        x1={viewX}
+                        x2={viewX + viewWidth}
+                        y1={dragGuides.y}
+                        y2={dragGuides.y}
+                      />
+                    )}
+                  </g>
+                );
+              })()}
             <g transform={`translate(${view.x} ${view.y}) scale(${view.k})`}>
             {style.canvas.grid !== "none" && (
               <rect
@@ -8555,14 +8730,14 @@ export function RelationshipGraph({
                     })()
                   ) : (
                     <>
-                      <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
-                      <span className={`graph-context-mode${selectMode || multiSelectMode ? " on" : ""}`}>
-                        {multiSelectMode
-                          ? "多选模式：点按节点增删角色"
-                          : selectMode
-                            ? "选择工具：点按加入或移出，空白处拖动框选"
-                            : "浏览：点按替换选择"}
+                      <span className="graph-context-count">已选 {selectedIds.length}</span>
+                      {/* Mode and snapping are state, not actions: one short chip each,
+                          so the bar stays a bar instead of becoming a panel. */}
+                      <span className={`graph-status-chip${selectMode || multiSelectMode ? " on" : ""}`}>
+                        {multiSelectMode ? "多选" : selectMode ? "选择工具" : "浏览"}
                       </span>
+                      {style.canvas.snap && <span className="graph-status-chip">吸附 {style.canvas.gridSize}</span>}
+                      {dragGuides && <span className="graph-status-chip on">Shift 锁定</span>}
                       <div className="graph-context-actions">
                         <button className="ghost-button" onClick={fitSelection} type="button">
                           适应选中
@@ -8576,17 +8751,6 @@ export function RelationshipGraph({
                           type="button"
                         >
                           排列
-                        </button>
-                        <button
-                          className="ghost-button"
-                          disabled={selectedIds.length < 2}
-                          onClick={() => {
-                            setGroupDraft({ name: "", editingId: null });
-                            setSurface("groups");
-                          }}
-                          type="button"
-                        >
-                          创建分组
                         </button>
                         <button className="ghost-button" onClick={() => setSurface("design")} type="button">
                           外观
@@ -8613,6 +8777,17 @@ export function RelationshipGraph({
                 </div>
                 {isAlignOpen && selectedIds.length >= 2 && (
                   <div className="graph-align-panel" role="group" aria-label="对齐与分布">
+                    <button
+                      className="ghost-button small"
+                      onClick={() => {
+                        setGroupDraft({ name: "", editingId: null });
+                        setIsAlignOpen(false);
+                        setSurface("groups");
+                      }}
+                      type="button"
+                    >
+                      创建分组
+                    </button>
                     <div className="graph-align-section">
                       <span className="graph-align-title">对齐</span>
                       <div className="graph-align-grid">
