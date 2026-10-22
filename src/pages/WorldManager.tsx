@@ -273,7 +273,10 @@ export function WorldManager({
   const detailVisible = !isNarrowScreen || phonePane === "detail";
 
   return (
-    <section className="workspace-card world-page" id="workspace-world">
+    <section className="page-grid world-page" id="workspace-world">
+      {/* Two siblings, the same pair the character workspace uses: a hero card, a 20px
+          gap, then the module's own card. The page itself is not a card. */}
+      <div className="panel hero-card">
       <WorkspaceHeader
         eyebrow="世界观"
         title="世界观管理"
@@ -298,7 +301,9 @@ export function WorldManager({
           </>
         }
       />
+      </div>
 
+      <div className="panel world-workspace-card">
       {/* Search and filtering over the whole set, above the two panes: name, summary,
           details, tags and character names, plus the three structural filters. */}
       <div className="world-toolbar" ref={filterWrapRef}>
@@ -711,6 +716,8 @@ export function WorldManager({
           </div>
         </div>
       )}
+
+      </div>
 
       {/* Same block as the graph's: a flat line under the work, one tip at a time. */}
       <WorldGuide />

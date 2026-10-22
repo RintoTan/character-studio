@@ -6211,9 +6211,14 @@ body:has([aria-modal="true"]) .floating-actions {
     justify-content: flex-start;
   }
 
-  /* The band itself is gone on a phone: its title repeated the workspace name in the
-     bar above, and its counts now sit directly above the list they filter. */
-  .dashboard-head-card {
+  /* Sprint 53.3: the hero stays on a phone. Hiding it made the dashboard the one page
+     with no card of its own above the work, which is the inconsistency the rework was
+     meant to remove. Height comes out of the description line, not the identity. */
+  .dashboard-head-card .workspace-header {
+    padding: 10px 14px 8px;
+  }
+
+  .dashboard-head-card .workspace-header-summary {
     display: none;
   }
 
@@ -10034,29 +10039,28 @@ body:has([aria-modal="true"]) .floating-actions {
 }
 
 .relationship-page > .relationship-workspace-card > :not(.workspace-header),
-.world-page > :not(.workspace-header),
-.timeline-page > :not(.workspace-header) {
+.world-page > .world-workspace-card > :not(.workspace-header),
+.timeline-page > .timeline-workspace-card > :not(.workspace-header) {
   margin-inline: var(--workspace-inset);
+}
+
+/* The module cards carry the same inner rhythm as the drawing's card. */
+.world-page > .world-workspace-card,
+.timeline-page > .timeline-workspace-card {
+  padding: 14px 0 16px;
 }
 
 /* A capped column that is also centred. With only the cap, an 880px column sat at
    the left edge of a 1,120px workspace and left 215px of empty space on the right —
    the reading surface looked pushed aside rather than set on the page. The inset
    stays as the minimum gutter; the auto margins take over once the cap is reached. */
-.timeline-page > :not(.workspace-header) {
+/* The reading column is now inside the module card, so it narrows the events without
+   narrowing the card: the hero and the workspace keep one outer edge, and the reading
+   measure stays 880px in the middle of it. */
+.timeline-page > .timeline-workspace-card > :not(.workspace-header) {
   width: calc(100% - 2 * var(--workspace-inset));
   max-width: var(--container-reading);
   margin-inline: auto;
-}
-
-/* The masthead joins the same column, so its title and its actions share an edge with
-   the events below instead of sitting 72px further left. Its own inline padding is
-   dropped because the column already carries the gutter. */
-.timeline-page > .workspace-header {
-  width: calc(100% - 2 * var(--workspace-inset));
-  max-width: var(--container-reading);
-  margin-inline: auto;
-  padding-inline: 0;
 }
 
 .world-page .world-detail {

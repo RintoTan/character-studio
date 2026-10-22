@@ -274,7 +274,8 @@ export function Timeline({
   }
 
   return (
-    <section className="workspace-card timeline-page" id="workspace-timeline">
+    <section className="page-grid timeline-page" id="workspace-timeline">
+      <div className="panel hero-card">
       <WorkspaceHeader
         eyebrow="时间线"
         title="世界观时间线"
@@ -298,7 +299,9 @@ export function Timeline({
           </>
         }
       />
+      </div>
 
+      <div className="panel timeline-workspace-card">
       {/* Search and filtering, once, above the list: the four things a long timeline is
           looked through — a word, a year, a kind and a character are all covered here. */}
       <div className="timeline-toolbar" ref={filterWrapRef}>
@@ -660,6 +663,8 @@ export function Timeline({
       )}
 
       {/* A line of the page under the list, not a card over it. */}
+      </div>
+
       <TimelineGuide />
     </section>
   );
