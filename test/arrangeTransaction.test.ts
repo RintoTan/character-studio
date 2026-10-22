@@ -141,3 +141,86 @@ describe("confirm keeps the result reachable", () => {
     expect(pointsWithinView([], { k: 1, x: 0, y: 0 }, viewBox)).toBe(true);
   });
 });
+
+describe("a restore carries the roster with the coordinates", () => {
+  const withMembers = (members?: string[]) => {
+    const layout = layoutWith({ a: { x: 0, y: 0 }, b: { x: 100, y: 0 } });
+    return members === undefined ? layout : { ...layout, members };
+  };
+
+  it("writes the proposed roster and its coordinates in one commit", () => {
+    const session = beginArrange(null, {
+      baseline: baseline(withMembers(["a"])),
+      proposal: {
+        mode: "snapshot",
+        scope: "all",
+        positions: { a: { x: 5, y: 5 }, b: { x: 105, y: 5 } },
+        members: ["a", "b"],
+      },
+    });
+    const committed = commitArrangeSession(session);
+
+    expect(committed.layout.members).toEqual(["a", "b"]);
+    expect(committed.layout.positions).toEqual({ a: { x: 5, y: 5 }, b: { x: 105, y: 5 } });
+    // 撤销 goes back to the roster as well as the coordinates.
+    expect(committed.baseline.layout.members).toEqual(["a"]);
+  });
+
+  it("restores an explicitly empty canvas, and keeps it empty", () => {
+    const session = beginArrange(null, {
+      baseline: baseline(withMembers(["a", "b"])),
+      proposal: { mode: "snapshot", scope: "all", positions: {}, members: [] },
+    });
+    const committed = commitArrangeSession(session);
+
+    expect(committed.layout.members).toEqual([]);
+    expect(proposalChanges(session)).toBe(true);
+  });
+
+  it("leaves a legacy capture in legacy mode rather than emptying the canvas", () => {
+    const session = beginArrange(null, {
+      baseline: baseline(withMembers(["a", "b"])),
+      proposal: { mode: "snapshot", scope: "all", positions: { a: { x: 1, y: 2 } }, members: null },
+    });
+    const committed = commitArrangeSession(session);
+
+    expect(committed.layout.members).toBeUndefined();
+    expect("members" in committed.layout).toBe(false);
+  });
+
+  it("does not report a roster change for a plain arrange", () => {
+    const session = beginArrange(null, {
+      baseline: baseline(withMembers(["a"])),
+      proposal: proposal("grid", { a: { x: 0.1, y: 0 }, b: { x: 100, y: 0 } }),
+    });
+
+    expect(proposalChanges(session)).toBe(false);
+    expect(commitArrangeSession(session).layout.members).toEqual(["a"]);
+  });
+
+  it("counts a roster-only restore as a change worth applying and undoing", () => {
+    const session = beginArrange(null, {
+      baseline: baseline(withMembers(["a"])),
+      proposal: { mode: "snapshot", scope: "all", positions: { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } }, members: ["b"] },
+    });
+
+    expect(proposalChanges(session)).toBe(true);
+  });
+
+  it("counts a framing-only restore as a change", () => {
+    const session = beginArrange(null, {
+      baseline: baseline(),
+      proposal: {
+        mode: "snapshot",
+        scope: "all",
+        positions: { a: { x: 0, y: 0 }, b: { x: 100, y: 0 } },
+        members: null,
+        view: { k: 2, x: 40, y: 60 },
+      },
+    });
+
+    // Positions and roster are unchanged; the camera is not.
+    expect(proposalChanges(session)).toBe(true);
+    expect(commitArrangeSession(session).layout.members).toBeUndefined();
+  });
+});

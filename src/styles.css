@@ -12929,6 +12929,7 @@ circle.graph-grid-dot {
   justify-content: space-between;
   gap: 8px;
   margin: 8px 0 6px;
+  flex-wrap: wrap;
 }
 
 .graph-members-count {
@@ -12939,7 +12940,15 @@ circle.graph-grid-dot {
 
 .graph-members-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+}
+
+/* The panel is a grid item. Without this its min-content width — the count plus the
+   three filter tabs on one unbreakable line — was 340px, which a 309px sheet cannot
+   fit, so the whole panel hung 31px past the viewport at 320. */
+.graph-studio-characters-body {
+  min-width: 0;
 }
 
 .graph-members-tabs .ghost-button[aria-pressed="true"] {
@@ -12953,6 +12962,63 @@ circle.graph-grid-dot {
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 6px;
+}
+
+/* The commands that act on the whole library, folded into one labelled menu. */
+.graph-members-more {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.graph-members-more button {
+  padding: 9px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+
+.graph-members-more button:hover {
+  background: var(--surface-muted);
+}
+
+/* What can be done with the current selection, on its own line: the two actions share
+   the width evenly, so neither can end up alone on a wrapped line. */
+.graph-members-selection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+
+.graph-members-selection-count {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.graph-members-selection button {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.graph-members-selection button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* A row is a container now: checkbox, the character itself, and its membership button. */
@@ -14834,6 +14900,12 @@ circle.graph-grid-dot {
 
   .graph-more-only-narrow {
     display: flex;
+  }
+
+  /* A control that is only affordable above the phone breakpoint: below it the same
+     command is one tap away inside 更多. */
+  .graph-wide-only {
+    display: none;
   }
 
   .graph-more-menu {

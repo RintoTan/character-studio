@@ -137,6 +137,29 @@ describe("materializeLayout", () => {
     expect(next.positions).toEqual({ a: { x: 10, y: 20 }, b: { x: 30, y: 40 } });
   });
 
+  it("keeps the roster and the saved layouts when the coordinates are rebuilt", () => {
+    // Every drag, preset and appearance edit goes through this function and then writes
+    // the whole record back. Rebuilding it without these fields is how a canvas silently
+    // returned to the legacy "draw everyone connected" mode — or lost its saved layouts.
+    const layout = normalizeLayout({
+      positions: { a: { x: 1, y: 2 } },
+      members: ["a"],
+      snapshots: [
+        { id: "s1", name: "一", positions: { a: { x: 1, y: 2 } }, view: { k: 1, x: 0, y: 0 }, createdAt: "t" },
+      ],
+    });
+    const next = materializeLayout(layout, ["a", "b"], [{ x: 1, y: 2 }, { x: 5, y: 6 }]);
+
+    expect(next.members).toEqual(["a"]);
+    expect(next.snapshots).toHaveLength(1);
+    expect(next.positions.b).toEqual({ x: 5, y: 6 });
+  });
+
+  it("keeps an explicitly empty roster empty", () => {
+    const layout = normalizeLayout({ positions: {}, members: [] });
+    expect(materializeLayout(layout, ["a"], [{ x: 1, y: 1 }]).members).toEqual([]);
+  });
+
   it("keeps a hand-placed node when the ring disagrees", () => {
     const layout = normalizeLayout({ positions: { a: { x: 999, y: 999 } } });
     const next = materializeLayout(layout, ["a", "b"], [

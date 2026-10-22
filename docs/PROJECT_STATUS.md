@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.48.6**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 自由关系画布、关系管理 2.0 与复杂表单弹窗；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **49**（`APP_SPRINT`）—— 自由关系画布；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.49.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布成员管理、布局快照事务与自动取景上限；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **54.1**（`APP_SPRINT`）—— 画布成员管理收尾；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
@@ -21,6 +21,19 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 54.1（2.49.0）
+
+画布成员管理收尾。**代码、单元测试、浏览器专项（56/56，1 项跳过）均已完成**；视觉细节（手机抽屉里
+筛选与统计分两行）为已知取舍，不阻塞。
+
+| 事项 | 位置 | 验证 |
+| --- | --- | --- |
+| 成员管理面板（统计、全部/在画布/未加入、单个与批量加入移出） | `src/pages/RelationshipGraph.tsx` 的 `charactersPanelContent` | 浏览器专项：40 → 41、100 全部加入、批量、空画布刷新仍为空 |
+| 两个入口共用同一面板 | 桌面工具栏「角色面板」；工作室抽屉；≤720 收进「更多」 | 56/56 含工作室可移出/加回 |
+| 快照记录成员 + 坐标 + 取景 | `src/utils/layoutSnapshots.ts`、`src/utils/arrangeTransaction.ts` | 预览不写盘、取消回滚、确认事务、撤销、刷新后可用、旧快照兼容 |
+| 自动取景上限（fit 120% / focus 200%） | `AUTO_FIT_MAX_ZOOM`、`AUTO_FOCUS_MAX_ZOOM` | 2 角色 223% → 120%；8/40/100 为 92%/49%/22%；手动缩放不受限 |
+| 手机批量操作分层 | `.graph-members-selection`、`.graph-members-more` | 320/375/430 无横向溢出、无孤立按钮 |
 
 ### Sprint 48（2.38.0）
 

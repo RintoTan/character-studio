@@ -32,6 +32,21 @@ export type ArrangeProposal = {
   label?: string;
   scope: "visible" | "all";
   positions: Record<string, LayoutPoint>;
+  /**
+   * The roster a restore proposes, when it proposes one at all.
+   *
+   * `undefined` — most commands — leaves membership alone; 环形布局 must not silently
+   * re-add someone the author removed. `null` restores the legacy "no explicit roster"
+   * mode, so a snapshot taken before members existed keeps behaving as it did. An array,
+   * including `[]`, is a roster to write — an empty canvas is a decision, not a gap.
+   */
+  members?: string[] | null;
+  /**
+   * The framing a restore wants, in drawing coordinates. Absent for every layout
+   * command: those move nodes and let the canvas keep its camera. A snapshot brings its
+   * own, because "回到这个布局" means the same rectangle of the drawing as well.
+   */
+  view?: ArrangeView;
 };
 
 /**
@@ -81,7 +96,25 @@ export function cancelArrangeSession(session: ArrangeSession | null): ArrangeBas
  * of floating point noise, which `gridLayout` produces on purpose.
  */
 export function proposalChanges(session: ArrangeSession, tolerance = 0.5): boolean {
-  const { positions } = session.proposal;
+  const { positions, members } = session.proposal;
+
+  // A restore that only changes who is on the canvas still has to be applied and
+  // undoable: comparing coordinates alone would call it "no change" and skip the roster.
+  if (members !== undefined && !sameRoster(session.baseline.layout.members, members ?? undefined)) {
+    return true;
+  }
+
+  // Restoring only the framing is still a restore: same nodes, same roster, different
+  // camera. Without this, 确认 would report "没有变化" and leave the camera where it was.
+  const proposed = session.proposal.view;
+  if (
+    proposed &&
+    (Math.abs(proposed.k - session.baseline.view.k) > 1e-3 ||
+      Math.abs(proposed.x - session.baseline.view.x) > 1e-3 ||
+      Math.abs(proposed.y - session.baseline.view.y) > 1e-3)
+  ) {
+    return true;
+  }
 
   return Object.keys(positions).some((id) => {
     const before = session.baseline.layout.positions[id];
@@ -104,10 +137,33 @@ export function commitArrangeSession(session: ArrangeSession): {
   layout: CanvasLayout;
   baseline: ArrangeBaseline;
 } {
-  return {
-    layout: applyPositions(session.baseline.layout, session.proposal.positions),
-    baseline: session.baseline,
-  };
+  const applied = applyPositions(session.baseline.layout, session.proposal.positions);
+  const { members } = session.proposal;
+
+  // Coordinates, roster and (through the caller) framing land in one layout write, so a
+  // restore cannot be half-applied.
+  if (members === undefined) {
+    return { layout: applied, baseline: session.baseline };
+  }
+
+  const layout = members === null ? { ...applied } : { ...applied, members: [...members] };
+  if (members === null) {
+    delete layout.members;
+  }
+
+  return { layout, baseline: session.baseline };
+}
+
+/** Same roster, ignoring order: membership is a set, not a list. */
+function sameRoster(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === undefined || b === undefined) {
+    return a === b;
+  }
+  if (a.length !== b.length) {
+    return false;
+  }
+  const seen = new Set(a);
+  return b.every((id) => seen.has(id));
 }
 
 /** How many nodes the current proposal repositions. Reported, not inferred from state. */

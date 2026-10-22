@@ -82,6 +82,7 @@ import {
   removeSnapshot,
   renameSnapshot,
   snapshotCoverage,
+  snapshotMemberCount,
   snapshotPositions,
   SNAPSHOT_LIMIT,
   type LayoutSnapshot,
@@ -298,6 +299,15 @@ const FOCUS_MAX_ZOOM = 4;
 // magnification, so a two-node graph is not drawn as two plates.
 const FIT_MARGIN = 0.1;
 const FIT_MAX_ZOOM = 1.6;
+// Automatic framing stops at a *visible* zoom, not at a multiple of the drawing's own
+// scale. A two-node canvas has a tiny box, so the canvas's own scale is already large and
+// a plain fit lands at 223%: a portrait of two circles, not an overview. These ceilings
+// are read against `view.k × screenScale`, which is the number on the readout. They only
+// bind when the drawing is small enough to fill the frame by itself, so a 40- or
+// 100-character canvas is untouched. Manual zoom — +, −, pinch, wheel — is not capped
+// here and still runs to ZOOM_MAX.
+const AUTO_FIT_MAX_ZOOM = 1.2;
+const AUTO_FOCUS_MAX_ZOOM = 2;
 // Half the hover card's maximum width, so it can be centred on a node without hanging
 // off the canvas. Kept equal to `.graph-node-card`'s max-width.
 const HOVER_CARD_HALF = 110;
@@ -497,6 +507,21 @@ function avatarClipId(characterId: string) {
 
 function clampZoom(value: number) {
   return Math.min(Math.max(value, ZOOM_MIN), ZOOM_MAX);
+}
+
+/**
+ * Keep an automatic fit from magnifying a small drawing into a close-up.
+ *
+ * `screenScale` converts drawing units to CSS pixels, so `zoom × screenScale` is the
+ * zoom a person reads in the toolbar. Capping that product means the ceiling means the
+ * same thing on every canvas size; on a large roster the measured product is well under
+ * the ceiling and nothing changes.
+ */
+function capAutoZoom(zoom: number, screenScale: number, ceiling: number) {
+  if (!(screenScale > 0) || !(ceiling > 0)) {
+    return zoom;
+  }
+  return Math.min(zoom, ceiling / screenScale);
 }
 
 /**
@@ -1600,6 +1625,9 @@ export function RelationshipGraph({
   const [memberFilter, setMemberFilter] = useState<"all" | "canvas" | "off">("all");
   const [memberBatch, setMemberBatch] = useState(false);
   const [memberSelection, setMemberSelection] = useState<string[]>([]);
+  // Low-frequency roster commands live behind one labelled menu rather than in the row:
+  // on a phone four wrapped buttons turned into a single orphan on its own line.
+  const [memberMore, setMemberMore] = useState(false);
   // Output is set once and used rarely, so it lives behind its own toggle: the bar
   // keeps 显示设置 and 导出 at one height instead of five controls in a row.
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -1671,13 +1699,25 @@ export function RelationshipGraph({
   // nothing, and a deleted character is pruned out rather than ghosted.
   const [layout, setLayout] = useState<CanvasLayout>(() => loadLayout());
 
+  // A proposal is drawn, never written. It is declared here because a layout snapshot
+  // carries a roster as well as coordinates: while it is being previewed the canvas has
+  // to draw *its* members, not the stored ones, and that derivation sits right below.
+  const [preview, setPreview] = useState<ArrangeProposal | null>(null);
+
   // `undefined` is a canvas that never had an explicit roster: it keeps the old
   // "everything connected" default. An array — even an empty one — is the author's
   // decision and is drawn as-is.
-  const canvasMembers = useMemo(
-    () => normalizeMembers(layout.members, characters.map((character) => character.id)),
-    [layout.members, characters],
-  );
+  //
+  // A snapshot preview overrides the roster for the same reason it overrides the
+  // coordinates: the author is looking at what restoring it would produce. Clearing the
+  // preview is the whole of "取消", so the stored roster is never touched until 确认.
+  const canvasMembers = useMemo(() => {
+    const ids = characters.map((character) => character.id);
+    if (preview && preview.members !== undefined) {
+      return normalizeMembers(preview.members, ids);
+    }
+    return normalizeMembers(layout.members, ids);
+  }, [layout.members, characters, preview]);
 
   const visibleCharacters = useMemo(() => {
     if (canvasMembers) {
@@ -1770,7 +1810,6 @@ export function RelationshipGraph({
   }, [studioMenuOpen]);
 
   const [arrangeScope, setArrangeScope] = useState<"visible" | "all">("visible");
-  const [preview, setPreview] = useState<ArrangeProposal | null>(null);
   const [groupDraft, setGroupDraft] = useState<{ name: string; editingId: string | null } | null>(null);
   // One step of undo for a whole arrange, which is the only operation that moves
   // every node at once. A drag is undone by dragging back; an arrange is not.
@@ -2793,7 +2832,11 @@ export function RelationshipGraph({
     }
 
     const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
-    const zoom = fitZoom(contentBounds(positions, metrics, boxHalfWidth), room, scale);
+    const zoom = capAutoZoom(
+      fitZoom(contentBounds(positions, metrics, boxHalfWidth), room, scale),
+      scale,
+      AUTO_FIT_MAX_ZOOM,
+    );
     // Whatever a sheet covers, the drawing is fitted into what is left of the canvas
     // and centred there — derived from the covered height, not nudged by a constant.
     const lift = inset / 2 / Math.max(zoom * scale, 0.0001);
@@ -2996,7 +3039,11 @@ export function RelationshipGraph({
     // push the person off the canvas the way it did when the unit's centroid was used.
     const readableZoom =
       selectedIds.length === 1 ? labelZoomNeeded(nameSize, screenScale) : unitZoom;
-    const zoom = clampZoom(Math.max(unitZoom, readableZoom));
+    const zoom = capAutoZoom(
+      clampZoom(Math.max(unitZoom, readableZoom)),
+      screenScale,
+      AUTO_FOCUS_MAX_ZOOM,
+    );
     viewAutoRef.current = false;
     setPreviousView(view);
     setView(centreOn(center, zoom, canvas.viewBox));
@@ -3402,7 +3449,11 @@ export function RelationshipGraph({
       boxHeight + bleed.y * 2,
     )}`;
     const scale = canvasScreenScale(frameSize, viewBox);
-    const zoom = fitZoom(contentBounds(points, metrics, boxHalfWidth), frameSize, scale);
+    const zoom = capAutoZoom(
+      fitZoom(contentBounds(points, metrics, boxHalfWidth), frameSize, scale),
+      scale,
+      AUTO_FIT_MAX_ZOOM,
+    );
 
     viewAutoRef.current = false;
     setView(centreOn({ x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 }, zoom, viewBox));
@@ -3466,6 +3517,9 @@ export function RelationshipGraph({
       return;
     }
 
+    // The roster and the coordinates in the preview changed what is drawn, so the cached
+    // box has to be rebuilt before the old framing can be restored.
+    setBoxEpoch((epoch) => epoch + 1);
     viewAutoRef.current = false;
     setView(baseline.view);
     setSelectedIds(baseline.selectedIds);
@@ -3505,14 +3559,22 @@ export function RelationshipGraph({
         view: baseline.view,
         label: session.proposal.label ?? arrangeLabel(session.proposal.mode),
       });
+      setBoxEpoch((epoch) => epoch + 1);
       commitLayout(next);
-      // The preview already framed the result; a hand-composed view is left alone
-      // unless the new coordinates would sit outside it.
-      const committed = visibleCharacters.map(
-        (character, index) => next.positions[character.id] ?? basePositions[index],
-      );
-      if (!pointsWithinView(committed, view, canvas.viewBox)) {
-        frameProposal(session.proposal.positions);
+      if (session.proposal.view) {
+        // A snapshot's framing is part of what it restores: the camera goes back with the
+        // coordinates instead of being refitted to them.
+        viewAutoRef.current = false;
+        setView(session.proposal.view);
+      } else {
+        // The preview already framed the result; a hand-composed view is left alone
+        // unless the new coordinates would sit outside it.
+        const committed = visibleCharacters.map(
+          (character, index) => next.positions[character.id] ?? basePositions[index],
+        );
+        if (!pointsWithinView(committed, view, canvas.viewBox)) {
+          frameProposal(session.proposal.positions);
+        }
       }
     } else {
       // Nothing moved: no undo step, no "已应用" claim.
@@ -3569,9 +3631,12 @@ export function RelationshipGraph({
       return;
     }
     const base = { ...onScreenPositions(), ...workingLayout().positions };
+    // A character who was removed earlier still has a slot; putting them back there is
+    // the whole promise of 移出 + 重新加入. Only the ones without a slot get a new ring.
+    const unplaced = fresh.filter((id) => !base[id]);
     const placed = placeNewPoints(
       Object.fromEntries(Object.entries(base).filter(([id]) => present.has(id) || characters.some((c) => c.id === id))),
-      fresh,
+      unplaced,
     );
     if (writeMembership(addMembers([...present], fresh), placed, `加入 ${fresh.length} 个角色`)) {
       show(`已把 ${fresh.length} 个角色加入画布`);
@@ -3584,7 +3649,14 @@ export function RelationshipGraph({
     if (drop.length === 0) {
       return;
     }
-    if (writeMembership(removeMembers(present, drop), undefined, `移出 ${drop.length} 个角色`)) {
+    // Keep where the character was standing. On a canvas that never had stored
+    // coordinates the drawn positions are computed on the fly, so dropping the node
+    // without writing its slot first means re-adding it later puts it somewhere else.
+    const screen = onScreenPositions();
+    const kept = Object.fromEntries(
+      drop.filter((id) => screen[id]).map((id) => [id, screen[id]] as const),
+    );
+    if (writeMembership(removeMembers(present, drop), kept, `移出 ${drop.length} 个角色`)) {
       show(`已移出 ${drop.length} 个角色，角色资料与关系都还在`);
     }
   }
@@ -3627,11 +3699,25 @@ export function RelationshipGraph({
     };
     const session = beginArrange(arrangeSessionRef.current, {
       baseline,
-      proposal: { label: `恢复布局「${snapshot.name}」`, mode: "snapshot", scope: "all", positions },
+      proposal: {
+        label: `恢复布局「${snapshot.name}」`,
+        mode: "snapshot",
+        scope: "all",
+        positions,
+        // A snapshot restores who is on the canvas and where the camera was. A capture
+        // older than membership stores no roster, and restoring it must not empty the
+        // canvas: `null` means "leave the legacy mode as it is".
+        members: snapshot.members === undefined ? null : [...snapshot.members],
+        view: snapshot.view,
+      },
     });
     arrangeSessionRef.current = session;
     setPreview(session.proposal);
-    frameProposal(positions);
+    // The box is cached around the drawn coordinates: the preview's coordinates are the
+    // snapshot's, so the box has to be rebuilt before its framing means anything.
+    setBoxEpoch((epoch) => epoch + 1);
+    viewAutoRef.current = false;
+    setView(snapshot.view);
     setSurface("arrange");
   }
 
@@ -4412,6 +4498,15 @@ export function RelationshipGraph({
     setQuery("");
     setNotOnCanvas(null);
 
+    // An explicit roster is not a density decision, so a character who is not on it
+    // cannot be "shown" by widening a view: the answer is to say so and offer the one
+    // press that puts them on the canvas. Drawing their edges around the drawing instead
+    // made the click look broken — the row was in the panel, the canvas did not change.
+    if (canvasMembers && !canvasMembers.includes(character.id)) {
+      setNotOnCanvas(character);
+      return;
+    }
+
     if (!byId.has(character.id)) {
       // Two different reasons to be missing, and only one of them needs the reader's
       // help. Somebody with edges was left out by the core-view cap: draw them and their
@@ -4452,11 +4547,13 @@ export function RelationshipGraph({
       .map((edge) => (edge.fromId === entry.character.id ? edge.toId : edge.fromId));
     const focusIds = new Set([entry.character.id, ...peers]);
     const points = [...byId.values()].filter((item) => focusIds.has(item.character.id));
-    const zoom = fitZoom(
-      contentBounds(points, metrics, labelHalfWidth),
-      frameSize,
+    const zoom = capAutoZoom(
+      fitZoom(contentBounds(points, metrics, labelHalfWidth), frameSize, screenScale, {
+        margin: 0.3,
+        max: FOCUS_MAX_ZOOM,
+      }),
       screenScale,
-      { margin: 0.3, max: FOCUS_MAX_ZOOM },
+      AUTO_FOCUS_MAX_ZOOM,
     );
     const centrePoint = {
       x: points.reduce((sum, item) => sum + item.x, 0) / points.length,
@@ -5212,7 +5309,9 @@ export function RelationshipGraph({
 
       <div className="graph-snapshot-block" role="group" aria-label="我的布局">
         <p className="graph-panel-title">我的布局</p>
-        <p className="muted">保存现在的摆放与取景，之后一键回到这里。与上方预设不同：预设改变外观，布局只改变位置；快照不保存画布成员。</p>
+        <p className="muted">
+          保存现在的成员、摆放与取景，之后一键回到这里。与上方预设不同：预设改变外观，布局改变位置与成员。
+        </p>
         <form
           className="graph-snapshot-save"
           onSubmit={(event) => {
@@ -5226,8 +5325,9 @@ export function RelationshipGraph({
             onChange={(event) => setSnapshotName(event.target.value)}
             placeholder={`布局 ${snapshots.length + 1}`}
             value={snapshotName}
+            data-testid="snapshot-name"
           />
-          <button className="primary-button small" type="submit">保存当前布局</button>
+          <button className="primary-button small" data-testid="snapshot-save" type="submit">保存当前布局</button>
         </form>
         {snapshots.length === 0 ? (
           <p className="muted">还没有保存的布局。</p>
@@ -5235,8 +5335,14 @@ export function RelationshipGraph({
           <ul className="graph-snapshot-list">
             {snapshots.map((snapshot) => {
               const cover = snapshotCoverage(snapshot, characters.map((character) => character.id));
+              const memberCount = snapshotMemberCount(snapshot);
               return (
-                <li className="graph-snapshot-row" key={snapshot.id}>
+                <li
+                  className="graph-snapshot-row"
+                  data-snapshot-name={snapshot.name}
+                  data-testid="snapshot-row"
+                  key={snapshot.id}
+                >
                   {renamingId === snapshot.id ? (
                     <form
                       className="graph-snapshot-rename"
@@ -5260,10 +5366,21 @@ export function RelationshipGraph({
                     <>
                       <div className="graph-snapshot-meta">
                         <strong title={snapshot.name}>{snapshot.name}</strong>
-                        <span>覆盖 {cover.covered}/{cover.total} 个角色</span>
+                        <span data-testid="snapshot-meta">
+                          {memberCount === null ? "成员：兼容模式" : `成员 ${memberCount} 个`} · 覆盖{" "}
+                          {cover.covered}/{cover.total}
+                        </span>
                       </div>
                       <div className="graph-snapshot-actions">
-                        <button className="ghost-button small" onClick={() => previewSnapshot(snapshot)} type="button">预览</button>
+                        <button
+                          className="ghost-button small"
+                          data-snapshot-name={snapshot.name}
+                          data-testid="snapshot-preview"
+                          onClick={() => previewSnapshot(snapshot)}
+                          type="button"
+                        >
+                          预览
+                        </button>
                         <button
                           className="ghost-button small"
                           onClick={() => {
@@ -5377,6 +5494,8 @@ export function RelationshipGraph({
                   <button
                     aria-pressed={style.preset === preset.id}
                     className={style.preset === preset.id ? "graph-preset active" : "graph-preset"}
+                    data-preset-id={preset.id}
+                    data-testid="canvas-preset"
                     key={preset.id}
                     onClick={() => applyPreset(preset.id)}
                     title={preset.hint}
@@ -6175,7 +6294,7 @@ export function RelationshipGraph({
       </label>
 
       <div className="graph-members-head">
-        <span className="graph-members-count">
+        <span className="graph-members-count" data-testid="members-count">
           画布 {currentMembers().length} / 角色库 {characters.length}
         </span>
         <div className="graph-members-tabs" role="group" aria-label="画布成员筛选">
@@ -6187,6 +6306,7 @@ export function RelationshipGraph({
             <button
               aria-pressed={memberFilter === value}
               className="ghost-button small"
+              data-testid={`member-filter-${value}`}
               key={value}
               onClick={() => setMemberFilter(value)}
               type="button"
@@ -6197,10 +6317,14 @@ export function RelationshipGraph({
         </div>
       </div>
 
+      {/* Two levels, not one row of four: the mode switch stays put, everything that
+          acts on the whole library moves into 更多, and the buttons for the current
+          selection get their own full-width bar. */}
       <div className="graph-members-bulk">
         <button
           aria-pressed={memberBatch}
           className="ghost-button small"
+          data-testid="member-batch"
           onClick={() => {
             setMemberBatch((open) => !open);
             setMemberSelection([]);
@@ -6209,30 +6333,110 @@ export function RelationshipGraph({
         >
           {memberBatch ? "退出批量" : "批量选择"}
         </button>
-        <button className="ghost-button small" onClick={addAllToCanvas} type="button">
+        <button
+          className="ghost-button small graph-wide-only"
+          data-testid="member-add-all"
+          onClick={addAllToCanvas}
+          type="button"
+        >
           全部加入
         </button>
-        {memberBatch && memberSelection.length > 0 && (
-          <>
-            <button className="ghost-button small" onClick={() => addToCanvas(memberSelection)} type="button">
-              加入所选 {memberSelection.length}
-            </button>
-            <button className="ghost-button small" onClick={() => removeFromCanvas(memberSelection)} type="button">
-              移出所选 {memberSelection.length}
-            </button>
-          </>
-        )}
+        <button
+          aria-expanded={memberMore}
+          aria-haspopup="menu"
+          className="ghost-button small"
+          data-testid="member-more"
+          onClick={() => setMemberMore((open) => !open)}
+          type="button"
+        >
+          更多
+        </button>
       </div>
+
+      {memberMore && (
+        <div className="graph-members-more" data-testid="member-more-panel" role="menu">
+          <button
+            data-testid="member-add-all-menu"
+            onClick={() => {
+              addAllToCanvas();
+              setMemberMore(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            全部加入画布
+          </button>
+          <button
+            onClick={() => {
+              setMemberBatch(true);
+              setMemberSelection(
+                panelCharacters
+                  .filter((character) => !currentMembers().includes(character.id))
+                  .map((character) => character.id),
+              );
+              setMemberMore(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            选中未加入的角色
+          </button>
+          <button
+            onClick={() => {
+              setMemberBatch(true);
+              setMemberSelection(panelCharacters.map((character) => character.id));
+              setMemberMore(false);
+            }}
+            role="menuitem"
+            type="button"
+          >
+            选中当前列表全部
+          </button>
+        </div>
+      )}
+
+      {memberBatch && (
+        <div className="graph-members-selection" data-testid="member-selection">
+          <span className="graph-members-selection-count">已选 {memberSelection.length}</span>
+          <button
+            className="primary-button small"
+            data-testid="member-batch-add"
+            disabled={memberSelection.length === 0}
+            onClick={() => addToCanvas(memberSelection)}
+            type="button"
+          >
+            {memberSelection.length ? `加入所选 ${memberSelection.length}` : "加入画布"}
+          </button>
+          <button
+            className="ghost-button small"
+            data-testid="member-batch-remove"
+            disabled={memberSelection.length === 0}
+            onClick={() => removeFromCanvas(memberSelection)}
+            type="button"
+          >
+            {memberSelection.length ? `移出所选 ${memberSelection.length}` : "移出画布"}
+          </button>
+        </div>
+      )}
 
       <div className="graph-studio-list" role="listbox" aria-label="角色列表">
         {panelCharacters.map((character) => {
           const onCanvas = currentMembers().includes(character.id);
           return (
-            <div className={`graph-studio-row${focusId === character.id ? " active" : ""}`} key={character.id}>
+            <div
+              className={`graph-studio-row${focusId === character.id ? " active" : ""}`}
+              data-character-name={character.name}
+              data-member-id={character.id}
+              data-on-canvas={onCanvas ? "true" : "false"}
+              data-testid="member-row"
+              key={character.id}
+            >
               {memberBatch && (
                 <input
                   aria-label={`选择 ${character.name}`}
                   checked={memberSelection.includes(character.id)}
+                  data-member-id={character.id}
+                  data-testid="member-select"
                   onChange={(event) =>
                     setMemberSelection((current) =>
                       event.target.checked
@@ -6251,11 +6455,16 @@ export function RelationshipGraph({
                 type="button"
               >
                 <CharacterRow character={character} />
-                <span className="graph-studio-row-state">{onCanvas ? "在画布" : "未加入"}</span>
+                <span className="graph-studio-row-state" data-testid="member-state">
+                  {onCanvas ? "在画布" : "未加入"}
+                </span>
               </button>
               <button
                 aria-label={onCanvas ? `把 ${character.name} 移出画布` : `把 ${character.name} 加入画布`}
                 className="ghost-button small graph-member-toggle"
+                data-action={onCanvas ? "remove" : "add"}
+                data-member-id={character.id}
+                data-testid="member-toggle"
                 onClick={() => (onCanvas ? removeFromCanvas([character.id]) : addToCanvas([character.id]))}
                 type="button"
               >
@@ -6266,6 +6475,11 @@ export function RelationshipGraph({
         })}
         {query.trim() && searchResults.length === 0 && (
           <p className="muted">没有匹配的角色。</p>
+        )}
+        {!query.trim() && panelCharacters.length === 0 && (
+          // "未加入" on a canvas holding the whole roster is a legitimate empty answer,
+          // and an empty box reads like a broken panel.
+          <p className="muted">没有符合这个筛选的角色。</p>
         )}
       </div>
 
@@ -6886,6 +7100,20 @@ export function RelationshipGraph({
 
               {!isStudio && (
                 <button
+                  aria-expanded={surface === "characters"}
+                  aria-label="角色面板"
+                  className="graph-icon-button graph-wide-only"
+                  data-testid="open-characters"
+                  data-tooltip="角色：搜索、决定谁在这张画布上、视觉分组"
+                  onClick={() => openGraphSurface("characters")}
+                  type="button"
+                >
+                  <Icon name="list" size={16} />
+                </button>
+              )}
+
+              {!isStudio && (
+                <button
                   aria-expanded={surface === "arrange"}
                   aria-label="整理画布"
                   className="graph-icon-button"
@@ -6925,6 +7153,19 @@ export function RelationshipGraph({
                 </button>
                 {isMoreOpen && (
                   <div aria-label="更多工具" className={`graph-more-menu${morePlacement === "up" ? " opens-up" : ""}`} role="menu">
+                    {!isStudio && (
+                      // The dock cannot hold another 32px control at 320px without
+                      // pushing 更多 off the edge, so on a phone the roster lives here.
+                      <button
+                        className="graph-more-item graph-more-only-narrow"
+                        onClick={() => openGraphSurface("characters")}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <Icon name="list" size={15} />
+                        <span>角色与画布</span>
+                      </button>
+                    )}
                     {!isStudio && (
                       <button
                         className="graph-more-item"
@@ -7919,6 +8160,7 @@ export function RelationshipGraph({
                   <button
                     aria-pressed={isStudioLeftOpen}
                     className="graph-studio-toggle"
+                    data-testid="open-characters"
                     data-tooltip="角色与分组：搜索、定位与视觉分组"
                     onClick={() => openGraphSurface("characters")}
                     type="button"
@@ -8074,107 +8316,10 @@ export function RelationshipGraph({
                     </button>
                   </div>
 
-                  <label className="graph-studio-search">
-                    <Icon name="search" size={15} />
-                    <input
-                      aria-label="搜索角色"
-                      onChange={(event) => {
-                        setQuery(event.target.value);
-                        setNotOnCanvas(null);
-                      }}
-                      placeholder="搜索角色名、职业、世界观"
-                      type="search"
-                      value={query}
-                    />
-                    {query && (
-                      <button aria-label="清除搜索" onClick={() => setQuery("")} type="button">
-                        <Icon name="close" size={13} />
-                      </button>
-                    )}
-                  </label>
-
-                  <div className="graph-studio-list" role="listbox" aria-label="角色列表">
-                    {(query.trim() ? searchResults : visibleCharacters).map((character) => (
-                      <button
-                        aria-selected={focusId === character.id}
-                        className={`graph-studio-row${focusId === character.id ? " active" : ""}`}
-                        key={character.id}
-                        onClick={() => focusCharacter(character)}
-                        role="option"
-                        type="button"
-                      >
-                        <CharacterRow character={character} />
-                        <span className="graph-studio-row-state">
-                          {byId.has(character.id) ? "在画布" : "未显示"}
-                        </span>
-                      </button>
-                    ))}
-                    {query.trim() && searchResults.length === 0 && (
-                      <p className="muted">没有匹配的角色。</p>
-                    )}
-                  </div>
-
-                  <div className="graph-studio-group">
-                    <strong className="graph-studio-section">视觉分组</strong>
-                    {groupDraft ? (
-                      <form
-                        className="graph-studio-group-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          saveGroupDraft();
-                        }}
-                      >
-                        <input
-                          aria-label="分组名称"
-                          autoFocus
-                          maxLength={40}
-                          onChange={(event) =>
-                            setGroupDraft((current) =>
-                              current ? { ...current, name: event.target.value } : current,
-                            )
-                          }
-                          placeholder="例如：北境线"
-                          value={groupDraft.name}
-                        />
-                        <button className="primary-button" disabled={!groupDraft.name.trim()} type="submit">
-                          创建
-                        </button>
-                        <button className="ghost-button" onClick={() => setGroupDraft(null)} type="button">
-                          取消
-                        </button>
-                      </form>
-                    ) : (
-                      <button
-                        className="ghost-button"
-                        disabled={selectedIds.length < 2}
-                        onClick={() => setGroupDraft({ name: "", editingId: null })}
-                        type="button"
-                      >
-                        用所选创建分组（{selectedIds.length}）
-                      </button>
-                    )}
-                    {layout.groups.length > 0 && (
-                      <ul className="graph-studio-group-list">
-                        {layout.groups.map((group) => (
-                          <li key={group.id}>
-                            <span>{group.name}</span>
-                            <em>{group.characterIds.length} 人</em>
-                            <button
-                              aria-label={`取消分组 ${group.name}`}
-                              onClick={() => {
-                                commitLayout(removeGroup(layout, group.id));
-                                setArrangeUndo(null);
-                              }}
-                              type="button"
-                            >
-                              取消
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="muted">分组只影响画布，不写入世界观。</p>
-                  </div>
+                  {/* The studio used to carry its own copy of this list, and that copy had
+                      no roster controls at all: 加入 / 移出 existed on the page and nowhere
+                      in full-screen editing. One panel, so the two surfaces cannot drift. */}
+                  {charactersPanelContent}
                 </aside>
               )}
 
@@ -8299,10 +8444,10 @@ export function RelationshipGraph({
                     {preview.scope === "visible" ? "当前可见" : "全部角色"}）· 未写入坐标
                   </span>
                   <div className="graph-context-actions">
-                    <button className="ghost-button" onClick={cancelArrange} type="button">
+                    <button className="ghost-button" data-testid="arrange-cancel" onClick={cancelArrange} type="button">
                       取消
                     </button>
-                    <button className="primary-button" onClick={applyArrange} type="button">
+                    <button className="primary-button" data-testid="arrange-apply" onClick={applyArrange} type="button">
                       确认应用
                     </button>
                   </div>
@@ -8411,7 +8556,7 @@ export function RelationshipGraph({
                   {arrangeUndo && (
                     <span className="graph-context-undo" role="status">
                       已应用{arrangeUndo.label}
-                      <button onClick={undoArrange} type="button">
+                      <button data-testid="arrange-undo" onClick={undoArrange} type="button">
                         撤销
                       </button>
                     </span>
@@ -8484,7 +8629,7 @@ export function RelationshipGraph({
                 <div className="graph-context-row">
                   <span className="graph-context-count">已应用{arrangeUndo.label}</span>
                   <div className="graph-context-actions">
-                    <button className="ghost-button" onClick={undoArrange} type="button">
+                    <button className="ghost-button" data-testid="arrange-undo" onClick={undoArrange} type="button">
                       撤销
                     </button>
                   </div>

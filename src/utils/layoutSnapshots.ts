@@ -14,6 +14,15 @@ export type LayoutSnapshot = {
   name: string;
   /** Character id → drawing coordinates. Ids, never array indexes. */
   positions: Record<string, LayoutPoint>;
+  /**
+   * Who was on the canvas when this was saved.
+   *
+   * Missing is not empty. A snapshot taken while the canvas had no explicit roster
+   * (the legacy "everything connected" mode) stores no `members`, and restoring it
+   * must leave that mode alone. An array — including `[]` — is a roster the author
+   * chose, and `[]` restores an empty canvas exactly as it was.
+   */
+  members?: string[];
   /** The framing at the moment it was saved, so restoring puts the camera back too. */
   view: { k: number; x: number; y: number };
   createdAt: string;
@@ -75,7 +84,13 @@ export function captureSnapshot(
       positions[id] = { x: point.x, y: point.y };
     }
   }
-  if (Object.keys(positions).length === 0) {
+  // `undefined` stays `undefined`: a legacy canvas keeps its mode, it does not become
+  // an empty roster. An explicit `[]` is saved as `[]`.
+  const known = new Set(ids);
+  const members = Array.isArray(layout.members)
+    ? layout.members.filter((id) => known.has(id))
+    : undefined;
+  if (Object.keys(positions).length === 0 && members === undefined) {
     return { snapshot: null, error: "画布上还没有可保存的坐标" };
   }
   return {
@@ -83,11 +98,17 @@ export function captureSnapshot(
       id: `snap-${now}-${Math.random().toString(36).slice(2, 8)}`,
       name: clean,
       positions,
+      ...(members === undefined ? {} : { members }),
       view: { k: view.k, x: view.x, y: view.y },
       createdAt: now,
     },
     error: null,
   };
+}
+
+/** How many characters a snapshot puts on the canvas, or `null` for a legacy capture. */
+export function snapshotMemberCount(snapshot: Pick<LayoutSnapshot, "members">): number | null {
+  return Array.isArray(snapshot.members) ? snapshot.members.length : null;
 }
 
 /** Newest first, and never more than the cap: this lives in localStorage. */
@@ -147,7 +168,17 @@ export function normalizeSnapshots(value: unknown): LayoutSnapshot[] {
         positions[characterId] = { x, y };
       }
     }
-    if (Object.keys(positions).length === 0) {
+    // A roster is only read when the file actually holds an array. An older snapshot
+    // has no `members` key at all, and that must stay "no roster captured" rather than
+    // silently becoming an empty canvas.
+    const members = Array.isArray(record.members)
+      ? [
+          ...new Set(
+            record.members.filter((item): item is string => typeof item === "string" && item.length > 0),
+          ),
+        ]
+      : undefined;
+    if (Object.keys(positions).length === 0 && members === undefined) {
       continue;
     }
     const view = record.view as { k?: unknown; x?: unknown; y?: unknown } | undefined;
@@ -156,6 +187,7 @@ export function normalizeSnapshots(value: unknown): LayoutSnapshot[] {
       id,
       name,
       positions,
+      ...(members === undefined ? {} : { members }),
       view:
         view && finite(view.k) && finite(view.x) && finite(view.y) && (view.k as number) > 0
           ? { k: view.k as number, x: view.x as number, y: view.y as number }

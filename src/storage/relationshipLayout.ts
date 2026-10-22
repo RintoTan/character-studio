@@ -385,6 +385,10 @@ export function materializeLayout(
     // Saved arrangements travel with the rest: rebuilding this record without them is
     // how a drag used to erase every layout the author had saved.
     snapshots: layout.snapshots,
+    // The roster is part of the layout too. Without this line every drag, preset and
+    // appearance edit rebuilt the record from `workingLayout()` and quietly handed the
+    // canvas back to the legacy "draw everything connected" mode.
+    members: layout.members,
   };
 }
 

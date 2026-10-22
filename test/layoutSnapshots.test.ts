@@ -7,6 +7,7 @@ import {
   removeSnapshot,
   renameSnapshot,
   snapshotCoverage,
+  snapshotMemberCount,
   snapshotPositions,
   SNAPSHOT_LIMIT,
 } from "../src/utils/layoutSnapshots";
@@ -89,5 +90,48 @@ describe("layout snapshots", () => {
 
   it("clamps a long name rather than letting it break the list row", () => {
     expect(cleanSnapshotName("名".repeat(80)).length).toBe(40);
+  });
+
+  it("records the roster with the coordinates, and an empty roster is a decision", () => {
+    const withRoster = captureSnapshot(
+      { ...layout, members: ["b"] },
+      "留下一个",
+      view,
+      ["a", "b"],
+      "t",
+    ).snapshot;
+    expect(withRoster?.members).toEqual(["b"]);
+
+    const emptyRoster = captureSnapshot(
+      { ...layout, positions: {}, members: [] },
+      "空画布",
+      view,
+      ["a", "b"],
+      "t",
+    );
+    expect(emptyRoster.error).toBeNull();
+    expect(emptyRoster.snapshot?.members).toEqual([]);
+    expect(emptyRoster.snapshot?.positions).toEqual({});
+  });
+
+  it("leaves a legacy canvas without a roster instead of saving it as an empty one", () => {
+    const legacy = captureSnapshot(layout, "旧画布", view, ["a", "b"], "t").snapshot;
+    expect(legacy?.members).toBeUndefined();
+    expect(snapshotMemberCount(legacy!)).toBeNull();
+  });
+
+  it("reads back a stored roster, keeps [] and still accepts an old entry without one", () => {
+    const stored = normalizeSnapshots([
+      { id: "new", name: "有成员", positions: { a: { x: 1, y: 1 } }, members: ["a", "gone"], view, createdAt: "t" },
+      { id: "empty", name: "空画布", positions: {}, members: [], view, createdAt: "t" },
+      { id: "old", name: "旧快照", positions: { b: { x: 2, y: 2 } }, view, createdAt: "t" },
+      { id: "broken", name: "坏成员", positions: { a: { x: 1, y: 1 } }, members: "a", view, createdAt: "t" },
+    ]);
+
+    expect(stored.map((item) => item.id)).toEqual(["new", "empty", "old", "broken"]);
+    expect(stored[0].members).toEqual(["a", "gone"]);
+    expect(stored[1].members).toEqual([]);
+    expect(stored[2].members).toBeUndefined();
+    expect(stored[3].members).toBeUndefined();
   });
 });
