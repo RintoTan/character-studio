@@ -5786,18 +5786,22 @@ export function RelationshipGraph({
           </div>
           {focusedNeighbours.rows.length > 0 ? (
             <ul className="graph-explore-neighbours">
-              {focusedNeighbours.rows.map((row) => (
+              {focusedNeighbours.rows.map((row) => {
+                // A cut-off name is still a name: the row shows an ellipsis, so the
+                // full one has to be reachable without leaving the panel.
+                const other = byId.get(row.otherId);
+                const name = other ? characterDisplayName(other.character) : "未命名角色";
+                return (
                 <li key={row.id}>
-                  <span className="graph-explore-neighbour-name">
-                    {byId.get(row.otherId)
-                      ? characterDisplayName(byId.get(row.otherId)!.character)
-                      : "未命名角色"}
+                  <span className="graph-explore-neighbour-name" title={name}>
+                    {name}
                   </span>
                   <span className="graph-explore-neighbour-kind">
                     {relationshipKindLabel(row.kind)}
                   </span>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           ) : (
             <p className="muted">这个角色还没有任何关系。</p>

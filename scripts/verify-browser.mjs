@@ -7700,11 +7700,13 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const broken = wide.filter((row) => row.stacked);
       const tooWide = wide.filter((row) => row.width > row.rowWidth + 1);
 
+      // One token, one width. The 356-384 band let 372 pass below 1024 while the
+      // desktop drawer was 368, so "统一宽度" was true only on one side of the
+      // breakpoint.
       const pass =
-        shape.drawerWidth >= 356 && shape.drawerWidth <= 384 &&
+        shape.drawerWidth === 368 && narrow.drawer === 368 &&
         shape.scroll <= 0 && shape.drawerScroll <= 0 &&
         wide.length >= 5 && broken.length === 0 && tooWide.length === 0 &&
-        narrow.drawer >= 356 && narrow.drawer <= 384 &&
         narrow.drawerScroll <= 0 && narrow.pageOverflow <= 0 &&
         restored.canvas > 600 && restored.nodes >= 5 && restored.overflow <= 0;
 
@@ -7716,6 +7718,34 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
     // Three phone widths, the same first screen: the dock reachable, the task sheet
     // reachable, the sheet taking over the state line while the dock steps aside.
+    // Two opinions on the same question: does the document fit its scrollport, and does
+    // any control the user can press sit outside it. `scrollWidth - clientWidth` alone
+    // missed the case this was written for — a root with `min-width: 320px` inside a
+    // 309px scrollport reported 11px of "overflow" that was really a clipped right edge.
+    const PHONE_LAYOUT = `(() => {
+      const de = document.documentElement;
+      const vw = de.clientWidth;
+      const visible = (el) => {
+        const cs = getComputedStyle(el);
+        if (cs.visibility === "hidden" || cs.display === "none" || Number(cs.opacity) === 0) return false;
+        const box = el.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      };
+      const controls = [...document.querySelectorAll("button, a, input, select, textarea, [role=button]")].filter(visible);
+      const clipped = controls.filter((el) => {
+        const box = el.getBoundingClientRect();
+        return box.right > vw + 0.5 || box.left < -0.5;
+      });
+      return {
+        overflow: de.scrollWidth - vw,
+        scrollBar: window.innerWidth - vw,
+        documentScrolls: de.scrollHeight > de.clientHeight,
+        controls: controls.length,
+        clipped: clipped.length,
+        clippedNames: clipped.slice(0, 3).map((el) => (el.getAttribute("aria-label") || el.textContent.trim() || el.className).toString().slice(0, 24)),
+      };
+    })()`;
+
     await check("手机 320/375/430：工具坞与任务抽屉可达、让位后仍有状态（Sprint 53.2）", async () => {
       const widths = [320, 375, 430];
       const results = [];
@@ -7792,24 +7822,96 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
           };
         })()`);
 
-        results.push({ width, opened, reach, sheet, after });
+        // A single reading only proves the state it was taken in. These are the states
+        // that made this page wider than its scrollport in earlier reports: a second
+        // selection, the more menu, the 管理 table, an open search field, and the sheet
+        // at full height.
+        const states = [];
+        const readState = async (name) => {
+          states.push({ name, ...(await cdp.value(PHONE_LAYOUT)) });
+        };
+        const tapNode = async (index) => {
+          const point = await cdp.value(`(() => {
+            const nodes = [...document.querySelectorAll(".relationship-node")];
+            const node = nodes[${index}] || nodes[0];
+            if (!node) return null;
+            const box = node.getBoundingClientRect();
+            return { x: Math.round(box.left + box.width / 2), y: Math.round(box.top + box.height / 2) };
+          })()`);
+          if (!point) return false;
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+          await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await new Promise((resolve) => setTimeout(resolve, 420));
+          return true;
+        };
+
+        await cdp.value(`(() => { const b = document.querySelector(".graph-touch-select"); if (b) b.click(); return !!b; })()`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        await tapNode(1);
+        await readState("多选");
+
+        await cdp.value(`(() => { const b = document.querySelector('[aria-label="更多工具"]'); if (b) b.click(); return !!b; })()`);
+        await new Promise((resolve) => setTimeout(resolve, 320));
+        await readState("更多菜单");
+        await cdp.value(`(() => { const b = document.querySelector('[aria-label="更多工具"]'); if (b) b.click(); return !!b; })()`);
+        await new Promise((resolve) => setTimeout(resolve, 260));
+
+        await cdp.value(`(() => {
+          const group = document.querySelector('[aria-label="关系网视图"]');
+          const button = group ? [...group.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("管理")) : null;
+          if (button) button.click();
+          return !!button;
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 520));
+        await readState("管理");
+        await cdp.value(`(() => {
+          const group = document.querySelector('[aria-label="关系网视图"]');
+          const button = group ? [...group.querySelectorAll("button")].find((b) => b.textContent.trim().startsWith("图谱")) : null;
+          if (button) button.click();
+          return !!button;
+        })()`);
+        await new Promise((resolve) => setTimeout(resolve, 420));
+
+        await cdp.value(`(() => { const b = document.querySelector('[aria-label="搜索角色"]'); if (b) b.click(); return !!b; })()`);
+        await new Promise((resolve) => setTimeout(resolve, 360));
+        await readState("搜索展开");
+        await cdp.value(`(() => { const input = document.querySelector('[aria-label="搜索角色并定位"]'); if (input) input.blur(); document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); return true; })()`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        const reopened = await cdp.value(`(() => { const b = document.querySelector('[aria-label="外观设置"]'); if (b) b.click(); return !!b; })()`);
+        if (reopened) {
+          await cdp.waitFor(`!!document.querySelector(".graph-page-drawer")`, 3000);
+          await new Promise((resolve) => setTimeout(resolve, 320));
+          await readState("抽屉半屏");
+          await cdp.value(`(() => { const b = document.querySelector('[aria-label="展开到全屏高度"]'); if (b) b.click(); return !!b; })()`);
+          await new Promise((resolve) => setTimeout(resolve, 420));
+          await readState("抽屉全展开");
+          await cdp.value(`(() => { const b = document.querySelector(".graph-page-drawer-close"); if (b) b.click(); return !!b; })()`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+
+        results.push({ width, opened, reach, sheet, after, states });
       }
 
       await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
 
-      const allowance = (width) => (width === 320 ? 12 : 0);
+      // No allowance per width any more. The 11px at 320px was a real clipped edge,
+      // not a rounding difference, and a tolerance is how it survived a release.
+      const fits = (state) => state.overflow <= 0 && state.clipped === 0;
       const pass = results.every((r) =>
         r.opened &&
         r.reach.dockVisible && r.reach.more && r.reach.multi &&
-        r.reach.overflow <= allowance(r.width) &&
+        r.reach.overflow <= 0 &&
         r.sheet.dockYielded && r.sheet.slotYielded &&
         r.sheet.state.includes("已选") &&
         r.sheet.drawerOverflow <= 0 &&
         r.sheet.closeReachable &&
-        r.sheet.overflow <= allowance(r.width) &&
+        r.sheet.overflow <= 0 &&
         r.after.dockVisible &&
-        r.after.overflow <= allowance(r.width),
+        r.after.overflow <= 0 &&
+        r.states.length >= 6 &&
+        r.states.every(fits),
       );
 
       return {
@@ -7820,17 +7922,20 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
             !r.reach.dockVisible && "dockHidden",
             !r.reach.more && "moreMissing",
             !r.reach.multi && "multiMissing",
-            r.reach.overflow > allowance(r.width) && "overflow",
+            r.reach.overflow > 0 && "overflow",
             !r.sheet.dockYielded && "dockNotYielded",
             !r.sheet.slotYielded && "slotNotYielded",
             !r.sheet.state.includes("已选") && "noState",
             r.sheet.drawerOverflow > 0 && "drawerOverflow",
             !r.sheet.closeReachable && "closeUnreachable",
-            r.sheet.overflow > allowance(r.width) && "sheetOverflow",
+            r.sheet.overflow > 0 && "sheetOverflow",
             !r.after.dockVisible && "dockStaysHidden",
-            r.after.overflow > allowance(r.width) && "afterOverflow",
+            r.after.overflow > 0 && "afterOverflow",
+            r.states.length < 6 && "statesMissing",
+            !r.states.every(fits) && "stateOverflow",
           ].filter(Boolean);
-          return `${r.width}px 失败=${failing.join("+") || "无"} 溢出=${r.reach.overflow} 抽屉溢出=${r.sheet.drawerOverflow} Header="${r.sheet.state}" 关后选中=${r.after.selected}`;
+          return `${r.width}px 失败=${failing.join("+") || "无"} 溢出=${r.reach.overflow} 滚动条=${r.states[0]?.scrollBar ?? "?"}px 抽屉溢出=${r.sheet.drawerOverflow} Header="${r.sheet.state}" 关后选中=${r.after.selected}`
+            + `；状态 ${r.states.map((s) => `${s.name} ${s.overflow}/${s.clipped}`).join("、")}`;
         }).join(" ｜ "),
       };
     });

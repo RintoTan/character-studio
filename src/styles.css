@@ -233,15 +233,27 @@
   background-clip: content-box;
 }
 
+/* No `min-width: 320px` on the root or the body. That floor measured against the
+   viewport instead of the scrollport: at a 320px window with a classic scrollbar the
+   document only has 309px, so the root stayed 320 wide and the last 11px of every
+   right-aligned row was clipped — and `scrollWidth - clientWidth` reported it as
+   horizontal overflow on a page that had none. The layout is fluid down to 320 and
+   the scrollport is the real floor. */
 html {
   width: 100%;
-  min-width: 320px;
   min-height: 100%;
   overflow-x: hidden;
   background: var(--bg);
   text-size-adjust: 100%;
   -webkit-text-size-adjust: 100%;
-  overflow-y: auto;
+  /* The scrollbar track is reserved even when the page is short. With `auto`, a
+     centred 1,120px column sat at 160px on a short page and 154.5px on a tall one,
+     so left edges agreed across pages only while those pages happened to have the
+     same height — the dashboard and the relationship graph were 5.5px apart for
+     exactly that reason. `scroll` also keeps `clientWidth` honest: `scrollbar-gutter:
+     stable` reported a clientWidth that included the gutter, which made
+     `scrollWidth - clientWidth` negative on pages with nothing wrong. */
+  overflow-y: scroll;
 }
 
 /* Native select popups, date pickers and scrollbars are painted by the platform
@@ -258,7 +270,6 @@ html {
 
 body {
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
   min-height: 100dvh;
   /* `overflow-y: auto` here made the body its own scroll container, which is the
@@ -3595,7 +3606,13 @@ input[type="number"]::-webkit-inner-spin-button {
   inset: 0;
   z-index: var(--z-modal-overlay);
   display: grid;
-  place-items: center;
+  /* Scrolling the scrim used to scroll the page underneath it: dragging a dialog's
+     backdrop moved the document 185px on a 375px phone. This makes the scrim its own
+     scroll container and stops the chain there. `safe center` keeps a dialog taller
+     than the viewport reachable at the top instead of centring it out of bounds. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  place-items: safe center;
   background: rgba(17, 24, 39, 0.32);
   padding: 20px;
   animation: backdrop-in var(--duration-medium) var(--ease-standard);
@@ -14353,7 +14370,9 @@ circle.graph-grid-dot {
   .graph-page-drawer {
     position: relative;
     top: 0;
-    width: min(372px, 94vw);
+    /* The token, not a second number: 372 was `--drawer-width` plus the 1px border
+       this panel used to add, so the same drawer was 4px wider below 1024. */
+    width: min(var(--drawer-width), 94vw);
     height: 100dvh;
     max-height: none;
     border-radius: 0;

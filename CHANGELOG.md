@@ -1,3 +1,14 @@
+## 2.47.2 —— Sprint 53.2 验收收尾：320px 根因、滚动条漂移与弹层穿透
+
+- **320px 横向溢出的真实根因**：不是某个元素越界，而是 `html, body { min-width: 320px }` 相对 **viewport** 而不是 **scrollport** 解析。320px 窗口减去 11px 经典滚动条后只有 309px，根元素仍撑到 320，最右 11px 被 `body { overflow-x: clip }` 裁掉，`documentElement.scrollWidth - clientWidth` 便报 11。A/B 实测：`min-width` 置 0 → `309/309`，恢复 → `320/309`。删除该最小宽度后，320/375/430/768 在默认、单选、多选、更多菜单、管理、搜索展开、抽屉半屏、抽屉全展开下均为 `overflow=0 / clipped=0`。
+- **抽屉 372px**：`@media (max-width:1024px)` 的 `.graph-page-drawer` 曾写死 `min(372px, 94vw)` —— 368 加上面板两侧 1px 边框的旧值。改为 `min(var(--drawer-width), 94vw)`，1440 / 1024 / 768 实测一律 **368px**；对应断言由 356–384 收紧为 `=== 368`。
+- **页面左缘漂移**：滚动条按需出现，短页 1440 时居中列在 160px、长页在 154.5px，六个页面的左缘一致性因此取决于页面高度（Dashboard 与关系网实测差 5.5px）。`html` 改为 `overflow-y: scroll` 常驻轨道后，双主题四页 `surface.left` 统一 154.5、`overflow` 全 0。未用 `scrollbar-gutter: stable`：它会把 gutter 计入 `clientWidth`，使溢出指标出现 -11 的假读数。
+- **手机滚动穿透**：拖拽弹窗遮罩会让下层页面滚动（375px 实测 185px）。`.modal-backdrop` 改为自身滚动容器 + `overscroll-behavior: contain` + `place-items: safe center`，同一次实测位移归 0，且高于视口的弹窗顶部仍可达。
+- **探索面板**：直接关系列表的角色名加了 `title`，长名被省略号截断时仍可读到全名。实测 8 角色列表可读；100 角色下沈砚 16 条直接关系显示 8 行 + 「另有 8 条」；书签保存/恢复按节点屏幕坐标验证（522,104 → 612,144 → 522,104），跳转书签不改动透镜与聚光灯。
+- **未改**：世界观页 `header.left` 与页面 `left` 相差 1px，实测是 `.workspace-header` 自身 1px 边框（标题与工具栏内容左缘同为 179.5px），不是内边距错误。
+- **证据**：`docs/sprint-53.2-acceptance/`（16 张真实 fixture 截图 + ACCEPTANCE.md）。
+- **未完成**：头像裁剪/素材库/替换确认只做了键盘与焦点抽查（7/7），没有逐项截图；40/100 的密度回归为定点探针，未并入 `verify:browser`。
+
 ## 2.47.1 —— Sprint 53.2：手机触控体系、抽屉排版与页面框架
 
 - **P0 桌面抽屉排版**：宽度 336 → **368px**（`--drawer-width` 单点定义，`[data-tab="arrange"]` 的 336px 硬编码删除）。「名称」行原先同时塞进显示开关与字号，三按钮分段在 `minmax(0,1fr)` 里被压成纵向；现拆为「名称」「字号」两行，「范围」整行独占（`graph-panel-row-stacked`）。抽屉内分段 `flex-wrap: nowrap`，按钮 `flex:1 1 auto`。实测：抽屉 368px、正文溢出 0、7 个多按钮行 0 纵向断裂；滑块的默认 `margin` 与固有最小宽是残留 2px 的来源，已用 `min-width:0; margin:0; box-sizing:border-box` 清掉。
