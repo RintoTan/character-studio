@@ -2930,12 +2930,27 @@ export function RelationshipGraph({
       return;
     }
     const [boxX, boxY, boxWidth, boxHeight] = canvas.viewBox.split(" ").map(Number);
-    const center = centroid(chosen, { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 });
-    const zoom = fitZoom(
+    // The zoom frames the whole reading unit; the *centre* is the character being read.
+    // Centring on the unit's centroid put the selected node at the edge of, or outside,
+    // the frame once the reader zoomed in — the drawing ended up as lines crossing an
+    // empty screen with the person it was about nowhere in sight.
+    const selectedPoint =
+      selectedIds.length === 1
+        ? layout.positions[selectedIds[0]] ?? ringPositions[visibleCharacters.findIndex((c) => c.id === selectedIds[0])]
+        : null;
+    const center = selectedPoint ?? centroid(chosen, { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 });
+    const unitZoom = fitZoom(
       contentBounds(chosen, metrics, labelHalfWidth),
       frameSize,
       screenScale,
     );
+    // Reading one character zooms to where their name is legible, not to a fixed
+    // factor: the unit's own fit is the floor, and on a large roster it is far below
+    // the label threshold. The target stays the centre, so zooming in from here cannot
+    // push the person off the canvas the way it did when the unit's centroid was used.
+    const readableZoom =
+      selectedIds.length === 1 ? labelZoomNeeded(nameSize, screenScale) : unitZoom;
+    const zoom = clampZoom(Math.max(unitZoom, readableZoom));
     viewAutoRef.current = false;
     setPreviousView(view);
     setView(centreOn(center, zoom, canvas.viewBox));
@@ -6193,58 +6208,57 @@ export function RelationshipGraph({
     </div>
   );
 
-  return (
-    <section
-      className={`workspace-card relationship-page${isStudio ? " graph-studio" : ""}`}
-      id="workspace-relationships"
-    >
-      <WorkspaceHeader
-        compact
-        eyebrow="关系网"
-        title="角色关系网"
-        summary={
-          <>
-            {characters.length} 个角色 · {relationships.length} 条关系
-          </>
-        }
-        actions={
-          <>
-            {/* Two controls in the header, both about what the graph contains: which
-                characters are drawn, and adding an edge. Everything that acts on the
-                canvas itself sits with the canvas. */}
-            <div className="toolbar-group">
-              <div aria-label="关系网视图" className="graph-segment relationship-mode" role="group">
-                <button
-                  aria-pressed={boardMode === "graph"}
-                  className={boardMode === "graph" ? "graph-segment-button selected" : "graph-segment-button"}
-                  onClick={() => chooseBoardMode("graph")}
-                  type="button"
-                >
-                  图谱
-                </button>
-                <button
-                  aria-pressed={boardMode === "manage"}
-                  className={boardMode === "manage" ? "graph-segment-button selected" : "graph-segment-button"}
-                  onClick={() => chooseBoardMode("manage")}
-                  type="button"
-                >
-                  管理
-                  <span className="relationship-mode-count">{relationships.length}</span>
-                </button>
-              </div>
-            </div>
-            <div className="toolbar-group">
-              {/* Output sits with the page's other main action; the entry under the
-                  drawing is gone. */}
-              {!isStudio && exportMenu}
-              <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
-                新建关系
-              </button>
-            </div>
-          </>
-        }
-      />
+  const heroHeader = (
+  <WorkspaceHeader
+    compact
+    eyebrow="关系网"
+    title="角色关系网"
+    summary={
+      <>
+        {characters.length} 个角色 · {relationships.length} 条关系
+      </>
+    }
+    actions={
+      <>
+        {/* Two controls in the header, both about what the graph contains: which
+            characters are drawn, and adding an edge. Everything that acts on the
+            canvas itself sits with the canvas. */}
+        <div className="toolbar-group">
+          <div aria-label="关系网视图" className="graph-segment relationship-mode" role="group">
+            <button
+              aria-pressed={boardMode === "graph"}
+              className={boardMode === "graph" ? "graph-segment-button selected" : "graph-segment-button"}
+              onClick={() => chooseBoardMode("graph")}
+              type="button"
+            >
+              图谱
+            </button>
+            <button
+              aria-pressed={boardMode === "manage"}
+              className={boardMode === "manage" ? "graph-segment-button selected" : "graph-segment-button"}
+              onClick={() => chooseBoardMode("manage")}
+              type="button"
+            >
+              管理
+              <span className="relationship-mode-count">{relationships.length}</span>
+            </button>
+          </div>
+        </div>
+        <div className="toolbar-group">
+          {/* Output sits with the page's other main action; the entry under the
+              drawing is gone. */}
+          {!isStudio && exportMenu}
+          <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
+            新建关系
+          </button>
+        </div>
+      </>
+    }
+  />
+  );
 
+  const pageBody = (
+    <>
       {!canLink ? (
         <div className="empty-state">
           <h3>至少需要两个角色</h3>
@@ -8500,6 +8514,30 @@ export function RelationshipGraph({
       {/* Under the drawing, never over it, and never in the studio: full screen exists
           to give the canvas the room the guide would take. */}
       {!isStudio && <GraphGuide />}
+
+    </>
+  );
+
+  return (
+    <section
+      className={
+        isStudio ? "workspace-card relationship-page graph-studio" : "page-grid relationship-page"
+      }
+      id="workspace-relationships"
+    >
+      {isStudio ? (
+        <>
+          {heroHeader}
+          {pageBody}
+        </>
+      ) : (
+        <>
+          {/* Same skeleton as the character workspace: a hero card, a 20px gap, then
+              the card that holds the module. Two siblings, never one box around both. */}
+          <div className="panel hero-card">{heroHeader}</div>
+          <div className="panel relationship-workspace-card">{pageBody}</div>
+        </>
+      )}
     </section>
   );
 }

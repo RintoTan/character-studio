@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.48.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 自由关系画布、关系管理 2.0 与复杂表单弹窗；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.48.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 自由关系画布、关系管理 2.0 与复杂表单弹窗；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **49**（`APP_SPRINT`）—— 自由关系画布；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
