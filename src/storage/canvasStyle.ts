@@ -59,8 +59,18 @@ export type CanvasStyle = {
     background: string;
   };
   edge: {
+    /** The single ink used when 按关系类型着色 is off. */
     color: string;
+    /** Colour by relationship kind instead of one colour for every line. */
     byKind: boolean;
+    /**
+     * Per-kind ink, keyed by the relationship kind itself (not by faction — a camp
+     * and a kind of relationship are different questions and must not share a map).
+     * A kind missing here keeps its default hue.
+     */
+    kindColors: Record<string, string>;
+    /** 0.2–1. The line's own opacity, independent of the selection halo. */
+    opacity: number;
     width: number;
     dash: EdgeDash;
     curve: EdgeCurve;
@@ -120,6 +130,8 @@ const BASE: CanvasStyle = {
   edge: {
     color: "",
     byKind: false,
+    kindColors: {},
+    opacity: 1,
     width: 1.4,
     dash: "solid",
     curve: "curved",
@@ -298,6 +310,8 @@ export function normalizeCanvasStyle(value: unknown): CanvasStyle {
     edge: {
       color: typeof edge.color === "string" ? edge.color : base.edge.color,
       byKind: typeof edge.byKind === "boolean" ? edge.byKind : base.edge.byKind,
+      kindColors: readKindColors(edge.kindColors),
+      opacity: num(edge.opacity, base.edge.opacity, 0.2, 1),
       width: num(edge.width, base.edge.width, 0.4, 6),
       dash: edge.dash === "dashed" || edge.dash === "dotted" ? edge.dash : "solid",
       curve: edge.curve === "straight" ? "straight" : "curved",
@@ -336,4 +350,38 @@ export function kindHue(kind: string): number {
     hash = (hash * 31 + kind.charCodeAt(index)) % 360;
   }
   return hash;
+}
+
+/**
+ * The fixed ink for each relationship kind. These are written out rather than hashed
+ * so that a colour the author sees in the legend is the same colour next year, and so
+ * that changing the palette is a visible edit instead of a silent re-hash.
+ */
+export const DEFAULT_KIND_COLORS: Record<string, string> = {
+  family: "#8f6bb0",
+  romance: "#c2607f",
+  mentor: "#4f83b8",
+  friend: "#4a9a7c",
+  colleague: "#6b7a8f",
+  rival: "#c08a3e",
+  enemy: "#b85450",
+  other: "#8d9199",
+};
+
+/** Only real colour strings survive a read: a corrupted map must not blank a line. */
+function readKindColors(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") return {};
+  const out: Record<string, string> = {};
+  for (const [key, ink] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof key !== "string" || key.length > 24) continue;
+    if (typeof ink !== "string") continue;
+    if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(ink.trim()) && !/^hsla?\(/i.test(ink.trim())) continue;
+    out[key] = ink.trim();
+  }
+  return out;
+}
+
+/** The ink a kind is drawn with when colour-by-kind is on. */
+export function kindInk(kind: string, style: CanvasStyle): string {
+  return style.edge.kindColors?.[kind] || DEFAULT_KIND_COLORS[kind] || DEFAULT_KIND_COLORS.other;
 }

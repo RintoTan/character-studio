@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { chooseLabelOffset, dashArrayFor, edgeInk, measureNameWidth, wrapNameLines } from "../src/pages/RelationshipGraph";
+import { DEFAULT_KIND_COLORS, normalizeCanvasStyle } from "../src/storage/canvasStyle";
 
 const widthOf = (lines: string[], size: number) => lines.map((line) => measureNameWidth(line, size));
 
@@ -124,5 +125,62 @@ describe("one ink rule for the canvas and every legend", () => {
     expect(dashArrayFor("solid")).toBeUndefined();
     expect(dashArrayFor("dashed")).toBe("7 5");
     expect(dashArrayFor("dotted")).toBe("2 4");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ink priority: single line > canvas style > preset > built-in default.
+// One reader (`edgeInk`), so the canvas and the export cannot disagree.
+// ---------------------------------------------------------------------------
+describe("relationship ink", () => {
+  const styleWith = (edge: Record<string, unknown> = {}) =>
+    normalizeCanvasStyle({ preset: "classic", edge });
+
+  it("uses the single canvas colour when colour-by-kind is off", () => {
+    const ink = edgeInk("enemy", styleWith({ color: "#123456", byKind: false }));
+    expect(ink.color).toBe("#123456");
+  });
+
+  it("uses the kind palette when colour-by-kind is on", () => {
+    const ink = edgeInk("enemy", styleWith({ byKind: true }));
+    expect(ink.color).toBe(DEFAULT_KIND_COLORS.enemy);
+    expect(ink.color).not.toBe(DEFAULT_KIND_COLORS.family);
+  });
+
+  it("lets an author rewrite one kind without touching the others", () => {
+    const ink = edgeInk("enemy", styleWith({ byKind: true, kindColors: { enemy: "#ff0000" } }));
+    expect(ink.color).toBe("#ff0000");
+    expect(edgeInk("family", styleWith({ byKind: true, kindColors: { enemy: "#ff0000" } })).color).toBe(
+      DEFAULT_KIND_COLORS.family,
+    );
+  });
+
+  it("a single line overrides colour, width, dash and opacity together", () => {
+    const global = styleWith({ color: "#111111", width: 1, dash: "solid", opacity: 0.5 });
+    const ink = edgeInk("friend", global, { color: "#222222", width: 4, dash: "dotted", opacity: 1 });
+    expect(ink).toEqual({ color: "#222222", width: 4, dash: "dotted", opacity: 1 });
+  });
+
+  it("a line that overrides nothing keeps inheriting the canvas", () => {
+    const global = styleWith({ color: "#111111", width: 2.2, dash: "dashed", opacity: 0.6 });
+    expect(edgeInk("friend", global, { width: 3 })).toEqual({
+      color: "#111111",
+      width: 3,
+      dash: "dashed",
+      opacity: 0.6,
+    });
+  });
+
+  it("drops unreadable per-kind colours instead of painting a blank line", () => {
+    const style = styleWith({ byKind: true, kindColors: { enemy: "not-a-colour", family: "#abcdef" } });
+    expect(style.edge.kindColors).toEqual({ family: "#abcdef" });
+    expect(edgeInk("enemy", style).color).toBe(DEFAULT_KIND_COLORS.enemy);
+  });
+
+  it("clamps opacity and keeps an old style readable", () => {
+    expect(styleWith({ opacity: 0 }).edge.opacity).toBe(0.2);
+    expect(styleWith({ opacity: 9 }).edge.opacity).toBe(1);
+    expect(styleWith({}).edge.opacity).toBe(1);
+    expect(styleWith({}).edge.kindColors).toEqual({});
   });
 });

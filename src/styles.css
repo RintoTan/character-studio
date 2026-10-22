@@ -16330,3 +16330,134 @@ circle.graph-grid-dot {
     overscroll-behavior: contain;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Shared numeric control (src/components/NumericControl.tsx)
+
+   One row per continuous value: label, live value with a field you can type in,
+   a slider, and 默认. Sits full width of whatever grid holds it, because a
+   150px half-cell is not enough room for a slider and a field side by side.
+   ------------------------------------------------------------------------- */
+.nc {
+  display: grid;
+  gap: 5px;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.nc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.nc-label {
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nc-current {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.nc-field {
+  width: 54px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--control-fill);
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.nc-field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nc-unit {
+  min-width: 12px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.nc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.nc-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 96px;
+}
+
+.nc-reset {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.nc-reset:disabled {
+  color: var(--muted);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.nc-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+/* The quick tier answers four questions with four sliders: one per row, not two
+   squeezed into 157px cells. */
+.graph-style-quick {
+  grid-template-columns: 1fr;
+}
+
+.graph-kind-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  grid-column: 1 / -1;
+}
+
+.graph-kind-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.graph-kind-color input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+}
+
+.graph-style-state {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 12.5px;
+}

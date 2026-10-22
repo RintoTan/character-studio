@@ -1,4 +1,5 @@
-import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, LABEL_OFFSET_DEFAULT, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
+import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, DEFAULT_KIND_COLORS, LABEL_OFFSET_DEFAULT, kindInk, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
+import { NumericControl } from "../components/NumericControl";
 import {
   useCallback,
   useEffect,
@@ -877,14 +878,18 @@ export function neighbourIdsOf(
 export function edgeInk(
   kind: string,
   style: CanvasStyle,
-  local?: { color?: string; width?: number; dash?: "solid" | "dashed" | "dotted" },
-): { color: string; width: number; dash: "solid" | "dashed" | "dotted" } {
+  local?: { color?: string; width?: number; dash?: "solid" | "dashed" | "dotted"; opacity?: number },
+): { color: string; width: number; dash: "solid" | "dashed" | "dotted"; opacity: number } {
+  // Priority, in one place: the line's own override, then the canvas style, then the
+  // preset the style was built from, then the built-in default. `edgeInk` is the only
+  // reader, so the export cannot paint a line the canvas did not.
   return {
     color:
       local?.color ||
-      (style.edge.byKind ? `hsl(${kindHue(kind)} 42% 48%)` : style.edge.color || "#98a2b3"),
+      (style.edge.byKind ? kindInk(kind, style) : style.edge.color || "#98a2b3"),
     width: local?.width ?? style.edge.width,
     dash: local?.dash ?? style.edge.dash,
+    opacity: local?.opacity ?? style.edge.opacity ?? 1,
   };
 }
 
@@ -5723,51 +5728,61 @@ export function RelationshipGraph({
             <section className="graph-design-tier">
               <strong className="graph-design-heading">快速调整</strong>
               <div className="graph-style-grid graph-style-quick">
-                <label>
-                  <span className="graph-style-label">
-                    节点大小
-                    <span className="graph-style-value">{Math.round(style.node.size * 100)}%</span>
-                  </span>
-                  <input
-                    aria-label="节点大小"
-                    max={2}
-                    min={0.6}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: Number(event.target.value) } }, "node-size")}
-                    step={0.05}
-                    type="range"
-                    value={style.node.size}
-                  />
-                </label>
-                <label>
-                  <span className="graph-style-label">
-                    姓名大小
-                    <span className="graph-style-value">{Math.round(nameSize)}px</span>
-                  </span>
-                  <input
-                    aria-label="姓名字号"
-                    max={1.8}
-                    min={0.8}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: Number(event.target.value) } }, "name-scale")}
-                    step={0.05}
-                    type="range"
-                    value={style.node.nameScale}
-                  />
-                </label>
-                <label>
-                  <span className="graph-style-label">
-                    关系线粗细
-                    <span className="graph-style-value">{style.edge.width.toFixed(1)}px</span>
-                  </span>
-                  <input
-                    aria-label="连线宽度"
-                    max={6}
-                    min={0.4}
-                    onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: Number(event.target.value) } }, "edge-width")}
-                    step={0.1}
-                    type="range"
-                    value={style.edge.width}
-                  />
-                </label>
+                <NumericControl
+                  ariaLabel="节点大小"
+                  defaultValue={1}
+                  displayScale={100}
+                  label="节点大小"
+                  max={2}
+                  min={0.6}
+                  onChange={(v) => patchStyle({ ...style, preset: "custom", node: { ...style.node, size: v } }, "node-size")}
+                  precision={0}
+                  step={0.05}
+                  testId="node-size"
+                  unit="%"
+                  value={style.node.size}
+                />
+                <NumericControl
+                  ariaLabel="姓名字号"
+                  defaultValue={1}
+                  displayScale={100}
+                  label="姓名大小"
+                  max={1.8}
+                  min={0.8}
+                  onChange={(v) => patchStyle({ ...style, preset: "custom", node: { ...style.node, nameScale: v } }, "name-scale")}
+                  precision={0}
+                  step={0.05}
+                  testId="name-scale"
+                  unit="%"
+                  value={style.node.nameScale}
+                />
+                <NumericControl
+                  ariaLabel="连线宽度"
+                  defaultValue={1.4}
+                  label="关系线粗细"
+                  max={6}
+                  min={0.4}
+                  onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, width: v } }, "edge-width")}
+                  precision={1}
+                  step={0.1}
+                  testId="edge-width"
+                  unit="px"
+                  value={style.edge.width}
+                />
+                <NumericControl
+                  ariaLabel="线条透明度"
+                  defaultValue={1}
+                  displayScale={100}
+                  label="关系线透明度"
+                  max={1}
+                  min={0.2}
+                  onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, opacity: v } }, "edge-opacity")}
+                  precision={0}
+                  step={0.05}
+                  testId="edge-opacity"
+                  unit="%"
+                  value={style.edge.opacity}
+                />
                 <label>
                   <span className="graph-style-label">关系颜色</span>
                   <input
@@ -5786,6 +5801,39 @@ export function RelationshipGraph({
                   />
                   按关系类型着色
                 </label>
+                {/* Eight swatches, one per kind. The palette is a legend the author can
+                    rewrite; faction colour is a different question and lives with the
+                    faction, not here. */}
+                {style.edge.byKind && (
+                  <div className="graph-kind-colors" data-testid="edge-kind-colors">
+                    {RELATIONSHIP_KINDS.map((kind) => (
+                      <label className="graph-kind-color" key={kind.value}>
+                        <input
+                          aria-label={`${kind.label}颜色`}
+                          data-testid={`kind-color-${kind.value}`}
+                          onChange={(event) =>
+                            patchStyle({
+                              ...style,
+                              preset: "custom",
+                              edge: { ...style.edge, kindColors: { ...style.edge.kindColors, [kind.value]: event.target.value } },
+                            })
+                          }
+                          type="color"
+                          value={style.edge.kindColors[kind.value] || DEFAULT_KIND_COLORS[kind.value]}
+                        />
+                        <span>{kind.label}</span>
+                      </label>
+                    ))}
+                    <button
+                      className="ghost-button small"
+                      disabled={!Object.keys(style.edge.kindColors).length}
+                      onClick={() => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, kindColors: {} } })}
+                      type="button"
+                    >
+                      恢复默认配色
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
   );
@@ -5986,29 +6034,93 @@ export function RelationshipGraph({
                           {characterDisplayName(byId.get(edge.toId)?.character ?? ({ name: "?" } as Character))} ·{" "}
                           {relationshipKindLabel(edge.kind)}
                         </span>
+                        <p className="graph-style-state">
+                          <span className="muted">状态</span>
+                          <strong data-testid="edge-local-state">
+                            {Object.keys(local).length ? "自定义（覆盖全局）" : "继承全局"}
+                          </strong>
+                        </p>
                         <div className="graph-style-grid">
                           <label>线条颜色
                             <input
                               aria-label="线条颜色"
+                              data-testid="edge-local-color"
                               onChange={(event) => patch({ color: event.target.value })}
                               type="color"
-                              value={local.color || style.edge.color || "#7b87a8"}
+                              value={local.color || (style.edge.byKind ? kindInk(edge.kind, style) : style.edge.color) || "#7b87a8"}
                             />
                           </label>
-                          <label>线条粗细
-                            <input
-                              aria-label="线条粗细"
-                              max={6}
-                              min={0.4}
-                              onChange={(event) => patch({ width: Number(event.target.value) }, `edge-width-${edge.id}`)}
-                              step={0.1}
-                              type="range"
-                              value={local.width ?? style.edge.width}
-                            />
-                          </label>
+                          <NumericControl
+                            ariaLabel="所选线宽"
+                            defaultValue={style.edge.width}
+                            label="线条粗细"
+                            max={6}
+                            min={0.4}
+                            onChange={(v) => patch({ width: v }, `edge-width-${edge.id}`)}
+                            precision={1}
+                            step={0.1}
+                            testId="edge-local-width"
+                            unit="px"
+                            value={local.width ?? style.edge.width}
+                          />
+                          <NumericControl
+                            ariaLabel="所选线透明度"
+                            defaultValue={style.edge.opacity}
+                            displayScale={100}
+                            label="透明度"
+                            max={1}
+                            min={0.2}
+                            onChange={(v) => patch({ opacity: v }, `edge-opacity-${edge.id}`)}
+                            precision={0}
+                            step={0.05}
+                            testId="edge-local-opacity"
+                            unit="%"
+                            value={local.opacity ?? style.edge.opacity}
+                          />
+                          <NumericControl
+                            ariaLabel="所选标签字号"
+                            defaultValue={style.edge.labelSize}
+                            label="标签字号"
+                            max={18}
+                            min={8}
+                            onChange={(v) => patch({ labelSize: v }, `edge-label-size-${edge.id}`)}
+                            precision={1}
+                            step={0.5}
+                            testId="edge-local-label-size"
+                            unit="px"
+                            value={local.labelSize ?? style.edge.labelSize}
+                          />
+                          <NumericControl
+                            ariaLabel="所选标签沿线位置"
+                            defaultValue={style.edge.labelT}
+                            displayScale={100}
+                            label="标签沿线"
+                            max={0.9}
+                            min={0.1}
+                            onChange={(v) => patch({ labelT: v }, `edge-label-t-${edge.id}`)}
+                            precision={0}
+                            step={0.05}
+                            testId="edge-local-label-t"
+                            unit="%"
+                            value={local.labelT ?? style.edge.labelT}
+                          />
+                          <NumericControl
+                            ariaLabel="所选标签偏移"
+                            defaultValue={style.edge.labelOffset}
+                            label="标签偏移"
+                            max={24}
+                            min={-24}
+                            onChange={(v) => patch({ labelOffset: v }, `edge-label-offset-${edge.id}`)}
+                            precision={0}
+                            step={1}
+                            testId="edge-local-label-offset"
+                            unit="u"
+                            value={local.labelOffset ?? style.edge.labelOffset}
+                          />
                           <label>线型
                             <select
                               aria-label="线型"
+                              data-testid="edge-local-dash"
                               onChange={(event) => patch({ dash: event.target.value as CanvasStyle["edge"]["dash"] })}
                               value={local.dash ?? style.edge.dash}
                             >
@@ -6017,9 +6129,23 @@ export function RelationshipGraph({
                               <option value="dotted">点线</option>
                             </select>
                           </label>
+                          <label>箭头
+                            <select
+                              aria-label="箭头样式"
+                              data-testid="edge-local-arrow"
+                              onChange={(event) => patch({ arrow: event.target.value as ArrowStyle })}
+                              value={local.arrow ?? style.edge.arrow}
+                            >
+                              <option value="concise">简洁</option>
+                              <option value="thin">细线</option>
+                              <option value="soft">柔和</option>
+                              <option value="none">无</option>
+                            </select>
+                          </label>
                         </div>
                         <button
                           className="ghost-button"
+                          data-testid="edge-local-reset"
                           disabled={!layout.edgeStyles?.[edge.id]}
                           onClick={() => {
                             const next = { ...(layout.edgeStyles ?? {}) };
@@ -6028,7 +6154,7 @@ export function RelationshipGraph({
                           }}
                           type="button"
                         >
-                          恢复这条线的默认外观
+                          恢复继承全局
                         </button>
                       </>
                     );
@@ -6179,45 +6305,46 @@ export function RelationshipGraph({
                         它的关系线仍会显示文字；把成员减到 60 个以内则全部显示。
                       </p>
                     )}
-                    <label className="graph-label-row">
-                      <span>字号</span>
-                      <input
-                        data-testid="edge-label-size"
-                        max={18}
-                        min={8}
-                        onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelSize: Number(event.target.value) } })}
-                        step={0.5}
-                        type="range"
-                        value={style.edge.labelSize}
-                      />
-                      <em data-testid="edge-label-size-value">{style.edge.labelSize}px</em>
-                    </label>
-                    <label className="graph-label-row">
-                      <span>沿线位置</span>
-                      <input
-                        data-testid="edge-label-t"
-                        max={0.9}
-                        min={0.1}
-                        onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelT: Number(event.target.value) } })}
-                        step={0.05}
-                        type="range"
-                        value={style.edge.labelT}
-                      />
-                      <em data-testid="edge-label-t-value">{Math.round(style.edge.labelT * 100)}%</em>
-                    </label>
-                    <label className="graph-label-row">
-                      <span>垂直偏移</span>
-                      <input
-                        data-testid="edge-label-offset"
-                        max={24}
-                        min={-24}
-                        onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelOffset: Number(event.target.value) } })}
-                        step={1}
-                        type="range"
-                        value={style.edge.labelOffset}
-                      />
-                      <em data-testid="edge-label-offset-value">{style.edge.labelOffset}</em>
-                    </label>
+                    <NumericControl
+                      ariaLabel="标签字号"
+                      defaultValue={11}
+                      label="字号"
+                      max={18}
+                      min={8}
+                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelSize: v } })}
+                      precision={1}
+                      step={0.5}
+                      testId="edge-label-size"
+                      unit="px"
+                      value={style.edge.labelSize}
+                    />
+                    <NumericControl
+                      ariaLabel="标签沿线位置"
+                      defaultValue={0.5}
+                      displayScale={100}
+                      label="沿线位置"
+                      max={0.9}
+                      min={0.1}
+                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelT: v } })}
+                      precision={0}
+                      step={0.05}
+                      testId="edge-label-t"
+                      unit="%"
+                      value={style.edge.labelT}
+                    />
+                    <NumericControl
+                      ariaLabel="标签垂直偏移"
+                      defaultValue={LABEL_OFFSET_DEFAULT}
+                      label="垂直偏移"
+                      max={24}
+                      min={-24}
+                      onChange={(v) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, labelOffset: v } })}
+                      precision={0}
+                      step={1}
+                      testId="edge-label-offset"
+                      unit="u"
+                      value={style.edge.labelOffset}
+                    />
                     <button
                       className="ghost-button small"
                       data-testid="edge-label-reset"
@@ -7923,6 +8050,7 @@ export function RelationshipGraph({
                     style={{
                       stroke: edgeColor,
                       strokeDasharray: dashArrayFor(edgeDash),
+                      strokeOpacity: ink.opacity,
                       strokeWidth: edgeWidth,
                     }}
                   />
@@ -7930,7 +8058,7 @@ export function RelationshipGraph({
                     <polygon
                       className="relationship-arrow-head"
                       points={geometry.arrow}
-                      style={edgeColor ? { fill: edgeColor } : undefined}
+                      style={edgeColor ? { fill: edgeColor, fillOpacity: ink.opacity } : undefined}
                     />
                   )}
                   {/* Edge labels are the first thing a dense graph has too many of:
