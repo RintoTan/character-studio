@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.52.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 移动端信息架构与全站共享搜索；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.52.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 移动端信息架构与全站共享搜索；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.4**（`APP_SPRINT`）—— 移动端 Hero/工作区分工与共享搜索；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |

@@ -1844,8 +1844,23 @@ export function RelationshipGraph({
   // One row's action menu at a time: three text buttons per row was the widest
   // thing in the table and the least used.
   const [manageMenuId, setManageMenuId] = useState<string | null>(null);
+
+  // A floating menu belongs to the page, not to the row: any scroll or resize should
+  // put it away rather than leave it pointing at a row that has moved.
+  useEffect(() => {
+    if (!manageMenuId) {
+      return;
+    }
+    const close = () => setManageMenuId(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [manageMenuId]);
   // True when the row's menu has to open upward to stay on screen.
-  const [manageMenuFlip, setManageMenuFlip] = useState(false);
+  const [manageMenuPos, setManageMenuPos] = useState<{ top: number; left: number } | null>(null);
   // The small menus: 更多 and 对齐/分布. They are popovers, not surfaces, because they
   // hold one press each and close on the next click anywhere.
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -1889,7 +1904,7 @@ export function RelationshipGraph({
   const [isStudio, setIsStudio] = useState(false);
   // Both drawers and every full panel are views of `surface`; these names are kept
   // because the rendering and the fit compensation read them.
-  const isStudioLeftOpen = surface === "characters";
+  const isStudioLeftOpen = surface === "characters" || surface === "groups";
   const isStudioRightOpen = surface === "design" || surface === "explore" || surface === "arrange";
   const studioTab: "design" | "explore" = surface === "explore" ? "explore" : "design";
   // A phone's panel is a sheet over the drawing, and how much of the drawing it
@@ -6118,6 +6133,12 @@ export function RelationshipGraph({
                         显示文字
                       </label>
                     </div>
+                    {style.edge.showLabel && visibleCharacters.length > 60 && (
+                      <p className="muted" data-testid="edge-label-density-note">
+                        当前画布有 {visibleCharacters.length} 个角色，标签按密度简化：选中或指向某个角色时，
+                        它的关系线仍会显示文字；把成员减到 60 个以内则全部显示。
+                      </p>
+                    )}
                     <label className="graph-label-row">
                       <span>字号</span>
                       <input
@@ -7480,6 +7501,24 @@ export function RelationshipGraph({
           )}
           </div>
 
+          {/* State, not actions: which tool is on and whether moves snap. Shown only
+              when it differs from the default, so a phone does not pay for it. */}
+          {(selectMode || multiSelectMode || style.canvas.snap || dragGuides) && (
+            <div className="graph-status-row" data-testid="graph-status">
+              {multiSelectMode || selectMode ? (
+                <span className="graph-status-chip on" data-testid="status-tool">
+                  {multiSelectMode ? "多选" : "选择工具"}
+                </span>
+              ) : null}
+              {style.canvas.snap && (
+                <span className="graph-status-chip on" data-testid="status-snap">
+                  吸附 {style.canvas.gridSize}
+                </span>
+              )}
+              {dragGuides && <span className="graph-status-chip on">Shift 锁定</span>}
+            </div>
+          )}
+
           {notOnCanvas && (
             <div className="graph-notice" role="status">
               <p>
@@ -7858,7 +7897,11 @@ export function RelationshipGraph({
                   {/* A hundred edges converging at one point drop their kind labels on
                       top of each other; at that size they are a smear, not information.
                       Hover and selection still name the edge. */}
-                  {style.edge.showLabel && visibleCharacters.length <= 60 &&
+                  {/* Density gate, with a way through it: on a large canvas the words
+                      are simplified, but the edges of whatever is selected or pointed at
+                      still name themselves. Otherwise the setting looks broken. */}
+                  {style.edge.showLabel &&
+                    (visibleCharacters.length <= 60 || touchesHovered || touchesActiveSelection) &&
                     inLens &&
                     (exporting || style.edge.labelSize * view.k * (measured ? screenScale : 1) >= 6) &&
                     (visibleCharacters.length <= EDGE_LABEL_LIMIT ||
@@ -8531,7 +8574,7 @@ export function RelationshipGraph({
                 </div>
               </div>
 
-              {isStudioLeftOpen && (
+              {surface === "characters" && (
                 <aside aria-label="角色与分组" className="graph-studio-drawer left">
                   <div className="graph-studio-drawer-head">
                     <strong>角色与分组</strong>
@@ -8544,6 +8587,17 @@ export function RelationshipGraph({
                       no roster controls at all: 加入 / 移出 existed on the page and nowhere
                       in full-screen editing. One panel, so the two surfaces cannot drift. */}
                   {charactersPanelContent}
+                </aside>
+              )}
+              {surface === "groups" && (
+                <aside aria-label="视觉分组" className="graph-studio-drawer left">
+                  <div className="graph-studio-drawer-head">
+                    <strong>视觉分组</strong>
+                    <button aria-label="关闭分组面板" onClick={closeSurface} type="button">
+                      <Icon name="close" size={14} />
+                    </button>
+                  </div>
+                  {groupPanel}
                 </aside>
               )}
 
@@ -8730,14 +8784,10 @@ export function RelationshipGraph({
                     })()
                   ) : (
                     <>
-                      <span className="graph-context-count">已选 {selectedIds.length}</span>
-                      {/* Mode and snapping are state, not actions: one short chip each,
-                          so the bar stays a bar instead of becoming a panel. */}
-                      <span className={`graph-status-chip${selectMode || multiSelectMode ? " on" : ""}`}>
-                        {multiSelectMode ? "多选" : selectMode ? "选择工具" : "浏览"}
-                      </span>
-                      {style.canvas.snap && <span className="graph-status-chip">吸附 {style.canvas.gridSize}</span>}
-                      {dragGuides && <span className="graph-status-chip on">Shift 锁定</span>}
+                      <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
+                      {/* Four things, one row. 外观 and 创建分组 are not selection
+                          actions; they live one press deeper inside 排列, and the
+                          studio's own 设计 entry still opens the same panel. */}
                       <div className="graph-context-actions">
                         <button className="ghost-button" onClick={fitSelection} type="button">
                           适应选中
@@ -8751,9 +8801,6 @@ export function RelationshipGraph({
                           type="button"
                         >
                           排列
-                        </button>
-                        <button className="ghost-button" onClick={() => setSurface("design")} type="button">
-                          外观
                         </button>
                         <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
                           取消选择
@@ -8779,6 +8826,7 @@ export function RelationshipGraph({
                   <div className="graph-align-panel" role="group" aria-label="对齐与分布">
                     <button
                       className="ghost-button small"
+                      data-testid="align-create-group"
                       onClick={() => {
                         setGroupDraft({ name: "", editingId: null });
                         setIsAlignOpen(false);
@@ -8787,6 +8835,17 @@ export function RelationshipGraph({
                       type="button"
                     >
                       创建分组
+                    </button>
+                    <button
+                      className="ghost-button small"
+                      data-testid="align-open-design"
+                      onClick={() => {
+                        setIsAlignOpen(false);
+                        setSurface("design");
+                      }}
+                      type="button"
+                    >
+                      外观
                     </button>
                     <div className="graph-align-section">
                       <span className="graph-align-title">对齐</span>
@@ -9063,21 +9122,34 @@ export function RelationshipGraph({
                                    const willOpen = manageMenuId !== relationship.id;
                                    setManageMenuId(willOpen ? relationship.id : null);
                                    if (willOpen) {
-                                     // A row at the bottom of the table has no room below
-                                     // it. Measure before painting: opening downward there
-                                     // put 删除 under the pager and out of reach.
+                                     // The table scrolls, so a menu in the row is clipped
+                                     // by it. Measure the trigger and paint the menu in the
+                                     // page instead: below when there is room, above when
+                                     // there is not, right-aligned and pulled inside the
+                                     // viewport at the edge.
                                      const rect = event.currentTarget.getBoundingClientRect();
-                                     setManageMenuFlip(rect.bottom + 200 > window.innerHeight);
+                                     const width = 148;
+                                     const height = 132;
+                                     const below = rect.bottom + 6;
+                                     const top = below + height > window.innerHeight ? rect.top - height - 6 : below;
+                                     setManageMenuPos({
+                                       top: Math.max(8, top),
+                                       left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)),
+                                     });
                                    }
                                  }}
                                  type="button"
                                >
                                  <Icon name="more" size={16} />
                                </button>
-                               {manageMenuId === relationship.id && (
+                               {manageMenuId === relationship.id &&
+                                 manageMenuPos &&
+                                 createPortal(
                                  <div
-                                   className={`manage-row-menu${manageMenuFlip ? " flip-up" : ""}`}
+                                   className="manage-row-menu is-floating"
+                                   data-testid="manage-row-menu"
                                    role="menu"
+                                   style={{ top: manageMenuPos.top, left: manageMenuPos.left }}
                                  >
                                    <button
                                      aria-label={`编辑 ${fromName} 与 ${toName} 的${relationshipKindLabel(relationship.kind)}关系`}
@@ -9127,8 +9199,9 @@ export function RelationshipGraph({
                                      <Icon name="trash" size={14} />
                                      删除
                                    </button>
-                                 </div>
-                               )}
+                                 </div>,
+                                   document.body,
+                                 )}
                              </div>
                            </td>
                         </tr>

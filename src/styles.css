@@ -12106,7 +12106,10 @@ circle.graph-grid-dot {
   align-items: center;
   position: absolute;
   left: 0;
-  bottom: calc(100% + 6px);
+  /* The bar sits at the top of the canvas, so the tool group opens downward: above it
+     there is nothing but chrome, and at 1440 it landed off-screen. */
+  top: calc(100% + 6px);
+  bottom: auto;
   z-index: 30;
   width: max-content;
   max-width: min(460px, calc(100vw - 40px));
@@ -13108,6 +13111,15 @@ circle.graph-grid-dot {
   font-variant-numeric: tabular-nums;
 }
 
+
+
+/* A state line under the canvas head: only rendered when something is non-default. */
+.graph-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 var(--workspace-inset) 6px;
+}
 
 /* Alignment guides: a thin dashed line that appears only while a drag is snapping. */
 .graph-guide-line {
@@ -15542,6 +15554,13 @@ circle.graph-grid-dot {
   border-radius: 10px;
   background: var(--surface);
   box-shadow: var(--shadow-strong);
+}
+
+/* Painted in the page, not in the table, so the pager cannot clip it. */
+.manage-row-menu.is-floating {
+  position: fixed;
+  z-index: 90;
+  width: 148px;
 }
 
 /* Opened upward when the row sits near the bottom of the window. */
