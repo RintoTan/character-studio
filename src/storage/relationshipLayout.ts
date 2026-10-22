@@ -46,6 +46,12 @@ export type CanvasLayout = {
   bookmarks?: CanvasBookmark[];
   /** Named arrangements of the same positions, kept apart from style presets. */
   snapshots?: LayoutSnapshot[];
+  /**
+   * Who is on this canvas. Missing means "legacy": draw every connected character.
+   * Present — including an empty array — is the author's explicit choice and is never
+   * second-guessed.
+   */
+  members?: string[];
 };
 
 export const emptyLayout = (): CanvasLayout => ({
@@ -173,6 +179,7 @@ export function normalizeLayout(value: unknown): CanvasLayout {
     positions,
     groups,
     snapshots: normalizeSnapshots(value.snapshots),
+    members: normalizeMemberIds(value.members),
     // Sprint 49 packages have no style block; they open in the accepted classic look.
     style: normalizeCanvasStyle(value.style),
     nodeStyles,
@@ -188,6 +195,21 @@ export function loadLayout(): CanvasLayout {
   } catch {
     return emptyLayout();
   }
+}
+
+function normalizeMemberIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value) {
+    if (typeof raw === "string" && !seen.has(raw)) {
+      seen.add(raw);
+      out.push(raw);
+    }
+  }
+  return out;
 }
 
 /** The same write, but the caller is told when the quota refused it. */
@@ -262,6 +284,7 @@ export function pruneLayout(
     edgeStyles,
     bookmarks: layout.bookmarks,
     snapshots: layout.snapshots,
+    members: layout.members,
   };
 }
 
@@ -710,6 +733,7 @@ export function mergeImportedLayout(options: {
       edgeStyles: mappedEdgeStyles,
       bookmarks: incoming.bookmarks,
       snapshots: incoming.snapshots,
+      members: incoming.members,
     });
   }
 
@@ -737,6 +761,7 @@ export function mergeImportedLayout(options: {
     bookmarks: current.bookmarks ?? [],
     // An import without a snapshot list is not a request to delete the current one.
     snapshots: incoming.snapshots ?? current.snapshots ?? [],
+    members: incoming.members ?? current.members,
   };
 }
 

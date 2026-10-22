@@ -75,6 +75,7 @@ import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
 import { labelDensity, namesNode, pickSpacedLabels } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
+import { addMembers, normalizeMembers, placeNewPoints, removeMembers } from "../utils/canvasMembers";
 import {
   addSnapshot,
   captureSnapshot,
@@ -1596,6 +1597,9 @@ export function RelationshipGraph({
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [notOnCanvas, setNotOnCanvas] = useState<Character | null>(null);
+  const [memberFilter, setMemberFilter] = useState<"all" | "canvas" | "off">("all");
+  const [memberBatch, setMemberBatch] = useState(false);
+  const [memberSelection, setMemberSelection] = useState<string[]>([]);
   // Output is set once and used rarely, so it lives behind its own toggle: the bar
   // keeps 显示设置 and 导出 at one height instead of five controls in a row.
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -1662,7 +1666,25 @@ export function RelationshipGraph({
   // hold the graph together (two or more edges, most connected first) and says how many
   // it left out; 显示全部角色 draws every one of them. Nothing is hidden without a way
   // to see it.
+
+  // Free placement lives in its own store, keyed by character id: a rename moves
+  // nothing, and a deleted character is pruned out rather than ghosted.
+  const [layout, setLayout] = useState<CanvasLayout>(() => loadLayout());
+
+  // `undefined` is a canvas that never had an explicit roster: it keeps the old
+  // "everything connected" default. An array — even an empty one — is the author's
+  // decision and is drawn as-is.
+  const canvasMembers = useMemo(
+    () => normalizeMembers(layout.members, characters.map((character) => character.id)),
+    [layout.members, characters],
+  );
+
   const visibleCharacters = useMemo(() => {
+    if (canvasMembers) {
+      const onCanvas = new Set(canvasMembers);
+      return characters.filter((character) => onCanvas.has(character.id));
+    }
+
     const drawn = (() => {
       if (showAll) {
         return characters;
@@ -1686,11 +1708,7 @@ export function RelationshipGraph({
     );
 
     return extras.length ? [...drawn, ...extras] : drawn;
-  }, [characters, connectedIds, relationships, showAll, focusExtraIds]);
-
-  // Free placement lives in its own store, keyed by character id: a rename moves
-  // nothing, and a deleted character is pruned out rather than ghosted.
-  const [layout, setLayout] = useState<CanvasLayout>(() => loadLayout());
+  }, [canvasMembers, characters, connectedIds, relationships, showAll, focusExtraIds]);
   // Bumped when a command moves nodes as a whole by more than a drag does (arrange,
   // undo). The drawing box is cached so a drag cannot rescale the canvas under the
   // pointer; a command that re-places everything has to rebuild it, or the new
@@ -3506,6 +3524,76 @@ export function RelationshipGraph({
 
   const snapshots = layout.snapshots ?? [];
 
+  /** The drawing positions as they are on screen, keyed by id. */
+  function onScreenPositions(): Record<string, { x: number; y: number }> {
+    const map: Record<string, { x: number; y: number }> = {};
+    visibleCharacters.forEach((character, index) => {
+      const point = positions[index];
+      if (point) {
+        map[character.id] = { x: point.x, y: point.y };
+      }
+    });
+    return map;
+  }
+
+  function currentMembers(): string[] {
+    return canvasMembers ?? visibleCharacters.map((character) => character.id);
+  }
+
+  /**
+   * Membership is its own layer: it writes the roster (and, for additions, the seeded
+   * coordinates) in one layout write, and never touches characters or relationships.
+   */
+  function writeMembership(next: string[], placed?: Record<string, { x: number; y: number }>, label?: string) {
+    const current = workingLayout();
+    const updated = {
+      ...current,
+      members: next,
+      positions: placed ? { ...current.positions, ...placed } : current.positions,
+    };
+    if (!trySaveLayout(updated)) {
+      show("保存失败：浏览器存储空间不足");
+      return false;
+    }
+    if (label) {
+      setArrangeUndo({ layout: current, view, label });
+    }
+    setLayout(updated);
+    return true;
+  }
+
+  function addToCanvas(ids: readonly string[]) {
+    const present = new Set(currentMembers());
+    const fresh = ids.filter((id) => !present.has(id) && characters.some((character) => character.id === id));
+    if (fresh.length === 0) {
+      return;
+    }
+    const base = { ...onScreenPositions(), ...workingLayout().positions };
+    const placed = placeNewPoints(
+      Object.fromEntries(Object.entries(base).filter(([id]) => present.has(id) || characters.some((c) => c.id === id))),
+      fresh,
+    );
+    if (writeMembership(addMembers([...present], fresh), placed, `加入 ${fresh.length} 个角色`)) {
+      show(`已把 ${fresh.length} 个角色加入画布`);
+    }
+  }
+
+  function removeFromCanvas(ids: readonly string[]) {
+    const present = currentMembers();
+    const drop = ids.filter((id) => present.includes(id));
+    if (drop.length === 0) {
+      return;
+    }
+    if (writeMembership(removeMembers(present, drop), undefined, `移出 ${drop.length} 个角色`)) {
+      show(`已移出 ${drop.length} 个角色，角色资料与关系都还在`);
+    }
+  }
+
+  function addAllToCanvas() {
+    addToCanvas(characters.map((character) => character.id));
+  }
+
+
   function saveSnapshot() {
     const now = new Date().toISOString();
     const ids = characters.map((character) => character.id);
@@ -5124,7 +5212,7 @@ export function RelationshipGraph({
 
       <div className="graph-snapshot-block" role="group" aria-label="我的布局">
         <p className="graph-panel-title">我的布局</p>
-        <p className="muted">保存现在的摆放与取景，之后一键回到这里。与上方预设不同：预设改变外观，布局只改变位置。</p>
+        <p className="muted">保存现在的摆放与取景，之后一键回到这里。与上方预设不同：预设改变外观，布局只改变位置；快照不保存画布成员。</p>
         <form
           className="graph-snapshot-save"
           onSubmit={(event) => {
@@ -5515,11 +5603,8 @@ export function RelationshipGraph({
                     in scope, how many of them the core view draws, and whether the lines
                     are painted. One switch used to answer all three. */}
                 <p className="graph-scope-stats" role="status">
-                  角色 {characters.length} · 有关联 {connectedIds.size} · 画布{" "}
-                  {visibleCharacters.length}
-                  {visibleCharacters.length < connectedIds.size
-                    ? `/${connectedIds.size}`
-                    : ""}
+                  角色库 {characters.length} · 画布 {currentMembers().length} · 可见{" "}
+                  {visibleCharacters.length} · 关系线 {prefs.showEdges ? drawnRelationships.length : 0}
                   {" · "}关系线{" "}
                   {prefs.showEdges
                     ? `${drawnRelationships.length}/${relationships.length}`
@@ -6061,6 +6146,13 @@ export function RelationshipGraph({
             </div>
   );
 
+  const panelCharacters = useMemo(() => {
+    const base = query.trim() ? searchResults : characters;
+    if (memberFilter === "all") return base;
+    const on = new Set(currentMembers());
+    return base.filter((character) => (memberFilter === "canvas" ? on.has(character.id) : !on.has(character.id)));
+  }, [query, searchResults, characters, memberFilter, canvasMembers]);
+
   const charactersPanelContent = (
     <div className="graph-studio-characters-body">
       <label className="graph-studio-search">
@@ -6082,22 +6174,96 @@ export function RelationshipGraph({
         )}
       </label>
 
+      <div className="graph-members-head">
+        <span className="graph-members-count">
+          画布 {currentMembers().length} / 角色库 {characters.length}
+        </span>
+        <div className="graph-members-tabs" role="group" aria-label="画布成员筛选">
+          {([
+            ["all", "全部"],
+            ["canvas", "在画布"],
+            ["off", "未加入"],
+          ] as const).map(([value, label]) => (
+            <button
+              aria-pressed={memberFilter === value}
+              className="ghost-button small"
+              key={value}
+              onClick={() => setMemberFilter(value)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="graph-members-bulk">
+        <button
+          aria-pressed={memberBatch}
+          className="ghost-button small"
+          onClick={() => {
+            setMemberBatch((open) => !open);
+            setMemberSelection([]);
+          }}
+          type="button"
+        >
+          {memberBatch ? "退出批量" : "批量选择"}
+        </button>
+        <button className="ghost-button small" onClick={addAllToCanvas} type="button">
+          全部加入
+        </button>
+        {memberBatch && memberSelection.length > 0 && (
+          <>
+            <button className="ghost-button small" onClick={() => addToCanvas(memberSelection)} type="button">
+              加入所选 {memberSelection.length}
+            </button>
+            <button className="ghost-button small" onClick={() => removeFromCanvas(memberSelection)} type="button">
+              移出所选 {memberSelection.length}
+            </button>
+          </>
+        )}
+      </div>
+
       <div className="graph-studio-list" role="listbox" aria-label="角色列表">
-        {(query.trim() ? searchResults : visibleCharacters).map((character) => (
-          <button
-            aria-selected={focusId === character.id}
-            className={`graph-studio-row${focusId === character.id ? " active" : ""}`}
-            key={character.id}
-            onClick={() => focusCharacter(character)}
-            role="option"
-            type="button"
-          >
-            <CharacterRow character={character} />
-            <span className="graph-studio-row-state">
-              {byId.has(character.id) ? "在画布" : "未显示"}
-            </span>
-          </button>
-        ))}
+        {panelCharacters.map((character) => {
+          const onCanvas = currentMembers().includes(character.id);
+          return (
+            <div className={`graph-studio-row${focusId === character.id ? " active" : ""}`} key={character.id}>
+              {memberBatch && (
+                <input
+                  aria-label={`选择 ${character.name}`}
+                  checked={memberSelection.includes(character.id)}
+                  onChange={(event) =>
+                    setMemberSelection((current) =>
+                      event.target.checked
+                        ? [...current, character.id]
+                        : current.filter((id) => id !== character.id),
+                    )
+                  }
+                  type="checkbox"
+                />
+              )}
+              <button
+                aria-selected={focusId === character.id}
+                className="graph-studio-row-main"
+                onClick={() => focusCharacter(character)}
+                role="option"
+                type="button"
+              >
+                <CharacterRow character={character} />
+                <span className="graph-studio-row-state">{onCanvas ? "在画布" : "未加入"}</span>
+              </button>
+              <button
+                aria-label={onCanvas ? `把 ${character.name} 移出画布` : `把 ${character.name} 加入画布`}
+                className="ghost-button small graph-member-toggle"
+                onClick={() => (onCanvas ? removeFromCanvas([character.id]) : addToCanvas([character.id]))}
+                type="button"
+              >
+                {onCanvas ? "移出" : "加入"}
+              </button>
+            </div>
+          );
+        })}
         {query.trim() && searchResults.length === 0 && (
           <p className="muted">没有匹配的角色。</p>
         )}
@@ -6875,7 +7041,7 @@ export function RelationshipGraph({
               role="status"
               title="有关联的角色已全部画上；没有关系的角色在设计里切到「所有角色」即可显示。"
             >
-              画布 {visibleCharacters.length} / {characters.length} 个角色 ·{" "}
+              可见 {visibleCharacters.length} / 画布 {currentMembers().length} 个角色 ·{" "}
               {prefs.showEdges ? `${drawnRelationships.length} 条关系` : "关系线已隐藏"}
             </p>
           )}
@@ -6884,22 +7050,19 @@ export function RelationshipGraph({
           {notOnCanvas && (
             <div className="graph-notice" role="status">
               <p>
-                「{characterDisplayName(notOnCanvas)}」不在画布中：
-                {degreeById.get(notOnCanvas.id)
-                  ? "当前只画出有关联的角色。"
-                  : "这个角色还没有任何关系。"}
+                「{characterDisplayName(notOnCanvas)}」尚未加入当前画布。
               </p>
               <button
                 className="ghost-button"
                 onClick={() => {
-                  setShowAll(true);
+                  addToCanvas([notOnCanvas.id]);
                   setFocusId(notOnCanvas.id);
                   setPendingFocusId(notOnCanvas.id);
                   setNotOnCanvas(null);
                 }}
                 type="button"
               >
-                显示全部角色并定位
+                加入画布并定位
               </button>
             </div>
           )}

@@ -12923,6 +12923,63 @@ circle.graph-grid-dot {
   outline: none;
 }
 
+.graph-members-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+
+.graph-members-count {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.graph-members-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.graph-members-tabs .ghost-button[aria-pressed="true"] {
+  border-color: var(--border-strong);
+  background: var(--surface-subtle);
+  color: var(--text);
+}
+
+.graph-members-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+/* A row is a container now: checkbox, the character itself, and its membership button. */
+.graph-studio-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.graph-studio-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+}
+
+.graph-member-toggle {
+  flex: 0 0 auto;
+}
+
 .graph-studio-list {
   display: grid;
   gap: 2px;
