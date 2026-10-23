@@ -2839,6 +2839,10 @@ export function RelationshipGraph({
     () => (positions.length ? Math.max(...positions.map((point) => point.x)) : 0),
     [positions],
   );
+  const cloudMinX = useMemo(
+    () => (positions.length ? Math.min(...positions.map((point) => point.x)) : 0),
+    [positions],
+  );
   const nameBounds = useMemo(() => {
     const scale = Math.max(view.k * (measured ? screenScale : 1), 0.0001);
 
@@ -9572,18 +9576,24 @@ export function RelationshipGraph({
                     // vertical move — that is what once pushed a top label 200px down.
                     const labelWidthWorld =
                       Math.max(...lines.map((line) => line.length)) * nameFontPx * 0.95;
-                    const flipped =
+                    const flipInward =
                       placement &&
-                      placement.textAnchor === "start" &&
-                      placement.x + labelWidthWorld > cloudMaxX
+                      ((placement.textAnchor === "start" &&
+                        placement.x + labelWidthWorld > cloudMaxX) ||
+                        (placement.textAnchor === "end" &&
+                          placement.x - labelWidthWorld < cloudMinX));
+                    const flipped =
+                      placement && flipInward
                         ? {
                             ...placement,
                             x:
-                              positions[index].x -
-                              Math.max(geom.halfWidth, geom.halfHeight) -
-                              8 / Math.max(view.k * (measured ? screenScale : 1), 0.0001),
-                            textAnchor: "end" as const,
-                            side: "left" as const,
+                              positions[index].x +
+                              (placement.textAnchor === "start" ? -1 : 1) *
+                                (Math.max(geom.halfWidth, geom.halfHeight) +
+                                  8 / Math.max(view.k * (measured ? screenScale : 1), 0.0001)),
+                            textAnchor:
+                              placement.textAnchor === "start" ? ("end" as const) : ("start" as const),
+                            side: placement.textAnchor === "start" ? ("left" as const) : ("right" as const),
                           }
                         : placement;
                     placement = flipped;

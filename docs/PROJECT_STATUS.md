@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.5**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.59.6**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -21,6 +21,17 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### 2.59.6 验收补闭环（不新开 Sprint）
+
+| 项 | 结论 |
+| --- | --- |
+| 375 左侧 | **真缺陷**：最左节点本身在视口外（left = -20），姓名外置被裁 20px → 改为左右对称翻转，姓名落在 40..75，完整可见 |
+| 1440 左/右 | 姓名 372..408 / 1032..1068，与节点各留 5px，方向正确 |
+| 375 顶/底 | 250..264 / 602..616，未变 |
+| 多选探针 | 修正为先开多选模式再点三个不同 ID；375 与 1440 均得到 `c6 / c7 / c8`、3 环、0 姓名、计数「已选 3 个」 |
+| 清除 | 环与姓名归零；`relationship-layout` 全程为 null（未写入） |
+| 目视 | 13 张已逐张打开（375 全部 6 张、1440 顶/底/左/右/多选、卡片、40 单选）；`d1440-cleared` 与 `d1440-40-overview` 仅读数 |
 
 ### Sprint 61（2.59.5）
 
