@@ -12193,6 +12193,29 @@ circle.graph-grid-dot {
   gap: 6px;
 }
 
+/* A colour field has to look like a colour, not like a rule. The native swatch was
+   collapsing to a 2px line inside the two-column grid, which read as a separator
+   between rows and made the control look disabled. */
+.graph-style-grid input[type="color"] {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.graph-style-grid input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.graph-style-grid input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 5px;
+}
+
 .graph-style-grid input[type="range"] {
   width: 100%;
   /* A range input carries a default margin and an intrinsic min width; inside a grid
@@ -16589,6 +16612,21 @@ circle.graph-grid-dot {
 /* ---------------------------------------------------------------------------
    设计抽屉: one panel, two contexts
    ------------------------------------------------------------------------- */
+/* A property the picks disagree about says so instead of showing one of their
+   values: "mixed" is information, not a placeholder to be overwritten by accident. */
+.graph-mixed-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 55%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .graph-design-scope {
   display: grid;
   grid-template-columns: 1fr 1fr;

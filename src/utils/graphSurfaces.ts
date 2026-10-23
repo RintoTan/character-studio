@@ -86,7 +86,7 @@ export function appearanceTitle(target: AppearanceTarget): string {
 }
 
 /** The two tabs of the appearance panel: canvas-wide, or one object. */
-export type DesignScope = "canvas" | "object";
+export type DesignScope = "canvas" | "object" | "multi";
 
 /**
  * Which tab actually renders.
@@ -99,7 +99,16 @@ export type DesignScope = "canvas" | "object";
  * another object brings the object tab back.
  */
 export function designPanelScope(chosen: DesignScope, target: AppearanceTarget): DesignScope {
-  return chosen === "object" && target.kind === "canvas" ? "canvas" : chosen;
+  // 整体画布 is always a valid answer, so a choice made there is never taken away.
+  if (chosen === "canvas") {
+    return "canvas";
+  }
+
+  if (chosen === "multi") {
+    return target.kind === "multi" ? "multi" : "canvas";
+  }
+
+  return target.kind === "canvas" ? "canvas" : "object";
 }
 
 /**

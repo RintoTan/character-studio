@@ -1,5 +1,6 @@
 import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, DEFAULT_KIND_COLORS, LABEL_OFFSET_DEFAULT, kindInk, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
 import { NumericControl } from "../components/NumericControl";
+import { applyBatchStyle, batchTargets, mergeNodeValue, nodeOverrides } from "../utils/batchStyle";
 import {
   useCallback,
   useEffect,
@@ -1914,7 +1915,7 @@ export function RelationshipGraph({
   const [alignPopoverBox, setAlignPopoverBox] = useState<{ left: number; top: number } | null>(null);
   // The design drawer answers two different questions. One switch, two contexts;
   // never two panels. 外观 from a selection lands on the object, 设计 lands on the canvas.
-  const [designScope, setDesignScope] = useState<"canvas" | "object">("canvas");
+  const [designScope, setDesignScope] = useState<"canvas" | "object" | "multi">("canvas");
   // Search is a tool, not a permanent field: closed it is one compact control, open it
   // is the field with the results under it. The text survives closing, so reopening it
   // never loses what was typed.
@@ -6730,8 +6731,8 @@ export function RelationshipGraph({
         <div className="graph-style-local" role="note">
           <strong>已选 {selectedIds.length} 个角色</strong>
           <p className="muted">
-            批量外观暂不支持：边框、底色和形态按单个角色保存，这里先只改整体画布。
-            要改其中某一个，选中它再打开这里。
+            批量外观在「多个角色」页签里：那里只改边框、底色、形态、尺寸这些共有属性，
+            姓名与角色设定不会被批量覆盖。要改某一个人的细节，选中它再打开这里。
           </p>
           <button
             className="ghost-button"
@@ -6896,6 +6897,194 @@ export function RelationshipGraph({
     </div>
   );
 
+  // 多个角色 is its own context, not a bigger 所选对象: it edits the shared look and
+  // says so when the picks disagree. Nothing here touches names, portraits or the
+  // character sheet — those are per-person and are never written in a batch.
+  const batchTier = (() => {
+    const ids = batchTargets(selectedIds, (id) => byId.has(id));
+    const apply = (patch: Parameters<typeof applyBatchStyle>[2], run?: string) =>
+      commitLayout(applyBatchStyle(layout, ids, patch, byId.keys()), run);
+    const pick = <K extends keyof CanvasStyle["node"]>(key: K) =>
+      mergeNodeValue(layout, ids, key, style.node);
+    const inheritCount = ids.filter((id) => Object.keys(layout.nodeStyles?.[id] ?? {}).length > 0).length;
+    const mixedLabel = (text: string) => <span className="graph-mixed-badge" data-testid="batch-mixed">{text}</span>;
+
+    return (
+      <div className="graph-design-object" data-testid="design-multi-scope">
+        <p className="graph-style-state">
+          <span className="muted">修改范围</span>
+          <strong data-testid="batch-count">已选 {ids.length} 个角色</strong>
+          <span className="muted">
+            {inheritCount === 0 ? "全部继承整体画布" : `${inheritCount} 个已有自定义`}
+          </span>
+        </p>
+        <p className="graph-control-hint">
+          只写所选角色的外观覆盖；姓名、头像文件与角色设定不在此列，未选中的角色不受影响。
+        </p>
+
+        <NumericControl
+          ariaLabel="批量节点尺寸"
+          defaultValue={style.node.size}
+          hint={pick("size").mixed ? `混合：${ids.map((id) => layout.nodeStyles?.[id]?.size ?? style.node.size).join(" / ")}` : undefined}
+          label="节点尺寸"
+          max={1.8}
+          min={0.6}
+          onChange={(v) => apply({ size: v }, "batch-size")}
+          precision={2}
+          step={0.05}
+          testId="batch-size"
+          unit="×"
+          value={pick("size").value ?? style.node.size}
+        />
+        <NumericControl
+          ariaLabel="批量姓名字号"
+          defaultValue={style.node.nameScale}
+          label="姓名字号"
+          max={1.6}
+          min={0.6}
+          onChange={(v) => apply({ nameScale: v }, "batch-name-scale")}
+          precision={2}
+          step={0.05}
+          testId="batch-name-scale"
+          unit="×"
+          value={pick("nameScale").value ?? style.node.nameScale}
+        />
+
+        <div className="graph-style-field">
+          <span className="graph-style-label">
+            节点形态 {pick("form").mixed ? mixedLabel("混合") : null}
+          </span>
+          <div className="graph-segment" role="group" aria-label="批量节点形态">
+            {[
+              { value: "avatar", label: "头像" },
+              { value: "compact", label: "圆点" },
+              { value: "card", label: "卡片" },
+            ].map((option) => {
+              const merged = pick("form");
+              const current = merged.value === option.value;
+              return (
+                <button
+                  aria-pressed={current}
+                  className={current ? "graph-segment-button selected" : "graph-segment-button"}
+                  data-testid={`batch-form-${option.value}`}
+                  key={option.value}
+                  onClick={() => apply({ form: option.value as CanvasStyle["node"]["form"] })}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="graph-style-field">
+          <span className="graph-style-label">头像形状</span>
+          <div className="graph-segment" role="group" aria-label="批量头像形状">
+            {[
+              { value: "auto", label: "自动" },
+              { value: "circle", label: "圆形" },
+              { value: "rounded", label: "圆角" },
+            ].map((option) => {
+              const merged = pick("avatarShape");
+              const current = merged.value === option.value;
+              return (
+                <button
+                  aria-pressed={current}
+                  className={current ? "graph-segment-button selected" : "graph-segment-button"}
+                  data-testid={`batch-avatar-${option.value}`}
+                  key={option.value}
+                  onClick={() => apply({ avatarShape: option.value as CanvasStyle["node"]["avatarShape"] })}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="graph-style-grid">
+          <label>边框颜色
+            <input
+              aria-label="批量边框颜色"
+              data-testid="batch-border"
+              onChange={(event) => apply({ borderColor: event.target.value }, "batch-border")}
+              type="color"
+              value={pick("borderColor").value ?? style.node.borderColor}
+            />
+          </label>
+          <label>节点底色
+            <input
+              aria-label="批量节点底色"
+              data-testid="batch-background"
+              onChange={(event) => apply({ background: event.target.value }, "batch-background")}
+              type="color"
+              value={pick("background").value ?? style.node.background}
+            />
+          </label>
+        </div>
+
+        {[
+          { key: "showAvatars" as const, label: "显示头像" },
+          { key: "showNames" as const, label: "显示姓名" },
+          { key: "nameInside" as const, label: "姓名放在节点内" },
+        ].map((row) => {
+          const merged = pick(row.key);
+          return (
+            <div className="graph-style-field" key={row.key}>
+              <span className="graph-style-label">
+                {row.label} {merged.mixed ? mixedLabel("混合") : null}
+              </span>
+              <div className="graph-segment" role="group" aria-label={row.label}>
+                {[true, false].map((on) => {
+                  const current = merged.value === on;
+                  return (
+                    <button
+                      aria-pressed={current}
+                      className={current ? "graph-segment-button selected" : "graph-segment-button"}
+                      data-testid={`batch-${row.key}-${on ? "on" : "off"}`}
+                      key={String(on)}
+                      onClick={() => apply({ [row.key]: on } as Parameters<typeof applyBatchStyle>[2])}
+                      type="button"
+                    >
+                      {on ? "是" : "否"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+
+        <button
+          className="ghost-button"
+          data-testid="batch-inherit"
+          disabled={ids.every((id) => !Object.keys(layout.nodeStyles?.[id] ?? {}).length)}
+          onClick={() =>
+            apply({
+              size: undefined,
+              nameScale: undefined,
+              form: undefined,
+              avatarShape: undefined,
+              borderColor: undefined,
+              background: undefined,
+              showAvatars: undefined,
+              showNames: undefined,
+              nameInside: undefined,
+            })
+          }
+          type="button"
+        >
+          恢复继承整体画布
+        </button>
+        <p className="graph-control-hint">
+          单次修改是一次事务：撤销一次即回到这三个角色修改前的样子。
+        </p>
+      </div>
+    );
+  })();
+
   const stylePanel = (
     <div className="graph-style-panel" role="group" aria-label="画布外观">
       <div aria-label="设计范围" className="graph-design-scope" role="tablist">
@@ -6921,8 +7110,20 @@ export function RelationshipGraph({
         >
           所选对象
         </button>
+        <button
+          aria-selected={renderedDesignScope === "multi"}
+          className={renderedDesignScope === "multi" ? "graph-design-scope-button active" : "graph-design-scope-button"}
+          data-testid="design-scope-multi"
+          disabled={appearanceSelection.kind !== "multi"}
+          onClick={() => setDesignScope("multi")}
+          role="tab"
+          title={appearanceSelection.kind === "multi" ? "同时修改所选角色的共同外观" : "选中两个以上角色后可批量设计"}
+          type="button"
+        >
+          {appearanceSelection.kind === "multi" ? `多个角色 (${appearanceSelection.count})` : "多个角色"}
+        </button>
       </div>
-      {renderedDesignScope === "object" ? objectTier : canvasTier}
+      {renderedDesignScope === "multi" ? batchTier : renderedDesignScope === "object" ? objectTier : canvasTier}
     </div>
   );
 
