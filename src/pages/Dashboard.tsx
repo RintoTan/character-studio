@@ -3337,23 +3337,18 @@ export function Dashboard({
                   <div>
                     <h4>已完成</h4>
                     <ul className="about-list">
-                      <li>Dashboard</li>
-                      <li>Character Editor</li>
-                      <li>Character Preview</li>
-                      <li>Draft Box</li>
-                      <li>Favorites</li>
-                      <li>Theme</li>
-                      <li>JSON / CSV / PDF 导入导出</li>
+                                                                      <li>角色库与编辑：卡片 / 列表、草稿、收藏、搜索、预览、头像裁切</li>
+                        <li>关系网：三种布局、分组、快照、框选多选、批量外观、PNG / SVG / JPG / PDF 导出</li>
+                        <li>时间线、世界观管理</li>
+                        <li>撤销 / 重做、完整备份与恢复</li>
                     </ul>
                   </div>
                   <div>
                     <h4>计划开发</h4>
                     <ul className="about-list">
-                      <li>Character Relationship</li>
-                      <li>Timeline</li>
-                      <li>World Manager</li>
-                      <li>AI Assistant</li>
-                      <li>Cloud Sync</li>
+                        <li>AI 创作辅助</li>
+                        <li>云同步</li>
+                        <li>高密度画布的分级展示</li>
                     </ul>
                   </div>
                 </div>
@@ -3372,14 +3367,23 @@ export function Dashboard({
               </article>
               <article>
                 <h3>Changelog</h3>
-                <p>已优化 Dashboard、草稿箱、Avatar Picker、导入导出、主题切换和 Preview 展示体验。</p>
+                <ul className="about-list">
+                  <li>多个角色批量设计：共有外观一次改完，取值不一致时显示「混合」。</li>
+                  <li>关系网选中轮廓固定贴在节点外 3 像素，多选淡化只由多选工具触发。</li>
+                  <li>整理布局支持预览 / 取消 / 确认，取消后取景原样恢复。</li>
+                  <li>卡片节点在环形布局里按自身宽度占据弧长，不再互相压住。</li>
+                  <li>备份与恢复有了固定入口（更多操作 → 设置与数据），完整恢复带预览与确认。</li>
+                </ul>
               </article>
               <article>
                 <h3>Import / Export Guide</h3>
+                <p className="muted">
+                  入口：右上角「更多操作 → 设置与数据」，或页脚「设置与数据」；导入导出都在「数据」分类下。
+                </p>
                 <ul className="about-list">
                   <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
                   <li>角色 JSON：仅角色文字数据，不含头像，适合轻量备份。</li>
-                  <li>完整备份 ZIP：包含角色、头像绑定信息与头像素材，适合跨设备迁移。</li>
+                  <li>完整备份 ZIP：包含角色、关系、时间线、世界观、布局与外观覆盖；「完整备份 ZIP」导出，「完整恢复…」还原。</li>
                   <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
                   <li>CSV、PDF、JPG、PNG：用于文字归档或展示，不用于重新导入。</li>
                 </ul>

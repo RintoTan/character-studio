@@ -1708,34 +1708,32 @@ function App() {
                     <div>
                       <h4>已完成</h4>
                       <ul className="about-list">
-                        <li>Dashboard</li>
-                        <li>Character Editor</li>
-                        <li>Character Preview</li>
-                        <li>Draft Box</li>
-                        <li>Favorites</li>
-                        <li>Theme</li>
-                        <li>JSON / CSV / PDF 导入导出</li>
-                      </ul>
+                                                                        <li>角色库与编辑：卡片 / 列表、草稿、收藏、搜索、预览、头像裁切</li>
+                        <li>关系网：三种布局、分组、快照、框选多选、批量外观、PNG / SVG / JPG / PDF 导出</li>
+                        <li>时间线、世界观管理</li>
+                        <li>撤销 / 重做、完整备份与恢复</li>
+                    </ul>
                     </div>
                     <div>
                       <h4>计划开发</h4>
                       <ul className="about-list">
-                        <li>Character Relationship</li>
-                        <li>Timeline</li>
-                        <li>World Manager</li>
-                        <li>AI Assistant</li>
-                        <li>Cloud Sync</li>
-                      </ul>
+                        <li>AI 创作辅助</li>
+                        <li>云同步</li>
+                        <li>高密度画布的分级展示</li>
+                    </ul>
                     </div>
                   </div>
                 </article>
               )}
               <article>
                 <h3>导入 / 导出说明</h3>
+                <p className="muted">
+                  入口：右上角「更多操作 → 设置与数据」，或页脚「设置与数据」；备份恢复在「数据」分类下。
+                </p>
                 <ul className="about-list">
                   <li>单角色 JSON：包含角色；如有上传头像，会携带头像数据，适合分享单个角色。</li>
                   <li>角色 JSON：仅角色文字数据，不含头像，适合轻量备份。</li>
-                  <li>完整备份 ZIP：包含角色、头像绑定信息与头像素材，适合跨设备迁移。</li>
+                  <li>完整备份 ZIP：包含角色、关系、时间线、世界观、布局与外观覆盖；「完整备份 ZIP」导出，「完整恢复…」还原。</li>
                   <li>头像素材 JSON：可独立导入 / 导出素材库，不强制绑定角色。</li>
                   <li>CSV、PDF、JPG、PNG：用于查看、归档或展示，不用于重新导入。</li>
                 </ul>

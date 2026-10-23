@@ -355,14 +355,17 @@ export function DeveloperCenter({
     ["Toast", "成功、失败、警告、加载等即时反馈。"],
     ["Dialog", "确认、导入预览、素材库、设置等弹窗文案。"],
   ];
+  // Statuses describe what ships today. Anything listed as Planned has no screen yet;
+  // features that did land (relationship graph, timeline, world manager) live in 已完成
+  // so this list cannot quietly contradict the app's own navigation.
   const experiments = [
-    ["关系网", "Planned"],
-    ["时间线", "Planned"],
-    ["世界观管理", "Planned"],
+    ["关系网", "Shipped"],
+    ["时间线", "Shipped"],
+    ["世界观管理", "Shipped"],
     ["阵营系统", "Planned"],
     ["地图", "Planned"],
     ["大世界时间", "Planned"],
-    ["AI 创作辅助", "In Progress"],
+    ["AI 创作辅助", "Planned"],
     ["Prompt 编辑器", "Coming Soon"],
     ["词库编辑器", "Coming Soon"],
   ];
@@ -1180,8 +1183,8 @@ export function DeveloperCenter({
                   <span><strong>Version</strong>{settings.project.version}</span>
                   <span><strong>Sprint</strong>{settings.project.sprint}</span>
                   <span><strong>Build</strong>{settings.project.build}</span>
-                  <span><strong>Roadmap</strong>关系网、时间线、世界观管理、AI 创作辅助。</span>
-                  <span><strong>最近记录</strong>Sprint {settings.project.sprint}：Project Control Center 重建。</span>
+                  <span><strong>Roadmap</strong>关系网、时间线、世界观、批量设计、备份恢复已完成；AI 创作辅助、云同步计划中。</span>
+                  <span><strong>最近记录</strong>Sprint {settings.project.sprint}：批量角色设计、选中轮廓与备份恢复入口。</span>
                   <span><strong>发布标签</strong>{settings.project.releaseLabel}</span>
                 </div>
               )}
