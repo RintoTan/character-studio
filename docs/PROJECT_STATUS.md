@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.3**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.59.4**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -36,7 +36,7 @@
 | 69%（40） | 枢纽标签 6 个位置未变；选中姓名改为环外（本轮的预期变化） |
 | 清除后 | `names 0 / rings 0`（100 角色）；40 角色回到 6 个枢纽标签；`relationship-layout` 未被写入 |
 | 测试 | `test/namePlacement.test.ts` 9 条通过；全量 81 文件 / 903 用例通过（`tsc -b` 0 错误） |
-| 已知边界 | 375px 下 100 角色的环上最右节点，姓名可能被视口右缘裁掉约 2px —— 收敛用的是由 view 推出的世界边界，与该 SVG 的 client rect 有偏差，未在轮内扩大范围 |
+| 2.59.4 修正 | 2.59.3 的视口收敛把顶部姓名推进环内（离节点约 187px），已撤回：定位只保留几何部分，`bounds` 不再参与。代价是极靠边缘的节点姓名可能被裁 2px |
 
 ### Sprint 58（2.59.2）
 

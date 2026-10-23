@@ -9550,7 +9550,6 @@ export function RelationshipGraph({
                           labelWidth:
                             Math.max(...lines.map((line) => line.length)) * nameFontPx * 0.95,
                           lines: lines.length,
-                          bounds: nameBounds,
                         })
                       : null;
                     const labelX = placement ? placement.x : positions[index].x;
