@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.59.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -21,6 +21,25 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 57（2.59.1）
+
+关系网高密度画布的视觉验收（8 / 40 / 100 角色、深/浅、桌面 + 375），以及验收中发现的唯一阻断缺陷。
+
+| 场景 | 结论 | 证据（真实屏幕读数） |
+| --- | --- | --- |
+| 8 角色总览（120%） | 全部 8 个姓名可读，无重叠、无微型文字 | 姓名 19px 盒高 / 13 单位字号；`overlaps 0` |
+| 40 角色总览（69%） | 6 个枢纽姓名保留（15px），其余按规则隐去 | 6 个标签、17.6 单位字号、`overlaps 0` |
+| 40 角色单选 | 选中姓名 14px，其余枢纽姓名不变 | `namePx [14,15]`、`rings 1` |
+| 100 角色总览（29%） | 0 个标签：低缩放不画 5px 文字，环本身承载结构 | `names 0`；无重叠、无横向溢出 |
+| 100 角色单选 | 选中姓名 14px（37.4 单位字号被抬到屏幕下限） | `names 1 / 14px / overlaps 0` |
+| 100 角色相邻三选 | 三个选中环独立、计数「已选 3 个」清晰，姓名不叠（多选不抬名字） | `rings 3`、`names 0` |
+| 100 角色悬停 | 29% 下悬停不产生 5px 微型文字，移开后无残留 | 悬停前后 `names` 均为 0 |
+| 375 移动端 100（13%） | 单选姓名 14px、环完整；三选 3 环 + 计数；工具栏/画布/底部栏互不遮挡；无横向溢出 | `pageOverflowX false`；选择前后 `zoom 13%` 未跳动 |
+| 显式卡片 + 普通节点（40, 63%） | 三张显式卡片保持卡片形态（plate/full），与邻近节点不重叠；选中卡片显示完整卡片（106×35）与卡内姓名；选中普通节点时卡片不变 | 卡内姓名 9px；`cards 3`、`overlaps 0` |
+| 显式卡片低缩放（100, 28%） | **已修**：卡内 4px 姓名交还画布，选中卡片得到 14px 外层姓名；未选中卡片不再显示 4px 糊字 | 修复前 `cardNames 3 @4px`、选中后无姓名；修复后 `cardNamePx []`、`names 1 @14px` |
+| 样式与坐标不变 | 选中 → 清除后 `relationship-layout` 逐字节相同，卡片仍为 3 张，选中环归零 | `localStorage` 前后一致（704 B） |
+| 截图归档 | `CharacterStudio-Acceptance/sprint-57/`（见其 README 清单） | 逐张目视记录见当轮报告 |
 
 ### Sprint 56.x（2.59.0）
 

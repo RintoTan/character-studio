@@ -77,7 +77,7 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
-import { labelDensity, namesNode, pickSpacedLabels, readableNameSize } from "../utils/labelDensity";
+import { cardNameVisible, labelDensity, namesNode, pickSpacedLabels, readableNameSize } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
 import { addMembers, normalizeMembers, placeNewPoints, removeMembers } from "../utils/canvasMembers";
 import {
@@ -9245,6 +9245,16 @@ export function RelationshipGraph({
                   : geom.halfWidth * 2 - (geom.halfHeight * 2 - 8) - 20,
                 Math.min(nameSize, 15),
               );
+              // A card that has shrunk past legibility hands its name back to the
+              // canvas: four-pixel text inside an eight-pixel body is a smudge, and the
+              // selected card used to be the only node on the canvas with no readable
+              // name while its round neighbours got one.
+              const cardNameShown =
+                geom.card &&
+                cardNameVisible({
+                  nameSize: cardName.fontSize,
+                  pxPerUnit: view.k * (measured ? screenScale : 1),
+                });
               // One level per node, decided by priority rather than by stacked classes:
               // a selected person is never dimmed by a lens or a spotlight.
               const emphasis = emphasisLevel({
@@ -9456,7 +9466,7 @@ export function RelationshipGraph({
                       {character.avatarEmoji || "🙂"}
                     </text>
                   )}
-                  {geom.card && (
+                  {cardNameShown && (
                     <>
                       <text
                         className="relationship-node-card-name"
@@ -9479,7 +9489,7 @@ export function RelationshipGraph({
                       )}
                     </>
                   )}
-                  {labelled && !geom.card && (
+                  {labelled && (!geom.card || !cardNameShown) && (
 
                     <text
                       className={

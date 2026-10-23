@@ -109,3 +109,25 @@ export function readableNameSize(options: {
 
   return floor / pxPerUnit;
 }
+
+/**
+ * Whether a card still earns its name *inside* the card at this zoom.
+ *
+ * A card draws its name in its own body, which is why the canvas never adds an outside
+ * label to one. At 0.28x that body is eight pixels tall and the name lands at four:
+ * unreadable, and — because the outside label is suppressed for cards — the selected
+ * card was the one node on the canvas with no legible name at all, while a plain circle
+ * next to it got the pinned one. Below the floor the card hands its name back to the
+ * canvas, which draws it the way it draws every other node's.
+ */
+export function cardNameVisible(options: {
+  /** The name size the card body asks for, in world units. */
+  nameSize: number;
+  /** Screen pixels per world unit at the current zoom. */
+  pxPerUnit: number;
+  /** Screen size below which the in-card name is not worth drawing. */
+  floorPx?: number;
+}): boolean {
+  const floor = options.floorPx ?? 6;
+  return options.nameSize * Math.max(options.pxPerUnit, 0.0001) >= floor;
+}
