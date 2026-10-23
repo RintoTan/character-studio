@@ -122,19 +122,30 @@ import {
   type AlignMode,
 } from "../utils/canvasAlign";
 import {
-  aspectBounds,
   exportPixelSize,
   downloadPng,
   downloadSvg,
+  exportSvgAsPdf,
   inlineSvgPresentation,
   pruneToSelection,
   rasterizeSvg,
+  rasterizeToJpeg,
   stripTransientState,
   removeTransientMarks,
   scopeBounds,
   type ExportScope,
   type WorldBounds,
 } from "../utils/canvasExport";
+import {
+  MAX_EXPORT_SIDE,
+  centreOf,
+  clampPan,
+  growToAspect,
+  manualFrame,
+  outputSize,
+  projectRect,
+  type ExportFrameMode,
+} from "../utils/exportFrame";
 import { getAvatarAssetDataUrl } from "../utils/avatarAssets";
 import { useTransientMessage } from "../hooks/useTransientMessage";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
@@ -1359,11 +1370,6 @@ export function edgeGeometry(
   const controlX = (startX + endX) / 2 + nx * bendAmount;
   const controlY = (startY + endY) / 2 + ny * bendAmount;
 
-  const path =
-    bend === 0
-      ? `M ${round(startX)} ${round(startY)} L ${round(endX)} ${round(endY)}`
-      : `M ${round(startX)} ${round(startY)} Q ${round(controlX)} ${round(controlY)} ${round(endX)} ${round(endY)}`;
-
   // Middle of the curve. For a quadratic that is (P0 + 2C + P2) / 4, and its tangent
   // there is parallel to the chord — so the normal below is the normal of the curve.
   const middleX =
@@ -1375,13 +1381,15 @@ export function edgeGeometry(
   const arrowStyle = options.arrowStyle ?? "concise";
   const arrowScale = options.arrowScale ?? 1;
   let arrow: string | null = null;
+  // Direction of travel at the target end: the curve's tangent at t = 1.
+  const tangentX = bend === 0 ? ux : endX - controlX;
+  const tangentY = bend === 0 ? uy : endY - controlY;
+  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+  const tx = tangentX / tangentLength;
+  const ty = tangentY / tangentLength;
+  let headLength = 0;
+
   if (!options.symmetrical && arrowStyle !== "none" && arrowScale > 0) {
-    // Direction of travel at the target end: the curve's tangent at t = 1.
-    const tangentX = bend === 0 ? ux : endX - controlX;
-    const tangentY = bend === 0 ? uy : endY - controlY;
-    const tangentLength = Math.hypot(tangentX, tangentY) || 1;
-    const tx = tangentX / tangentLength;
-    const ty = tangentY / tangentLength;
     // Bounded growth: a heavier line gets a slightly larger head, a hairline does
     // not disappear. Unbounded scaling is what made the head look like a flowchart.
     const base = Math.max(8, Math.min(14, 8 + (options.weight ?? 1.4) * 1.6)) * arrowScale;
@@ -1393,8 +1401,26 @@ export function edgeGeometry(
     const backY = endY - ty * head;
     const wingX = -ty * wing;
     const wingY = tx * wing;
+    headLength = head;
     arrow = `${round(endX)},${round(endY)} ${round(backX + wingX)},${round(backY + wingY)} ${round(backX - wingX)},${round(backY - wingY)}`;
   }
+
+  // The stroke stops at the back of the head.
+  //
+  // It used to run all the way to the tip, so a line at 50% opacity passed under a
+  // head at 50% opacity and the overlap composited twice: a dark wedge exactly where
+  // the two meet, on every semi-transparent arrow. Shrinking the head or making it
+  // opaque only moves or hides the seam; ending the stroke where the head begins
+  // removes it. A hair of overlap (6%) keeps antialiasing from leaving a gap.
+  const visibleLength = Math.hypot(endX - startX, endY - startY);
+  const pull = arrow ? Math.min(headLength * 0.94, visibleLength * 0.45) : 0;
+  const lineEndX = endX - tx * pull;
+  const lineEndY = endY - ty * pull;
+
+  const path =
+    bend === 0
+      ? `M ${round(startX)} ${round(startY)} L ${round(lineEndX)} ${round(lineEndY)}`
+      : `M ${round(startX)} ${round(startY)} Q ${round(controlX)} ${round(controlY)} ${round(lineEndX)} ${round(lineEndY)}`;
 
   // The word's anchor. `labelT` evaluates the same quadratic the line is drawn with, so
   // moving it slides the word along the curve rather than along the chord; the offset is
@@ -1405,12 +1431,12 @@ export function edgeGeometry(
     (1 - at) * (1 - at) * startX + 2 * (1 - at) * at * controlX + at * at * endX;
   const anchorY =
     (1 - at) * (1 - at) * startY + 2 * (1 - at) * at * controlY + at * at * endY;
-  const tangentX = 2 * (1 - at) * (controlX - startX) + 2 * at * (endX - controlX);
-  const tangentY = 2 * (1 - at) * (controlY - startY) + 2 * at * (endY - controlY);
-  const tangentLength = Math.hypot(tangentX, tangentY) || 1;
+  const labelTangentX = 2 * (1 - at) * (controlX - startX) + 2 * at * (endX - controlX);
+  const labelTangentY = 2 * (1 - at) * (controlY - startY) + 2 * at * (endY - controlY);
+  const labelTangentLength = Math.hypot(labelTangentX, labelTangentY) || 1;
   const offset = options.labelOffset ?? LABEL_OFFSET;
-  const labelX = anchorX + (-tangentY / tangentLength) * offset * side;
-  const labelY = anchorY + (tangentX / tangentLength) * offset * side;
+  const labelX = anchorX + (-labelTangentY / labelTangentLength) * offset * side;
+  const labelY = anchorY + (labelTangentX / labelTangentLength) * offset * side;
 
   return {
     path,
@@ -1651,6 +1677,11 @@ export function RelationshipGraph({
   // yet has to wait for the layout to include them.
   const [focusId, setFocusId] = useState<string | null>(null);
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  // Picking a node is not reading it. Selection says what the next command acts on;
+  // focus is the deliberate act of reading one character's connections, and only that
+  // one is allowed to recede the rest of the drawing. The two used to be the same
+  // state, which is why a plain click faded the whole canvas.
+  const [focusLens, setFocusLens] = useState(false);
   const [query, setQuery] = useState("");
   const [notOnCanvas, setNotOnCanvas] = useState<Character | null>(null);
   const [memberFilter, setMemberFilter] = useState<"all" | "canvas" | "off">("all");
@@ -1876,6 +1907,13 @@ export function RelationshipGraph({
   const [morePlacement, setMorePlacement] = useState<"up" | "down">("down");
   const moreWrapRef = useRef<HTMLDivElement | null>(null);
   const [isAlignOpen, setIsAlignOpen] = useState(false);
+  // Where the 排列 popover sits, in viewport coordinates. Measured from the button that
+  // opened it and rendered into <body>: the bar is a horizontal scroller on narrow
+  // screens, and an ancestor with `overflow` would clip a panel this tall to 53px.
+  const [alignPopoverBox, setAlignPopoverBox] = useState<{ left: number; top: number } | null>(null);
+  // The design drawer answers two different questions. One switch, two contexts;
+  // never two panels. 外观 from a selection lands on the object, 设计 lands on the canvas.
+  const [designScope, setDesignScope] = useState<"canvas" | "object">("canvas");
   // Search is a tool, not a permanent field: closed it is one compact control, open it
   // is the field with the results under it. The text survives closing, so reopening it
   // never loses what was typed.
@@ -1889,10 +1927,34 @@ export function RelationshipGraph({
   const [spotlightDepth, setSpotlightDepth] = useState<1 | 2>(1);
   const [lensKinds, setLensKinds] = useState<RelationshipKind[]>([]);
   const [bookmarkDraft, setBookmarkDraft] = useState("");
-  const [exportScope, setExportScope] = useState<ExportScope>("all");
+  /**
+   * How the export is composed. One control, four answers, and the frame is derived
+   * from it — the old panel had a scope and a ratio that could contradict each other.
+   */
+  const [exportMode, setExportMode] = useState<"content" | "view" | "selection" | "manual">("content");
   // The output frame. Local, not a preference: a visitor trying 16:9 for one poster
   // should not find the next export already framed that way.
   const [exportRatio, setExportRatio] = useState<GraphExportRatio>("canvas");
+  // Manual framing. These move a crop, never a coordinate.
+  const [exportZoom, setExportZoom] = useState(1);
+  const [exportPan, setExportPan] = useState({ x: 0, y: 0 });
+  // Output width in pixels; the height follows the frame so nothing is stretched.
+  const [exportWidth, setExportWidth] = useState(2400);
+  const [exportPreview, setExportPreview] = useState<{
+    url: string;
+    bounds: WorldBounds;
+    content: WorldBounds | null;
+    legend: WorldBounds | null;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [exportPreviewError, setExportPreviewError] = useState<string | null>(null);
+  // A hand-placed legend, in drawing units. Zero means "wherever the corner rule put it".
+  const [legendNudge, setLegendNudge] = useState({ x: 0, y: 0 });
+  const legendDragRef = useRef<{ x: number; y: number; nudge: { x: number; y: number }; width: number } | null>(null);
+  // Set only when the author types a height with the lock off. A preset clears it.
+  const [exportCustomAspect, setExportCustomAspect] = useState<number | null>(null);
+  const exportDragRef = useRef<{ x: number; y: number; pan: { x: number; y: number }; width: number } | null>(null);
   const [previousView, setPreviousView] = useState<{ k: number; x: number; y: number } | null>(null);
   const undoRef = useRef<CanvasLayout[]>([]);
   // Which slider run the last style write belongs to, so a drag is one undo step.
@@ -1910,8 +1972,10 @@ export function RelationshipGraph({
   // Both drawers and every full panel are views of `surface`; these names are kept
   // because the rendering and the fit compensation read them.
   const isStudioLeftOpen = surface === "characters" || surface === "groups";
-  const isStudioRightOpen = surface === "design" || surface === "explore" || surface === "arrange";
+  const isStudioRightOpen =
+    surface === "design" || surface === "explore" || surface === "arrange" || surface === "export";
   const studioTab: "design" | "explore" = surface === "explore" ? "explore" : "design";
+  const isExportSurface = surface === "export";
   // A phone's panel is a sheet over the drawing, and how much of the drawing it
   // covers is a choice: half for a quick adjustment with the canvas still visible,
   // full for long lists and advanced settings.
@@ -1978,6 +2042,37 @@ export function RelationshipGraph({
     }
   }, [isMoreOpen]);
   useEscapeDismiss(isAlignOpen, () => setIsAlignOpen(false));
+  // A popover that outlives its selection is a dead control surface: close it when the
+  // selection changes, when it no longer has two objects to arrange, or when the next
+  // press lands anywhere outside it.
+  useEffect(() => {
+    if (!isAlignOpen) {
+      return;
+    }
+
+    if (selectedIds.length < 2) {
+      setIsAlignOpen(false);
+      return;
+    }
+
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-testid="studio-align-popover"], [data-testid="studio-arrange"], .graph-align-panel')) {
+        return;
+      }
+      setIsAlignOpen(false);
+    };
+
+    const close = () => setIsAlignOpen(false);
+    document.addEventListener("pointerdown", dismiss, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [isAlignOpen, selectedIds.length]);
   useEscapeDismiss(Boolean(bookmarkMenuId), () => setBookmarkMenuId(null));
   useEffect(() => {
     if (!bookmarkNotice) {
@@ -2048,6 +2143,15 @@ export function RelationshipGraph({
         isDirectionHelpOpen ||
         Boolean(document.querySelector('[aria-modal="true"]'));
 
+      // A reading focus is a layer too: Escape leaves it before it drops the tool,
+      // and it never leaves the author inside a dimmed drawing with no way out.
+      if (event.key === "Escape" && focusLens && !layerAbove) {
+        setFocusLens(false);
+        setFocusId(null);
+        returnToOverview();
+        return;
+      }
+
       if (event.key === "Escape" && (selectMode || panMode || multiSelectMode) && !layerAbove) {
         marqueeRef.current = null;
         setMarquee(null);
@@ -2070,7 +2174,7 @@ export function RelationshipGraph({
       window.removeEventListener("keydown", down);
       window.removeEventListener("keyup", up);
     };
-  }, [selectMode, panMode, surface, isMoreOpen, isAlignOpen, isDirectionHelpOpen]);
+  }, [selectMode, panMode, surface, isMoreOpen, isAlignOpen, isDirectionHelpOpen, focusLens]);
   useEscapeDismiss(Boolean(groupDraft), () => setGroupDraft(null));
   useEscapeDismiss(Boolean(preview), () => cancelArrange());
   const style = layout.style ?? DEFAULT_CANVAS_STYLE;
@@ -2363,7 +2467,9 @@ export function RelationshipGraph({
   // Reading one character: the pick and everyone directly connected to it stay at full
   // weight, the rest of the roster steps back. A way of looking, like the lens — it
   // changes emphasis, never coordinates.
-  const focusNeighbourhood = useMemo(() => {
+  // Who a single pick is connected to. Used for framing and for keeping the names of
+  // the direct relations legible — not for fading the canvas.
+  const selectionNeighbourhood = useMemo(() => {
     if (selectedIds.length !== 1) {
       return null;
     }
@@ -2381,6 +2487,35 @@ export function RelationshipGraph({
 
     return set;
   }, [selectedIds, relationships]);
+
+  // The one character being read, if the reader asked to read one: a focus from
+  // another screen, or the toolbar's 聚焦 on the current pick. Nothing else qualifies.
+  const focusedReadId = focusId ?? (focusLens && selectedIds.length === 1 ? selectedIds[0] : null);
+  const focusNeighbourhood = useMemo(() => {
+    if (!focusedReadId) {
+      return null;
+    }
+
+    const set = new Set<string>([focusedReadId]);
+
+    for (const relationship of relationships) {
+      if (relationship.fromId === focusedReadId) {
+        set.add(relationship.toId);
+      } else if (relationship.toId === focusedReadId) {
+        set.add(relationship.fromId);
+      }
+    }
+
+    return set;
+  }, [focusedReadId, relationships]);
+
+  // A focus that no longer has an object to be about is dropped rather than left to
+  // dim the canvas against a stale id.
+  useEffect(() => {
+    if (focusLens && selectedIds.length !== 1) {
+      setFocusLens(false);
+    }
+  }, [focusLens, selectedIds.length]);
 
   // Where the drawing was when this single selection started. 返回总览 goes back to
   // it without touching a single node position.
@@ -2403,6 +2538,34 @@ export function RelationshipGraph({
     }
     viewAutoRef.current = false;
     setView(focusOverview);
+  }
+
+  /**
+   * 聚焦 is a mode, not a camera move: it dims the rest of the drawing and it has a
+   * way back. Pressing it again (or 返回总览) restores the view without touching a
+   * single coordinate. A plain selection never enters this state.
+   */
+  function toggleReadingFocus() {
+    const id = selectedIds.length === 1 ? selectedIds[0] : null;
+
+    if (!id) {
+      return;
+    }
+
+    if (focusedReadId === id) {
+      setFocusLens(false);
+      setFocusId(null);
+      returnToOverview();
+      return;
+    }
+
+    if (!focusOverview) {
+      setFocusOverview(view);
+    }
+
+    setFocusId(null);
+    setFocusLens(true);
+    fitSelection();
   }
   // The open 整理 transaction. The baseline inside it is captured once and never
   // replaced, so comparing four layouts and then cancelling returns to the drawing the
@@ -3061,8 +3224,8 @@ export function RelationshipGraph({
     // node zooms to it and leaves the names that answer "who is this to them" out of
     // the picture.
     const targetIds =
-      selectedIds.length === 1 && focusNeighbourhood
-        ? visibleCharacters.filter((character) => focusNeighbourhood.has(character.id)).map((character) => character.id)
+      selectedIds.length === 1 && selectionNeighbourhood
+        ? visibleCharacters.filter((character) => selectionNeighbourhood.has(character.id)).map((character) => character.id)
         : selectedIds;
     const chosen = visibleCharacters
       .filter((character) => targetIds.includes(character.id))
@@ -3117,6 +3280,12 @@ export function RelationshipGraph({
     // against a picture that is not the stored one.
     if (target !== "arrange") {
       rollbackArrange();
+    }
+    setIsAlignOpen(false);
+    // Opening 设计 with something picked lands on that object: the author pressed the
+    // button about a thing, and the canvas defaults are one tab away.
+    if (target === "design") {
+      setDesignScope(appearanceTarget(selectedIds, selectedEdgeId).kind === "canvas" ? "canvas" : "object");
     }
     setSurface(target);
     setIsMoreOpen(false);
@@ -3799,8 +3968,11 @@ export function RelationshipGraph({
 
   function toggleSelected(id: string, additive: boolean) {
     setSelectedIds((current) => {
+      // A click in single mode is a selection, not a toggle: clicking the node you
+      // already picked must not empty the panel under the pointer. Clearing is the
+      // empty-canvas click or the 清除 button.
       if (!additive) {
-        return current.length === 1 && current[0] === id ? [] : [id];
+        return [id];
       }
       return current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
     });
@@ -4890,7 +5062,7 @@ export function RelationshipGraph({
     place();
     window.addEventListener("resize", place);
     return () => window.removeEventListener("resize", place);
-  }, [isExportOpen, exportRatio, exportScope, prefs.exportScale]);
+  }, [isExportOpen, exportRatio, exportMode, prefs.exportScale, exportWidth]);
 
   // Where the hover card sits: under the node it describes, placed from the node's own
   // projected position rather than from the cursor, so it does not jump while the
@@ -5048,17 +5220,13 @@ export function RelationshipGraph({
    * Rows are counted from what the export contains, not from the kind list, so a
    * graph with no 对手 edges does not advertise one.
    */
-  function planExportLegend(
-    bounds: { x: number; y: number; width: number; height: number },
-    scope: ExportScope,
-  ) {
+  function planExportLegend(bounds: WorldBounds, pruneSelection: boolean) {
     if (!prefs.exportLegend) {
       return null;
     }
 
-    const byIdNow = new Map(visibleCharacters.map((character, index) => [character.id, positions[index]]));
     const exported = drawnRelationships.filter((relationship) =>
-      scope === "selection"
+      pruneSelection
         ? selectedIds.includes(relationship.fromId) && selectedIds.includes(relationship.toId)
         : true,
     );
@@ -5091,6 +5259,9 @@ export function RelationshipGraph({
       rowCount: kinds.length + 1,
       nodes: boxes,
       corner: prefs.exportLegendCorner,
+      scale: prefs.exportLegendScale,
+      margin: prefs.exportLegendMargin,
+      nudge: legendNudge,
     });
 
     const svgNs = "http://www.w3.org/2000/svg";
@@ -5100,10 +5271,10 @@ export function RelationshipGraph({
 
     const rowHeight = plan.panel.height / (kinds.length + 0.9);
     const pad = rowHeight * 0.5;
-    // The legend belongs to the picture, so it sits on the picture's own surface. A
-    // white panel on a dark canvas made every sample line invisible; matching the
-    // background keeps the key and the drawing in one palette.
-    const panelFill = style.canvas.background || surfaceBackground();
+    // The legend belongs to the picture, so by default it sits on the picture's own
+    // surface: a white panel on a dark canvas made every sample line invisible.
+    const canvasFill = style.canvas.background || surfaceBackground();
+    const panelFill = prefs.exportLegendBg === "panel" ? "#f8fafc" : canvasFill;
     const dark = luminanceOf(panelFill) < 140;
 
     const panel = document.createElementNS(svgNs, "rect");
@@ -5115,7 +5286,7 @@ export function RelationshipGraph({
     panel.setAttribute("fill", panelFill);
     panel.setAttribute("stroke", dark ? "rgba(255,255,255,0.16)" : "rgba(17,24,39,0.10)");
     panel.setAttribute("stroke-width", String(Math.max(1, rowHeight * 0.05)));
-    panel.setAttribute("opacity", "0.94");
+    panel.setAttribute("opacity", String(prefs.exportLegendOpacity));
     node.appendChild(panel);
 
     const title = document.createElementNS(svgNs, "text");
@@ -5170,26 +5341,27 @@ export function RelationshipGraph({
     return { plan, node };
   }
 
-  function buildExportSvg(scope: ExportScope, ratio = 0): { text: string; bounds: WorldBounds } | null {
+  /**
+   * One picture, one frame.
+   *
+   * Everything that decides what the file looks like lives here: the rectangle in
+   * drawing coordinates, the background, and the legend. The preview renders this
+   * exact string, and every format is produced from it — so the preview cannot drift
+   * from the file, and neither SVG nor PDF has to be approximated by a screenshot.
+   */
+  function buildExportSvg(
+    frame: WorldBounds,
+    prune: boolean,
+  ): { text: string; bounds: WorldBounds; legend: WorldBounds | null } | null {
     const svg = svgRef.current;
     if (!svg) {
       return null;
     }
 
-    const base = exportBounds(scope);
-
-    if (!base) {
-      return null;
-    }
-
-    // The ratio is a frame around the content, never a crop: `aspectBounds` only grows
-    // the short side, so no node, label or arrow can fall outside it.
-    const bounds = ratio > 0 ? aspectBounds(base, ratio) : base;
-
     const clone = svg.cloneNode(true) as SVGSVGElement;
-    clone.setAttribute("viewBox", `${bounds.x} ${bounds.y} ${bounds.width} ${bounds.height}`);
-    clone.setAttribute("width", String(Math.round(bounds.width)));
-    clone.setAttribute("height", String(Math.round(bounds.height)));
+    clone.setAttribute("viewBox", `${frame.x} ${frame.y} ${frame.width} ${frame.height}`);
+    clone.setAttribute("width", String(Math.round(frame.width)));
+    clone.setAttribute("height", String(Math.round(frame.height)));
     clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
     clone.removeAttribute("class");
     clone.removeAttribute("aria-hidden");
@@ -5202,7 +5374,7 @@ export function RelationshipGraph({
     inlineSvgPresentation(clone);
     removeTransientMarks(clone);
 
-    if (scope === "selection") {
+    if (prune) {
       pruneToSelection(clone, selectedIds);
     }
 
@@ -5211,15 +5383,15 @@ export function RelationshipGraph({
 
     // The legend is part of the picture, so it is drawn into the clone after the
     // transient editor marks have been stripped — never in the live canvas.
-    const legend = planExportLegend(bounds, scope);
+    const legend = planExportLegend(frame, prune);
     const exportedBounds = legend
       ? {
-          x: bounds.x - legend.plan.extra.left,
-          y: bounds.y - legend.plan.extra.top,
-          width: bounds.width + legend.plan.extra.left + legend.plan.extra.right,
-          height: bounds.height + legend.plan.extra.top + legend.plan.extra.bottom,
+          x: frame.x - legend.plan.extra.left,
+          y: frame.y - legend.plan.extra.top,
+          width: frame.width + legend.plan.extra.left + legend.plan.extra.right,
+          height: frame.height + legend.plan.extra.top + legend.plan.extra.bottom,
         }
-      : bounds;
+      : frame;
 
     if (legend) {
       clone.setAttribute("viewBox", `${exportedBounds.x} ${exportedBounds.y} ${exportedBounds.width} ${exportedBounds.height}`);
@@ -5241,78 +5413,74 @@ export function RelationshipGraph({
       clone.appendChild(legend.node);
     }
 
-    return { text: new XMLSerializer().serializeToString(clone), bounds: exportedBounds };
+    return {
+      text: new XMLSerializer().serializeToString(clone),
+      bounds: exportedBounds,
+      legend: legend
+        ? {
+            x: legend.plan.panel.x,
+            y: legend.plan.panel.y,
+            width: legend.plan.panel.width,
+            height: legend.plan.panel.height,
+          }
+        : null,
+    };
   }
 
-  async function runCanvasExport(scope: ExportScope, format: "png" | "svg") {
-    if (exporting) {
+  /** Every format, one pipeline: the SVG above, then encode or download it. */
+  async function runExportFormat(format: "png" | "svg" | "jpg" | "pdf") {
+    if (exporting || !exportFrame) {
       return;
     }
 
+    const prune = exportMode === "selection";
     setExporting(true);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     try {
-      const built = buildExportSvg(scope, exportRatioValue);
+      const built = buildExportSvg(exportFrame, prune);
       if (!built) {
-        show(scope === "selection" ? "还没有选中任何角色" : "没有可导出的内容");
+        show(exportMode === "selection" ? "还没有选中任何角色" : "没有可导出的内容");
         return;
       }
 
+      const size = outputSize({ frame: built.bounds, width: exportWidth });
       const stamp = new Date().toISOString().slice(0, 10);
       const label =
-        scope === "view" ? "当前视图" : scope === "selection" ? "选中区域" : "全部内容";
+        exportMode === "view" ? "当前视图" : exportMode === "selection" ? "选中区域" : exportMode === "manual" ? "手动构图" : "全部内容";
+      const baseName = `角色关系网-${label}-${stamp}`;
 
       if (format === "svg") {
-        downloadSvg(built.text, `角色关系网-${label}-${stamp}.svg`);
-        show("SVG 已导出");
+        downloadSvg(built.text, `${baseName}.svg`);
+        show(`SVG 已导出 · ${Math.round(built.bounds.width)} × ${Math.round(built.bounds.height)} 单位`);
         return;
       }
 
-      const { blob } = await rasterizeSvg(built.text, built.bounds, prefs.exportScale);
-      downloadPng(blob, `角色关系网-${label}-${stamp}.png`);
-      show("PNG 已导出");
-    } catch (error) {
-      show(exportFailureText(error, format));
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  async function runExport(format: "jpg" | "png" | "pdf") {
-    const frame = frameRef.current;
-    if (!frame || exporting) {
-      return;
-    }
-
-    resetView();
-    setExporting(true);
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-
-    // The legend is a DOM layer inside the frame, and html2canvas captures whatever is
-    // there when it is called. Two frames cover a React commit, not a commit plus an
-    // image decode, so when a legend is owed the capture waits until it exists —
-    // bounded, because an export must not hang on a missing decoration.
-    if (prefs.exportLegend) {
-      const deadline = performance.now() + 400;
-
-      while (!frameRef.current?.querySelector(".export-legend") && performance.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 16));
-      }
-    }
-
-    try {
-      const options = {
-        background: surfaceBackground(),
-        label: "关系网画布",
-        scale: prefs.exportScale,
-      };
       if (format === "pdf") {
-        await exportSurfacePdf(frame, "角色关系网", options);
-      } else {
-        await exportSurfaceImage(frame, "角色关系网", format, 0.92, options);
+        const page = await exportSvgAsPdf({ svgText: built.text, bounds: built.bounds, size, baseName });
+        show(`PDF 已导出 · 页面 ${page.pageWidth} × ${page.pageHeight} px`);
+        return;
       }
-      show(`${format.toUpperCase()} 已导出`);
+
+      if (format === "jpg") {
+        const jpeg = await rasterizeToJpeg(built.text, built.bounds, size, style.canvas.background || surfaceBackground());
+        const url = URL.createObjectURL(jpeg);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${baseName}.jpg`;
+        link.click();
+        URL.revokeObjectURL(url);
+        show(`JPG 已导出 · ${size.width} × ${size.height} px`);
+        return;
+      }
+
+      const { blob, width, height } = await rasterizeSvg(
+        built.text,
+        built.bounds,
+        size.width / Math.max(1, built.bounds.width),
+      );
+      downloadPng(blob, `${baseName}.png`);
+      show(`PNG 已导出 · ${width} × ${height} px`);
     } catch (error) {
       show(exportFailureText(error, format));
     } finally {
@@ -5480,11 +5648,26 @@ export function RelationshipGraph({
    */
   const arrangePanel = (
     <div className="graph-panel graph-arrange-panel" role="group" aria-label="自动整理">
-      <p className="graph-panel-title">先预览，确认后才写入布局</p>
-      {preview && (
-        <p className="graph-panel-preview" role="status">
-          正在预览「{preview.label ?? arrangeLabel(preview.mode)}」，坐标尚未保存。继续点其它布局可直接比较。
-        </p>
+      {/* The decision belongs next to the layouts being compared, not on a bar lying
+          over the drawing: a preview that has no visible 确认 is a preview nobody can
+          finish. Sticky, so it survives scrolling to the snapshot list below. */}
+      {preview ? (
+        <div className="graph-arrange-decide" data-testid="arrange-decide" role="group" aria-label="预览决定">
+          <p className="graph-panel-preview" role="status">
+            正在预览「{preview.label ?? arrangeLabel(preview.mode)}」·{" "}
+            {Object.keys(preview.positions).length} 个节点 · 坐标尚未保存
+          </p>
+          <div className="graph-arrange-decide-actions">
+            <button className="ghost-button" data-testid="drawer-arrange-cancel" onClick={cancelArrange} type="button">
+              取消预览
+            </button>
+            <button className="primary-button" data-testid="drawer-arrange-apply" onClick={applyArrange} type="button">
+              确认应用
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="graph-panel-title">先预览，确认后才写入布局</p>
       )}
       <div className="graph-scope-switch" role="group" aria-label="整理范围">
         <button
@@ -5805,6 +5988,60 @@ export function RelationshipGraph({
                   value={style.node.nameScale}
                 />
                 <div className="graph-style-section-head">
+                  <strong>头像</strong>
+                  <span>形态与大小</span>
+                </div>
+        <div className="graph-panel-row">
+          <span className="graph-control-label">头像形态</span>
+            <div className="graph-segment" role="group" aria-label="头像形态">
+              {([
+                ["auto", "自动"],
+                ["circle", "圆形"],
+                ["rounded", "圆角"],
+              ] as const).map(([value, label]) => (
+                <button
+                  aria-pressed={style.node.avatarShape === value}
+                  className={
+                    style.node.avatarShape === value ? "graph-segment-button selected" : "graph-segment-button"
+                  }
+                  key={value}
+                  onClick={() =>
+                    patchStyle({ ...style, preset: "custom", node: { ...style.node, avatarShape: value } })
+                  }
+                  title={
+                    value === "auto"
+                      ? "按图片比例决定：近似正方用圆形，明显偏长用圆角矩形"
+                      : value === "circle"
+                        ? "所有上传头像都裁成圆形"
+                        : "所有上传头像都用与图片比例一致的圆角矩形"
+                  }
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+        </div>
+        <div className="graph-panel-row">
+          <span className="graph-control-label">头像大小</span>
+          <div className="graph-segment">
+            {AVATAR_SIZES.map((size) => (
+              <button
+                aria-pressed={prefs.avatarSize === size.value}
+                className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
+                key={size.value}
+                onClick={() => updatePrefs({ avatarSize: size.value })}
+                type="button"
+              >
+                {size.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Three different questions, three different answers: which people are
+            in scope, how many of them the core view draws, and whether the lines
+            are painted. One switch used to answer all three. */}
+                <div className="graph-style-section-head">
                   <strong>关系线与关系标签</strong>
                   <span>线、颜色与文字</span>
                 </div>
@@ -6033,498 +6270,106 @@ export function RelationshipGraph({
             </section>
   );
 
-  const stylePanel = (
-            <div className="graph-style-panel" role="group" aria-label="画布外观">
-              {/* What this device shows, stated before what the artwork is. The two
-                  halves write to different stores — 视图 to graph.prefs, 外观 to the
-                  layout — and the export clones the live drawing, so the copy has to
-                  say which of them travels into an export. */}
-              <div aria-label="视图" className="graph-style-view" role="group">
-                <div className="graph-style-section-head">
-                  <strong>视图与显示</strong>
-                  <span>只改本机显示，不进导出</span>
-                </div>
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">名称</span>
-                  <div className="graph-segment">
-                    {[
-                      { value: true, label: "显示" },
-                      { value: false, label: "隐藏" },
-                    ].map((option) => (
-                      <button
-                        aria-pressed={prefs.showNames === option.value}
-                        className={prefs.showNames === option.value ? "graph-segment-button selected" : "graph-segment-button"}
-                        key={option.label}
-                        onClick={() => updatePrefs({ showNames: option.value })}
-                        type="button"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">本机头像</span>
-                  <div className="graph-segment">
-                    {[
-                      { value: true, label: "显示" },
-                      { value: false, label: "隐藏" },
-                    ].map((option) => (
-                      <button
-                        aria-pressed={prefs.showAvatars === option.value}
-                        className={prefs.showAvatars === option.value ? "graph-segment-button selected" : "graph-segment-button"}
-                        key={option.label}
-                        onClick={() => updatePrefs({ showAvatars: option.value })}
-                        type="button"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">头像形态</span>
-                    <div className="graph-segment" role="group" aria-label="头像形态">
-                      {([
-                        ["auto", "自动"],
-                        ["circle", "圆形"],
-                        ["rounded", "圆角"],
-                      ] as const).map(([value, label]) => (
-                        <button
-                          aria-pressed={style.node.avatarShape === value}
-                          className={
-                            style.node.avatarShape === value ? "graph-segment-button selected" : "graph-segment-button"
-                          }
-                          key={value}
-                          onClick={() =>
-                            patchStyle({ ...style, preset: "custom", node: { ...style.node, avatarShape: value } })
-                          }
-                          title={
-                            value === "auto"
-                              ? "按图片比例决定：近似正方用圆形，明显偏长用圆角矩形"
-                              : value === "circle"
-                                ? "所有上传头像都裁成圆形"
-                                : "所有上传头像都用与图片比例一致的圆角矩形"
-                          }
-                          type="button"
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                </div>
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">头像大小</span>
-                  <div className="graph-segment">
-                    {AVATAR_SIZES.map((size) => (
-                      <button
-                        aria-pressed={prefs.avatarSize === size.value}
-                        className={prefs.avatarSize === size.value ? "graph-segment-button selected" : "graph-segment-button"}
-                        key={size.value}
-                        onClick={() => updatePrefs({ avatarSize: size.value })}
-                        type="button"
-                      >
-                        {size.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* Three different questions, three different answers: which people are
-                    in scope, how many of them the core view draws, and whether the lines
-                    are painted. One switch used to answer all three. */}
-                <p className="graph-scope-stats" role="status">
-                  角色库 {characters.length} · 画布 {currentMembers().length} · 可见{" "}
-                  {visibleCharacters.length} · 关系线 {prefs.showEdges ? drawnRelationships.length : 0}
-                  {" · "}关系线{" "}
-                  {prefs.showEdges
-                    ? `${drawnRelationships.length}/${relationships.length}`
-                    : `隐藏（共 ${relationships.length}）`}
-                </p>
-                <div className="graph-panel-row">
-                  <span className="graph-control-label">关系线</span>
-                  <div className="graph-segment">
-                    {[
-                      { value: true, label: "显示" },
-                      { value: false, label: "隐藏" },
-                    ].map((option) => (
-                      <button
-                        aria-pressed={prefs.showEdges === option.value}
-                        className={
-                          prefs.showEdges === option.value ? "graph-segment-button selected" : "graph-segment-button"
-                        }
-                        key={option.label}
-                        onClick={() => updatePrefs({ showEdges: option.value })}
-                        type="button"
-                      >
-                        {option.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {/* What the strokes mean. It belongs with the display switches — it is
-                    the same question ("what am I looking at") — and it is read once,
-                    so it does not get a permanent corner of the drawing. */}
-                <div className="graph-panel-row graph-legend">
-                  <span className="graph-control-label">线型说明</span>
-                  <ul className="graph-legend-list">
-                    <li>
-                      <span aria-hidden="true" className="graph-legend-line legend-primary" />
-                      亲属、情感
-                    </li>
-                    <li>
-                      <span aria-hidden="true" className="graph-legend-line legend-danger" />
-                      敌对、对手
-                    </li>
-                    <li>
-                      <span aria-hidden="true" className="graph-legend-line legend-plain" />
-                      师承、友人、同僚、其他
-                    </li>
-                  </ul>
-                  <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
-                </div>
-              </div>
-              {/* Above the presets, because it applies to one object: what the whole
-                  canvas looks like is the wrong question while a single line is
-                  selected. */}
-              {selectedEdgeId && (
-                <div className="graph-style-local" role="group" aria-label="所选关系线外观">
-                  <strong>所选关系线</strong>
-                  {(() => {
-                    const edge = relationships.find((item) => item.id === selectedEdgeId);
-                    if (!edge) {
-                      return <p className="muted">这条关系已不存在。</p>;
-                    }
-                    const local = layout.edgeStyles?.[edge.id] ?? {};
-                    const patch = (next: Partial<NonNullable<typeof local>>, run?: string) =>
-                      commitLayout(
-                        {
-                          ...layout,
-                          edgeStyles: {
-                            ...(layout.edgeStyles ?? {}),
-                            [edge.id]: { ...local, ...next },
-                          },
-                        },
-                        run,
-                      );
-                    return (
-                      <>
-                        <span className="muted">
-                          {characterDisplayName(byId.get(edge.fromId)?.character ?? ({ name: "?" } as Character))} →{" "}
-                          {characterDisplayName(byId.get(edge.toId)?.character ?? ({ name: "?" } as Character))} ·{" "}
-                          {relationshipKindLabel(edge.kind)}
-                        </span>
-                        <p className="graph-style-state">
-                          <span className="muted">状态</span>
-                          <strong data-testid="edge-local-state">
-                            {Object.keys(local).length ? "自定义（覆盖全局）" : "继承全局"}
-                          </strong>
-                        </p>
-                        <div className="graph-style-grid">
-                          <label>线条颜色
-                            <input
-                              aria-label="线条颜色"
-                              data-testid="edge-local-color"
-                              onChange={(event) => patch({ color: event.target.value })}
-                              type="color"
-                              value={local.color || (style.edge.byKind ? kindInk(edge.kind, style) : style.edge.color) || "#7b87a8"}
-                            />
-                          </label>
-                          <NumericControl
-                            ariaLabel="所选线宽"
-                            defaultValue={style.edge.width}
-                            label="线条粗细"
-                            max={6}
-                            min={0.4}
-                            onChange={(v) => patch({ width: v }, `edge-width-${edge.id}`)}
-                            precision={1}
-                            step={0.1}
-                            testId="edge-local-width"
-                            unit="px"
-                            value={local.width ?? style.edge.width}
-                          />
-                          <NumericControl
-                            ariaLabel="所选线透明度"
-                            defaultValue={style.edge.opacity}
-                            displayScale={100}
-                            label="透明度"
-                            max={1}
-                            min={0.2}
-                            onChange={(v) => patch({ opacity: v }, `edge-opacity-${edge.id}`)}
-                            precision={0}
-                            step={0.05}
-                            testId="edge-local-opacity"
-                            unit="%"
-                            value={local.opacity ?? style.edge.opacity}
-                          />
-                          <NumericControl
-                            ariaLabel="所选标签字号"
-                            defaultValue={style.edge.labelSize}
-                            label="标签字号"
-                            max={18}
-                            min={8}
-                            onChange={(v) => patch({ labelSize: v }, `edge-label-size-${edge.id}`)}
-                            precision={1}
-                            step={0.5}
-                            testId="edge-local-label-size"
-                            unit="px"
-                            value={local.labelSize ?? style.edge.labelSize}
-                          />
-                          <NumericControl
-                            ariaLabel="所选标签沿线位置"
-                            defaultValue={style.edge.labelT}
-                            displayScale={100}
-                            label="标签沿线"
-                            max={0.9}
-                            min={0.1}
-                            onChange={(v) => patch({ labelT: v }, `edge-label-t-${edge.id}`)}
-                            precision={0}
-                            step={0.05}
-                            testId="edge-local-label-t"
-                            unit="%"
-                            value={local.labelT ?? style.edge.labelT}
-                          />
-                          <NumericControl
-                            ariaLabel="所选标签偏移"
-                            defaultValue={style.edge.labelOffset}
-                            label="标签偏移"
-                            max={24}
-                            min={-24}
-                            onChange={(v) => patch({ labelOffset: v }, `edge-label-offset-${edge.id}`)}
-                            precision={0}
-                            step={1}
-                            testId="edge-local-label-offset"
-                            unit="u"
-                            value={local.labelOffset ?? style.edge.labelOffset}
-                          />
-                          <label>线型
-                            <select
-                              aria-label="线型"
-                              data-testid="edge-local-dash"
-                              onChange={(event) => patch({ dash: event.target.value as CanvasStyle["edge"]["dash"] })}
-                              value={local.dash ?? style.edge.dash}
-                            >
-                              <option value="solid">实线</option>
-                              <option value="dashed">虚线</option>
-                              <option value="dotted">点线</option>
-                            </select>
-                          </label>
-                          <label>箭头
-                            <select
-                              aria-label="箭头样式"
-                              data-testid="edge-local-arrow"
-                              onChange={(event) => patch({ arrow: event.target.value as ArrowStyle })}
-                              value={local.arrow ?? style.edge.arrow}
-                            >
-                              <option value="concise">简洁</option>
-                              <option value="thin">细线</option>
-                              <option value="soft">柔和</option>
-                              <option value="none">无</option>
-                            </select>
-                          </label>
-                        </div>
-                        <button
-                          className="ghost-button"
-                          data-testid="edge-local-reset"
-                          disabled={!layout.edgeStyles?.[edge.id]}
-                          onClick={() => {
-                            const next = { ...(layout.edgeStyles ?? {}) };
-                            delete next[edge.id];
-                            commitLayout({ ...layout, edgeStyles: next });
-                          }}
-                          type="button"
-                        >
-                          恢复继承全局
-                        </button>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-              {!selectedEdgeId && selectedIds.length === 1 && byId.get(selectedIds[0]) && (
-                <div className="graph-style-local" role="group" aria-label="所选节点外观">
-                  <strong>所选节点</strong>
-                  {(() => {
-                    const nodeId = selectedIds[0];
-                    const local = layout.nodeStyles?.[nodeId] ?? {};
-                    const patch = (next: Partial<NonNullable<typeof local>>) =>
-                      commitLayout({
-                        ...layout,
-                        nodeStyles: {
-                          ...(layout.nodeStyles ?? {}),
-                          [nodeId]: { ...local, ...next },
-                        },
-                      });
-                    return (
-                      <>
-                        <span className="muted">{characterDisplayName(byId.get(nodeId)!.character)}</span>
-                        <div className="graph-style-grid">
-                          <label>边框颜色
-                            <input
-                              aria-label="边框颜色"
-                              onChange={(event) => patch({ borderColor: event.target.value })}
-                              type="color"
-                              value={local.borderColor || "#b8bfd0"}
-                            />
-                          </label>
-                          <label>节点底色
-                            <input
-                              aria-label="节点底色"
-                              onChange={(event) => patch({ background: event.target.value })}
-                              type="color"
-                              value={local.background || "#f4f5f8"}
-                            />
-                          </label>
-                        </div>
-                        <div className="graph-style-field">
-                          <span className="graph-style-label">节点形态</span>
-                          <div className="graph-segment" role="group" aria-label="节点形态">
-                            {[
-                              { value: "avatar", label: "头像" },
-                              { value: "compact", label: "圆点" },
-                              { value: "card", label: "卡片" },
-                            ].map((option) => {
-                              const current = (local.form ?? style.node.form) === option.value;
-                              return (
-                                <button
-                                  aria-pressed={current}
-                                  className={current ? "graph-segment-button selected" : "graph-segment-button"}
-                                  key={option.value}
-                                  onClick={() =>
-                                    patch({ form: option.value as CanvasStyle["node"]["form"] })
-                                  }
-                                  type="button"
-                                >
-                                  {option.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <button
-                          className="ghost-button"
-                          disabled={!layout.nodeStyles?.[nodeId]}
-                          onClick={() => {
-                            const next = { ...(layout.nodeStyles ?? {}) };
-                            delete next[nodeId];
-                            commitLayout({ ...layout, nodeStyles: next });
-                          }}
-                          type="button"
-                        >
-                          恢复这个节点的默认外观
-                        </button>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-              {/* Several objects are selected: say which settings a batch would have to
-                  change, rather than silently showing one node's controls as if it spoke
-                  for all of them. */}
-              {!selectedEdgeId && selectedIds.length > 1 && (
-                <div className="graph-style-local" role="note">
-                  <strong>已选 {selectedIds.length} 个角色</strong>
-                  <p className="muted">
-                    批量外观暂不支持：边框、底色和形态按单个角色保存，这里先只改整体画布。
-                    要改其中某一个，选中它再打开这里。
-                  </p>
-                  <button
-                    className="ghost-button"
-                    onClick={() => setSurface("groups")}
-                    type="button"
-                  >
-                    用所选创建分组
-                  </button>
-                </div>
-              )}
-              {/* On a phone the half sheet opens on the quick adjustments, which is what
-                  it is for; the presets are one short scroll below. Desktop keeps the
-                  order the panel is described in: presets, quick, advanced. */}
-              {isNarrowScreen ? (
-                <>
-                  {quickTier}
-                  {presetTier}
-                </>
-              ) : (
-                <>
-                  {presetTier}
-                  {quickTier}
-                </>
-              )}
-
-              {/* Everything else, folded away: present when a session needs it, out of
-                  the way of the four controls above. Native <details> so the fold is a
-                  browser guarantee rather than a class that hides a live control. */}
-              <details className="graph-design-advanced">
-                <summary>高级选项</summary>
-                <div className="graph-style-grid">
-
-                  {/* Relationship words: on/off, how big, where along the line, and how
-                      far off it. Global by design — a per-edge override still wins for
-                      colour and width, but the word belongs to the reading, not to one
-                      connection. */}
-                  
-
-                  <label>走向
-                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
-                      <option value="curved">曲线</option>
-                      <option value="straight">直线</option>
-                    </select>
-                  </label>
-                  <label>画布底色
-                    <input aria-label="画布底色" onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
-                  </label>
-                  <label>网格
-                    <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
-                      <option value="dots">点阵</option>
-                      <option value="lines">方格</option>
-                      <option value="none">无</option>
-                    </select>
-                  </label>
-                  <label className="graph-style-switch">
-                    位置吸附
-                    <input
-                      checked={style.canvas.snap}
-                      data-testid="grid-snap"
-                      onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, snap: event.target.checked } })}
-                      type="checkbox"
-                    />
-                    <span className="graph-style-value">{style.canvas.snap ? `吸附 ${style.canvas.gridSize}` : "自由"}</span>
-                  </label>
-                  <label>网格密度
-                    <span className="graph-style-label">间距<span className="graph-style-value">{style.canvas.gridSize}</span></span>
-                    <input aria-label="网格密度" max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } }, "grid-size")} step={4} type="range" value={style.canvas.gridSize} />
-                  </label>
-                  <label>网格强度
-                    <span className="graph-style-label">不透明度<span className="graph-style-value">{Math.round(style.canvas.gridOpacity * 100)}%</span></span>
-                    <input aria-label="网格强度" max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
-                  </label>
-                </div>
-                {/* The head is a drawing choice, not a fact about the relationship: a
-                    symmetric kind never draws one, and 无箭头 hides the head while the
-                    direction stays in the data and in 管理. */}
-
-                <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
-              </details>
-
-              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复整体画布默认外观</button>
-            </div>
+  /**
+   * One align surface for both contexts: the page keeps it in its selection card,
+   * the studio opens it under the toolbar's 排列 button. It used to be duplicated,
+   * and the studio's copy was hosted by the old floating card — which is exactly how
+   * a 460×151 block ended up parked over the top-left of the drawing.
+   */
+  const alignPanel = (
+    <div className="graph-align-panel" role="group" aria-label="对齐与分布">
+      <div className="graph-align-section">
+        <span className="graph-align-title">对齐</span>
+        <div className="graph-align-grid">
+          {[
+            { icon: "alignLeft", label: "左对齐", run: () => alignSelection("x", "start") },
+            { icon: "alignCenterH", label: "水平居中", run: () => alignSelection("x", "center") },
+            { icon: "alignRight", label: "右对齐", run: () => alignSelection("x", "end") },
+            { icon: "alignTop", label: "顶对齐", run: () => alignSelection("y", "start") },
+            { icon: "alignCenterV", label: "垂直居中", run: () => alignSelection("y", "center") },
+            { icon: "alignBottom", label: "底对齐", run: () => alignSelection("y", "end") },
+          ].map((tool) => (
+            <button
+              aria-label={tool.label}
+              className="graph-align-button"
+              data-tooltip={tool.label}
+              key={tool.label}
+              onClick={tool.run}
+              type="button"
+            >
+              <Icon name={tool.icon as Parameters<typeof Icon>[0]["name"]} size={16} />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="graph-align-section">
+        <span className="graph-align-title">分布</span>
+        <div className="graph-align-grid">
+          <button
+            aria-label="水平等距"
+            className="graph-align-button"
+            data-tooltip={selectedIds.length < 3 ? "等距分布需要至少三个角色" : "水平等距"}
+            disabled={selectedIds.length < 3}
+            onClick={() => distributeSelection("x")}
+            type="button"
+          >
+            <Icon name="distributeH" size={16} />
+          </button>
+          <button
+            aria-label="垂直等距"
+            className="graph-align-button"
+            data-tooltip={selectedIds.length < 3 ? "等距分布需要至少三个角色" : "垂直等距"}
+            disabled={selectedIds.length < 3}
+            onClick={() => distributeSelection("y")}
+            type="button"
+          >
+            <Icon name="distributeV" size={16} />
+          </button>
+        </div>
+      </div>
+      <p className="graph-align-note">
+        {arrangeAvailability(selectedIds.length).reason ??
+          "对齐与分布都按角色的实际外框计算，只改坐标，不改关系。"}
+      </p>
+      <div className="graph-align-foot">
+        <button
+          className="ghost-button small"
+          data-testid="align-create-group"
+          onClick={() => {
+            setGroupDraft({ name: "", editingId: null });
+            setIsAlignOpen(false);
+            setSurface("groups");
+          }}
+          type="button"
+        >
+          创建分组
+        </button>
+        <button
+          className="ghost-button small"
+          data-testid="align-open-design"
+          onClick={() => {
+            setIsAlignOpen(false);
+            setDesignScope("object");
+            setSurface("design");
+          }}
+          type="button"
+        >
+          外观
+        </button>
+        <button className="ghost-button small" onClick={fitSelection} type="button">
+          适应选中
+        </button>
+        <button
+          className="ghost-button small graph-align-close"
+          aria-label="关闭排列"
+          onClick={() => setIsAlignOpen(false)}
+          type="button"
+        >
+          完成
+        </button>
+      </div>
+    </div>
   );
-
-  // The name the appearance drawer puts in its title. It has to be the object the
-  // controls underneath will change, so a node uses its own name and nothing else
-  // stands in for it.
-  const exportRatioValue = EXPORT_RATIOS.find((entry) => entry.value === exportRatio)?.ratio ?? 0;
-  // What the file will measure, computed from the same rectangle the export uses, so
-  // the number beside the controls is the number in the file.
-  const exportSize = (() => {
-    const base = exportBounds(exportScope);
-    if (!base) {
-      return null;
-    }
-    const framed = exportRatioValue > 0 ? aspectBounds(base, exportRatioValue) : base;
-    return exportPixelSize(framed, prefs.exportScale);
-  })();
 
   const appearanceSelection = appearanceTarget(selectedIds, selectedEdgeId);
   const appearanceLabel = (() => {
@@ -6541,184 +6386,1039 @@ export function RelationshipGraph({
     return "整体画布";
   })();
 
+  // 所选对象 is the edit surface for one object; 整体画布 is everything else. They are
+  // two views of one panel, switched at the top, so a canvas default and a per-node
+  // override can never look like the same control in two places.
+  const objectTier = (
+    <div className="graph-design-object" data-testid="design-object-scope">
+      {!selectedEdgeId && selectedIds.length === 0 && (
+        <div className="graph-design-empty" role="note">
+          <strong>还没有选中对象</strong>
+          <p className="muted">先在画布上点一个角色或一条关系线，这里会显示它自己的外观。</p>
+        </div>
+      )}
+      {selectedEdgeId && (
+        <div className="graph-style-local" role="group" aria-label="所选关系线外观">
+          <strong>所选关系线</strong>
+          {(() => {
+            const edge = relationships.find((item) => item.id === selectedEdgeId);
+            if (!edge) {
+              return <p className="muted">这条关系已不存在。</p>;
+            }
+            const local = layout.edgeStyles?.[edge.id] ?? {};
+            const patch = (next: Partial<NonNullable<typeof local>>, run?: string) =>
+              commitLayout(
+                {
+                  ...layout,
+                  edgeStyles: {
+                    ...(layout.edgeStyles ?? {}),
+                    [edge.id]: { ...local, ...next },
+                  },
+                },
+                run,
+              );
+            return (
+              <>
+                <span className="muted">
+                  {characterDisplayName(byId.get(edge.fromId)?.character ?? ({ name: "?" } as Character))} →{" "}
+                  {characterDisplayName(byId.get(edge.toId)?.character ?? ({ name: "?" } as Character))} ·{" "}
+                  {relationshipKindLabel(edge.kind)}
+                </span>
+                <p className="graph-style-state">
+                  <span className="muted">状态</span>
+                  <strong data-testid="edge-local-state">
+                    {Object.keys(local).length ? "自定义（覆盖全局）" : "继承全局"}
+                  </strong>
+                </p>
+                <div className="graph-style-grid">
+                  <label>线条颜色
+                    <input
+                      aria-label="线条颜色"
+                      data-testid="edge-local-color"
+                      onChange={(event) => patch({ color: event.target.value })}
+                      type="color"
+                      value={local.color || (style.edge.byKind ? kindInk(edge.kind, style) : style.edge.color) || "#7b87a8"}
+                    />
+                  </label>
+                  <NumericControl
+                    ariaLabel="所选线宽"
+                    defaultValue={style.edge.width}
+                    label="线条粗细"
+                    max={6}
+                    min={0.4}
+                    onChange={(v) => patch({ width: v }, `edge-width-${edge.id}`)}
+                    precision={1}
+                    step={0.1}
+                    testId="edge-local-width"
+                    unit="px"
+                    value={local.width ?? style.edge.width}
+                  />
+                  <NumericControl
+                    ariaLabel="所选线透明度"
+                    defaultValue={style.edge.opacity}
+                    displayScale={100}
+                    label="透明度"
+                    max={1}
+                    min={0.2}
+                    onChange={(v) => patch({ opacity: v }, `edge-opacity-${edge.id}`)}
+                    precision={0}
+                    step={0.05}
+                    testId="edge-local-opacity"
+                    unit="%"
+                    value={local.opacity ?? style.edge.opacity}
+                  />
+                  <NumericControl
+                    ariaLabel="所选标签字号"
+                    defaultValue={style.edge.labelSize}
+                    label="标签字号"
+                    max={18}
+                    min={8}
+                    onChange={(v) => patch({ labelSize: v }, `edge-label-size-${edge.id}`)}
+                    precision={1}
+                    step={0.5}
+                    testId="edge-local-label-size"
+                    unit="px"
+                    value={local.labelSize ?? style.edge.labelSize}
+                  />
+                  <NumericControl
+                    ariaLabel="所选标签沿线位置"
+                    defaultValue={style.edge.labelT}
+                    displayScale={100}
+                    label="标签沿线"
+                    max={0.9}
+                    min={0.1}
+                    onChange={(v) => patch({ labelT: v }, `edge-label-t-${edge.id}`)}
+                    precision={0}
+                    step={0.05}
+                    testId="edge-local-label-t"
+                    unit="%"
+                    value={local.labelT ?? style.edge.labelT}
+                  />
+                  <NumericControl
+                    ariaLabel="所选标签偏移"
+                    defaultValue={style.edge.labelOffset}
+                    label="标签偏移"
+                    max={24}
+                    min={-24}
+                    onChange={(v) => patch({ labelOffset: v }, `edge-label-offset-${edge.id}`)}
+                    precision={0}
+                    step={1}
+                    testId="edge-local-label-offset"
+                    unit="u"
+                    value={local.labelOffset ?? style.edge.labelOffset}
+                  />
+                  <label>线型
+                    <select
+                      aria-label="线型"
+                      data-testid="edge-local-dash"
+                      onChange={(event) => patch({ dash: event.target.value as CanvasStyle["edge"]["dash"] })}
+                      value={local.dash ?? style.edge.dash}
+                    >
+                      <option value="solid">实线</option>
+                      <option value="dashed">虚线</option>
+                      <option value="dotted">点线</option>
+                    </select>
+                  </label>
+                  <label>箭头
+                    <select
+                      aria-label="箭头样式"
+                      data-testid="edge-local-arrow"
+                      onChange={(event) => patch({ arrow: event.target.value as ArrowStyle })}
+                      value={local.arrow ?? style.edge.arrow}
+                    >
+                      <option value="concise">简洁</option>
+                      <option value="thin">细线</option>
+                      <option value="soft">柔和</option>
+                      <option value="none">无</option>
+                    </select>
+                  </label>
+                </div>
+                <button
+                  className="ghost-button"
+                  data-testid="edge-local-reset"
+                  disabled={!layout.edgeStyles?.[edge.id]}
+                  onClick={() => {
+                    const next = { ...(layout.edgeStyles ?? {}) };
+                    delete next[edge.id];
+                    commitLayout({ ...layout, edgeStyles: next });
+                  }}
+                  type="button"
+                >
+                  恢复继承全局
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
+      {!selectedEdgeId && selectedIds.length === 1 && byId.get(selectedIds[0]) && (
+        <div className="graph-style-local" role="group" aria-label="所选节点外观">
+          <strong>所选节点</strong>
+          {(() => {
+            const nodeId = selectedIds[0];
+            const local = layout.nodeStyles?.[nodeId] ?? {};
+            const patch = (next: Partial<NonNullable<typeof local>>) =>
+              commitLayout({
+                ...layout,
+                nodeStyles: {
+                  ...(layout.nodeStyles ?? {}),
+                  [nodeId]: { ...local, ...next },
+                },
+              });
+            return (
+              <>
+                <CharacterRow character={byId.get(nodeId)!.character} />
+                <p className="graph-style-state">
+                  <span className="muted">状态</span>
+                  <strong data-testid="node-local-state">
+                    {Object.keys(local).length ? "自定义（覆盖整体画布）" : "继承整体画布"}
+                  </strong>
+                </p>
+                <div className="graph-style-grid">
+                  <label>边框颜色
+                    <input
+                      aria-label="边框颜色"
+                      onChange={(event) => patch({ borderColor: event.target.value })}
+                      type="color"
+                      value={local.borderColor || "#b8bfd0"}
+                    />
+                  </label>
+                  <label>节点底色
+                    <input
+                      aria-label="节点底色"
+                      onChange={(event) => patch({ background: event.target.value })}
+                      type="color"
+                      value={local.background || "#f4f5f8"}
+                    />
+                  </label>
+                </div>
+                <div className="graph-style-field">
+                  <span className="graph-style-label">节点形态</span>
+                  <div className="graph-segment" role="group" aria-label="节点形态">
+                    {[
+                      { value: "avatar", label: "头像" },
+                      { value: "compact", label: "圆点" },
+                      { value: "card", label: "卡片" },
+                    ].map((option) => {
+                      const current = (local.form ?? style.node.form) === option.value;
+                      return (
+                        <button
+                          aria-pressed={current}
+                          className={current ? "graph-segment-button selected" : "graph-segment-button"}
+                          key={option.value}
+                          onClick={() =>
+                            patch({ form: option.value as CanvasStyle["node"]["form"] })
+                          }
+                          type="button"
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <button
+                  className="ghost-button"
+                  disabled={!layout.nodeStyles?.[nodeId]}
+                  onClick={() => {
+                    const next = { ...(layout.nodeStyles ?? {}) };
+                    delete next[nodeId];
+                    commitLayout({ ...layout, nodeStyles: next });
+                  }}
+                  type="button"
+                >
+                  恢复这个节点的默认外观
+                </button>
+              </>
+            );
+          })()}
+        </div>
+      )}
+      {/* Several objects are selected: say which settings a batch would have to
+          change, rather than silently showing one node's controls as if it spoke
+          for all of them. */}
+      {!selectedEdgeId && selectedIds.length > 1 && (
+        <div className="graph-style-local" role="note">
+          <strong>已选 {selectedIds.length} 个角色</strong>
+          <p className="muted">
+            批量外观暂不支持：边框、底色和形态按单个角色保存，这里先只改整体画布。
+            要改其中某一个，选中它再打开这里。
+          </p>
+          <button
+            className="ghost-button"
+            onClick={() => setSurface("groups")}
+            type="button"
+          >
+            用所选创建分组
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  const canvasTier = (
+    <div className="graph-design-canvas" data-testid="design-canvas-scope">
+              <div aria-label="视图" className="graph-style-view" role="group">
+        <div className="graph-style-section-head">
+          <strong>视图与显示</strong>
+          <span>只改本机显示，不进导出</span>
+        </div>
+        <div className="graph-panel-row">
+          <span className="graph-control-label">名称</span>
+          <div className="graph-segment">
+            {[
+              { value: true, label: "显示" },
+              { value: false, label: "隐藏" },
+            ].map((option) => (
+              <button
+                aria-pressed={prefs.showNames === option.value}
+                className={prefs.showNames === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                key={option.label}
+                onClick={() => updatePrefs({ showNames: option.value })}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="graph-panel-row">
+          <span className="graph-control-label">本机头像</span>
+          <div className="graph-segment">
+            {[
+              { value: true, label: "显示" },
+              { value: false, label: "隐藏" },
+            ].map((option) => (
+              <button
+                aria-pressed={prefs.showAvatars === option.value}
+                className={prefs.showAvatars === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                key={option.label}
+                onClick={() => updatePrefs({ showAvatars: option.value })}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="graph-scope-stats" role="status">
+          角色库 {characters.length} · 画布 {currentMembers().length} · 可见{" "}
+          {visibleCharacters.length} · 关系线 {prefs.showEdges ? drawnRelationships.length : 0}
+          {" · "}关系线{" "}
+          {prefs.showEdges
+            ? `${drawnRelationships.length}/${relationships.length}`
+            : `隐藏（共 ${relationships.length}）`}
+        </p>
+        <div className="graph-panel-row">
+          <span className="graph-control-label">关系线</span>
+          <div className="graph-segment">
+            {[
+              { value: true, label: "显示" },
+              { value: false, label: "隐藏" },
+            ].map((option) => (
+              <button
+                aria-pressed={prefs.showEdges === option.value}
+                className={
+                  prefs.showEdges === option.value ? "graph-segment-button selected" : "graph-segment-button"
+                }
+                key={option.label}
+                onClick={() => updatePrefs({ showEdges: option.value })}
+                type="button"
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* What the strokes mean. It belongs with the display switches — it is
+            the same question ("what am I looking at") — and it is read once,
+            so it does not get a permanent corner of the drawing. */}
+        <div className="graph-panel-row graph-legend">
+          <span className="graph-control-label">线型说明</span>
+          <ul className="graph-legend-list">
+            <li>
+              <span aria-hidden="true" className="graph-legend-line legend-primary" />
+              亲属、情感
+            </li>
+            <li>
+              <span aria-hidden="true" className="graph-legend-line legend-danger" />
+              敌对、对手
+            </li>
+            <li>
+              <span aria-hidden="true" className="graph-legend-line legend-plain" />
+              师承、友人、同僚、其他
+            </li>
+          </ul>
+          <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
+        </div>
+      </div>
+      {/* Above the presets, because it applies to one object: what the whole
+          canvas looks like is the wrong question while a single line is
+          selected. */}
+              {/* On a phone the half sheet opens on the quick adjustments, which is what
+          it is for; the presets are one short scroll below. Desktop keeps the
+          order the panel is described in: presets, quick, advanced. */}
+      {isNarrowScreen ? (
+        <>
+          {quickTier}
+          {presetTier}
+        </>
+      ) : (
+        <>
+          {presetTier}
+          {quickTier}
+        </>
+      )}
+
+              {/* Everything else, folded away: present when a session needs it, out of
+          the way of the four controls above. Native <details> so the fold is a
+          browser guarantee rather than a class that hides a live control. */}
+      <details className="graph-design-advanced">
+        <summary>高级选项</summary>
+        <div className="graph-style-grid">
+
+          {/* Relationship words: on/off, how big, where along the line, and how
+              far off it. Global by design — a per-edge override still wins for
+              colour and width, but the word belongs to the reading, not to one
+              connection. */}
+          
+
+          <label>走向
+            <select onChange={(event) => patchStyle({ ...style, preset: "custom", edge: { ...style.edge, curve: event.target.value as CanvasStyle["edge"]["curve"] } })} value={style.edge.curve}>
+              <option value="curved">曲线</option>
+              <option value="straight">直线</option>
+            </select>
+          </label>
+          <label>画布底色
+            <input aria-label="画布底色" onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
+          </label>
+          <label>网格
+            <select onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, grid: event.target.value as CanvasStyle["canvas"]["grid"] } })} value={style.canvas.grid}>
+              <option value="dots">点阵</option>
+              <option value="lines">方格</option>
+              <option value="none">无</option>
+            </select>
+          </label>
+          <label className="graph-style-switch">
+            位置吸附
+            <input
+              checked={style.canvas.snap}
+              data-testid="grid-snap"
+              onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, snap: event.target.checked } })}
+              type="checkbox"
+            />
+            <span className="graph-style-value">{style.canvas.snap ? `吸附 ${style.canvas.gridSize}` : "自由"}</span>
+          </label>
+          <label>网格密度
+            <span className="graph-style-label">间距<span className="graph-style-value">{style.canvas.gridSize}</span></span>
+            <input aria-label="网格密度" max={120} min={16} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridSize: Number(event.target.value) } }, "grid-size")} step={4} type="range" value={style.canvas.gridSize} />
+          </label>
+          <label>网格强度
+            <span className="graph-style-label">不透明度<span className="graph-style-value">{Math.round(style.canvas.gridOpacity * 100)}%</span></span>
+            <input aria-label="网格强度" max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
+          </label>
+        </div>
+        {/* The head is a drawing choice, not a fact about the relationship: a
+            symmetric kind never draws one, and 无箭头 hides the head while the
+            direction stays in the data and in 管理. */}
+
+        <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
+      </details>
+
+              <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复整体画布默认外观</button>
+    </div>
+  );
+
+  const stylePanel = (
+    <div className="graph-style-panel" role="group" aria-label="画布外观">
+      <div aria-label="设计范围" className="graph-design-scope" role="tablist">
+        <button
+          aria-selected={designScope === "canvas"}
+          className={designScope === "canvas" ? "graph-design-scope-button active" : "graph-design-scope-button"}
+          data-testid="design-scope-canvas"
+          onClick={() => setDesignScope("canvas")}
+          role="tab"
+          type="button"
+        >
+          整体画布
+        </button>
+        <button
+          aria-selected={designScope === "object"}
+          className={designScope === "object" ? "graph-design-scope-button active" : "graph-design-scope-button"}
+          data-testid="design-scope-object"
+          disabled={appearanceSelection.kind === "canvas"}
+          onClick={() => setDesignScope("object")}
+          role="tab"
+          title={appearanceSelection.kind === "canvas" ? "请先选择角色或关系线" : "编辑所选对象自己的外观"}
+          type="button"
+        >
+          所选对象
+        </button>
+      </div>
+      {designScope === "object" && appearanceSelection.kind === "canvas" ? (
+        <p className="graph-design-scope-note muted">请先选择角色或关系线；未选中时只有整体画布可改。</p>
+      ) : null}
+      {designScope === "object" ? objectTier : canvasTier}
+    </div>
+  );
+
+  // The name the appearance drawer puts in its title. It has to be the object the
+  // controls underneath will change, so a node uses its own name and nothing else
+  // stands in for it.
+  const exportRatioValue = EXPORT_RATIOS.find((entry) => entry.value === exportRatio)?.ratio ?? 0;
+  const exportAspect = exportCustomAspect ?? exportRatioValue;
+  // The artwork's own rectangle: used for the frame, and for the coverage outline the
+  // preview draws when a ratio or a hand-made crop leaves room around the content.
+  const exportContent = exportBounds("all");
+  const exportFrame = (() => {
+    const base =
+      exportMode === "view"
+        ? exportBounds("view")
+        : exportMode === "selection"
+          ? exportBounds("selection")
+          : exportContent;
+
+    if (!base) {
+      return null;
+    }
+
+    if (exportMode === "manual") {
+      return manualFrame({
+        content: base,
+        zoom: exportZoom,
+        panX: exportPan.x,
+        panY: exportPan.y,
+        ratio: exportAspect > 0 ? exportAspect : undefined,
+      });
+    }
+
+    return exportAspect > 0 ? growToAspect(base, exportAspect) : base;
+  })();
+  // What the file will measure, computed from the same rectangle the export uses, so
+  // the number beside the controls is the number in the file.
+  const exportSize = exportFrame ? outputSize({ frame: exportFrame, width: exportWidth }) : null;
+  const exportOpen = isExportOpen || surface === "export";
+
+  // The preview is the file: the same serialised SVG, shown as an image. It is
+  // rebuilt on a short delay because inlining presentation walks every element, and
+  // that walk must not run on every pointer move while framing by hand.
+  useEffect(() => {
+    if (!exportOpen || !exportFrame) {
+      setExportPreview(null);
+      return;
+    }
+
+    const frame = exportFrame;
+    const timer = window.setTimeout(() => {
+      try {
+        const built = buildExportSvg(frame, exportMode === "selection");
+        if (!built) {
+          setExportPreview(null);
+          setExportPreviewError("没有可导出的内容");
+          return;
+        }
+        setExportPreview({
+          url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(built.text)}`,
+          bounds: built.bounds,
+          content: exportContent,
+          legend: built.legend,
+          width: built.bounds.width,
+          height: built.bounds.height,
+        });
+        setExportPreviewError(null);
+      } catch (error) {
+        setExportPreview(null);
+        setExportPreviewError(error instanceof Error ? error.message : "预览生成失败");
+      }
+    }, 160);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    exportOpen,
+    exportMode,
+    exportFrame?.x,
+    exportFrame?.y,
+    exportFrame?.width,
+    exportFrame?.height,
+    exportWidth,
+    prefs.exportLegend,
+    prefs.exportLegendCorner,
+    prefs.exportLegendScale,
+    prefs.exportLegendMargin,
+    prefs.exportLegendBg,
+    prefs.exportLegendOpacity,
+    legendNudge.x,
+    legendNudge.y,
+    style.canvas.background,
+  ]);
+
   const contextBar = contextBarMode({
     previewing: Boolean(preview),
     selectedCount: selectedIds.length,
     canUndo: Boolean(arrangeUndo),
   });
 
-  // One export panel, two homes: the page header and the studio's top bar. It used
-  // to hang under the drawing, which meant the entry sat below the fold on a phone
-  // and duplicated the header's output actions.
-  const exportMenu = (
-            <div className="graph-display-wrap graph-export-wrap" ref={exportWrapRef}>
+  // One export body, two homes: the page header's popover and the studio's export
+  // drawer. The controls, the preview and the file all come from the same frame, so
+  // there is nothing that can look right in one home and wrong in the other.
+  const exportBody = (
+    <div className="graph-export-body" data-testid="export-body">
+      <section className="graph-export-section">
+        <div className="graph-export-section-head">
+          <strong>构图</strong>
+          <span>画面取自画布坐标，与当前缩放无关</span>
+        </div>
+        <div className="graph-segment graph-export-modes" role="group" aria-label="构图范围">
+          {(
+            [
+              ["content", "内容适应"],
+              ["view", "当前视口"],
+              ["selection", "选中区域"],
+              ["manual", "手动构图"],
+            ] as Array<[typeof exportMode, string]>
+          ).map(([mode, label]) => (
+            <button
+              aria-pressed={exportMode === mode}
+              className={exportMode === mode ? "graph-segment-button selected" : "graph-segment-button"}
+              data-testid={`export-mode-${mode}`}
+              disabled={mode === "selection" && selectedIds.length === 0}
+              key={mode}
+              onClick={() => setExportMode(mode)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {exportMode === "manual" && (
+          <div className="graph-export-manual">
+            <NumericControl
+              label="取景缩放"
+              max={300}
+              min={33}
+              onChange={(value) => setExportZoom(Math.min(3, Math.max(1 / 3, value / 100)))}
+              precision={0}
+              step={1}
+              testId="export-zoom"
+              unit="%"
+              value={Math.round(exportZoom * 100)}
+            />
+            <button
+              className="ghost-button small"
+              onClick={() => {
+                setExportZoom(1);
+                setExportPan({ x: 0, y: 0 });
+              }}
+              type="button"
+            >
+              重置取景
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="graph-export-section">
+        <div className="graph-export-section-head">
+          <strong>画幅</strong>
+          <span>{exportCustomAspect ? `自定义 ${exportCustomAspect.toFixed(2)}:1` : "按比例框住内容，不裁切"}</span>
+        </div>
+        <div className="graph-segment">
+          {EXPORT_RATIOS.map((entry) => (
+            <button
+              aria-pressed={!exportCustomAspect && exportRatio === entry.value}
+              className={
+                !exportCustomAspect && exportRatio === entry.value
+                  ? "graph-segment-button selected"
+                  : "graph-segment-button"
+              }
+              key={entry.value}
+              onClick={() => {
+                setExportCustomAspect(null);
+                setExportRatio(entry.value);
+              }}
+              type="button"
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        <div className="graph-export-size-row">
+          <label>
+            <span>宽</span>
+            <input
+              aria-label="导出宽度"
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isFinite(value) && value > 0) {
+                  setExportWidth(Math.round(value));
+                }
+              }}
+              type="number"
+              value={exportWidth}
+            />
+          </label>
+          <span aria-hidden="true" className="graph-export-times">
+            ×
+          </span>
+          <label>
+            <span>高</span>
+            <input
+              aria-label="导出高度"
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isFinite(value) && value > 0) {
+                  const aspect = exportWidth / value;
+                  if (prefs.exportLockAspect) {
+                    setExportWidth(Math.max(1, Math.round(value * (exportAspect || 1))));
+                  } else {
+                    setExportCustomAspect(aspect);
+                  }
+                }
+              }}
+              readOnly={prefs.exportLockAspect}
+              type="number"
+              value={exportSize?.height ?? 0}
+            />
+          </label>
+          <button
+            aria-pressed={prefs.exportLockAspect}
+            className={prefs.exportLockAspect ? "ghost-button small active" : "ghost-button small"}
+            onClick={() => updatePrefs({ exportLockAspect: !prefs.exportLockAspect })}
+            type="button"
+          >
+            {prefs.exportLockAspect ? "已锁定比例" : "自由比例"}
+          </button>
+          <button
+            className="ghost-button small"
+            onClick={() => {
+              setExportCustomAspect(null);
+              setExportRatio("canvas");
+              setExportWidth(2400);
+              setExportMode("content");
+              setExportZoom(1);
+              setExportPan({ x: 0, y: 0 });
+            }}
+            type="button"
+          >
+            恢复默认
+          </button>
+        </div>
+        <p className="graph-export-size" data-testid="export-size">
+          {exportSize ? `${exportSize.width} × ${exportSize.height} px` : "—"}
+          <em>
+            {exportSize?.clipped
+              ? exportSize.reason
+              : `位图按此像素输出；SVG 为 ${Math.round(exportPreview?.width ?? 0)} × ${Math.round(
+                  exportPreview?.height ?? 0,
+                )} 单位矢量`}
+          </em>
+        </p>
+      </section>
+
+      <section className="graph-export-section">
+        <div className="graph-export-section-head">
+          <strong>预览</strong>
+          <span>{exportMode === "manual" ? "拖动平移，滚轮或滑杆缩放" : "与导出文件同源，不是截图"}</span>
+        </div>
+        <div
+          className={exportMode === "manual" ? "graph-export-preview is-manual" : "graph-export-preview"}
+          data-testid="export-preview"
+          onPointerDown={(event) => {
+            if (exportMode !== "manual" || !exportFrame) {
+              return;
+            }
+            const box = event.currentTarget.getBoundingClientRect();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            exportDragRef.current = {
+              x: event.clientX,
+              y: event.clientY,
+              pan: exportPan,
+              width: box.width,
+            };
+          }}
+          onPointerMove={(event) => {
+            const drag = exportDragRef.current;
+            if (!drag || !exportFrame) {
+              return;
+            }
+            const scale = exportFrame.width / Math.max(1, drag.width);
+            const next = clampPan({
+              content: exportContent ?? exportFrame,
+              zoom: exportZoom,
+              panX: drag.pan.x + (event.clientX - drag.x) * scale,
+              panY: drag.pan.y + (event.clientY - drag.y) * scale,
+            });
+            setExportPan({ x: next.panX, y: next.panY });
+          }}
+          onPointerUp={() => {
+            exportDragRef.current = null;
+          }}
+          onWheel={(event) => {
+            if (exportMode !== "manual") {
+              return;
+            }
+            event.preventDefault();
+            setExportZoom((current) => Math.min(3, Math.max(1 / 3, current * (event.deltaY < 0 ? 1.08 : 0.93))));
+          }}
+        >
+          {exportPreview ? (
+            <div
+              className="graph-export-frame"
+              style={{ aspectRatio: `${exportPreview.bounds.width} / ${exportPreview.bounds.height}` }}
+            >
+              <img alt="导出预览" draggable={false} src={exportPreview.url} />
+              {exportPreview.content && exportPreview.bounds.width > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="graph-export-coverage"
+                  style={{
+                    left: `${((exportPreview.content.x - exportPreview.bounds.x) / exportPreview.bounds.width) * 100}%`,
+                    top: `${((exportPreview.content.y - exportPreview.bounds.y) / exportPreview.bounds.height) * 100}%`,
+                    width: `${(exportPreview.content.width / exportPreview.bounds.width) * 100}%`,
+                    height: `${(exportPreview.content.height / exportPreview.bounds.height) * 100}%`,
+                  }}
+                />
+              )}
+              {exportPreview.legend && exportPreview.bounds.width > 0 && (
+                <span
+                  aria-label="拖动图例位置"
+                  className="graph-export-legend-box"
+                  data-testid="export-legend-box"
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    const box = event.currentTarget.parentElement!.getBoundingClientRect();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    legendDragRef.current = {
+                      x: event.clientX,
+                      y: event.clientY,
+                      nudge: legendNudge,
+                      width: box.width,
+                    };
+                  }}
+                  onPointerMove={(event) => {
+                    const drag = legendDragRef.current;
+                    if (!drag || !exportPreview) {
+                      return;
+                    }
+                    const scale = exportPreview.bounds.width / Math.max(1, drag.width);
+                    setLegendNudge({
+                      x: drag.nudge.x + (event.clientX - drag.x) * scale,
+                      y: drag.nudge.y + (event.clientY - drag.y) * scale,
+                    });
+                  }}
+                  onPointerUp={() => {
+                    legendDragRef.current = null;
+                  }}
+                  role="presentation"
+                  style={{
+                    left: `${((exportPreview.legend.x - exportPreview.bounds.x) / exportPreview.bounds.width) * 100}%`,
+                    top: `${((exportPreview.legend.y - exportPreview.bounds.y) / exportPreview.bounds.height) * 100}%`,
+                    width: `${(exportPreview.legend.width / exportPreview.bounds.width) * 100}%`,
+                    height: `${(exportPreview.legend.height / exportPreview.bounds.height) * 100}%`,
+                  }}
+                />
+              )}
+            </div>
+          ) : (
+            <span className="graph-export-empty">{exportPreviewError ?? "正在生成预览…"}</span>
+          )}
+        </div>
+        <p className="muted graph-export-note">
+          虚线为内容覆盖范围，虚线之外是留白。预览与 PNG / JPG / PDF 输出同一份帧，SVG 保持矢量。
+        </p>
+      </section>
+
+      <section className="graph-export-section">
+        <div className="graph-export-section-head">
+          <strong>图例</strong>
+          <span>只列实际画出的关系类型</span>
+        </div>
+        <div className="graph-panel-row">
+          <span className="graph-control-label">显示</span>
+          <div className="graph-segment">
+            {[
+              { value: false, label: "不显示" },
+              { value: true, label: "显示" },
+            ].map((option) => (
               <button
-                aria-expanded={isExportOpen}
-                className={isExportOpen ? "graph-toggle active" : "graph-toggle"}
-                onClick={() => setIsExportOpen((current) => !current)}
+                aria-pressed={prefs.exportLegend === option.value}
+                className={prefs.exportLegend === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                key={option.label}
+                onClick={() => updatePrefs({ exportLegend: option.value })}
                 type="button"
               >
-                <Icon name="download" size={15} />
-                <span>导出</span>
+                {option.label}
               </button>
-              {isExportOpen &&
-                createPortal(
-                <div
-                  aria-label="导出关系网"
-                  className="graph-panel graph-export-panel"
-                  ref={exportPanelRef}
-                  role="group"
-                  style={
-                    exportBox
-                      ? {
-                          position: "fixed",
-                          left: exportBox.left,
-                          top: exportBox.top,
-                          maxHeight: exportBox.maxHeight,
-                          overflowY: "auto",
-                          bottom: "auto",
-                          right: "auto",
-                        }
-                      : { visibility: "hidden" }
-                  }
-                >
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">比例</span>
-                    <div className="graph-segment">
-                      {EXPORT_RATIOS.map((entry) => (
-                        <button
-                          aria-pressed={exportRatio === entry.value}
-                          className={exportRatio === entry.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={entry.value}
-                          onClick={() => setExportRatio(entry.value)}
-                          type="button"
-                        >
-                          {entry.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">分辨率</span>
-                    <div className="graph-segment">
-                      {EXPORT_SCALES.map((scale) => (
-                        <button
-                          aria-pressed={prefs.exportScale === scale.value}
-                          className={prefs.exportScale === scale.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={scale.value}
-                          onClick={() => updatePrefs({ exportScale: scale.value })}
-                          type="button"
-                        >
-                          {scale.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">关系图例</span>
-                    <div className="graph-segment">
-                      {[
-                        { value: false, label: "不显示" },
-                        { value: true, label: "显示" },
-                      ].map((option) => (
-                        <button
-                          aria-pressed={prefs.exportLegend === option.value}
-                          className={prefs.exportLegend === option.value ? "graph-segment-button selected" : "graph-segment-button"}
-                          key={option.label}
-                          onClick={() => updatePrefs({ exportLegend: option.value })}
-                          type="button"
-                        >
-                          {option.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {prefs.exportLegend && (
-                    <div className="graph-panel-row">
-                      <span className="graph-control-label">图例位置</span>
-                      <div className="graph-segment">
-                        {([
-                          ["auto", "自动"],
-                          ["tl", "左上"],
-                          ["tr", "右上"],
-                          ["bl", "左下"],
-                          ["br", "右下"],
-                        ] as const).map(([value, label]) => (
-                          <button
-                            aria-pressed={prefs.exportLegendCorner === value}
-                            className={
-                              prefs.exportLegendCorner === value ? "graph-segment-button selected" : "graph-segment-button"
-                            }
-                            key={value}
-                            onClick={() => updatePrefs({ exportLegendCorner: value })}
-                            type="button"
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">范围</span>
-                    <div className="graph-segment">
-                      {([
-                        ["all", "全部内容"],
-                        ["view", "当前视图"],
-                        ["selection", "选中区域"],
-                      ] as Array<[ExportScope, string]>).map(([scope, label]) => (
-                        <button
-                          aria-pressed={exportScope === scope}
-                          className={exportScope === scope ? "graph-segment-button selected" : "graph-segment-button"}
-                          disabled={scope === "selection" && selectedIds.length === 0}
-                          key={scope}
-                          onClick={() => setExportScope(scope)}
-                          type="button"
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="graph-panel-row">
-                    <span className="graph-control-label">格式</span>
-                    <div className="graph-segment">
-                      {([
-                        ["png", "PNG"],
-                        ["svg", "SVG"],
-                        ["jpg", "JPG"],
-                        ["pdf", "PDF"],
-                      ] as Array<[string, string]>).map(([format, label]) => (
-                        <button
-                          className="graph-segment-button"
-                          disabled={exporting}
-                          key={format}
-                          onClick={() =>
-                            format === "png" || format === "svg"
-                              ? void runCanvasExport(exportScope, format)
-                              : void runExport(format as "jpg" | "pdf")
-                          }
-                          type="button"
-                        >
-                          {exporting ? "导出中…" : label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {/* The two older formats capture the screen; the two new ones
-                      export a rectangle. Saying so is cheaper than a user wondering
-                      why 全部内容 did nothing to their PDF. */}
-                  <p className="graph-export-size" data-testid="export-size">
-                    {exportSize ? `${exportSize.width} × ${exportSize.height} px` : "—"}
-                    <em>SVG 保持矢量，倍率只作用于位图</em>
-                  </p>
-                  <p className="muted graph-export-note">
-                    PNG / SVG 按所选范围导出；JPG / PDF 导出当前画面。
-                  </p>
-                </div>,
-                  document.body,
-                )}
+            ))}
+          </div>
+        </div>
+        {prefs.exportLegend && (
+          <>
+            <div className="graph-panel-row">
+              <span className="graph-control-label">位置</span>
+              <div className="graph-segment">
+                {(
+                  [
+                    ["auto", "自动"],
+                    ["tl", "左上"],
+                    ["tr", "右上"],
+                    ["bl", "左下"],
+                    ["br", "右下"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    aria-pressed={prefs.exportLegendCorner === value}
+                    className={
+                      prefs.exportLegendCorner === value ? "graph-segment-button selected" : "graph-segment-button"
+                    }
+                    key={value}
+                    onClick={() => updatePrefs({ exportLegendCorner: value })}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
+            <NumericControl
+              label="图例大小"
+              max={220}
+              min={50}
+              onChange={(value) => updatePrefs({ exportLegendScale: value / 100 })}
+              precision={0}
+              step={5}
+              testId="legend-scale"
+              unit="%"
+              value={Math.round(prefs.exportLegendScale * 100)}
+            />
+            <NumericControl
+              label="图例边距"
+              max={12}
+              min={0}
+              onChange={(value) => updatePrefs({ exportLegendMargin: value / 100 })}
+              precision={0}
+              step={1}
+              testId="legend-margin"
+              unit="%"
+              value={Math.round(prefs.exportLegendMargin * 100)}
+            />
+            <div className="graph-panel-row">
+              <span className="graph-control-label">背景</span>
+              <div className="graph-segment">
+                {(
+                  [
+                    ["canvas", "随画布"],
+                    ["panel", "独立面板"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <button
+                    aria-pressed={prefs.exportLegendBg === value}
+                    className={prefs.exportLegendBg === value ? "graph-segment-button selected" : "graph-segment-button"}
+                    key={value}
+                    onClick={() => updatePrefs({ exportLegendBg: value })}
+                    type="button"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <NumericControl
+              label="图例透明度"
+              max={100}
+              min={20}
+              onChange={(value) => updatePrefs({ exportLegendOpacity: value / 100 })}
+              precision={0}
+              step={5}
+              testId="legend-opacity"
+              unit="%"
+              value={Math.round(prefs.exportLegendOpacity * 100)}
+            />
+            <button
+              className="ghost-button small"
+              data-testid="legend-reset"
+              onClick={() => setLegendNudge({ x: 0, y: 0 })}
+              type="button"
+            >
+              {legendNudge.x || legendNudge.y ? "把图例放回角落" : "可在预览中拖动图例"}
+            </button>
+          </>
+        )}
+      </section>
+
+
+      <section className="graph-export-section">
+        <div className="graph-export-section-head">
+          <strong>导出</strong>
+          <span>{exporting ? "正在生成…" : "确认后立即下载"}</span>
+        </div>
+        <div className="graph-export-formats" role="group" aria-label="导出格式">
+          {(
+            [
+              ["png", "PNG", "位图"],
+              ["svg", "SVG", "矢量"],
+              ["jpg", "JPG", "位图"],
+              ["pdf", "PDF", "单页"],
+            ] as Array<["png" | "svg" | "jpg" | "pdf", string, string]>
+          ).map(([format, label, kind]) => (
+            <button
+              className="graph-export-format"
+              data-testid={`export-${format}`}
+              disabled={exporting || !exportPreview}
+              key={format}
+              onClick={() => void runExportFormat(format)}
+              type="button"
+            >
+              <strong>{label}</strong>
+              <span>{kind}</span>
+            </button>
+          ))}
+        </div>
+        <p className="muted graph-export-note">
+          JPG / PDF 由同一张位图输出（PDF 为单页、页面即画幅）；SVG 保留矢量，位图倍率对它无效。
+        </p>
+      </section>
+    </div>
+  );
+
+  const exportMenu = (
+    <div className="graph-display-wrap graph-export-wrap" ref={exportWrapRef}>
+      <button
+        aria-expanded={isExportOpen}
+        className={isExportOpen ? "graph-toggle active" : "graph-toggle"}
+        onClick={() => setIsExportOpen((current) => !current)}
+        type="button"
+      >
+        <Icon name="download" size={15} />
+        <span>导出</span>
+      </button>
+      {isExportOpen &&
+        createPortal(
+          <div
+            aria-label="导出关系网"
+            className="graph-panel graph-export-panel"
+            ref={exportPanelRef}
+            role="group"
+            style={
+              exportBox
+                ? {
+                    position: "fixed",
+                    left: exportBox.left,
+                    top: exportBox.top,
+                    maxHeight: exportBox.maxHeight,
+                    overflowY: "auto",
+                    bottom: "auto",
+                    right: "auto",
+                  }
+                : { visibility: "hidden" }
+            }
+          >
+            {exportBody}
+          </div>,
+          document.body,
+        )}
+    </div>
   );
 
   const panelCharacters = useMemo(() => {
@@ -7498,13 +8198,17 @@ export function RelationshipGraph({
                     : "多选模式：无需按键，连续点按选择多个角色"
                 }
                 onClick={() => {
-                  setMultiSelectMode((current) => {
-                    if (!current) {
-                      setPanMode(false);
-                      setSelectMode(false);
-                    }
-                    return !current;
-                  });
+                  const next = !multiSelectMode;
+                  if (!next) {
+                    // Uniform rule on the way out: one target is still a selection,
+                    // a group only existed for the mode, so it is dropped. The
+                    // dimming goes with it because it was never anything but display.
+                    setSelectedIds((current) => (current.length > 1 ? [] : current));
+                  } else {
+                    setPanMode(false);
+                    setSelectMode(false);
+                  }
+                  setMultiSelectMode(next);
                   setIsMoreOpen(false);
                 }}
                 type="button"
@@ -8082,7 +8786,16 @@ export function RelationshipGraph({
                 const edgeExempt = isEdgeSelected || touchesActiveSelection || touchesHovered;
               return (
                 <g
-                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${inLens || edgeExempt ? "" : " lens-dim"}${inSpotlight || edgeExempt ? "" : " spotlight-dim"}${
+                  className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${
+                    !preview &&
+                    multiSelectMode &&
+                    selectedIds.length > 0 &&
+                    !selectedIds.includes(relationship.fromId) &&
+                    !selectedIds.includes(relationship.toId)
+                      ? " multi-dim"
+                      : ""
+                  }${preview || inLens || edgeExempt ? "" : " lens-dim"}${preview || inSpotlight || edgeExempt ? "" : " spotlight-dim"}${
+                    !preview &&
                     focusNeighbourhood &&
                     !(focusNeighbourhood.has(relationship.fromId) && focusNeighbourhood.has(relationship.toId))
                       ? " focus-dim"
@@ -8235,15 +8948,26 @@ export function RelationshipGraph({
               // One function owns the priority. A hover used to be able to dim the
               // node the reader had just picked, which read as "the selection went
               // away"; selection now outranks hover by construction.
-              const state = `${nodeStateClass({
-                selected: isSelected,
-                focused: isFocused,
-                hovered: isHovered,
-                outsideSpotlight,
-                dimmedByHover: Boolean(activeId && character.id !== activeId && !isNeighbour),
-              })}${lensDimsNode ? " lens-dim" : ""}${
-                focusNeighbourhood && !focusNeighbourhood.has(character.id) ? " focus-dim" : ""
-              }`;
+               // Comparing layouts outranks every looking-tool: a preview is a proposal
+               // being judged, and a focus or lens left on from the previous reading
+               // would fade exactly the nodes the author is trying to compare.
+               const state = `${nodeStateClass({
+                 selected: isSelected,
+                 focused: isFocused,
+                 hovered: isHovered,
+                 outsideSpotlight: !preview && outsideSpotlight,
+                 // Resting the pointer on the node just clicked must not fade the rest of
+                 // the drawing: hover-dimming is for finding your way when nothing is
+                 // selected, and a selection is already the answer.
+                 dimmedByHover:
+                   !preview && selectedIds.length === 0 && Boolean(activeId && character.id !== activeId && !isNeighbour),
+               })}${
+                 // Multi-select recedes the rest at one fixed strength, whatever the
+                 // count: one pick must not look like a different mode from three.
+                 !preview && multiSelectMode && selectedIds.length > 0 && !isSelected ? " multi-dim" : ""
+               }${!preview && lensDimsNode ? " lens-dim" : ""}${
+                 !preview && focusNeighbourhood && !focusNeighbourhood.has(character.id) ? " focus-dim" : ""
+               }`;
               const avatarUrl = avatarUrls[character.id];
               // A ring drawn in world units disappears at the zoom a hundred-character
               // wheel is read at, which is exactly where "which one did I pick" matters.
@@ -8619,6 +9343,7 @@ export function RelationshipGraph({
               <div className="graph-studio-top" role="toolbar" aria-label="工作室">
                 <div className="graph-studio-heading">
                   <button
+                    aria-label="退出全屏编辑"
                     className="graph-studio-exit"
                     onClick={exitStudio}
                     type="button"
@@ -8637,7 +9362,12 @@ export function RelationshipGraph({
                     author's eye is already here, and a second control surface floating on
                     the canvas hid labels and nodes. Same handlers as before. */}
                 {selectedIds.length > 0 && (
-                  <div aria-label="当前选择" className="graph-studio-selection" data-testid="studio-selection" role="group">
+                  <div
+                    aria-label="当前选择"
+                    className={`graph-studio-selection${isAlignOpen ? " has-popover" : ""}`}
+                    data-testid="studio-selection"
+                    role="group"
+                  >
                     <span className="graph-studio-selection-count">
                       <span className="graph-wide-only">
                         {selectedIds.length === 1
@@ -8654,39 +9384,123 @@ export function RelationshipGraph({
                       </span>
                     </span>
                     <div className="graph-studio-selection-actions">
-                      <button className="graph-studio-selection-button graph-selection-fit" onClick={fitSelection} type="button">
-                        {selectedIds.length === 1 ? "聚焦" : "适应选中"}
-                      </button>
                       {selectedIds.length === 1 ? (
-                        <button
-                          className="graph-studio-selection-button"
-                          onClick={() => {
-                            const one = byId.get(selectedIds[0])?.character;
-                            if (one) onOpenCharacter(one.id);
-                          }}
-                          type="button"
-                        >
-                          编辑
-                        </button>
+                        <>
+                          <button
+                            aria-pressed={Boolean(focusedReadId && focusedReadId === selectedIds[0])}
+                            className="graph-studio-selection-button graph-selection-fit"
+                            data-testid="studio-focus"
+                            onClick={toggleReadingFocus}
+                            type="button"
+                          >
+                            {focusedReadId === selectedIds[0] ? "退出聚焦" : "聚焦"}
+                          </button>
+                          <button
+                            className="graph-studio-selection-button"
+                            onClick={() => {
+                              const one = byId.get(selectedIds[0])?.character;
+                              if (one) onOpenCharacter(one.id);
+                            }}
+                            type="button"
+                          >
+                            编辑
+                          </button>
+                          <button
+                            className="graph-studio-selection-button graph-wide-only"
+                            data-testid="studio-appearance"
+                            onClick={() => {
+                              setDesignScope("object");
+                              setSurface("design");
+                            }}
+                            type="button"
+                          >
+                            外观
+                          </button>
+                        </>
                       ) : (
-                        <button
-                          aria-expanded={isAlignOpen}
-                          className="graph-studio-selection-button"
-                          onClick={() => setIsAlignOpen((open) => !open)}
-                          type="button"
-                        >
-                          排列
-                        </button>
+                        <>
+                          <button className="graph-studio-selection-button" onClick={fitSelection} type="button">
+                            适应选中
+                          </button>
+                          <button
+                            aria-expanded={isAlignOpen}
+                            aria-haspopup="dialog"
+                            className="graph-studio-selection-button"
+                            data-testid="studio-arrange"
+                            onClick={(event) => {
+                              if (isAlignOpen) {
+                                setIsAlignOpen(false);
+                                return;
+                              }
+
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const width = 340;
+                              const left = Math.max(10, Math.min(rect.left, innerWidth - width - 10));
+                              const below = rect.bottom + 8;
+                              const fitsBelow = below + 300 <= innerHeight;
+                              setAlignPopoverBox({
+                                left,
+                                top: fitsBelow ? below : Math.max(10, rect.top - 8 - Math.min(340, innerHeight - 20)),
+                              });
+                              setIsAlignOpen(true);
+                            }}
+                            type="button"
+                          >
+                            排列
+                          </button>
+                          <button
+                            className="graph-studio-selection-button graph-wide-only"
+                            data-testid="studio-create-group"
+                            onClick={() => {
+                              setIsAlignOpen(false);
+                              setGroupDraft({ name: "", editingId: null });
+                              setSurface("groups");
+                            }}
+                            type="button"
+                          >
+                            创建分组
+                          </button>
+                          <button
+                            className="graph-studio-selection-button graph-wide-only"
+                            data-testid="studio-appearance"
+                            onClick={() => {
+                              setDesignScope("object");
+                              setSurface("design");
+                            }}
+                            type="button"
+                          >
+                            外观
+                          </button>
+                        </>
                       )}
                       <button
                         aria-label="清除选择"
                         className="graph-studio-selection-button"
-                        onClick={() => setSelectedIds([])}
+                        onClick={() => {
+                          setIsAlignOpen(false);
+                          setSelectedIds([]);
+                        }}
                         type="button"
                       >
                         清除
                       </button>
                     </div>
+                    {/* 排列 is a temporary tool, so it closes itself: Escape, a click
+                        outside, or clearing the selection all remove it. It is anchored
+                        to the button that opened it, not parked over the drawing. */}
+                    {isAlignOpen &&
+                      selectedIds.length >= 2 &&
+                      alignPopoverBox &&
+                      createPortal(
+                        <div
+                          className="graph-align-popover"
+                          data-testid="studio-align-popover"
+                          style={{ position: "fixed", left: alignPopoverBox.left, top: alignPopoverBox.top }}
+                        >
+                          {alignPanel}
+                        </div>,
+                        document.body,
+                      )}
                   </div>
                 )}
                 <div className="graph-studio-actions">
@@ -8739,6 +9553,7 @@ export function RelationshipGraph({
                     role="group"
                   >
                   <button
+                    aria-label="角色与分组"
                     aria-pressed={isStudioLeftOpen}
                     className="graph-studio-toggle"
                     data-testid="open-characters"
@@ -8750,6 +9565,7 @@ export function RelationshipGraph({
                     <span>角色</span>
                   </button>
                   <button
+                    aria-label="整理画布"
                     aria-pressed={surface === "arrange"}
                     className="graph-studio-toggle"
                     data-tooltip="整理：先预览，确认后才写入布局"
@@ -8760,8 +9576,9 @@ export function RelationshipGraph({
                     <span>整理</span>
                   </button>
                   <button
-                    aria-pressed={isStudioRightOpen && studioTab === "design"}
                     aria-expanded={surface === "design"}
+                    aria-label="设计"
+                    aria-pressed={isStudioRightOpen && studioTab === "design"}
                     className="graph-studio-toggle"
                     data-tooltip="设计：所选对象、关系线与整体画布"
                     onClick={() => openGraphSurface("design")}
@@ -8771,6 +9588,7 @@ export function RelationshipGraph({
                     <span>设计</span>
                   </button>
                   <button
+                    aria-label="探索"
                     aria-pressed={isStudioRightOpen && studioTab === "explore"}
                     className="graph-studio-toggle"
                     data-tooltip="探索：聚光灯、关系透镜与视角书签"
@@ -8791,7 +9609,18 @@ export function RelationshipGraph({
                   >
                     新建关系
                   </button>
-                  {exportMenu}
+                  <button
+                    aria-label="导出"
+                    aria-pressed={isExportSurface}
+                    className="graph-studio-toggle"
+                    data-testid="open-export"
+                    data-tooltip="导出：构图、图例、预览与格式"
+                    onClick={() => openGraphSurface("export")}
+                    type="button"
+                  >
+                    <Icon name="download" size={15} />
+                    <span>导出</span>
+                  </button>
                   <div className="graph-studio-menu-wrap">
                     <button
                       aria-expanded={studioMenuOpen}
@@ -8918,11 +9747,17 @@ export function RelationshipGraph({
               {isStudioRightOpen && (
                 <aside
                   aria-label={
-                    surface === "arrange" ? "整理画布" : studioTab === "design" ? "设计面板" : "探索面板"
+                    surface === "arrange"
+                      ? "整理画布"
+                      : surface === "export"
+                        ? "导出关系网"
+                        : studioTab === "design"
+                          ? "设计面板"
+                          : "探索面板"
                   }
                   className="graph-studio-drawer right"
                   data-level={sheetLevel}
-                  data-tab={surface === "arrange" ? "arrange" : studioTab}
+                  data-tab={surface === "arrange" ? "arrange" : surface === "export" ? "export" : studioTab}
                   ref={rightDrawerRef}
                 >
                   {/* The top bar already switches between 角色 / 设计 / 探索, so the panel
@@ -8932,9 +9767,11 @@ export function RelationshipGraph({
                     <strong>
                       {surface === "arrange"
                         ? "整理画布"
-                        : studioTab === "design"
-                          ? `设计 · ${appearanceLabel}`
-                          : "探索"}
+                        : surface === "export"
+                          ? "导出关系网"
+                          : studioTab === "design"
+                            ? `设计 · ${appearanceLabel}`
+                            : "探索"}
                     </strong>
                     <div className="graph-studio-drawer-actions">
                       <button
@@ -8958,57 +9795,13 @@ export function RelationshipGraph({
                     </div>
                   )}
 
-                  {surface === "design" && (
-                    <>
-
-                  <strong className="graph-studio-section">所选对象</strong>
-                  {selectedIds.length === 0 ? (
-                    <p className="muted">点选角色后，这里显示它的属性和局部外观。</p>
-                  ) : selectedIds.length === 1 ? (
-                    (() => {
-                      const chosen = byId.get(selectedIds[0])?.character;
-                      if (!chosen) {
-                        return <p className="muted">这个角色已不在画布中。</p>;
-                      }
-                      return (
-                        <div className="graph-studio-props">
-                          <CharacterRow character={chosen} />
-                          <dl>
-                            <dt>关系</dt>
-                            <dd>{degreeById.get(chosen.id) ?? 0} 条</dd>
-                          </dl>
-                          <div className="graph-studio-props-actions">
-                            <button className="ghost-button" onClick={() => fitSelection()} type="button">
-                              适应选中
-                            </button>
-                            <button
-                              className="ghost-button"
-                              onClick={() => onOpenCharacter(chosen.id)}
-                              type="button"
-                            >
-                              打开角色详情
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()
-                  ) : (
-                    <div className="graph-studio-props">
-                      <p className="muted">已选 {selectedIds.length} 个角色。</p>
-                      <div className="graph-studio-props-actions">
-                        <button className="ghost-button" onClick={() => fitSelection()} type="button">
-                          适应选中
-                        </button>
-                      </div>
-                      <p className="muted">对齐与分布在下方的选择条上，只有一处入口。</p>
+                  {surface === "export" && (
+                    <div className="graph-export-drawer" role="group" aria-label="导出设置">
+                      {exportBody}
                     </div>
                   )}
 
-                  {/* Arranging is a canvas tool, not an appearance setting: it lives in
-                      the dock with the other things that move the drawing. */}
-                  {stylePanel}
-                    </>
-                  )}
+                  {surface === "design" && stylePanel}
 
                   {surface === "explore" && explorePanelContent}
                 </aside>
@@ -9023,217 +9816,127 @@ export function RelationshipGraph({
               style={{ height: marquee.height, left: marquee.left, top: marquee.top, width: marquee.width }}
             />
           )}
-          {/* One context card under the drawing, and only one. `contextBar` decides
-              which single state is shown — a preview waiting for a decision, the
-              current selection, or a notice about the last change — so a selection
-              bar, an arrange panel and an undo notice can never stack up again. */}
-          <div className="graph-context-slot" data-yielded={surfaceIsOpen(surface) ? "true" : undefined}>
-            {contextBar === "preview" && preview && (
-              <div className="graph-context preview" role="status">
-                <div className="graph-context-row">
-                  <span className="graph-context-count">
-                    预览：{arrangeLabel(preview.mode)} · {Object.keys(preview.positions).length} 个节点（
-                    {preview.scope === "visible" ? "当前可见" : "全部角色"}）· 未写入坐标
-                  </span>
-                  <div className="graph-context-actions">
-                    <button className="ghost-button" data-testid="arrange-cancel" onClick={cancelArrange} type="button">
-                      取消
-                    </button>
-                    <button className="primary-button" data-testid="arrange-apply" onClick={applyArrange} type="button">
-                      确认应用
-                    </button>
+          {/* Page mode keeps its single context bar under the drawing — one state at a
+              time: a preview waiting for a decision, the current selection, or a notice
+              about the last change. The studio has no such bar: its decisions live in
+              the toolbar and its drawers, and nothing floats over the drawing. */}
+          {!isStudio && (
+            <div className="graph-context-slot" data-yielded={surfaceIsOpen(surface) ? "true" : undefined}>
+              {contextBar === "preview" && preview && (
+                <div className="graph-context preview" role="status">
+                  <div className="graph-context-row">
+                    <span className="graph-context-count">
+                      预览：{arrangeLabel(preview.mode)} · {Object.keys(preview.positions).length} 个节点（
+                      {preview.scope === "visible" ? "当前可见" : "全部角色"}）· 未写入坐标
+                    </span>
+                    <div className="graph-context-actions">
+                      <button className="ghost-button" data-testid="arrange-cancel" onClick={cancelArrange} type="button">
+                        取消
+                      </button>
+                      <button className="primary-button" data-testid="arrange-apply" onClick={applyArrange} type="button">
+                        确认应用
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {contextBar === "selection" && (
-              <div aria-label="所选角色" className="graph-context selection" role="group">
-                <div className="graph-context-row">
-                  {selectedIds.length === 1 ? (
-                    (() => {
-                      const selectedChar = byId.get(selectedIds[0])?.character;
-                      return (
-                        <>
-                          <div className="graph-context-single">
-                            <span className="graph-context-char-name">
-                              {selectedChar ? characterDisplayName(selectedChar) : "已选 1 个角色"}
-                            </span>
-                            <span className="graph-context-badge">
-                              {degreeById.get(selectedIds[0]) ?? 0} 条关系
-                            </span>
-                          </div>
-                          <div className="graph-context-actions">
-                            <button className="ghost-button" onClick={fitSelection} type="button">
-                              聚焦
-                            </button>
-                            {selectedChar && (
-                              <button
-                                className="ghost-button"
-                                onClick={() => onOpenCharacter(selectedChar.id)}
-                                type="button"
-                              >
-                                编辑
+              {contextBar === "selection" && (
+                <div aria-label="所选角色" className="graph-context selection" role="group">
+                  <div className="graph-context-row">
+                    {selectedIds.length === 1 ? (
+                      (() => {
+                        const selectedChar = byId.get(selectedIds[0])?.character;
+                        return (
+                          <>
+                            <div className="graph-context-single">
+                              <span className="graph-context-char-name">
+                                {selectedChar ? characterDisplayName(selectedChar) : "已选 1 个角色"}
+                              </span>
+                              <span className="graph-context-badge">
+                                {degreeById.get(selectedIds[0]) ?? 0} 条关系
+                              </span>
+                            </div>
+                            <div className="graph-context-actions">
+                              <button className="ghost-button" onClick={fitSelection} type="button">
+                                聚焦
                               </button>
-                            )}
-                            {focusOverview && (
-                              <button className="ghost-button" onClick={returnToOverview} type="button">
-                                返回总览
+                              {selectedChar && (
+                                <button
+                                  className="ghost-button"
+                                  onClick={() => onOpenCharacter(selectedChar.id)}
+                                  type="button"
+                                >
+                                  编辑
+                                </button>
+                              )}
+                              {focusOverview && (
+                                <button className="ghost-button" onClick={returnToOverview} type="button">
+                                  返回总览
+                                </button>
+                              )}
+                              <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                                清除选择
                               </button>
-                            )}
-                            <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
-                              清除选择
-                            </button>
 
-                          </div>
-                        </>
-                      );
-                    })()
-                  ) : (
-                    <>
-                      <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
-                      {/* Four things, one row. 外观 and 创建分组 are not selection
-                          actions; they live one press deeper inside 排列, and the
-                          studio's own 设计 entry still opens the same panel. */}
-                      <div className="graph-context-actions">
-                        <button className="ghost-button" onClick={fitSelection} type="button">
-                          适应选中
-                        </button>
-                        <button
-                          aria-expanded={isAlignOpen}
-                          className={isAlignOpen ? "ghost-button active" : "ghost-button"}
-                          disabled={selectedIds.length < 2}
-                          onClick={() => setIsAlignOpen((open) => !open)}
-                          title={arrangeAvailability(selectedIds.length).reason ?? "对齐与分布"}
-                          type="button"
-                        >
-                          排列
-                        </button>
-                        <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
-                          清除选择
-                        </button>
-
-                      </div>
-                    </>
-                  )}
-                  {arrangeUndo && (
-                    <span className="graph-context-undo" role="status">
-                      已应用{arrangeUndo.label}
-                      <button data-testid="arrange-undo" onClick={undoArrange} type="button">
-                        撤销
-                      </button>
-                    </span>
-                  )}
-                </div>
-                {isAlignOpen && selectedIds.length >= 2 && (
-                  <div className="graph-align-panel" role="group" aria-label="对齐与分布">
-                    <button
-                      className="ghost-button small"
-                      data-testid="align-create-group"
-                      onClick={() => {
-                        setGroupDraft({ name: "", editingId: null });
-                        setIsAlignOpen(false);
-                        setSurface("groups");
-                      }}
-                      type="button"
-                    >
-                      创建分组
-                    </button>
-                    <button
-                      className="ghost-button small"
-                      data-testid="align-open-design"
-                      onClick={() => {
-                        setIsAlignOpen(false);
-                        setSurface("design");
-                      }}
-                      type="button"
-                    >
-                      外观
-                    </button>
-                    <div className="graph-align-section">
-                      <span className="graph-align-title">对齐</span>
-                      <div className="graph-align-grid">
-                        {[
-                          { icon: "alignLeft", label: "左对齐", run: () => alignSelection("x", "start") },
-                          { icon: "alignCenterH", label: "水平居中", run: () => alignSelection("x", "center") },
-                          { icon: "alignRight", label: "右对齐", run: () => alignSelection("x", "end") },
-                          { icon: "alignTop", label: "顶对齐", run: () => alignSelection("y", "start") },
-                          { icon: "alignCenterV", label: "垂直居中", run: () => alignSelection("y", "center") },
-                          { icon: "alignBottom", label: "底对齐", run: () => alignSelection("y", "end") },
-                        ].map((tool) => (
+                            </div>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <>
+                        <span className="graph-context-count">已选 {selectedIds.length} 个角色</span>
+                        {/* Four things, one row. 外观 and 创建分组 are not selection
+                            actions; they live one press deeper inside 排列, and the
+                            studio's own 设计 entry still opens the same panel. */}
+                        <div className="graph-context-actions">
+                          <button className="ghost-button" onClick={fitSelection} type="button">
+                            适应选中
+                          </button>
                           <button
-                            aria-label={tool.label}
-                            className="graph-align-button"
-                            data-tooltip={tool.label}
-                            key={tool.label}
-                            onClick={tool.run}
+                            aria-expanded={isAlignOpen}
+                            className={isAlignOpen ? "ghost-button active" : "ghost-button"}
+                            disabled={selectedIds.length < 2}
+                            onClick={() => setIsAlignOpen((open) => !open)}
+                            title={arrangeAvailability(selectedIds.length).reason ?? "对齐与分布"}
                             type="button"
                           >
-                            <Icon name={tool.icon as Parameters<typeof Icon>[0]["name"]} size={16} />
+                            排列
                           </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="graph-align-section">
-                      <span className="graph-align-title">分布</span>
-                      <div className="graph-align-grid">
-                        <button
-                          aria-label="水平等距"
-                          className="graph-align-button"
-                          data-tooltip={selectedIds.length < 3 ? "等距分布需要至少三个角色" : "水平等距"}
-                          disabled={selectedIds.length < 3}
-                          onClick={() => distributeSelection("x")}
-                          type="button"
-                        >
-                          <Icon name="distributeH" size={16} />
-                        </button>
-                        <button
-                          aria-label="垂直等距"
-                          className="graph-align-button"
-                          data-tooltip={selectedIds.length < 3 ? "等距分布需要至少三个角色" : "垂直等距"}
-                          disabled={selectedIds.length < 3}
-                          onClick={() => distributeSelection("y")}
-                          type="button"
-                        >
-                          <Icon name="distributeV" size={16} />
-                        </button>
-                      </div>
-                    </div>
-                    <button
-                      className="ghost-button small graph-mobile-only"
-                      data-testid="align-close"
-                      onClick={() => setIsAlignOpen(false)}
-                      type="button"
-                    >
-                      完成
-                    </button>
-                    <button className="ghost-button small" onClick={fitSelection} type="button">
-                      适应选中
-                    </button>
-                    <p className="graph-align-note">
-                      {arrangeAvailability(selectedIds.length).reason ??
-                        (selectedIds.length < 3
-                          ? "两个角色可以对齐；等距分布需要三个以上。"
-                          : "对齐与分布都按角色的实际外框计算，只改坐标，不改关系。")}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+                          <button className="ghost-button" onClick={() => setSelectedIds([])} type="button">
+                            清除选择
+                          </button>
 
-            {contextBar === "undo" && arrangeUndo && (
-              <div className="graph-context undo" role="status">
-                <div className="graph-context-row">
-                  <span className="graph-context-count">已应用{arrangeUndo.label}</span>
-                  <div className="graph-context-actions">
-                    <button className="ghost-button" data-testid="arrange-undo" onClick={undoArrange} type="button">
-                      撤销
-                    </button>
+                        </div>
+                      </>
+                    )}
+                    {arrangeUndo && (
+                      <span className="graph-context-undo" role="status">
+                        已应用{arrangeUndo.label}
+                        <button data-testid="arrange-undo" onClick={undoArrange} type="button">
+                          撤销
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                  {isAlignOpen && selectedIds.length >= 2 && alignPanel}
+                </div>
+              )}
+
+              {contextBar === "undo" && arrangeUndo && (
+                <div className="graph-context undo" role="status">
+                  <div className="graph-context-row">
+                    <span className="graph-context-count">已应用{arrangeUndo.label}</span>
+                    <div className="graph-context-actions">
+                      <button className="ghost-button" data-testid="arrange-undo" onClick={undoArrange} type="button">
+                        撤销
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Output, under the drawing it exports. The node's own appearance moved
               behind 显示设置: four size buttons and two switches were the widest thing

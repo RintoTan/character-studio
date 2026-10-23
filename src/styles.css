@@ -7714,7 +7714,6 @@ body:has([aria-modal="true"]) .floating-actions {
    This outranks a local border colour on purpose — a colour must never hide a
    selection. */
 .relationship-node.selected .relationship-node-card {
-  stroke: var(--primary);
   stroke-width: 2;
 }
 
@@ -11477,7 +11476,11 @@ circle.graph-grid-dot {
   fill: none;
   stroke: var(--primary);
   stroke-width: 2;
-  stroke-dasharray: 6 4;
+  /* One outline. The node's own border used to turn primary as well, so a picked
+     node wore a dashed ring outside and a second coloured edge inside — two halos
+     saying the same thing, and at a hundred nodes it read as noise. */
+  stroke-dasharray: none;
+  opacity: 0.95;
   pointer-events: none;
 }
 
@@ -11507,9 +11510,10 @@ circle.graph-grid-dot {
 
 /* Hover must never win over a pick: the ring and the tick stay at full strength
    while the pointer is elsewhere. */
+/* The ring outside is the selection mark; the body keeps its own colour. */
 .relationship-node.selected .relationship-node-card,
 .relationship-node.selected .relationship-node-circle {
-  stroke: var(--primary);
+  stroke-width: 2;
 }
 
 .graph-edit-bar-count {
@@ -12341,9 +12345,12 @@ circle.graph-grid-dot {
   display: flex;
   align-items: center;
   gap: var(--studio-group-gap);
-  min-height: 52px;
-  padding: 8px var(--studio-bar-pad);
-  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  /* A fixed height, not a minimum: the bar's content changes with the selection, and a
+     taller bar would push the drawing down every time a node was picked. */
+  height: 53px;
+  min-height: 53px;
+  padding: 0 var(--studio-bar-pad);
+  padding-top: env(safe-area-inset-top, 0px);
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
@@ -15052,31 +15059,6 @@ circle.graph-grid-dot {
   width: var(--drawer-width);
 }
 
-/* The preview and selection card floats over the drawing inside the studio, in the
-   canvas cell, never over a drawer. */
-.graph-studio .graph-context-slot {
-  grid-area: canvas;
-  order: 3;
-  align-self: start;
-  position: relative;
-  z-index: var(--z-overlay-3);
-  margin: 10px 14px 0;
-  padding-bottom: 0;
-}
-
-/* The bar reads as a floating control strip, not a band across the drawing: only as
-   wide as its controls, with its own surface and a soft edge. */
-.graph-studio .graph-context {
-  justify-self: start;
-  max-width: calc(100% - 8px);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(8px);
-}
-
-.graph-studio .graph-context-slot:empty {
-  display: none;
-}
 
 /* State chips are a corner read-out, not a column. Without an area of their own they
    were auto-placed into an implicit fourth column and stretched to the row's height —
@@ -15095,9 +15077,6 @@ circle.graph-grid-dot {
   z-index: var(--z-overlay-3);
 }
 
-.graph-studio .graph-context {
-  box-shadow: var(--shadow-strong);
-}
 
 /* ---------------------------------------------------------------------------
    Narrow screens: the toolbar becomes a bottom dock, the drawer a sheet
@@ -16059,8 +16038,8 @@ circle.graph-grid-dot {
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--surface);
-  color: var(--text-soft);
+  background: var(--control-fill, var(--surface));
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -16306,30 +16285,6 @@ circle.graph-grid-dot {
    same state; only the geometry differs, and it has to be stated after the desktop
    rule that it overrides.
    ------------------------------------------------------------------------- */
-@media (max-width: 720px) {
-  .graph-studio .graph-context-slot {
-    position: absolute;
-    right: 12px;
-    bottom: calc(74px + env(safe-area-inset-bottom, 0px));
-    left: 12px;
-    align-self: auto;
-    margin: 0;
-    z-index: var(--z-overlay-4);
-  }
-
-  /* The arrange panel opens upward from the card, so it can never be pushed off the
-     bottom edge by the card's own position. */
-  .graph-studio .graph-context .graph-align-panel {
-    position: absolute;
-    top: auto;
-    right: 0;
-    bottom: calc(100% + 6px);
-    left: 0;
-    max-height: min(46dvh, 340px);
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-}
 
 /* ---------------------------------------------------------------------------
    Shared numeric control (src/components/NumericControl.tsx)
@@ -16497,30 +16452,6 @@ circle.graph-grid-dot {
   }
 }
 
-/* ---------------------------------------------------------------------------
-   Selection belongs to the toolbar.
-
-   The card that used to float at the top-left of the drawing duplicated the task bar
-   and, at 456×136 with the arrange panel open, covered a column of nodes and labels.
-   In the studio the same commands now sit in the top bar; the card is kept only as the
-   host of the arrange panel, and only while that panel is open.
-   ------------------------------------------------------------------------- */
-.graph-studio .graph-context-slot {
-  top: 8px;
-  right: auto;
-  bottom: auto;
-  left: 12px;
-  width: max-content;
-  max-width: min(560px, calc(100% - 24px));
-}
-
-.graph-studio .graph-context-slot .graph-context-row {
-  display: none;
-}
-
-.graph-studio .graph-context-slot:not(:has(.graph-align-panel)) {
-  display: none;
-}
 
 .graph-studio-selection {
   display: flex;
@@ -16563,7 +16494,237 @@ circle.graph-grid-dot {
   background: var(--control-hover, rgba(255, 255, 255, 0.08));
 }
 
+/* A mode that is on has to look on. 聚焦 used to be an ordinary button, so a focused
+   drawing and an unfocused one wore the same chrome. */
+.graph-studio-selection-button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+   排列: a tool popover anchored to the chip that opened it
+
+   It replaces the old floating card. The card was a second control surface over the
+   drawing, 460×151 with the panel open, and it kept a 22×18 empty shell around even
+   when its row was hidden. A popover is temporary by construction: it exists only
+   while the tool is open, it never takes a cell of the canvas grid, and it cannot
+   intercept a drag once it is gone.
+   ------------------------------------------------------------------------- */
+.graph-studio-selection {
+  position: relative;
+  /* Never a flex item that shrinks: a squeezed chip wraps its own commands and makes
+     the bar taller, which moves the drawing whenever a node is picked. */
+  flex: 0 0 auto;
+}
+
+.graph-studio-selection-actions {
+  flex-wrap: nowrap;
+}
+
+.graph-align-popover {
+  /* Fixed and portalled: its left/top come from the button it belongs to. */
+  position: fixed;
+  /* Above the studio page itself (--z-overlay-7): the page is a fixed, stacked
+     surface, and a body-level popover under it is invisible to the pointer. */
+  z-index: var(--z-overlay-8, 160);
+  width: min(340px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+}
+
+.graph-align-popover .graph-align-panel {
+  display: grid;
+  gap: 10px;
+  /* The page-mode panel positions itself against its selection card; inside the
+     popover it is the content, so it must not float out of the shell. */
+  position: static;
+  width: auto;
+  max-width: none;
+  max-height: min(62vh, 460px);
+  padding: 0;
+  margin: 0;
+  overflow: auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.graph-align-section {
+  display: grid;
+  gap: 6px;
+}
+
+.graph-align-title {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.graph-align-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.graph-align-popover .graph-align-button {
+  width: 34px;
+  height: 32px;
+}
+
+.graph-align-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.graph-align-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.graph-align-foot .graph-align-close {
+  margin-left: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   设计抽屉: one panel, two contexts
+   ------------------------------------------------------------------------- */
+.graph-design-scope {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--control-fill, var(--surface-subtle));
+}
+
+.graph-design-scope-button {
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.graph-design-scope-button.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.graph-design-scope-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.graph-design-scope-note {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.graph-design-empty {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+.graph-design-empty strong {
+  font-size: 13px;
+}
+
+.graph-design-empty .muted {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* ---------------------------------------------------------------------------
+   整理: the preview decision, inside the drawer
+   ------------------------------------------------------------------------- */
+.graph-arrange-decide {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  gap: 8px;
+  margin: -2px 0 12px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 34%, var(--border));
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.graph-arrange-decide .graph-panel-preview {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.graph-arrange-decide-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.graph-arrange-decide-actions .primary-button {
+  flex: 1;
+}
+
+/* Below this the bar cannot hold titles, four labelled tasks and a selection chip at
+   once. Tasks go icon-only (each keeps its tooltip and accessible name), the subtitle
+   steps out, and the bar scrolls rather than wrapping: the drawing must not change
+   height because a node was picked.
+   ------------------------------------------------------------------------- */
+@media (max-width: 1180px) {
+  .graph-studio-top {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .graph-studio-top::-webkit-scrollbar {
+    display: none;
+  }
+
+  .graph-studio-titles span {
+    display: none;
+  }
+
+  .graph-studio-actions .graph-studio-tasks .graph-studio-toggle {
+    padding-inline: 10px;
+  }
+
+  .graph-studio-actions .graph-studio-tasks .graph-studio-toggle span {
+    display: none;
+  }
+}
+
 @media (max-width: 720px) {
+  /* The studio bar stays at the top of a phone (the bottom is the zoom dock), so the
+     tool still opens downward; only its width has to give way. */
+  .graph-align-popover {
+    width: min(320px, calc(100vw - 24px));
+  }
+
+  .graph-studio-top {
+    height: calc(56px + env(safe-area-inset-top, 0px));
+    min-height: calc(56px + env(safe-area-inset-top, 0px));
+  }
+
   .graph-studio-selection {
     gap: 4px;
     padding: 3px 4px 3px 8px;
@@ -16661,4 +16822,270 @@ circle.graph-grid-dot {
   line-height: 1.45;
   font-size: 11.5px;
   color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------
+   导出: one body, a drawer in the studio and a popover on the page
+
+   The body owns the frame, the preview and the four formats, so there is no second
+   export implementation to drift. The preview is the exported SVG itself — an <img>
+   of the same string the file is made from — which is why it cannot promise a crop
+   the file does not take.
+   ------------------------------------------------------------------------- */
+.graph-export-panel {
+  width: min(400px, calc(100vw - 24px));
+}
+
+.graph-export-drawer {
+  padding: 0 2px 8px;
+}
+
+.graph-export-body {
+  display: grid;
+  gap: 14px;
+}
+
+.graph-export-section {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.graph-export-section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.graph-export-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.graph-export-section-head strong {
+  font-size: 12.5px;
+  letter-spacing: 0.01em;
+}
+
+.graph-export-section-head span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.graph-export-modes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.graph-export-manual {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.graph-export-manual .nc {
+  flex: 1;
+}
+
+.graph-export-size-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.graph-export-size-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.graph-export-size-row input {
+  width: 74px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.graph-export-size-row input:read-only {
+  color: var(--muted);
+  background: var(--control-fill, var(--surface));
+}
+
+.graph-export-times {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.graph-export-size {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.graph-export-size em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.5;
+}
+
+.graph-export-preview {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--control-fill, var(--surface));
+  touch-action: none;
+}
+
+.graph-export-preview.is-manual {
+  cursor: grab;
+}
+
+.graph-export-preview.is-manual:active {
+  cursor: grabbing;
+}
+
+.graph-export-frame {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  max-height: 300px;
+  line-height: 0;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+}
+
+.graph-export-frame img {
+  display: block;
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 2px;
+  user-select: none;
+}
+
+.graph-export-coverage {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--primary) 70%, transparent);
+  border-radius: 3px;
+  pointer-events: none;
+}
+
+.graph-export-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.graph-export-formats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.graph-export-format {
+  display: grid;
+  gap: 2px;
+  padding: 8px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.graph-export-format strong {
+  font-size: 12px;
+}
+
+.graph-export-format span {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.graph-export-format:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+}
+
+.graph-export-format:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.graph-export-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.graph-studio-drawer.right[data-tab="export"] {
+  width: 392px;
+}
+
+@media (max-width: 720px) {
+  /* A task panel on a phone is the sheet, not a 392px column hanging off it. */
+  .graph-studio-drawer.right[data-tab="export"] {
+    width: auto;
+  }
+
+  .graph-export-panel {
+    width: min(360px, calc(100vw - 20px));
+  }
+
+  .graph-export-modes,
+  .graph-export-formats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Multi-select is a mode, so its receding is uniform: one pick and five picks look the
+   same, and the strength stays light enough to read names and follow lines. Selection
+   in single mode never uses this — picking one character must not dim the drawing. */
+.relationship-node.multi-dim {
+  opacity: 0.5;
+}
+
+.relationship-edge.multi-dim {
+  opacity: 0.38;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .relationship-node,
+  .relationship-edge {
+    transition: opacity 140ms ease;
+  }
+}
+
+/* The legend can be placed by hand when the four corners are all occupied. The box
+   is drawn over the preview, not over the canvas: it marks a crop, not a node. */
+.graph-export-legend-box {
+  position: absolute;
+  border: 1px dashed color-mix(in srgb, var(--accent, #7c9cf5) 80%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent, #7c9cf5) 10%, transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.graph-export-legend-box:active {
+  cursor: grabbing;
 }

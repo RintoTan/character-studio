@@ -31,6 +31,11 @@ describe("graph size preferences", () => {
       exportScale: 3,
       exportLegend: false,
       exportLegendCorner: "auto",
+      exportLegendScale: 1,
+      exportLegendMargin: 0.02,
+      exportLegendBg: "canvas",
+      exportLegendOpacity: 0.94,
+      exportLockAspect: true,
     });
 
     expect(loadGraphPrefs()).toEqual({
@@ -42,6 +47,11 @@ describe("graph size preferences", () => {
       exportScale: 3,
       exportLegend: false,
       exportLegendCorner: "auto",
+      exportLegendScale: 1,
+      exportLegendMargin: 0.02,
+      exportLegendBg: "canvas",
+      exportLegendOpacity: 0.94,
+      exportLockAspect: true,
     });
     expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}")).toEqual({
       avatarSize: "large",
@@ -52,6 +62,11 @@ describe("graph size preferences", () => {
       exportScale: 3,
       exportLegend: false,
       exportLegendCorner: "auto",
+      exportLegendScale: 1,
+      exportLegendMargin: 0.02,
+      exportLegendBg: "canvas",
+      exportLegendOpacity: 0.94,
+      exportLockAspect: true,
     });
   });
 
@@ -67,6 +82,11 @@ describe("graph size preferences", () => {
       exportScale: defaultGraphPrefs.exportScale,
       exportLegend: defaultGraphPrefs.exportLegend,
       exportLegendCorner: defaultGraphPrefs.exportLegendCorner,
+      exportLegendScale: defaultGraphPrefs.exportLegendScale,
+      exportLegendMargin: defaultGraphPrefs.exportLegendMargin,
+      exportLegendBg: defaultGraphPrefs.exportLegendBg,
+      exportLegendOpacity: defaultGraphPrefs.exportLegendOpacity,
+      exportLockAspect: defaultGraphPrefs.exportLockAspect,
     });
   });
 
@@ -82,6 +102,11 @@ describe("graph size preferences", () => {
       exportScale: 3,
       exportLegend: false,
       exportLegendCorner: "auto",
+      exportLegendScale: 1,
+      exportLegendMargin: 0.02,
+      exportLegendBg: "canvas",
+      exportLegendOpacity: 0.94,
+      exportLockAspect: true,
     });
 
     // The same for a value of the wrong type: only an explicit boolean is honoured,

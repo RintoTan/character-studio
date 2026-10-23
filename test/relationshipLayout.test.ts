@@ -171,7 +171,9 @@ describe("edge geometry", () => {
   const rim = { start: from.x + metrics.radius + 2, end: to.x - metrics.radius - 3 };
 
   it("runs rim to rim instead of centre to centre", () => {
-    expect(edgeGeometry(from, to, { metrics }).path).toBe(
+    // Arrowless: an arrowed edge stops at the head's base, which arrowSeam.test.ts
+    // covers. This assertion is about the trim, not about the head.
+    expect(edgeGeometry(from, to, { metrics, arrowStyle: "none" }).path).toBe(
       `M ${rim.start} 320 L ${rim.end} 320`,
     );
   });

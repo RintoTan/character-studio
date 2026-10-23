@@ -34,6 +34,15 @@ export type GraphPrefs = {
    */
   exportLegend: boolean;
   exportLegendCorner: "auto" | "tl" | "tr" | "bl" | "br";
+  /** Type size of the legend panel, 1 being the drawing's own scale. */
+  exportLegendScale: number;
+  /** Inner padding of the legend panel, as a fraction of the picture's short side. */
+  exportLegendMargin: number;
+  /** "canvas" blends into the artwork, "panel" keeps a readable block on any背景. */
+  exportLegendBg: "canvas" | "panel";
+  exportLegendOpacity: number;
+  /** Whether the width/height fields move together. */
+  exportLockAspect: boolean;
 };
 
 export type GraphExportScale = 1 | 2 | 3;
@@ -104,6 +113,11 @@ export const defaultGraphPrefs: GraphPrefs = {
   exportScale: 2,
   exportLegend: false,
   exportLegendCorner: "auto",
+  exportLegendScale: 1,
+  exportLegendMargin: 0.02,
+  exportLegendBg: "canvas",
+  exportLegendOpacity: 0.94,
+  exportLockAspect: true,
 };
 
 function isSizeValue(value: unknown): value is GraphSizeValue {
@@ -119,6 +133,12 @@ function isExportScale(value: unknown): value is GraphExportScale {
 // turning the feature off. Only an explicit boolean is honoured.
 function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
+}
+
+function numberIn(value: unknown, min: number, max: number, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(max, Math.max(min, value))
+    : fallback;
 }
 
 // Per-field, so one unknown value in storage cannot take the other one with it.
@@ -138,6 +158,16 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
       ? candidate.exportScale
       : defaultGraphPrefs.exportScale,
     exportLegend: isBoolean(candidate.exportLegend) ? candidate.exportLegend : defaultGraphPrefs.exportLegend,
+    exportLegendScale: numberIn(candidate.exportLegendScale, 0.5, 2.2, defaultGraphPrefs.exportLegendScale),
+    exportLegendMargin: numberIn(candidate.exportLegendMargin, 0, 0.12, defaultGraphPrefs.exportLegendMargin),
+    exportLegendBg:
+      candidate.exportLegendBg === "panel" || candidate.exportLegendBg === "canvas"
+        ? candidate.exportLegendBg
+        : defaultGraphPrefs.exportLegendBg,
+    exportLegendOpacity: numberIn(candidate.exportLegendOpacity, 0.2, 1, defaultGraphPrefs.exportLegendOpacity),
+    exportLockAspect: isBoolean(candidate.exportLockAspect)
+      ? candidate.exportLockAspect
+      : defaultGraphPrefs.exportLockAspect,
     exportLegendCorner:
       candidate.exportLegendCorner === "tl" ||
       candidate.exportLegendCorner === "tr" ||

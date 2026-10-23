@@ -141,10 +141,22 @@ describe("edges reaching a card", () => {
 
   it("stops on the narrow side when the line leaves vertically", () => {
     const below = { x: 0, y: 400 };
-    const edge = edgeGeometry(from, below, { metrics, toBox: box });
+    // Arrowless, so this measures the rim trim alone. With an arrow the stroke
+    // stops at the head's base instead — covered by the case below.
+    const edge = edgeGeometry(from, below, { metrics, toBox: box, arrowStyle: "none" });
     const end = points(edge.path).slice(-1)[0];
 
     expect(end[1]).toBeCloseTo(400 - (CARD_HEIGHT / 2 + 3), 5);
+  });
+
+  it("stops short of the rim when a head is drawn, so the two never overlap", () => {
+    const below = { x: 0, y: 400 };
+    const plain = points(edgeGeometry(from, below, { metrics, toBox: box, arrowStyle: "none" }).path).slice(-1)[0];
+    const armed = points(edgeGeometry(from, below, { metrics, toBox: box }).path).slice(-1)[0];
+
+    expect(armed[1]).toBeLessThan(plain[1]);
+    expect(plain[1] - armed[1]).toBeGreaterThan(4);
+    expect(plain[1] - armed[1]).toBeLessThan(30);
   });
 
   it("trims a bent edge from the same rectangle", () => {

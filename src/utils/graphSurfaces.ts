@@ -12,7 +12,15 @@
 // Escape, or the task that replaces it. Keeping that distinction here means the
 // rendering code cannot accidentally give a drawer popover behaviour.
 
-export type GraphSurface = "none" | "characters" | "design" | "explore" | "arrange" | "groups";
+export type GraphSurface =
+  | "none"
+  | "characters"
+  | "design"
+  | "explore"
+  | "arrange"
+  | "groups"
+  /** Output is a task panel like the others, not a menu that floats over the drawing. */
+  | "export";
 
 export type SurfaceRequest = Exclude<GraphSurface, "none">;
 

@@ -5,6 +5,8 @@
 // picture that changes with how far the author happened to be zoomed in is not an
 // export of the graph, it is a screenshot of the window.
 
+import { importWithRecovery } from "./lazyImport";
+
 export type ExportScope = "view" | "all" | "selection";
 
 export type WorldBounds = { x: number; y: number; width: number; height: number };
@@ -311,4 +313,81 @@ export function aspectBounds(bounds: WorldBounds, ratio: number): WorldBounds {
 
   const height = bounds.width / ratio;
   return { ...bounds, y: bounds.y - (height - bounds.height) / 2, height };
+}
+
+/**
+ * JPEG from the same serialised SVG the preview shows.
+ *
+ * JPEG has no alpha, so the canvas is filled first: without it, every transparent
+ * corner of a 16:9 export would come out black in some viewers and white in others.
+ */
+export async function rasterizeToJpeg(
+  svgText: string,
+  bounds: WorldBounds,
+  size: { width: number; height: number },
+  background: string,
+  quality = 0.92,
+): Promise<Blob> {
+  const { blob } = await rasterizeSvg(svgText, bounds, 1, Math.max(size.width, size.height));
+  const bitmap = await createImageBitmap(blob);
+  const canvas = document.createElement("canvas");
+  canvas.width = size.width;
+  canvas.height = size.height;
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("浏览器没有提供 2D 画布");
+  }
+
+  context.fillStyle = background;
+  context.fillRect(0, 0, size.width, size.height);
+  context.drawImage(bitmap, 0, 0, size.width, size.height);
+  bitmap.close();
+
+  const jpeg = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+
+  if (!jpeg) {
+    throw new Error("JPG 生成失败：画布未能编码");
+  }
+
+  return jpeg;
+}
+
+/**
+ * PDF from the same serialised SVG.
+ *
+ * One page, sized like the picture. The alternative — an A4 sheet with the drawing
+ * scaled into it — is what made a 9:16 export arrive with two thirds of a page of
+ * white, so the page follows the frame.
+ */
+export async function exportSvgAsPdf(input: {
+  svgText: string;
+  bounds: WorldBounds;
+  size: { width: number; height: number };
+  baseName: string;
+}): Promise<{ pageWidth: number; pageHeight: number }> {
+  const [{ blob }, { jsPDF }] = await Promise.all([
+    rasterizeSvg(input.svgText, input.bounds, 1, Math.max(input.size.width, input.size.height)),
+    importWithRecovery(() => import("jspdf")),
+  ]);
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("PDF 生成失败：图片无法读取"));
+    reader.readAsDataURL(blob);
+  });
+
+  const { width, height } = input.size;
+  const pdf = new jsPDF({
+    orientation: width >= height ? "landscape" : "portrait",
+    unit: "px",
+    format: [width, height],
+    hotfixes: ["px_scaling"],
+  });
+
+  pdf.addImage(dataUrl, "PNG", 0, 0, width, height, undefined, "FAST");
+  download(pdf.output("blob"), `${input.baseName}.pdf`, "application/pdf");
+
+  return { pageWidth: width, pageHeight: height };
 }
