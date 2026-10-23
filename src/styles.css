@@ -7857,6 +7857,17 @@ body:has([aria-modal="true"]) .floating-actions {
   stroke-width: 3px;
 }
 
+/* A sideways name is anchored at the node's edge, not centred on it. The base rule below
+   sets `text-anchor: middle`, and a CSS declaration beats the SVG `textAnchor`
+   presentation attribute, so these two rules are what actually place the text. */
+.relationship-node-name[data-name-side="left"] {
+  text-anchor: end;
+}
+
+.relationship-node-name[data-name-side="right"] {
+  text-anchor: start;
+}
+
 /* A card is the third form a node can take: enough room for a name and one line of
    context, and a border light enough that ten of them do not read as table cells. */
 .relationship-node-card {

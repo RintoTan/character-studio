@@ -2832,6 +2832,13 @@ export function RelationshipGraph({
 
     return { x: total.x / positions.length, y: total.y / positions.length };
   }, [positions]);
+  // The right edge of the drawing, in world units. The canvas fits the ring with a
+  // margin, so a label that runs past this has left the visible area; measuring against
+  // it avoids depending on the view translate, which did not match getScreenCTM().
+  const cloudMaxX = useMemo(
+    () => (positions.length ? Math.max(...positions.map((point) => point.x)) : 0),
+    [positions],
+  );
   const nameBounds = useMemo(() => {
     const scale = Math.max(view.k * (measured ? screenScale : 1), 0.0001);
 
@@ -9536,7 +9543,13 @@ export function RelationshipGraph({
                     // A selected name goes outside the wheel. At a 0.13x fit the ring's
                     // neighbours are 13px apart, so a 40px-wide label below its node lands
                     // on them; the space outside the ring is empty by construction.
-                    const placement = pinned
+                    const nameFrame = {
+                      left: -view.x / Math.max(view.k * (measured ? screenScale : 1), 0.0001),
+                      right:
+                        (frameSize.width - view.x) /
+                        Math.max(view.k * (measured ? screenScale : 1), 0.0001),
+                    };
+                    let placement = pinned
                       ? radialNamePlacement({
                           node: positions[index],
                           centre: nameCentre,
@@ -9552,6 +9565,28 @@ export function RelationshipGraph({
                           lines: lines.length,
                         })
                       : null;
+                    // A sideways name anchored at the near edge can still run past the
+                    // canvas (the far side of a hundred-node ring at 375px sits ~10px
+                    // from the viewport edge). It crosses to the inside of the node
+                    // instead: same 8px clearance, reading direction unchanged, and no
+                    // vertical move — that is what once pushed a top label 200px down.
+                    const labelWidthWorld =
+                      Math.max(...lines.map((line) => line.length)) * nameFontPx * 0.95;
+                    const flipped =
+                      placement &&
+                      placement.textAnchor === "start" &&
+                      placement.x + labelWidthWorld > cloudMaxX
+                        ? {
+                            ...placement,
+                            x:
+                              positions[index].x -
+                              Math.max(geom.halfWidth, geom.halfHeight) -
+                              8 / Math.max(view.k * (measured ? screenScale : 1), 0.0001),
+                            textAnchor: "end" as const,
+                            side: "left" as const,
+                          }
+                        : placement;
+                    placement = flipped;
                     const labelX = placement ? placement.x : positions[index].x;
                     const labelY = placement
                       ? placement.y

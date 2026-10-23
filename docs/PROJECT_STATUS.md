@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.4**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.59.5**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -21,6 +21,21 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 61（2.59.5）
+
+左右方向姓名对齐的真缺陷与修复。
+
+| 项 | 结论 |
+| --- | --- |
+| 根因 | `.relationship-node-name { text-anchor: middle }`（样式表）压过 `<text textAnchor>` 呈现属性，左右姓名以节点中心居中：压节点，375px 下越右缘 2px |
+| 修法 | ① 为 `[data-name-side="left"/"right"]` 补 `text-anchor: end/start`；② 右侧会越出图形右缘时改为节点内侧左读，判定用「绘制区最右节点 world x」而非 `view` 反推矩形 |
+| 1440 左侧 | 姓名 303..338，节点 343..367 —— 5px 间距、方向正确（修复前 321..356 压在节点上） |
+| 1440 右侧 | 姓名 1032..1068，节点 1073..1097 —— 5px 间距（修复前 1083..1120 压节点） |
+| 375 右侧 | 姓名 299..335，节点 340..354 —— 节点左侧、完整可见（修复前 341..377，压节点且越界 2px）；已目视 |
+| 375 顶部/底部 | 未变（250..264 / 602..616），与修复前同值 |
+| 40 角色 | 总览 6 个枢纽姓名、单选后仍 6 个，`side=up` 未变 |
+| 测试 | `namePlacement` 9 条 + `nameDrop` 5 条 + `cardName` 7 条通过 |
 
 ### Sprint 59（2.59.3）
 
