@@ -77,7 +77,7 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
-import { labelDensity, namesNode, pickSpacedLabels } from "../utils/labelDensity";
+import { labelDensity, namesNode, pickSpacedLabels, readableNameSize } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
 import { addMembers, normalizeMembers, placeNewPoints, removeMembers } from "../utils/canvasMembers";
 import {
@@ -9269,7 +9269,12 @@ export function RelationshipGraph({
                   selected: isSelected,
                   hub: hubIds.has(character.id),
                 }) &&
-                (exporting || nameFloorOk || (mustName && nameScreenPx >= 4));
+                // A pinned name is drawn at a fixed screen size below, so it does not
+                // need the floor that governs the rest: refusing to draw it is exactly
+                // how a selected node ended up with no readable name at 29%.
+                (exporting ||
+                  nameFloorOk ||
+                  (mustName && (nameScreenPx >= 4 || (isSelected && selectedIds.length === 1) || isFocused)));
               // Spotlight dimming is its own class. Sharing one with hover made
               // "I exited the spotlight" and "the pointer is still on a node" look
               // identical, and it made the exit look broken.
@@ -9484,8 +9489,19 @@ export function RelationshipGraph({
                       }
                       style={{
                         // A hub name carries the structure when no other name fits, so it
-                        // is drawn larger rather than at the size that did not fit.
-                        fontSize: `${nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1)}px`,
+                        // is drawn larger rather than at the size that did not fit. A
+                        // selected or focused name is lifted to a fixed screen size: on a
+                        // hundred-node canvas the node is 47px wide and the scaled name
+                        // would be four pixels tall, which is a smudge rather than a name.
+                        fontSize: `${readableNameSize({
+                          nameSize: nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1),
+                          // One name, not three: lifting every selected name makes them
+                          // overlap each other on a dense ring (three 11px labels on
+                          // nodes 13 units apart). Multi-selection keeps its rings and
+                          // the bar's count; the name follows a single read.
+                          pinned: (isSelected && selectedIds.length === 1) || isFocused,
+                          pxPerUnit: view.k * (measured ? screenScale : 1),
+                        })}px`,
                       }}
                       x={positions[index].x}
                       y={positions[index].y + Math.max(metrics.nameDrop, geom.halfHeight + 14)}

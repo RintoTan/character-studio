@@ -78,3 +78,34 @@ export function pickSpacedLabels<T extends { x: number; y: number; weight: numbe
 
   return kept;
 }
+
+/**
+ * The size a name is drawn at, in world units.
+ *
+ * Names scale with the drawing, which is right for the overview: at 28% a hundred
+ * labels would be four-pixel noise. But the person the reader has actually selected or
+ * focused is not part of the overview — their name is the one piece of text that has to
+ * survive the zoom. For those two states the name is lifted to a fixed screen size, so
+ * it stays readable when the node itself is small; everything else keeps scaling and
+ * simply disappears under the callers' own legibility floor.
+ */
+export function readableNameSize(options: {
+  /** The name size the canvas style asks for, in world units. */
+  nameSize: number;
+  /** Screen pixels per world unit at the current zoom. */
+  pxPerUnit: number;
+  /** Selected or focused: this name must survive the zoom. */
+  pinned: boolean;
+  /** Screen size below which a pinned name is lifted. */
+  floorPx?: number;
+}): number {
+  const floor = options.floorPx ?? 11;
+  const pxPerUnit = Math.max(options.pxPerUnit, 0.0001);
+  const current = options.nameSize * pxPerUnit;
+
+  if (!options.pinned || current >= floor) {
+    return options.nameSize;
+  }
+
+  return floor / pxPerUnit;
+}
