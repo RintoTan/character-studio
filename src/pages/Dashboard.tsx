@@ -2571,6 +2571,23 @@ export function Dashboard({
                 <Icon name="package" size={16} />
                 导出角色数据
               </button>
+              {/* The backup and restore screens lived in a settings dialog whose only
+                  door was a footer button labelled "Settings", so nobody looking for
+                  a backup found one. This is that same dialog, reachable from the menu
+                  where data management already is — one implementation, two doors. */}
+              <p className="export-menu-group">设置与数据</p>
+              <button
+                aria-label="设置与数据"
+                data-testid="open-settings"
+                onClick={() => {
+                  setIsMoreMenuOpen(false);
+                  setIsSettingsOpen(true);
+                }}
+                type="button"
+              >
+                <Icon name="gear" size={16} />
+                设置与数据（备份 / 恢复）
+              </button>
       </>
     );
   }
@@ -3986,8 +4003,12 @@ export function Dashboard({
             头像素材库
           </button>
         )}
-        <button onClick={() => setIsSettingsOpen((current) => !current)} type="button">
-          Settings
+        <button
+          aria-label="设置与数据"
+          onClick={() => setIsSettingsOpen((current) => !current)}
+          type="button"
+        >
+          设置与数据
         </button>
         <span>{footerText}</span>
       </footer>
