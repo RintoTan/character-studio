@@ -77,6 +77,7 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
+import { radialNamePlacement } from "../utils/namePlacement";
 import { cardNameVisible, labelDensity, nameDropWorld, namesNode, pickSpacedLabels, readableNameSize } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
 import { addMembers, normalizeMembers, placeNewPoints, removeMembers } from "../utils/canvasMembers";
@@ -2815,6 +2816,33 @@ export function RelationshipGraph({
   // number inside the transform. The same 90% draws at 60% on a narrow canvas because
   // the view box is fitted into fewer pixels, so the readout multiplies by that fit.
   const effectiveZoom = view.k * (measured ? screenScale : 1);
+
+  // The world-space middle of the drawing (a ring's centre) and the world-space box the
+  // labels have to stay inside. Both are derived from the same values the SVG is drawn
+  // with: a world point maps to the screen as `p * view.k * screenScale + view.x|y`.
+  const nameCentre = useMemo(() => {
+    if (!positions.length) {
+      return { x: 0, y: 0 };
+    }
+
+    const total = positions.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), {
+      x: 0,
+      y: 0,
+    });
+
+    return { x: total.x / positions.length, y: total.y / positions.length };
+  }, [positions]);
+  const nameBounds = useMemo(() => {
+    const scale = Math.max(view.k * (measured ? screenScale : 1), 0.0001);
+
+    return {
+      x0: -view.x / scale,
+      y0: -view.y / scale,
+      x1: (frameSize.width - view.x) / scale,
+      y1: (frameSize.height - view.y) / scale,
+    };
+  }, [view.k, view.x, view.y, screenScale, measured, frameSize.width, frameSize.height]);
+
 
   // The grid is a reference plane, not a second drawing: its spacing is solved for a
   // constant on-screen step so a zoomed-out hundred-node wheel is not a coarse
@@ -9489,68 +9517,74 @@ export function RelationshipGraph({
                       )}
                     </>
                   )}
-                  {labelled && (!geom.card || !cardNameShown) && (
-                    <text
-                      className={
-                        !showLabels && hubIds.has(character.id)
-                          ? "relationship-node-name hub"
-                          : "relationship-node-name"
-                      }
-                      style={{
-                        // A hub name carries the structure when no other name fits, so it
-                        // is drawn larger rather than at the size that did not fit. A
-                        // selected or focused name is lifted to a fixed screen size: on a
-                        // hundred-node canvas the node is 47px wide and the scaled name
-                        // would be four pixels tall, which is a smudge rather than a name.
-                        fontSize: `${readableNameSize({
-                          nameSize: nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1),
-                          // One name, not three: lifting every selected name makes them
-                          // overlap each other on a dense ring (three 11px labels on nodes
-                          // 13 units apart). Multi-selection keeps its rings and the
-                          // bar's count; the name follows a single read.
-                          pinned: (isSelected && selectedIds.length === 1) || isFocused,
+                  {labelled && (!geom.card || !cardNameShown) && (() => {
+                    const name = characterDisplayName(character);
+                    const width = geom.rounded
+                      ? geom.halfWidth * 2 + 12
+                      : Math.max(geom.halfWidth * 2 + 26, compactViewport ? 104 : 132);
+                    // One name, not three: lifting every selected name makes them overlap
+                    // on a dense ring. Multi-selection keeps its rings and the bar's count.
+                    const pinned = (isSelected && selectedIds.length === 1) || isFocused;
+                    const nameFontPx = readableNameSize({
+                      nameSize: nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1),
+                      pinned,
+                      pxPerUnit: view.k * (measured ? screenScale : 1),
+                    });
+                    // Two lines by default; a name being read gets a third. The whole name
+                    // is also in the tooltip and the detail page.
+                    const lines = wrapNameLines(name, width, nameSize, isSelected || isHovered ? 3 : 2);
+                    // A selected name goes outside the wheel. At a 0.13x fit the ring's
+                    // neighbours are 13px apart, so a 40px-wide label below its node lands
+                    // on them; the space outside the ring is empty by construction.
+                    const placement = pinned
+                      ? radialNamePlacement({
+                          node: positions[index],
+                          centre: nameCentre,
+                          halfWidth: geom.halfWidth,
+                          halfHeight: geom.halfHeight,
+                          isCard: geom.card,
                           pxPerUnit: view.k * (measured ? screenScale : 1),
-                        })}px`,
-                      }}
-                      x={positions[index].x}
-                      // The lift made the name readable but left the air in world units,
-                      // so at 0.13x it sat on the node it belonged to. The air is a screen
-                      // distance now, measured with the same factor the type uses.
-                      y={
-                        positions[index].y +
+                          fontSize: nameFontPx,
+                          // The wrap width is a budget, not the drawn width: clamping
+                          // needs the widest line's own size.
+                          labelWidth:
+                            Math.max(...lines.map((line) => line.length)) * nameFontPx * 0.95,
+                          lines: lines.length,
+                          bounds: nameBounds,
+                        })
+                      : null;
+                    const labelX = placement ? placement.x : positions[index].x;
+                    const labelY = placement
+                      ? placement.y
+                      : positions[index].y +
                         nameDropWorld({
                           halfHeight: geom.halfHeight,
                           nameDrop: metrics.nameDrop,
                           pxPerUnit: view.k * (measured ? screenScale : 1),
-                        })
-                      }
-                    >
-                      {(() => {
-                        const name = characterDisplayName(character);
-                        const width = geom.rounded
-                          ? geom.halfWidth * 2 + 12
-                          : Math.max(geom.halfWidth * 2 + 26, compactViewport ? 104 : 132);
-                        // Two lines by default; a name being read gets a third. The
-                        // whole name is also in the tooltip and the detail page, so
-                        // this never becomes an infinite zoom.
-                        const lines = wrapNameLines(name, width, nameSize, isSelected || isHovered ? 3 : 2);
-                        return (
-                          <>
-                            <title>{name}</title>
-                            {lines.map((line, lineIndex) => (
-                              <tspan
-                                dy={lineIndex === 0 ? 0 : nameSize * 1.18}
-                                key={lineIndex}
-                                x={positions[index].x}
-                              >
-                                {line}
-                              </tspan>
-                            ))}
-                          </>
-                        );
-                      })()}
-                    </text>
-                  )}
+                        });
+
+                    return (
+                      <text
+                        className={
+                          !showLabels && hubIds.has(character.id)
+                            ? "relationship-node-name hub"
+                            : "relationship-node-name"
+                        }
+                        data-name-side={placement ? placement.side : undefined}
+                        style={{ fontSize: `${nameFontPx}px` }}
+                        textAnchor={placement ? placement.textAnchor : undefined}
+                        x={labelX}
+                        y={labelY}
+                      >
+                        <title>{name}</title>
+                        {lines.map((line, lineIndex) => (
+                          <tspan dy={lineIndex === 0 ? 0 : nameSize * 1.18} key={lineIndex} x={labelX}>
+                            {line}
+                          </tspan>
+                        ))}
+                      </text>
+                    );
+                  })()}
                 </g>
               );
             })}

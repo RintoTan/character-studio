@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.2**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.59.3**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -21,6 +21,22 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 59（2.59.3）
+
+选中姓名的径向外置。先做坐标核查，再做定位。
+
+| 项 | 结论 |
+| --- | --- |
+| 坐标空间 | 实测：标签 `getScreenCTM()` = 0.1287（0.13× 档），受控 +100 局部单位 → 屏幕 +13px；标签、节点中心与 `positions` 同空间，换算即 `view.k × screenScale` |
+| 定位公式 | `radialNamePlacement()`：方向取节点相对画布质心的主导轴；上下按 `halfHeight`、左右按 `max(halfWidth, halfHeight)` 取边；间距 8px ÷ 同一比例；越界先收敛，纵向收敛不下才翻到对侧 |
+| 13%（375/100） | 顶 `up`、底 `down`：与节点不相交、`nodeHits 0`、未被裁切；左右侧落在正确一侧 |
+| 29%（1440/100） | 四向均不相交、`nodeHits 0`、未裁切 |
+| 28%（100 + 3 张卡片） | 卡片选中姓名在卡片上方，卡片形态与选中环不变 |
+| 69%（40） | 枢纽标签 6 个位置未变；选中姓名改为环外（本轮的预期变化） |
+| 清除后 | `names 0 / rings 0`（100 角色）；40 角色回到 6 个枢纽标签；`relationship-layout` 未被写入 |
+| 测试 | `test/namePlacement.test.ts` 9 条通过；全量见发布记录 |
+| 已知边界 | 375px 下 100 角色的环上最右节点，姓名可能被视口右缘裁掉约 2px —— 收敛用的是由 view 推出的世界边界，与该 SVG 的 client rect 有偏差，未在轮内扩大范围 |
 
 ### Sprint 58（2.59.2）
 
