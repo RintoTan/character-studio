@@ -7011,7 +7011,7 @@ export function RelationshipGraph({
               data-testid="batch-border"
               onChange={(event) => apply({ borderColor: event.target.value }, "batch-border")}
               type="color"
-              value={pick("borderColor").value ?? style.node.borderColor}
+              value={pick("borderColor").value || style.node.borderColor || "#b8bfd0"}
             />
           </label>
           <label>节点底色
@@ -7020,7 +7020,7 @@ export function RelationshipGraph({
               data-testid="batch-background"
               onChange={(event) => apply({ background: event.target.value }, "batch-background")}
               type="color"
-              value={pick("background").value ?? style.node.background}
+              value={pick("background").value || style.node.background || "#f4f5f8"}
             />
           </label>
         </div>
