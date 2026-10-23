@@ -3271,22 +3271,18 @@ export function RelationshipGraph({
         ? layout.positions[selectedIds[0]] ?? ringPositions[visibleCharacters.findIndex((c) => c.id === selectedIds[0])]
         : null;
     const center = selectedPoint ?? centroid(chosen, { x: boxX + boxWidth / 2, y: boxY + boxHeight / 2 });
-    const unitZoom = fitZoom(
+    // Focusing is a statement about emphasis, not a request to zoom. It used to fit
+    // the reading unit and then push the zoom up to make the name legible, which on a
+    // twelve-node canvas landed at 131% and cut the lower half of the drawing out of
+    // the frame. The camera now keeps the zoom the reader already had and only moves
+    // — and, when the unit genuinely does not fit at that zoom, steps back just far
+    // enough to include it. It never magnifies.
+    const unitFit = fitZoom(
       contentBounds(chosen, metrics, labelHalfWidth),
       frameSize,
       screenScale,
     );
-    // Reading one character zooms to where their name is legible, not to a fixed
-    // factor: the unit's own fit is the floor, and on a large roster it is far below
-    // the label threshold. The target stays the centre, so zooming in from here cannot
-    // push the person off the canvas the way it did when the unit's centroid was used.
-    const readableZoom =
-      selectedIds.length === 1 ? labelZoomNeeded(nameSize, screenScale) : unitZoom;
-    const zoom = capAutoZoom(
-      clampZoom(Math.max(unitZoom, readableZoom)),
-      screenScale,
-      AUTO_FOCUS_MAX_ZOOM,
-    );
+    const zoom = clampZoom(Math.min(view.k, unitFit));
     viewAutoRef.current = false;
     setPreviousView(view);
     setView(centreOn(center, zoom, canvas.viewBox));
