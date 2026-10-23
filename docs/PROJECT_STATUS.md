@@ -10,17 +10,45 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.56.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 工作室任务面板化、导出预览与画幅、选择/聚焦分离；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **54.9**（`APP_SPRINT`）—— 吸附/辅助线数学修正、Shift 提示与设计抽屉布局、移动端单行多选栏、关系标签像素级验收；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.59.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
 | 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
-| 工作区状态 | **干净**（`git status --porcelain` 无输出） || Sprint 51.3 状态 | **已发布 2.47.0**（原记录：画布工作室已完成本地实现（拖动加固、撤销重做、对齐分布、多布局、五种预设、高级外观、沉浸工作室、局部样式、字号、聚光灯、透镜、书签、PNG/SVG 导出、导出样式内联、UI Pass A 信息架构与工具栏/工具坞整改、UI Pass B0 移动端独立布局与字号/图标规范、B1 节点形态与连线语言），**已于 2.40.0 发布** |
+| 工作区状态 | 以 `git status --porcelain` 为准；本轮收尾见下方「Sprint 56.x（2.59.0）」的发布记录 || Sprint 51.3 状态 | **已发布 2.47.0**（原记录：画布工作室已完成本地实现（拖动加固、撤销重做、对齐分布、多布局、五种预设、高级外观、沉浸工作室、局部样式、字号、聚光灯、透镜、书签、PNG/SVG 导出、导出样式内联、UI Pass A 信息架构与工具栏/工具坞整改、UI Pass B0 移动端独立布局与字号/图标规范、B1 节点形态与连线语言），**已于 2.40.0 发布** |
 | 工作区状态 | 以 `git status --porcelain` 为准（本阶段只做本地提交） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 56.x（2.59.0）
+
+About 弹窗的响应式收尾，以及 Developer Center 手机端两个响应式缺陷。均只改样式与测试，未触碰数据模型、关系网算法与备份恢复。
+
+| 事项 | 结论 | 证据 |
+| --- | --- | --- |
+| About 宽屏排版（2.58.1） | 已完成：栏数由文本量决定，随窗口收窄 | 1440/1024 两栏；768/648/430/375/320 单栏；7 档均 `overflowX=false`、可滚到底 |
+| About 手机标题栏 | 已修：关闭按钮回到标题行 | 320/375/430 由 `column` 改 `row`；关闭按钮 57×42，标题仍单行 |
+| About 手机快捷键 | 已修：键值同行，不再键上说明下 | 6 行由 54px 降为 28px；整块 359 → 203px；320 下「⌘K / Ctrl+K」不换行不压字 |
+| About 手机品牌区 | 已修：压缩尺寸不删内容 | 区高 341 → 211px；Logo 112 → 56px（桌面仍按「About 标志尺寸」）；版本/构建/标语/版权齐全 |
+| About 手机总高度 | 已降：320/375/430 = 2582/2481/2352px（原 2920/2819/2689） | 探针逐项 DOM 读数；648 及以上读数改动前后完全相同（2205/2049/1426/1424） |
+| 遗漏截图补验 | 已完成：6 张逐张目视 | 430 浅色顶/底、768 浅色、1024 浅色、648 浅色、375 深色中段；无溢出、无压字、品牌信息完整 |
+| Developer 手机导航 | 已修：横向长条改为两列网格 | 375 下 nav `clientWidth` 357 = `scrollWidth` 357（原 1430），9/9 项在容器内；`overflow-x: visible` |
+| Developer Hero 徽章 | 已修：不再截断 | `Prompt Library：external-inspiration-library.txt` 在 320/375/430 完整显示（320 换行两行）；8 个「视口×主题」组合 `clip=false` |
+| 回归守卫 | 新增 6 条结构断言 | `test/developerMobileLayout.test.ts`；把导航改回横向长条后 2 条立刻变红（变异检验通过） |
+| 本地验证 | `tsc -b` 0 错误；`vitest run` 全量通过（78 文件 / 882 用例，含新增 6 条）；`vite build` 22 文件；`verify:version OK —— 2.59.0` | 本轮命令输出 |
+| 截图归档 | `.sprint56/final`（About 38 张 + Developer 导航修复 24 张）、`.sprint56/dev`（Developer 10 张）；打包见 `CharacterStudio-Acceptance/sprint-56/screenshots.zip` | 逐张目视记录见本轮报告 |
+| 发布记录 | 见下方「发布记录」小节（推送与 CI 结果在推送后回填，不预写为已发布） | — |
+
+#### 发布记录
+
+| 项目 | 值 |
+| --- | --- |
+| 版本 / HEAD | 2.59.0 / 待推送（本地提交见 `git log`） |
+| CI | 推送后由 GitHub Actions 构建，结果回填 |
+| 部署核验 | `npm run verify:deploy` 在 CI 完成后执行，结果回填 |
+| 已知遗留 | 320px 下 Hero 副标题「Character Studio 项目开发控制中心」会在行尾折出一字（CJK 允许任意断行，非本次范围）；Developer 页不含 Roadmap 区块，`update`/`debug`/`data`/`ai` 四个 section 分支在 `developerSections` 中不存在，属既有死代码 |
 
 ### Sprint 54.9（2.56.0）
 

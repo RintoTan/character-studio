@@ -10,6 +10,13 @@
 - 320/375/430 的 About 总高度分别从 2920 / 2819 / 2689px 降到 2582 / 2481 / 2352px；768px
   及以上读数与改动前逐项相同，未受影响。单栏顺序、卡片样式、Roadmap / Changelog / 导入导出
   说明与不新增折叠交互的要求都保持原样。
+- Developer Center 手机上不再是一条横向长条：导航由 1430px 的单行滚动区改为两列网格，九个分区
+  全部落在 302/357/412px 的容器内，仍按原顺序渲染、选中态与键盘可达性不变；桌面侧栏不动。
+- Developer Center 的 Hero 徽章不再吞字：「Prompt Library：external-inspiration-library.txt」
+  原先被 96px 的固定单行高度裁到只剩前缀，现在允许换行并在 320px 下自然增高为两行；
+  其余徽章同步跟随，桌面 Hero 宽度足够、仍是单行。
+- 新增 `test/developerMobileLayout.test.ts`（6 条）：把导航改回横向滚动、或让徽章继续裁切，
+  都会直接变红。
 
 ## 2.58.1 —— About 弹窗按阅读宽度排布
 

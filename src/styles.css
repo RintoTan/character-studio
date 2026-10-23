@@ -6710,13 +6710,33 @@ body:has([aria-modal="true"]) .floating-actions {
 
   .developer-hero-badges {
     justify-content: flex-start;
+    width: 100%;
+    max-width: none;
   }
 
+  /* A "Prompt Library：external-…txt" badge is longer than a phone is wide. It used
+     to keep its single-line, fixed-height tag shape and clip mid-word, so the value
+     never appeared. On a phone these wrap inside their border instead. */
+  .developer-hero-badges .status-badge {
+    flex: 1 1 auto;
+    max-width: 100%;
+    height: auto;
+    min-height: 18px;
+    white-space: normal;
+    line-height: 1.35;
+    padding: 4px 7px;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  /* The rail used to be one horizontal strip 1430px wide inside a 357px column, so
+     seven of the nine sections were off-screen with no hint that they existed. A
+     wrapping grid shows every section and still reflows instead of scrolling. */
   .developer-nav {
     position: static;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(150px, 1fr);
-    overflow-x: auto;
+    grid-auto-flow: row;
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    overflow-x: visible;
   }
 
   .footer-danger-actions,
