@@ -3419,18 +3419,8 @@ export function Dashboard({
                 </p>
               </div>
               <p className="about-brand-tagline">{contentText.firstAboutTagline}</p>
-              <div className="about-brand-links">
-                <a href="https://github.com/RintoTan/character-studio" rel="noreferrer" target="_blank">
-                  GitHub
-                </a>
-                <a href="https://github.com/RintoTan/character-studio/blob/main/Developer%20Handbook.md" rel="noreferrer" target="_blank">
-                  Developer Handbook
-                </a>
-              </div>
-              <div className="about-brand-credit">
-                <strong>RINTO 使用智能体协同开发</strong>
-                <span>{RELEASE_YEAR}</span>
-              </div>
+              {/* Links and the credit already sit in 项目信息 above; repeating them here
+                  made the end of the dialog the loudest part of it. */}
               <p className="about-brand-copyright">
                 © {RELEASE_YEAR} RINTO<br />
                 All Rights Reserved.
