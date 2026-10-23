@@ -444,7 +444,15 @@ export type ArrangeMode =
  * centre is the existing drawing's centre so an arrange does not also move the
  * whole thing off-screen.
  */
-export function ringLayout(ids: string[], center: LayoutPoint, nodeRadius = 30, minRadius = 240): Record<string, LayoutPoint> {
+export function ringLayout(
+  ids: string[],
+  center: LayoutPoint,
+  nodeRadius = 30,
+  minRadius = 240,
+  /** How much room each node needs along the ring, in drawing units. Cards are far
+   *  wider than circles, so an even split of the circumference would overlap them. */
+  widths?: Record<string, number>,
+): Record<string, LayoutPoint> {
   if (ids.length === 0) {
     return {};
   }
@@ -460,8 +468,31 @@ export function ringLayout(ids: string[], center: LayoutPoint, nodeRadius = 30, 
     };
   }
 
-  const radius = Math.max(minRadius, (ids.length * (nodeRadius * 2 + 30)) / (Math.PI * 2));
+  const slot = nodeRadius * 2 + 30;
   const result: Record<string, LayoutPoint> = {};
+
+  if (widths && ids.some((id) => (widths[id] ?? slot) > slot)) {
+    // Give every node the arc its own width needs. Circles keep their old spacing,
+    // cards take more, and the ring simply becomes large enough to hold the total —
+    // no node is pushed off the circle and nobody is demoted back to a dot.
+    const spans = ids.map((id) => Math.max(slot, widths[id] ?? slot));
+    const total = spans.reduce((sum, value) => sum + value, 0);
+    const radius = Math.max(minRadius, total / (Math.PI * 2));
+    let travelled = 0;
+
+    ids.forEach((id, index) => {
+      const angle = ((travelled + spans[index] / 2) / total) * Math.PI * 2 - Math.PI / 2;
+      travelled += spans[index];
+      result[id] = {
+        x: Math.round((center.x + Math.cos(angle) * radius) * 100) / 100,
+        y: Math.round((center.y + Math.sin(angle) * radius) * 100) / 100,
+      };
+    });
+
+    return result;
+  }
+
+  const radius = Math.max(minRadius, (ids.length * slot) / (Math.PI * 2));
 
   ids.forEach((id, index) => {
     const angle = (index / ids.length) * Math.PI * 2 - Math.PI / 2;

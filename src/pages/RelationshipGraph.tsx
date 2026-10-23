@@ -345,7 +345,13 @@ export type GraphPoint = { x: number; y: number };
 
 // A radial layout rather than a force simulation: with a handful of OCs it reads
 // as a relationship wheel, it is deterministic, and it needs no layout library.
-export function nodePositions(count: number, nodeRadius = NODE_RADIUS): GraphPoint[] {
+export function nodePositions(
+  count: number,
+  nodeRadius = NODE_RADIUS,
+  /** Room each node needs along the ring, in order. Cards need far more than circles;
+   *  omitting this keeps the historical equal-slot wheel exactly as it was. */
+  widths?: number[],
+): GraphPoint[] {
   if (count <= 0) {
     return [];
   }
@@ -366,7 +372,23 @@ export function nodePositions(count: number, nodeRadius = NODE_RADIUS): GraphPoi
   // solid band of overlapping circles and unreadable names. Widening it to the arc
   // a node actually needs keeps the fit view legible; the labels then appear as the
   // author zooms in rather than all at once.
-  const radius = Math.max(RADIUS, (count * (nodeRadius * 2 + NODE_GAP)) / (Math.PI * 2));
+  const slot = nodeRadius * 2 + NODE_GAP;
+
+  if (widths && widths.some((width) => width > slot)) {
+    const spans = widths.map((width) => Math.max(slot, width));
+    const total = spans.reduce((sum, value) => sum + value, 0);
+    const wideRadius = Math.max(RADIUS, total / (Math.PI * 2));
+    let travelled = 0;
+
+    return spans.map((span) => {
+      const angle = ((travelled + span / 2) / total) * Math.PI * 2 - Math.PI / 2;
+      travelled += span;
+
+      return { x: VIEW / 2 + Math.cos(angle) * wideRadius, y: VIEW / 2 + Math.sin(angle) * wideRadius };
+    });
+  }
+
+  const radius = Math.max(RADIUS, (count * slot) / (Math.PI * 2));
 
   return Array.from({ length: count }, (_, index) => {
     const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
@@ -2185,8 +2207,20 @@ export function RelationshipGraph({
   // The ring the canvas starts as. It is still what a workspace with no saved layout
   // draws, so an untouched graph looks exactly as it did before free placement.
   const ringPositions = useMemo(
-    () => nodePositions(visibleCharacters.length, metrics.radius * style.node.size),
-    [visibleCharacters.length, metrics.radius],
+    () =>
+      nodePositions(
+        visibleCharacters.length,
+        metrics.radius * style.node.size,
+        // Only cards widen the wheel; a canvas of circles is placed exactly as before.
+        visibleCharacters.some((character) => (layout.nodeStyles?.[character.id]?.form ?? style.node.form) === "card")
+          ? visibleCharacters.map((character) =>
+              (layout.nodeStyles?.[character.id]?.form ?? style.node.form) === "card"
+                ? CARD_WIDTH * style.node.size + 24
+                : metrics.radius * style.node.size * 2 + NODE_GAP,
+            )
+          : undefined,
+      ),
+    [visibleCharacters, layout.nodeStyles, style.node.form, style.node.size, metrics.radius],
   );
   // The widest name the drawing will have to fit, so the outermost labels of a wide
   // wheel are not cut off by the canvas edge.
@@ -3720,6 +3754,24 @@ export function RelationshipGraph({
    * Every proposal is computed from the session's baseline, not from the previous
    * proposal, so consecutive switches compare alternatives rather than compounding.
    */
+  // A card is about three times wider than a circle. Handing its width to the ring
+  // keeps three adjacent cards from landing on top of each other, and leaves every
+  // circle on exactly the spacing it had before.
+  const ringWidths = (ids: string[]): Record<string, number> | undefined => {
+    const widths: Record<string, number> = {};
+    let anyCard = false;
+
+    ids.forEach((id) => {
+      const form = layout.nodeStyles?.[id]?.form ?? style.node.form;
+      if (form === "card") {
+        anyCard = true;
+        widths[id] = CARD_WIDTH * style.node.size + 24;
+      }
+    });
+
+    return anyCard ? widths : undefined;
+  };
+
   function proposeArrange(mode: ArrangeMode) {
     const baseline = arrangeSessionRef.current?.baseline ?? {
       layout: workingLayout(),
@@ -3737,7 +3789,7 @@ export function RelationshipGraph({
     const center = centroid(points, { x: VIEW / 2, y: VIEW / 2 });
     const positions =
       mode === "ring"
-        ? ringLayout(ids, center, metrics.radius)
+        ? ringLayout(ids, center, metrics.radius, 240, ringWidths(ids))
         : mode === "grid"
           ? gridLayout(ids, center, metrics.radius)
           : mode === "hierarchy"
