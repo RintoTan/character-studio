@@ -17054,11 +17054,21 @@ circle.graph-grid-dot {
    same, and the strength stays light enough to read names and follow lines. Selection
    in single mode never uses this — picking one character must not dim the drawing. */
 .relationship-node.multi-dim {
-  opacity: 0.5;
+  /* 0.4 is the measured value that separates foreground from background on both
+     themes while names stay readable; 0.2 for lines keeps the web of relations
+     visible as context instead of erasing it. */
+  opacity: 0.4;
 }
 
 .relationship-edge.multi-dim {
-  opacity: 0.38;
+  opacity: 0.2;
+}
+
+/* A node the moving rectangle covers is the foreground, at full weight, whether or
+   not it was already selected. Full opacity is the whole style: adding a ring here
+   would promise a selection that has not been made yet. */
+.relationship-node.marquee-in {
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: no-preference) {

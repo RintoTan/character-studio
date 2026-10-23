@@ -102,6 +102,7 @@ import {
 import {
   ARRANGE_NOTICE_MS,
   appearanceTarget,
+  designPanelScope,
   arrangeAvailability,
   contextBarMode,
   surfaceIsOpen,
@@ -2648,6 +2649,11 @@ export function RelationshipGraph({
     moved: boolean;
   } | null>(null);
   const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  // Which nodes the rectangle currently covers. The selection is only applied on
+  // release, but the drawing has to answer while the rectangle is still moving:
+  // candidates stay lit and everything else recedes, so the box reads as a live
+  // statement rather than a guess the author only sees after letting go.
+  const [marqueeCandidates, setMarqueeCandidates] = useState<string[] | null>(null);
   // Space is the pans-anyway key, the way it is in every drawing tool. Held state is
   // mirrored into a ref because the pointer handler must read it without a re-render.
   const spaceRef = useRef(false);
@@ -2714,6 +2720,27 @@ export function RelationshipGraph({
   }, [activeId, relationships, spotlightSet]);
 
   const lensActive = lensKinds.length > 0;
+
+  // Which mode owns the drawing. Nodes and edges read this one value instead of each
+  // deciding for itself, which is how a focused canvas could end up with dimmed nodes
+  // and fully lit edges. The order is the priority the author sees:
+  //   arrange preview  — a proposal being judged outranks every looking-tool
+  //   explicit focus   — the reader asked to read one character
+  //   explore lens     — a kind filter
+  //   multi-select     — the picking tool
+  //   selection        — an outline only, never a fade
+  //   default          — nothing recedes
+  // Only the mode that owns it fades anything, so "who is lit" and "who is faded" can
+  // never come from two different answers.
+  const dimOwner: "preview" | "focus" | "lens" | "multi" | "none" = preview
+    ? "preview"
+    : focusNeighbourhood
+      ? "focus"
+      : lensActive
+        ? "lens"
+        : multiSelectMode && selectedIds.length > 0
+          ? "multi"
+          : "none";
   // Which nodes the lens keeps bright: those with at least one relationship of an
   // included kind. A lens changes ink, never the data — an excluded kind is still
   // stored, still exported when the lens is cleared, and still listed in 管理.
@@ -3283,11 +3310,10 @@ export function RelationshipGraph({
       rollbackArrange();
     }
     setIsAlignOpen(false);
-    // Opening 设计 with something picked lands on that object: the author pressed the
-    // button about a thing, and the canvas defaults are one tab away.
-    if (target === "design") {
-      setDesignScope(appearanceTarget(selectedIds, selectedEdgeId).kind === "canvas" ? "canvas" : "object");
-    }
+    // Opening 设计 no longer jumps to the picked object: having something selected
+    // is not the same as editing it, and a top-bar button must not throw away the
+    // tab the author chose last. The first entry, and any entry with nothing
+    // selected, starts on 整体画布 because `designScope` starts as "canvas".
     setSurface(target);
     setIsMoreOpen(false);
   }
@@ -4057,7 +4083,11 @@ export function RelationshipGraph({
 
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, [canvas.viewBox]);
+    // No dependency list: the <svg> is re-created when the canvas moves between the
+    // page and the full-screen studio, and a listener left on the old element zooms
+    // nothing. Re-attaching after every render keeps it on whichever element is
+    // mounted now; the add/remove pair is a no-op in cost next to a render.
+  });
 
   /**
    * Shift-lock and alignment snapping, applied to whatever is being dragged.
@@ -4429,6 +4459,7 @@ export function RelationshipGraph({
         marqueeDrag.moved = true;
       }
       setMarquee({ left: rect.left, top: rect.top, width: rect.right - rect.left, height: rect.bottom - rect.top });
+      setMarqueeCandidates(marqueeDrag.moved ? marqueeHitsFor(rect) : null);
       return;
     }
 
@@ -4547,6 +4578,25 @@ export function RelationshipGraph({
     stopDragFrame();
   }
 
+  /** What the rectangle covers right now, measured against the shapes themselves. */
+  function marqueeHitsFor(rect: { left: number; top: number; right: number; bottom: number }) {
+    const svg = svgRef.current;
+    if (!svg) {
+      return [];
+    }
+    return [...svg.querySelectorAll("[data-character-id]")]
+      .filter((element) => {
+        const shape = element.querySelector(".relationship-node-card, .relationship-node-circle") ?? element;
+        const box = shape.getBoundingClientRect();
+        return marqueeHits(
+          { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
+          rect,
+        );
+      })
+      .map((element) => element.getAttribute("data-character-id"))
+      .filter((id): id is string => Boolean(id));
+  }
+
   function endPan(event: ReactPointerEvent<SVGSVGElement>) {
     setDragGuides(null);
     setShiftAxis(null);
@@ -4587,22 +4637,15 @@ export function RelationshipGraph({
       stopDragFrame();
     } else if (marqueeGesture?.moved) {
       const rect = dragRect(marqueeGesture.startX, marqueeGesture.startY, event.clientX, event.clientY);
-      const svg = svgRef.current;
-      const picked = svg
-        ? [...svg.querySelectorAll("[data-character-id]")]
-            .filter((element) => {
-              const shape = element.querySelector(".relationship-node-card, .relationship-node-circle") ?? element;
-              const box = shape.getBoundingClientRect();
-
-              return marqueeHits(
-                { left: box.left, top: box.top, right: box.right, bottom: box.bottom },
-                rect,
-              );
-            })
-            .map((element) => element.getAttribute("data-character-id"))
-            .filter((id): id is string => Boolean(id))
-        : [];
+      const picked = marqueeHitsFor(rect);
+      setMarqueeCandidates(null);
       setSelectedEdgeId(null);
+      // The rectangle is the mode's own gesture: picking several people with it turns
+      // the mode on, so the receding that shows while dragging is still there after
+      // the release. It is never inferred from the count at render time.
+      if ((marqueeGesture.additive ? [...new Set([...selectedIds, ...picked])] : picked).length > 1) {
+        setMultiSelectMode(true);
+      }
       setSelectedIds((current) =>
         marqueeGesture.additive ? [...new Set([...current, ...picked])] : picked,
       );
@@ -4686,6 +4729,7 @@ export function RelationshipGraph({
       setSelectedIds([]);
       setSelectedEdgeId(tappedEdgeId);
     } else if (!panned && !tappedId && !groupGesture) {
+      setMarqueeCandidates(null);
       if (!multiSelectMode) {
         setSelectedIds([]);
         setSelectedEdgeId(null);
@@ -6429,6 +6473,12 @@ export function RelationshipGraph({
     return "整体画布";
   })();
 
+  // Having something picked is not the same as editing it. `designScope` holds the
+  // tab the author actually chose and survives selection changes; the rendered tab
+  // falls back to the canvas only while no object exists, so clearing the selection
+  // can never leave a personal-appearance form standing with nobody's values.
+  const renderedDesignScope = designPanelScope(designScope, appearanceSelection);
+
   // 所选对象 is the edit surface for one object; 整体画布 is everything else. They are
   // two views of one panel, switched at the top, so a canvas default and a per-node
   // override can never look like the same control in two places.
@@ -6854,8 +6904,8 @@ export function RelationshipGraph({
     <div className="graph-style-panel" role="group" aria-label="画布外观">
       <div aria-label="设计范围" className="graph-design-scope" role="tablist">
         <button
-          aria-selected={designScope === "canvas"}
-          className={designScope === "canvas" ? "graph-design-scope-button active" : "graph-design-scope-button"}
+          aria-selected={renderedDesignScope === "canvas"}
+          className={renderedDesignScope === "canvas" ? "graph-design-scope-button active" : "graph-design-scope-button"}
           data-testid="design-scope-canvas"
           onClick={() => setDesignScope("canvas")}
           role="tab"
@@ -6864,8 +6914,8 @@ export function RelationshipGraph({
           整体画布
         </button>
         <button
-          aria-selected={designScope === "object"}
-          className={designScope === "object" ? "graph-design-scope-button active" : "graph-design-scope-button"}
+          aria-selected={renderedDesignScope === "object"}
+          className={renderedDesignScope === "object" ? "graph-design-scope-button active" : "graph-design-scope-button"}
           data-testid="design-scope-object"
           disabled={appearanceSelection.kind === "canvas"}
           onClick={() => setDesignScope("object")}
@@ -6876,10 +6926,7 @@ export function RelationshipGraph({
           所选对象
         </button>
       </div>
-      {designScope === "object" && appearanceSelection.kind === "canvas" ? (
-        <p className="graph-design-scope-note muted">请先选择角色或关系线；未选中时只有整体画布可改。</p>
-      ) : null}
-      {designScope === "object" ? objectTier : canvasTier}
+      {renderedDesignScope === "object" ? objectTier : canvasTier}
     </div>
   );
 
@@ -8809,11 +8856,13 @@ export function RelationshipGraph({
               return (
                 <g
                   className={`relationship-edge kind-${relationship.kind}${touchesHovered ? " active" : ""}${isEdgeSelected ? " selected" : ""}${
-                    !preview &&
-                    multiSelectMode &&
-                    selectedIds.length > 0 &&
+                    dimOwner === "multi" &&
                     !selectedIds.includes(relationship.fromId) &&
                     !selectedIds.includes(relationship.toId)
+                      ? " multi-dim"
+                      : ""
+                  }${
+                    marqueeCandidates && !marqueeCandidates.includes(relationship.fromId) && !marqueeCandidates.includes(relationship.toId)
                       ? " multi-dim"
                       : ""
                   }${preview || inLens || edgeExempt ? "" : " lens-dim"}${preview || inSpotlight || edgeExempt ? "" : " spotlight-dim"}${
@@ -8986,7 +9035,20 @@ export function RelationshipGraph({
                })}${
                  // Multi-select recedes the rest at one fixed strength, whatever the
                  // count: one pick must not look like a different mode from three.
-                 !preview && multiSelectMode && selectedIds.length > 0 && !isSelected ? " multi-dim" : ""
+                 // Only the mode recedes the rest. A plain selection — even of several
+                 // people picked one by one outside the mode — stays fully lit, and
+                 // focus / lens own the drawing when they are on: preview first, then
+                 // focus, then the lens, then this.
+                 dimOwner === "multi" && !isSelected ? " multi-dim" : ""
+               }${
+                 // While the rectangle is moving, what it covers is the promise and
+                 // everything else is already background: the same receding as a
+                 // finished multi-selection, so release changes nothing visually.
+                 marqueeCandidates
+                   ? marqueeCandidates.includes(character.id)
+                     ? " marquee-in"
+                     : " multi-dim"
+                   : ""
                }${!preview && lensDimsNode ? " lens-dim" : ""}${
                  !preview && focusNeighbourhood && !focusNeighbourhood.has(character.id) ? " focus-dim" : ""
                }`;
@@ -9244,7 +9306,7 @@ export function RelationshipGraph({
               <aside
                 aria-label={
                   surface === "design"
-                    ? `外观 · ${appearanceLabel}`
+                    ? `设计 · ${renderedDesignScope === "canvas" ? "整体画布" : appearanceLabel}`
                     : surface === "arrange"
                       ? "整理画布"
                       : surface === "explore"
@@ -9262,7 +9324,7 @@ export function RelationshipGraph({
                   <div className="graph-page-drawer-title">
                     <strong>
                       {surface === "design"
-                        ? `外观 · ${appearanceLabel}`
+                        ? `设计 · ${renderedDesignScope === "canvas" ? "整体画布" : appearanceLabel}`
                         : surface === "arrange"
                           ? "整理画布"
                           : surface === "explore"
@@ -9273,7 +9335,7 @@ export function RelationshipGraph({
                     </strong>
                     <span>
                       {surface === "design"
-                        ? appearanceSelection.kind === "canvas"
+                        ? renderedDesignScope === "canvas"
                           ? "预设、分组调整与高级选项"
                           : appearanceSelection.kind === "multi"
                             ? "批量外观暂不支持，这里只改整体画布"
@@ -9394,6 +9456,7 @@ export function RelationshipGraph({
                       {selectedIds.length === 1 ? (
                         <>
                           <button
+                            aria-label={focusedReadId === selectedIds[0] ? "退出聚焦" : "聚焦所选角色"}
                             aria-pressed={Boolean(focusedReadId && focusedReadId === selectedIds[0])}
                             className="graph-studio-selection-button graph-selection-fit"
                             data-testid="studio-focus"
@@ -9777,7 +9840,7 @@ export function RelationshipGraph({
                         : surface === "export"
                           ? "导出关系网"
                           : studioTab === "design"
-                            ? `设计 · ${appearanceLabel}`
+                            ? `设计 · ${renderedDesignScope === "canvas" ? "整体画布" : appearanceLabel}`
                             : "探索"}
                     </strong>
                     <div className="graph-studio-drawer-actions">

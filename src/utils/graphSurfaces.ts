@@ -85,6 +85,23 @@ export function appearanceTitle(target: AppearanceTarget): string {
   }
 }
 
+/** The two tabs of the appearance panel: canvas-wide, or one object. */
+export type DesignScope = "canvas" | "object";
+
+/**
+ * Which tab actually renders.
+ *
+ * `chosen` is the tab the author clicked and it is remembered across openings, so
+ * re-opening 设计 never throws away their choice. Having something selected is not
+ * the same as editing it, though: the object tab needs an object, and with nothing
+ * selected it would stand there as a personal-appearance form with nobody's values.
+ * So the canvas tab renders instead — the choice itself is left alone, and picking
+ * another object brings the object tab back.
+ */
+export function designPanelScope(chosen: DesignScope, target: AppearanceTarget): DesignScope {
+  return chosen === "object" && target.kind === "canvas" ? "canvas" : chosen;
+}
+
 /**
  * Which single bar belongs under the drawing.
  *

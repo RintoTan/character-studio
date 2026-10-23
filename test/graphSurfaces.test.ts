@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appearanceTarget,
+  designPanelScope,
   appearanceTitle,
   arrangeAvailability,
   closeSurface,
@@ -76,5 +77,23 @@ describe("arrange availability", () => {
     expect(arrangeAvailability(1).reason).toContain("两个");
     expect(arrangeAvailability(2).reason).toContain("三个");
     expect(arrangeAvailability(5).reason).toBeNull();
+  });
+});
+
+describe("design panel tab", () => {
+  it("starts on the canvas and stays there while nothing is selected", () => {
+    expect(designPanelScope("canvas", appearanceTarget([], null))).toBe("canvas");
+  });
+
+  it("keeps the tab the author chose instead of following the selection", () => {
+    const one = appearanceTarget(["a"], null);
+    expect(designPanelScope("canvas", one)).toBe("canvas");
+    expect(designPanelScope("object", one)).toBe("object");
+  });
+
+  it("never renders a personal form with nobody selected", () => {
+    expect(designPanelScope("object", appearanceTarget([], null))).toBe("canvas");
+    expect(designPanelScope("object", appearanceTarget([], "e1"))).toBe("object");
+    expect(designPanelScope("object", appearanceTarget(["a", "b"], null))).toBe("object");
   });
 });
