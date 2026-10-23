@@ -11489,25 +11489,18 @@ circle.graph-grid-dot {
 .relationship-node-ring.tight {
   stroke-dasharray: none;
 }
+
+/* One selected outline, whatever the node's own border is and whether or not the
+   pointer happens to be resting on it. Nested presets used to resolve the ring's
+   stroke through the node's border colour, so only the last-touched node looked
+   picked while the rest kept a grey rim. */
+.relationship-node.selected .relationship-node-ring {
+  stroke: var(--primary);
+  stroke-width: 2;
+  opacity: 1;
+}
 /* The selected tick: the same small mark in every preset and both themes, so
    "picked" never depends on one colour being distinguishable from another. */
-.relationship-node-badge {
-  pointer-events: none;
-}
-
-.relationship-node-badge circle {
-  fill: var(--primary);
-  stroke: var(--surface);
-  stroke-width: 1.5;
-}
-
-.relationship-node-badge path {
-  fill: none;
-  stroke: var(--surface);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
 /* Hover must never win over a pick: the ring and the tick stay at full strength
    while the pointer is elsewhere. */
 /* The ring outside is the selection mark; the body keeps its own colour. */

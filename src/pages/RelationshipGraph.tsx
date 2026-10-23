@@ -9004,7 +9004,9 @@ export function RelationshipGraph({
               // zoom and, at the sizes this graph draws, cut into the name below the
               // node — a picked character looked like it had two borders and half a
               // label. The edge is the one place the ring can never collide.
-              const ringGap = -1 / Math.max(pxPerUnit, 0.001);
+              /* 3 screen px outside the body: the ring is painted before the node, so
+                 anything at or inside its radius is covered by the node's own fill. */
+              const ringGap = 3 / Math.max(pxPerUnit, 0.001);
               return (
                 <g
                   className={state}
@@ -9043,33 +9045,6 @@ export function RelationshipGraph({
                          strokeWidth={ringStroke}
                        />
                      ))}
-                   {isSelected &&
-                     (() => {
-                       // A ring is still a colour at a glance. The tick is the same mark
-                       // in every preset, light or dark, so "picked" survives a theme
-                       // that paints the ring close to the node's own border.
-                       const badgeR = Math.max(5.5, Math.min(9, geom.halfHeight * 0.34));
-                       // A rectangle has a corner the mark can sit inside; a circle
-                       // does not, so on a round node the tick rides the rim at 45°
-                       // and stays attached to the shape it marks instead of
-                       // floating off the bounding box.
-                       const bx = geom.card || geom.rounded
-                         ? nodeX + geom.halfWidth - badgeR - 6
-                         : nodeX + geom.radius * 0.707;
-                       const by = geom.card || geom.rounded
-                         ? nodeY - geom.halfHeight + badgeR + 6
-                         : nodeY - geom.radius * 0.707;
-
-                       return (
-                         <g className="relationship-node-badge" aria-hidden="true">
-                           <circle cx={bx} cy={by} r={badgeR} />
-                           <path
-                             d={`M ${bx - badgeR * 0.42} ${by} L ${bx - badgeR * 0.1} ${by + badgeR * 0.32} L ${bx + badgeR * 0.44} ${by - badgeR * 0.3}`}
-                             strokeWidth={Math.max(1.2, badgeR * 0.3)}
-                           />
-                         </g>
-                       );
-                     })()}
                   {geom.rounded ? (
                     <rect
                       className="relationship-node-circle relationship-node-rounded"
@@ -9180,6 +9155,7 @@ export function RelationshipGraph({
                     </>
                   )}
                   {labelled && !geom.card && (
+
                     <text
                       className={
                         !showLabels && hubIds.has(character.id)
