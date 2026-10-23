@@ -17089,3 +17089,22 @@ circle.graph-grid-dot {
 .graph-export-legend-box:active {
   cursor: grabbing;
 }
+
+/* The name policy is one sentence under its switch. The drawing shows a subset of
+   names; without saying which subset, the subset reads as a bug. */
+.graph-control-hint {
+  margin: -2px 0 10px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* Page mode: the selection bar is one row above the guide, not a card over it. */
+.graph-context.selection {
+  padding: 8px 10px;
+}
+
+.graph-context.selection .graph-context-row {
+  align-items: center;
+  gap: 10px;
+}

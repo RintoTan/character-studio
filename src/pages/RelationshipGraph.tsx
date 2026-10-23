@@ -2816,6 +2816,7 @@ export function RelationshipGraph({
   // One rule decides how many names the drawing carries; the render asks it per node.
   const density = labelDensity({
     showNames: prefs.showNames,
+    forceNames: prefs.forceNames,
     exporting,
     labelsFit,
     compact: compactViewport,
@@ -6045,6 +6046,48 @@ export function RelationshipGraph({
                   <strong>关系线与关系标签</strong>
                   <span>线、颜色与文字</span>
                 </div>
+                <div className="graph-panel-row">
+                  <span className="graph-control-label">关系线</span>
+                  <div className="graph-segment">
+                    {[
+                      { value: true, label: "显示" },
+                      { value: false, label: "隐藏" },
+                    ].map((option) => (
+                      <button
+                        aria-pressed={prefs.showEdges === option.value}
+                        className={
+                          prefs.showEdges === option.value ? "graph-segment-button selected" : "graph-segment-button"
+                        }
+                        key={option.label}
+                        onClick={() => updatePrefs({ showEdges: option.value })}
+                        type="button"
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {/* What the strokes mean. It belongs with the display switches — it is
+                    the same question ("what am I looking at") — and it is read once,
+                    so it does not get a permanent corner of the drawing. */}
+                <div className="graph-panel-row graph-legend">
+                  <span className="graph-control-label">线型说明</span>
+                  <ul className="graph-legend-list">
+                    <li>
+                      <span aria-hidden="true" className="graph-legend-line legend-primary" />
+                      亲属、情感
+                    </li>
+                    <li>
+                      <span aria-hidden="true" className="graph-legend-line legend-danger" />
+                      敌对、对手
+                    </li>
+                    <li>
+                      <span aria-hidden="true" className="graph-legend-line legend-plain" />
+                      师承、友人、同僚、其他
+                    </li>
+                  </ul>
+                  <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
+                </div>
                 <NumericControl
                   ariaLabel="连线宽度"
                   defaultValue={1.4}
@@ -6667,14 +6710,23 @@ export function RelationshipGraph({
           <span className="graph-control-label">名称</span>
           <div className="graph-segment">
             {[
-              { value: true, label: "显示" },
-              { value: false, label: "隐藏" },
+              { label: "隐藏", on: !prefs.showNames },
+              { label: "自动", on: prefs.showNames && !prefs.forceNames },
+              { label: "全部", on: prefs.showNames && prefs.forceNames },
             ].map((option) => (
               <button
-                aria-pressed={prefs.showNames === option.value}
-                className={prefs.showNames === option.value ? "graph-segment-button selected" : "graph-segment-button"}
+                aria-pressed={option.on}
+                className={option.on ? "graph-segment-button selected" : "graph-segment-button"}
                 key={option.label}
-                onClick={() => updatePrefs({ showNames: option.value })}
+                onClick={() =>
+                  updatePrefs(
+                    option.label === "隐藏"
+                      ? { showNames: false }
+                      : option.label === "全部"
+                        ? { showNames: true, forceNames: true }
+                        : { showNames: true, forceNames: false },
+                  )
+                }
                 type="button"
               >
                 {option.label}
@@ -6682,6 +6734,15 @@ export function RelationshipGraph({
             ))}
           </div>
         </div>
+        <p className="graph-control-hint" data-testid="name-policy">
+          {!prefs.showNames
+            ? "姓名已关闭；选中角色也不再显示姓名。"
+            : prefs.forceNames
+              ? "全部显示：每个角色都带姓名，密集处可能互相压住。"
+              : density === "all"
+                ? "自动：当前缩放下放得下全部姓名。"
+                : "自动：只标出关系最密的 10 个角色、当前选择与它们的直接关系；放大画布或选『全部』可看到更多。"}
+        </p>
         
         <div className="graph-panel-row">
           <span className="graph-control-label">本机头像</span>
@@ -6710,48 +6771,7 @@ export function RelationshipGraph({
             ? `${drawnRelationships.length}/${relationships.length}`
             : `隐藏（共 ${relationships.length}）`}
         </p>
-        <div className="graph-panel-row">
-          <span className="graph-control-label">关系线</span>
-          <div className="graph-segment">
-            {[
-              { value: true, label: "显示" },
-              { value: false, label: "隐藏" },
-            ].map((option) => (
-              <button
-                aria-pressed={prefs.showEdges === option.value}
-                className={
-                  prefs.showEdges === option.value ? "graph-segment-button selected" : "graph-segment-button"
-                }
-                key={option.label}
-                onClick={() => updatePrefs({ showEdges: option.value })}
-                type="button"
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
-        {/* What the strokes mean. It belongs with the display switches — it is
-            the same question ("what am I looking at") — and it is read once,
-            so it does not get a permanent corner of the drawing. */}
-        <div className="graph-panel-row graph-legend">
-          <span className="graph-control-label">线型说明</span>
-          <ul className="graph-legend-list">
-            <li>
-              <span aria-hidden="true" className="graph-legend-line legend-primary" />
-              亲属、情感
-            </li>
-            <li>
-              <span aria-hidden="true" className="graph-legend-line legend-danger" />
-              敌对、对手
-            </li>
-            <li>
-              <span aria-hidden="true" className="graph-legend-line legend-plain" />
-              师承、友人、同僚、其他
-            </li>
-          </ul>
-          <p className="graph-legend-note">互为关系不分方向；师承带箭头，指向学习的一方。</p>
-        </div>
+
       </div>
       {/* Above the presets, because it applies to one object: what the whole
           canvas looks like is the wrong question while a single line is
@@ -8977,6 +8997,14 @@ export function RelationshipGraph({
               const pxPerUnit = view.k * (screenScale > 0 ? screenScale : 1);
               const renderedRadius = geom.radius * pxPerUnit;
               const ringStroke = ringStrokeFor(pxPerUnit);
+              // The gap is a screen distance, like the stroke. In world units it used to
+              // be a flat 6, so at 250% the outline drifted a finger's width away from
+              // the node and at 60% it touched the name.
+              // Zero: the outline sits on the node's own edge. An offset ring grew with
+              // zoom and, at the sizes this graph draws, cut into the name below the
+              // node — a picked character looked like it had two borders and half a
+              // label. The edge is the one place the ring can never collide.
+              const ringGap = -1 / Math.max(pxPerUnit, 0.001);
               return (
                 <g
                   className={state}
@@ -8986,7 +9014,8 @@ export function RelationshipGraph({
                   data-local-border={nodeOverride?.borderColor ? "true" : undefined}
                   data-selected={isSelected ? "true" : undefined}
                   key={character.id}
-                  onPointerEnter={() => setHoveredId(character.id)}
+                  onPointerMove={() => setHoveredId(character.id)}
+                  onPointerDown={() => setHoveredId(null)}
                   onPointerLeave={() => setHoveredId(null)}
                   role="presentation"
                 >
@@ -8998,19 +9027,19 @@ export function RelationshipGraph({
                      (geom.card || geom.rounded ? (
                        <rect
                          className={`relationship-node-ring${renderedRadius < 12 ? " tight" : ""}`}
-                         height={geom.halfHeight * 2 + 12}
-                         rx={geom.rounded ? geom.rx + 6 : 16}
+                         height={geom.halfHeight * 2 + ringGap * 2}
+                         rx={geom.rounded ? geom.rx + ringGap : 16}
                          strokeWidth={ringStroke}
-                         width={geom.halfWidth * 2 + 12}
-                         x={nodeX - geom.halfWidth - 6}
-                         y={nodeY - geom.halfHeight - 6}
+                         width={geom.halfWidth * 2 + ringGap * 2}
+                         x={nodeX - geom.halfWidth - ringGap}
+                         y={nodeY - geom.halfHeight - ringGap}
                        />
                      ) : (
                        <circle
                          className={`relationship-node-ring${renderedRadius < 12 ? " tight" : ""}`}
                          cx={nodeX}
                          cy={nodeY}
-                         r={geom.radius + 6}
+                         r={geom.radius + ringGap}
                          strokeWidth={ringStroke}
                        />
                      ))}
@@ -9860,8 +9889,13 @@ export function RelationshipGraph({
                               </span>
                             </div>
                             <div className="graph-context-actions">
-                              <button className="ghost-button" onClick={fitSelection} type="button">
-                                聚焦
+                              <button
+                                aria-pressed={focusedReadId === selectedIds[0]}
+                                className={focusedReadId === selectedIds[0] ? "ghost-button active" : "ghost-button"}
+                                onClick={toggleReadingFocus}
+                                type="button"
+                              >
+                                {focusedReadId === selectedIds[0] ? "退出聚焦" : "聚焦"}
                               </button>
                               {selectedChar && (
                                 <button
@@ -9899,7 +9933,22 @@ export function RelationshipGraph({
                             aria-expanded={isAlignOpen}
                             className={isAlignOpen ? "ghost-button active" : "ghost-button"}
                             disabled={selectedIds.length < 2}
-                            onClick={() => setIsAlignOpen((open) => !open)}
+                            onClick={(event) => {
+                              if (isAlignOpen) {
+                                setIsAlignOpen(false);
+                                return;
+                              }
+                              const rect = event.currentTarget.getBoundingClientRect();
+                              const width = 340;
+                              setAlignPopoverBox({
+                                left: Math.max(10, Math.min(rect.left, window.innerWidth - width - 10)),
+                                top:
+                                  rect.bottom + 8 + 320 <= window.innerHeight
+                                    ? rect.bottom + 8
+                                    : Math.max(10, rect.top - 8 - 320),
+                              });
+                              setIsAlignOpen(true);
+                            }}
                             title={arrangeAvailability(selectedIds.length).reason ?? "对齐与分布"}
                             type="button"
                           >
@@ -9921,9 +9970,22 @@ export function RelationshipGraph({
                       </span>
                     )}
                   </div>
-                  {isAlignOpen && selectedIds.length >= 2 && alignPanel}
                 </div>
               )}
+              {!isStudio &&
+                isAlignOpen &&
+                selectedIds.length >= 2 &&
+                alignPopoverBox &&
+                createPortal(
+                  <div
+                    className="graph-align-popover"
+                    data-testid="page-align-popover"
+                    style={{ position: "fixed", left: alignPopoverBox.left, top: alignPopoverBox.top }}
+                  >
+                    {alignPanel}
+                  </div>,
+                  document.body,
+                )}
 
               {contextBar === "undo" && arrangeUndo && (
                 <div className="graph-context undo" role="status">

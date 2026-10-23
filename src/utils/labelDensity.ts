@@ -16,6 +16,8 @@ export type LabelDensity = "all" | "hubs" | "none";
 export function labelDensity(input: {
   /** The reader's switch. It outranks everything, including an export. */
   showNames: boolean;
+  /** 全部: keep every name even when they collide, because the reader asked. */
+  forceNames?: boolean;
   /** An export is the fitted drawing with its names on it. */
   exporting: boolean;
   /** Whether every visible name fits without overlapping. */
@@ -26,6 +28,9 @@ export function labelDensity(input: {
 }): LabelDensity {
   if (!input.showNames) {
     return "none";
+  }
+  if (input.forceNames) {
+    return "all";
   }
   if (input.exporting || input.labelsFit) {
     return "all";

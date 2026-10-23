@@ -16,6 +16,8 @@ export type GraphPrefs = {
   showAvatars: boolean;
   /** Whether nodes draw their name at all. */
   showNames: boolean;
+  /** 全部显示: the reader overrides the crowding rule and accepts overlaps. */
+  forceNames: boolean;
   /**
    * Whether the lines between nodes are drawn. Independent of which characters are in
    * scope and of the density cap: hiding the lines is a way to read the roster, not a
@@ -109,6 +111,7 @@ export const defaultGraphPrefs: GraphPrefs = {
   nameSize: "medium",
   showAvatars: true,
   showNames: true,
+  forceNames: false,
   showEdges: true,
   exportScale: 2,
   exportLegend: false,
@@ -153,6 +156,7 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
     nameSize: isSizeValue(candidate.nameSize) ? candidate.nameSize : defaultGraphPrefs.nameSize,
     showAvatars: isBoolean(candidate.showAvatars) ? candidate.showAvatars : defaultGraphPrefs.showAvatars,
     showNames: isBoolean(candidate.showNames) ? candidate.showNames : defaultGraphPrefs.showNames,
+    forceNames: isBoolean(candidate.forceNames) ? candidate.forceNames : defaultGraphPrefs.forceNames,
     showEdges: isBoolean(candidate.showEdges) ? candidate.showEdges : defaultGraphPrefs.showEdges,
     exportScale: isExportScale(candidate.exportScale)
       ? candidate.exportScale
