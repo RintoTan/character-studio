@@ -39,15 +39,16 @@ About 弹窗的响应式收尾，以及 Developer Center 手机端两个响应�
 | 回归守卫 | 新增 6 条结构断言 | `test/developerMobileLayout.test.ts`；把导航改回横向长条后 2 条立刻变红（变异检验通过） |
 | 本地验证 | `tsc -b` 0 错误；`vitest run` 全量通过（78 文件 / 882 用例，含新增 6 条）；`vite build` 22 文件；`verify:version OK —— 2.59.0` | 本轮命令输出 |
 | 截图归档 | `.sprint56/final`（About 38 张 + Developer 导航修复 24 张）、`.sprint56/dev`（Developer 10 张）；打包见 `CharacterStudio-Acceptance/sprint-56/screenshots.zip` | 逐张目视记录见本轮报告 |
-| 发布记录 | 见下方「发布记录」小节（推送与 CI 结果在推送后回填，不预写为已发布） | — |
+| 发布记录 | 见下方「发布记录」小节（CI 与部署核验均已执行） | — |
 
 #### 发布记录
 
 | 项目 | 值 |
 | --- | --- |
-| 版本 / HEAD | 2.59.0 / 待推送（本地提交见 `git log`） |
-| CI | 推送后由 GitHub Actions 构建，结果回填 |
-| 部署核验 | `npm run verify:deploy` 在 CI 完成后执行，结果回填 |
+| 版本 / 发布提交 | **2.59.0 / `49946d2`**（含 `31c6f62` 的 About 手机布局与 `49946d2` 的 Developer 修复，同一次未发布版本内合并） |
+| CI | run `39982031328` @ `49946d2` — **success** |
+| 部署核验 | `npm run verify:deploy` **全项 PASS**：`index.html` 200；entry `index-C3K3azu6.js`；stylesheet `index-OeR4wHwW.css`；commit stamp `49946d2 @ 2026-10-23T23:50:57+08:00`；22 文件逐字节相同；`/developer` 深链接经 Pages 404 回退命中同一份 shell |
+| 归档 | `CharacterStudio-Acceptance/sprint-56/screenshots.zip`，76 张 PNG（`final/` 66 + `dev/` 10，dev 为修复前证据），8,471,132 B，`sha256_16 5507c6fba0e3b28b` |
 | 已知遗留 | 320px 下 Hero 副标题「Character Studio 项目开发控制中心」会在行尾折出一字（CJK 允许任意断行，非本次范围）；Developer 页不含 Roadmap 区块，`update`/`debug`/`data`/`ai` 四个 section 分支在 `developerSections` 中不存在，属既有死代码 |
 
 ### Sprint 54.9（2.56.0）
