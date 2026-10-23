@@ -1,5 +1,6 @@
 import { DEFAULT_CANVAS_STYLE, CANVAS_PRESETS, DEFAULT_KIND_COLORS, LABEL_OFFSET_DEFAULT, kindInk, kindHue, styleForPreset, type ArrowStyle, type CanvasStyle, type CanvasPresetId, type NodeForm } from "../storage/canvasStyle";
 import { NumericControl } from "../components/NumericControl";
+import { cardLevelFor } from "../utils/cardLevels";
 import { applyBatchStyle, batchTargets, mergeNodeValue, nodeOverrides } from "../utils/batchStyle";
 import {
   useCallback,
@@ -2352,8 +2353,16 @@ export function RelationshipGraph({
     Object.entries(fitted).forEach(([id, level]) => {
       // The selected person keeps the level their neighbours allow; everyone else is
       // also capped by how much room the current zoom leaves for a card.
-      const exempt = selectedIds.includes(id) || focusId === id;
-      levels[id] = exempt || rank[level] <= rank[cardCap] ? level : cardCap;
+      // A card the author set on this one character is a decision, not a preference:
+      // crowding may make it a plate, never a circle. Falling all the way to "compact"
+      // turned two of three chosen cards back into round nodes on a large canvas,
+      // which looked exactly like the batch had only half applied.
+      levels[id] = cardLevelFor({
+        explicit: layout.nodeStyles?.[id]?.form === "card",
+        exempt: selectedIds.includes(id) || focusId === id,
+        ceiling: cardCap,
+        fitted: level,
+      });
     });
     const out: Record<string, { form: NodeForm; level: CardLevel | null; geom: ReturnType<typeof nodeGeometry> }> = {};
 
