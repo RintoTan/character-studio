@@ -77,7 +77,7 @@ import {
 } from "../storage/relationshipLayout";
 import { exportSurfaceImage, exportSurfacePdf } from "../utils/importExport";
 import { dragRect, isMarquee, marqueeHits } from "../utils/marquee";
-import { cardNameVisible, labelDensity, namesNode, pickSpacedLabels, readableNameSize } from "../utils/labelDensity";
+import { cardNameVisible, labelDensity, nameDropWorld, namesNode, pickSpacedLabels, readableNameSize } from "../utils/labelDensity";
 import { emphasisLevel } from "../utils/emphasis";
 import { addMembers, normalizeMembers, placeNewPoints, removeMembers } from "../utils/canvasMembers";
 import {
@@ -9490,7 +9490,6 @@ export function RelationshipGraph({
                     </>
                   )}
                   {labelled && (!geom.card || !cardNameShown) && (
-
                     <text
                       className={
                         !showLabels && hubIds.has(character.id)
@@ -9506,15 +9505,25 @@ export function RelationshipGraph({
                         fontSize: `${readableNameSize({
                           nameSize: nameSize * (!showLabels && hubIds.has(character.id) ? 1.35 : 1),
                           // One name, not three: lifting every selected name makes them
-                          // overlap each other on a dense ring (three 11px labels on
-                          // nodes 13 units apart). Multi-selection keeps its rings and
-                          // the bar's count; the name follows a single read.
+                          // overlap each other on a dense ring (three 11px labels on nodes
+                          // 13 units apart). Multi-selection keeps its rings and the
+                          // bar's count; the name follows a single read.
                           pinned: (isSelected && selectedIds.length === 1) || isFocused,
                           pxPerUnit: view.k * (measured ? screenScale : 1),
                         })}px`,
                       }}
                       x={positions[index].x}
-                      y={positions[index].y + Math.max(metrics.nameDrop, geom.halfHeight + 14)}
+                      // The lift made the name readable but left the air in world units,
+                      // so at 0.13x it sat on the node it belonged to. The air is a screen
+                      // distance now, measured with the same factor the type uses.
+                      y={
+                        positions[index].y +
+                        nameDropWorld({
+                          halfHeight: geom.halfHeight,
+                          nameDrop: metrics.nameDrop,
+                          pxPerUnit: view.k * (measured ? screenScale : 1),
+                        })
+                      }
                     >
                       {(() => {
                         const name = characterDisplayName(character);

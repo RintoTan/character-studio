@@ -10,7 +10,7 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.1**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.59.2**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
@@ -21,6 +21,22 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 58（2.59.2）
+
+低缩放下选中姓名压在节点上的定位缺陷。只改一处落点计算。
+
+| 项 | 结论 |
+| --- | --- |
+| 根因 | 姓名被抬到 11px 后沿用的仍是旧落点：基线在节点下方 `halfHeight + 14` **世界单位**。0.13× 下 14 单位 = 1.8px，标签落在节点本体上并压住环上相邻两个节点；0.28× 下只剩 4px |
+| 修法 | 新增 `nameDropWorld()`：间距改为屏幕像素（15px ≈ 11px 字身 + 6px 空隙），除以与字号相同的 `view.k × screenScale`；`max()` 保留样式自带间距，所以阅读缩放不受影响 |
+| 13%（375/100） | 修复前后：标签由压在节点上改为节点下方约 10px，`nodeHits 0`，字号仍 14px |
+| 29%（1440/100） | 同上，标签与节点边缘留出间隙；总览仍 0 个标签 |
+| 28%（1440/100 + 3 张显式卡片） | 选中卡片：外层姓名 14px 位于卡片下方，卡片保持 47×16 形态并带选中环 |
+| 69%（40 角色） | 标签位置与修复前一致（样式自带 61 单位间距大于 15px 的下限），截图逐像素同框 |
+| 不变性 | `positions` / `nodeStyles` 未改；选中 → 清除后 `relationship-layout` 逐字节相同；多选 3 个仍只有 3 个环 + 计数、无姓名 |
+| 测试 | `test/nameDrop.test.ts` 5 条；全量 80 文件 / 894 用例通过；`tsc -b` 0 错误 |
+| 截图 | `CharacterStudio-Acceptance/sprint-58/`（before 4 张 + after 12 张） |
 
 ### Sprint 57（2.59.1）
 

@@ -43,6 +43,6 @@ describe("the canvas names a card it can no longer label inside", () => {
   });
 
   it("still lifts a selected name, so the fallback is readable", () => {
-    expect(page).toMatch(/pinned: \(isSelected && selectedIds\.length === 1\) \|\| isFocused/);
+    expect(page).toMatch(/pinned: \(isSelected && selectedIds\.length === 1\) \|\| isFocused,/);
   });
 });

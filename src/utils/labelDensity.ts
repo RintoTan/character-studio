@@ -131,3 +131,27 @@ export function cardNameVisible(options: {
   const floor = options.floorPx ?? 6;
   return options.nameSize * Math.max(options.pxPerUnit, 0.0001) >= floor;
 }
+
+/**
+ * How far below a node's centre a name's baseline sits, in world units.
+ *
+ * The old rule was `halfHeight + 14`, and 14 is a *world* number: at the 0.13x a phone
+ * fits a hundred nodes at, the name cleared the node by 1.8 screen pixels and landed on
+ * it. The air has to be measured in screen pixels, so it is divided by the same
+ * `pxPerUnit` the type is drawn with. Fifteen pixels is a lifted name's own ascent
+ * (0.8 × 11px) plus six of air, so the *box* clears the node rather than the baseline;
+ * at a reading zoom the style's own gap already exceeds it and nothing moves.
+ */
+export function nameDropWorld(options: {
+  /** World distance from the node's centre to its edge along that axis. */
+  halfHeight: number;
+  /** The style's own gap, in world units. */
+  nameDrop: number;
+  /** Screen pixels per world unit at this zoom — the same factor the type is sized by. */
+  pxPerUnit: number;
+  /** Screen pixels of air between the node's edge and the label. */
+  airPx?: number;
+}): number {
+  const air = (options.airPx ?? 15) / Math.max(options.pxPerUnit, 0.0001);
+  return options.halfHeight + Math.max(options.nameDrop - options.halfHeight, air);
+}
