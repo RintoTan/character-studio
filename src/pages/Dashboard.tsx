@@ -141,6 +141,8 @@ type DashboardProps = {
     exportDefaults?: Partial<{ jpgQuality: number; pdfLightMode: boolean }>;
   }) => void;
   exportSettings?: { jpgQuality: number; pngScale: number; pdfLightMode: boolean };
+  /** An import preview is on screen: the host hides any first-run dialog above it. */
+  onImportFlowChange?: (active: boolean) => void;
   onOpenRelationships?: () => void;
   onOpenTimeline?: () => void;
   onOpenWorld?: () => void;
@@ -191,6 +193,7 @@ export function Dashboard({
   footerText = `RINTO © ${RELEASE_YEAR}`,
 
   onDashboardSettingsChange,
+  onImportFlowChange,
   exportSettings,
   onOpenRelationships,
   onOpenTimeline,
@@ -1460,6 +1463,13 @@ export function Dashboard({
     }
     setIsCommandOpen(false);
   }
+
+  // The preview is the moment the import owns the screen. Telling the host here, in one
+  // effect, keeps every exit (confirm, cancel, error) covered instead of patching each
+  // handler — a first-run About used to sit on top of this dialog and hide it.
+  useEffect(() => {
+    onImportFlowChange?.(Boolean(importPlan));
+  }, [importPlan, onImportFlowChange]);
 
   function openImport(intent: "merge" | "replace" | "selective") {
     setImportIntent(intent);

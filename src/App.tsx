@@ -173,6 +173,9 @@ function App() {
   workspaceOpenRef.current = isWorkspaceMenuOpen;
   const [isAppAboutOpen, setIsAppAboutOpen] = useState(false);
   const [isFirstAboutOpen, setIsFirstAboutOpen] = useState(false);
+  // Set while an import preview is on screen. The first-run About is a welcome, not a
+  // gate: it must never be the thing standing between someone and their backup.
+  const [isImportFlowOpen, setIsImportFlowOpen] = useState(false);
   const [isAppSettingsOpen, setIsAppSettingsOpen] = useState(false);
   const [isAppAssetLibraryOpen, setIsAppAssetLibraryOpen] = useState(false);
   const [isAppAssetCleanupOpen, setIsAppAssetCleanupOpen] = useState(false);
@@ -286,11 +289,21 @@ function App() {
   useEffect(() => {
     setCharacters(loadCharacters());
     setIsLoading(false);
-    if (localStorage.getItem(ABOUT_SEEN_KEY) !== "true") {
+    // Deferred while an import owns the screen: the welcome can wait, a restore cannot.
+    if (localStorage.getItem(ABOUT_SEEN_KEY) !== "true" && !isImportFlowOpen) {
       setIsFirstAboutOpen(true);
       setIsAppAboutOpen(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // Starting an import with the welcome still open closes the welcome; it is not marked
+    // as seen, so it comes back on the next launch instead of being lost or repeated now.
+    if (isImportFlowOpen && isAppAboutOpen) {
+      setIsAppAboutOpen(false);
+    }
+  }, [isImportFlowOpen, isAppAboutOpen]);
 
   useEffect(() => {
     let frame = 0;
@@ -1364,6 +1377,7 @@ function App() {
       {page === "dashboard" && (
         <Dashboard
           characters={characters}
+          onImportFlowChange={setIsImportFlowOpen}
           projectInfo={developerSettings.project}
           contentText={developerSettings.content}
           dashboardSettings={developerSettings.dashboardDefaults}
