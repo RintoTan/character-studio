@@ -41,6 +41,11 @@
 | 样式与坐标不变 | 选中 → 清除后 `relationship-layout` 逐字节相同，卡片仍为 3 张，选中环归零 | `localStorage` 前后一致（704 B） |
 | 截图归档 | `CharacterStudio-Acceptance/sprint-57/`（见其 README 清单） | 逐张目视记录见当轮报告 |
 
+发布记录：2.59.1 / `1d531ca`；CI run `39984680549` success；`npm run verify:deploy` 全项 PASS
+（entry `index-C8UciPyx.js`、22 文件逐字节相同、`/developer` 404 回退命中）；本地 79 文件 / 889 用例通过、
+`tsc -b` 0 错误、`build:pages` 22 文件、`verify:version OK`。归档 `screenshots.zip` 57 张、10,792,051 B、
+`sha256_16 a7dcd4762bb10747`。
+
 ### Sprint 56.x（2.59.0）
 
 About 弹窗的响应式收尾，以及 Developer Center 手机端两个响应式缺陷。均只改样式与测试，未触碰数据模型、关系网算法与备份恢复。
