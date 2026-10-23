@@ -144,7 +144,9 @@ export function nudgeLegend(
 
   return {
     corner: plan.corner,
-    extra: { left: 0, right: 0, top: 0, bottom: 0 },
+    // The margin stays. Dropping it here would shrink the frame on the first pixel of
+    // the drag, which both jumps the preview and moves the ground under the pointer.
+    extra: plan.extra,
     panel: {
       ...plan.panel,
       x: Math.min(Math.max(plan.panel.x + nudge.x, minX), Math.max(minX, maxX)),

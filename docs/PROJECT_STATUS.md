@@ -1,6 +1,6 @@
 # Character Studio —— 项目状态总览
 
-> 文档最后核查日期：**2026-10-19** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
+> 文档最后核查日期：**2026-10-23** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
 > 本文只记录**有证据**的结论。凡未验证的，一律显式标注。
 > **位置变更**：本文件原在仓库根目录，2026-10-15 随文档落位规整移入 `docs/`（根目录只保留 `README.md` / `CHANGELOG.md` / `Developer Handbook.md`）。文档索引见 [`README.md`](README.md)。
 
@@ -10,8 +10,8 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.55.2**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 画布编辑可靠性、移动端多选与关系标签验收；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
-| Sprint | **54.8**（`APP_SPRINT`）—— 吸附/辅助线数学修正、Shift 提示与设计抽屉布局、移动端单行多选栏、关系标签像素级验收；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
+| 应用版本 | **2.56.0**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— 工作室任务面板化、导出预览与画幅、选择/聚焦分离；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| Sprint | **54.9**（`APP_SPRINT`）—— 吸附/辅助线数学修正、Shift 提示与设计抽屉布局、移动端单行多选栏、关系标签像素级验收；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
 | 分支 | `main` |
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
@@ -21,6 +21,20 @@
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |
 | 线上部署提交 | 每次推送 `main` 由 CI 重新构建。核对方式：线上 `build-info.json` 的 `commit` 应等于 `main` 最新提交（`npm run verify:deploy` 自动比对，不一致则以非零码退出） |
+
+### Sprint 54.9（2.56.0）
+
+全屏工作室交互整理、导出重构与选择状态机。
+
+| 事项 | 结论 | 证据 |
+| --- | --- | --- |
+| 全屏导出 | 已修：面板被整页层级盖住 → 改为同级导出抽屉 | 全屏抽屉 392×847；四种格式真实下载（PNG/JPG/SVG/PDF） |
+| 导出预览 | 已实现：预览即导出所用 SVG | 16:9 读数 2400×1350，SVG 1188×668 单位；100 角色 PNG 实测 2400×2400 |
+| 图例拖动 | 已实现，含边界约束 | SVG 图例 (0.765,0.677) vs 预览 (0.763,0.677)；夹紧后仍在框内 |
+| PDF | 单页、页面即画幅 | `MediaBox 1800×1800 pt`（2400×2400 px）、1 页、1 图像 |
+| 选择/聚焦 | 已分离；多选弱化恒定 | 单选弱化 0；多选 1/2/3 → 7/6/5；组拖拽位移一致 +40/+25 |
+| 箭头接缝 | 线身止于箭头基部 | 深色 20/50/100% 像素采样与放大裁图；4 条几何单测 |
+| 手机 | 320/375/430 导出抽屉满宽、按钮可点 | 320 导出 PNG 成功（201 KB） |
 
 ### Sprint 54.8（2.55.0）
 

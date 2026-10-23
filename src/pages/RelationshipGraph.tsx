@@ -7048,6 +7048,7 @@ export function RelationshipGraph({
             <span>宽</span>
             <input
               aria-label="导出宽度"
+              data-testid="export-width"
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value) && value > 0) {
@@ -7065,6 +7066,7 @@ export function RelationshipGraph({
             <span>高</span>
             <input
               aria-label="导出高度"
+              data-testid="export-height"
               onChange={(event) => {
                 const value = Number(event.target.value);
                 if (Number.isFinite(value) && value > 0) {
