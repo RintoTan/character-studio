@@ -2583,6 +2583,14 @@ const LOCATE_DASHBOARD_GROUP = (group) => `
 const SEARCH_INSIDE_COLLAPSED_GROUP = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    // The dashboard search is a collapsible WorkspaceSearch: the field only exists after
+    // its trigger is pressed, so every read/write goes through this.
+    const openDashboardSearch = () => {
+      if (document.querySelector('[data-testid="dashboard-search-input"]')) return;
+      const trigger = document.querySelector('[data-testid="dashboard-search"]');
+      if (!trigger) throw new Error("找不到搜索入口：" + '[data-testid="dashboard-search"]');
+      trigger.click();
+    };
     const toCards = document.querySelector('button[aria-label="切换卡片视图"]');
     if (toCards) { toCards.click(); await sleep(500); }
     const setValue = (input, value) => {
@@ -2619,16 +2627,16 @@ const SEARCH_INSIDE_COLLAPSED_GROUP = `
     await sleep(400);
     const collapsed = { ...headState("北境"), cards: cards().length, targetVisible: has("第05位北境人") };
 
-    document.querySelector('button[aria-label="搜索"]').click();
+    openDashboardSearch();
     await sleep(400);
     // A needle every character matches: it keeps the list over the grouping threshold,
     // which is what makes the question meaningful — a group narrowed to a handful of
     // characters stops being grouped at all, and then nothing could hide the match.
-    setValue(document.querySelector(".list-search-input"), "人");
+    setValue(document.querySelector('[data-testid="dashboard-search-input"]'), "人");
     await sleep(700);
     const searching = { ...headState("北境"), cards: cards().length, matches: matches(), targetVisible: has("第05位北境人"), groups: document.querySelectorAll(".character-group-head").length };
 
-    setValue(document.querySelector(".list-search-input"), "");
+    setValue(document.querySelector('[data-testid="dashboard-search-input"]'), "");
     await sleep(700);
     const cleared = { ...headState("北境"), cards: cards().length, targetVisible: has("第05位北境人") };
     return { beforeCards, collapsed, searching, cleared };
@@ -2687,6 +2695,14 @@ const READ_BULK_BAR = `
 const READ_TWO_VIEWS = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    // The dashboard search is a collapsible WorkspaceSearch: the field only exists after
+    // its trigger is pressed, so every read/write goes through this.
+    const openDashboardSearch = () => {
+      if (document.querySelector('[data-testid="dashboard-search-input"]')) return;
+      const trigger = document.querySelector('[data-testid="dashboard-search"]');
+      if (!trigger) throw new Error("找不到搜索入口：" + '[data-testid="dashboard-search"]');
+      trigger.click();
+    };
     const setValue = (input, value) => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
       setter.call(input, value);
@@ -2719,9 +2735,9 @@ const READ_TWO_VIEWS = `
         : "";
     };
 
-    document.querySelector('button[aria-label="搜索"]').click();
+    openDashboardSearch();
     await sleep(300);
-    setValue(document.querySelector(".list-search-input"), "北境");
+    setValue(document.querySelector('[data-testid="dashboard-search-input"]'), "北境");
     await sleep(600);
 
     const cardsOrder = cardNames();
@@ -2741,7 +2757,7 @@ const READ_TWO_VIEWS = `
     const listOrder = listNames();
     const listCount = (document.querySelector(".section-title.list-section-title span") || {}).textContent.trim() || "";
     const listStates = { pinned: tableStatus("第03位北境人"), favourite: tableStatus("第04位北境人") };
-    const keptQuery = document.querySelector(".list-search-input")?.value ?? "";
+    const keptQuery = document.querySelector('[data-testid="dashboard-search-input"]')?.value ?? "";
 
     document.querySelector('button[aria-label="切换卡片视图"]').click();
     await sleep(500);
@@ -5295,7 +5311,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(SEED_DASHBOARD);
       await cdp.goto(base);
       const toolbarReady =
-        (await cdp.waitFor(`!!document.querySelector('button[aria-label="搜索"]')`, 10000)) &&
+        (await cdp.waitFor(`!!document.querySelector('[data-testid="dashboard-search"]')`, 10000)) &&
         (await cdp.waitFor(`document.querySelectorAll(".character-card").length === 36`, 10000));
       if (!toolbarReady) {
         throw new Error("工具栏或卡片没有渲染出来");
@@ -6574,7 +6590,8 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
           if (!guide) return null;
           const r = guide.getBoundingClientRect();
           const frame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
-          const footer = document.querySelector(".app-footer")?.getBoundingClientRect() ?? null;
+          const footerEl = document.querySelector(".app-footer");
+          const footer = footerEl?.getBoundingClientRect() ?? null;
           const page = document.querySelector(".relationship-page");
           const pageStyle = getComputedStyle(page);
           const guideStyle = getComputedStyle(guide);
@@ -6585,17 +6602,30 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
             below: r.top >= frame.bottom + 20,
             overlap: r.top < frame.bottom,
             gapCanvas: Math.round(r.top - frame.bottom),
-            gapFooter: footer ? Math.round(footer.top - r.bottom) : null,
+            // The guide carries no bottom margin of its own; the breathing room below it
+            // comes from the footer's padding. Measuring to the footer's border box read as
+            // "0px gap" while the page looked fine, so the gap is taken to the content edge.
+            gapFooter: footer && footerEl
+              ? Math.round(footer.top - r.bottom + (Number.parseFloat(getComputedStyle(footerEl).paddingTop) || 0))
+              : null,
             aligned: Math.abs(r.left - frame.left) <= 2 && Math.abs(r.right - frame.right) <= 2,
             border: guideStyle.borderTopWidth,
             shadow: guideStyle.boxShadow,
             bg: guideStyle.backgroundColor,
-            stacks: document.querySelectorAll(".graph-guide-edge").length,
+            // The guide used to be a stack of edges with a collapse control. Those class
+            // names are gone from the codebase, so counting them always returned 0 and the
+            // "no stack / no collapse" assertions could never fail. What is observable now
+            // is the shape that replaced them: two cards, both laid out, and no control
+            // inside the guide that could fold it away.
+            guideCards: guide.querySelectorAll(".graph-guide-card").length,
+            guideCardsCollapsed: [...guide.querySelectorAll(".graph-guide-card")]
+              .filter((card) => card.getBoundingClientRect().height === 0).length,
+            guideToggles: guide.querySelectorAll("[aria-expanded], [aria-controls]").length,
             pageBorder: pageStyle.borderTopWidth,
             pageBg: pageStyle.backgroundColor,
             sharesCanvas: Boolean(guide.closest(".graph-canvas-frame, .graph-canvas-row")),
             parentIsPage: guide.parentElement === page,
-            collapseControls: document.querySelectorAll(".graph-guide-collapse, .graph-guide-open").length,
+
             disabledSteps: [...guide.querySelectorAll(".graph-guide-step")].filter((button) => button.disabled).length,
             overflow: document.documentElement.scrollWidth - innerWidth,
           };
@@ -6674,19 +6704,20 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
             first.border === "0px" &&
             first.shadow === "none" &&
             first.bg === "rgba(0, 0, 0, 0)" &&
-            first.stacks === 0 &&
+            first.guideCards >= 1 &&
+            first.guideCardsCollapsed === 0 &&
             first.pageBorder === "0px" &&
             first.pageBg === "rgba(0, 0, 0, 0)" &&
             !first.sharesCanvas &&
             first.parentIsPage &&
-            first.collapseControls === 0 &&
+            first.guideToggles === 0 &&
             inStudio === 0 &&
             studioFrame > 400 &&
             Boolean(narrow) &&
             narrow.overflow <= 0 &&
             narrow.gapCanvas >= 20 &&
             before === after,
-          detail: `区标题「${first?.section}」${first?.count}；次张 ${second?.count}、末张 ${fourth?.count} → 下一张回到 ${wrapped?.count} → 上一张到 ${backWrapped?.count}；未聚焦时方向键 ${unfocused?.count}、聚焦 ${focused} 后 → ${keyedForward?.count} / ${keyedBack?.count}；画布下方 ${first?.gapCanvas}px、页脚上方 ${first?.gapFooter}px、左右对齐 ${first?.aligned}、边框 ${first?.border}、阴影 ${first?.shadow}、底色 ${first?.bg}；页面边框 ${first?.pageBorder}、底色 ${first?.pageBg}；与画布同容器 ${first?.sharesCanvas}；折叠入口 ${first?.collapseControls}；全屏内 ${inStudio} 个（画布 ${studioFrame}px）；375 间距 ${narrow?.gapCanvas}px、溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
+          detail: `区标题「${first?.section}」${first?.count}；次张 ${second?.count}、末张 ${fourth?.count} → 下一张回到 ${wrapped?.count} → 上一张到 ${backWrapped?.count}；未聚焦时方向键 ${unfocused?.count}、聚焦 ${focused} 后 → ${keyedForward?.count} / ${keyedBack?.count}；画布下方 ${first?.gapCanvas}px、页脚上方 ${first?.gapFooter}px、左右对齐 ${first?.aligned}、边框 ${first?.border}、阴影 ${first?.shadow}、底色 ${first?.bg}；页面边框 ${first?.pageBorder}、底色 ${first?.pageBg}；与画布同容器 ${first?.sharesCanvas}；指南卡片 ${first?.guideCards}（折叠 ${first?.guideCardsCollapsed}）、折叠入口 ${first?.guideToggles}；全屏内 ${inStudio} 个（画布 ${studioFrame}px）；375 间距 ${narrow?.gapCanvas}px、溢出 ${narrow?.overflow}；数据不变 ${before === after}`,
         };
       });
 
@@ -7977,9 +8008,12 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       })()`);
 
       await cdp.value(`(() => {
-        const b = document.querySelector(".graph-page-drawer-close") || document.querySelector(".graph-studio-drawer-close");
-        if (b) b.click();
-        return Boolean(b);
+        // The studio variant of this class no longer exists; keeping it as a silent
+        // fallback meant a rename would have looked like "nothing to close".
+        const b = document.querySelector(".graph-page-drawer-close");
+        if (!b) throw new Error("关闭抽屉的按钮不存在：" + ".graph-page-drawer-close");
+        b.click();
+        return true;
       })()`);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const restored = await cdp.value(`(() => {
@@ -9271,11 +9305,20 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
 
       const toolbar = await hover('button[aria-label="更多操作"]');
+      // The search control lost its own tooltip when it became WorkspaceSearch: it now
+      // shows the word 搜索 next to the icon (aria-label 搜索角色), so a tooltip would
+      // repeat the visible text. The keyboard path is therefore checked on 更多操作 --
+      // still icon-only, still labelled, still the case this check exists to protect.
+      // Nothing here is a synthetic key press: the element is focused, and whether the
+      // tooltip appears is read back from the DOM.
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 4, y: 4, buttons: 0 });
+      await new Promise((resolve) => setTimeout(resolve, 300));
       const keyboard = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const button = document.querySelector('button[aria-label="搜索"]');
+        const button = document.querySelector('button[aria-label="更多操作"]');
+        if (!button) throw new Error("更多操作 button missing");
         button.focus();
-        await sleep(250);
+        await sleep(300);
         const tip = document.querySelector(".app-tooltip");
         return tip ? tip.textContent : "";
       })()`);
@@ -9291,10 +9334,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         pass: Boolean(
           toolbar && toolbar.text === "更多操作" && toolbar.placement === "bottom" &&
           toolbar.gap >= 5 && toolbar.gap <= 8 && toolbar.inside && !toolbar.covers &&
-          keyboard === "搜索" &&
+          keyboard === "更多操作" &&
           Boolean(floating) && floating.placement === "top" && floating.inside && !floating.covers,
         ),
-        detail: `320px 更多操作：${toolbar ? toolbox(toolbar) : "无提示"}；键盘聚焦搜索：${keyboard || "无提示"}；`
+        detail: `320px 更多操作：${toolbar ? toolbox(toolbar) : "无提示"}；键盘聚焦更多操作：${keyboard || "无提示"}；`
           + `贴底浮动按钮：${floating ? toolbox(floating) : "未出现"}`,
       };
 
