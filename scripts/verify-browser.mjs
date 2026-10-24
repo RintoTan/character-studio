@@ -1573,69 +1573,110 @@ const GRAPH_SEARCH_OFF_CANVAS = `
   })()
 `;
 
-// The display switches and the export buttons, driven and read back.
+// The display switches and the export buttons, driven and read back. Every switch
+// is addressed by its row label and its own text: when this panel was reorganised
+// (the 名称 row grew a third option and 头像 became 本机头像) an index-based probe
+// kept clicking "the second 隐藏" and crashed on a button that no longer existed.
+// A switch that cannot be found by name is a switch this check cannot vouch for,
+// so it throws instead of guessing a position.
 const GRAPH_DISPLAY_AND_EXPORT = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const clickText = (text) => {
-      const button = [...document.querySelectorAll(".graph-style-view button")].find(
-        (candidate) => candidate.textContent.trim() === text,
-      );
-      if (!button) throw new Error("panel button missing: " + text);
-      button.click();
-    };
     const counts = () => ({
       names: document.querySelectorAll(".relationship-node-name").length,
       images: document.querySelectorAll(".relationship-node-image").length,
       emojis: document.querySelectorAll(".relationship-node-emoji").length,
     });
+    const panel = () => document.querySelector(".graph-style-view");
+    const rows = () => [...(panel() ? panel().querySelectorAll(".graph-panel-row") : [])];
+    const rowOf = (label) =>
+      rows().find(
+        (candidate) => (candidate.querySelector(".graph-control-label") || {}).textContent?.trim() === label,
+      );
+    const optionsOf = (label) => [...((rowOf(label) || {}).querySelectorAll?.("button") || [])];
+    const labelsOf = (label) => optionsOf(label).map((button) => button.textContent.trim());
+    const pressedOf = (label) =>
+      optionsOf(label)
+        .filter((button) => button.getAttribute("aria-pressed") === "true")
+        .map((button) => button.textContent.trim());
+    const choose = (label, text) => {
+      const button = optionsOf(label).find((candidate) => candidate.textContent.trim() === text);
+      if (!button) throw new Error("缺少开关：" + label + " / " + text);
+      button.click();
+    };
+    const prefs = () => JSON.parse(localStorage.getItem("character-studio.graph-prefs") || "{}");
+    const policyHint = () => ((document.querySelector('[data-testid="name-policy"]') || {}).textContent || "").trim();
+    // The two stores a display switch has no business touching.
+    const stored = () => ({
+      characters: localStorage.getItem("character-studio.characters"),
+      relationships: localStorage.getItem("character-studio.relationships"),
+    });
 
-    // 显示设置 is the 视图 half of the appearance drawer now. The same switches are
-    // checked, from the one entry a reader is told to use.
-    const toggle = document.querySelector('.graph-toolbar button[aria-label="外观设置"]');
-    if (!toggle) throw new Error("外观 entry missing");
-    toggle.click();
+    const storedBefore = stored();
+    const entry = document.querySelector('button[aria-label="外观设置"]');
+    if (!entry) throw new Error("外观入口缺失");
+    entry.click();
     await sleep(450);
 
-    const panel = document.querySelector(".graph-style-view");
-    const panelRect = panel?.getBoundingClientRect();
+    const openedPanel = panel();
+    if (!openedPanel) throw new Error("显示设置没有打开");
+    const panelRect = openedPanel.getBoundingClientRect();
     const opened = {
-      present: Boolean(panel),
-      rows: [...document.querySelectorAll(".graph-style-view .graph-panel-row")].map((row) => row.textContent.replace(/\\s+/g, " ").trim()),
-      insideViewport: panelRect ? panelRect.left >= -1 && panelRect.right <= window.innerWidth + 1 && panelRect.top >= -1 : false,
+      present: true,
+      labels: rows().map((row) => (row.querySelector(".graph-control-label") || {}).textContent?.trim() || ""),
+      insideViewport:
+        panelRect.left >= -1 && panelRect.right <= window.innerWidth + 1 && panelRect.top >= -1,
       namesBefore: counts().names,
+      nameOptions: labelsOf("名称"),
+      avatarOptions: labelsOf("本机头像"),
     };
 
-    clickText("隐藏");
-    await sleep(250);
-    const namesHidden = counts();
-    clickText("显示");
-    await sleep(250);
-    const namesBack = counts().names;
+    // 名称: three readings of one preference, so each has to be told apart.
+    choose("名称", "隐藏");
+    await sleep(300);
+    const namesHidden = { ...counts(), pressed: pressedOf("名称"), hint: policyHint(), prefs: prefs() };
 
-    // The avatar row is the second one: its 隐藏 is the second 隐藏 button in 视图.
-    [...document.querySelectorAll(".graph-style-view button")].filter((button) => button.textContent.trim() === "隐藏")[1].click();
-    await sleep(250);
-    const avatarsHidden = counts();
-    [...document.querySelectorAll(".graph-style-view button")].filter((button) => button.textContent.trim() === "显示")[1].click();
-    await sleep(250);
-    const avatarsBack = counts();
+    choose("名称", "自动");
+    await sleep(300);
+    const namesAuto = { ...counts(), pressed: pressedOf("名称"), hint: policyHint(), prefs: prefs() };
 
-    toggle.click();
-    await sleep(250);
+    choose("名称", "全部");
+    await sleep(300);
+    const namesAll = { ...counts(), pressed: pressedOf("名称"), hint: policyHint(), prefs: prefs() };
+    choose("名称", "自动");
+    await sleep(200);
+
+    // 本机头像: pictures and emoji are the two things a node can draw.
+    choose("本机头像", "隐藏");
+    await sleep(300);
+    const avatarsHidden = { ...counts(), pressed: pressedOf("本机头像"), prefs: prefs() };
+
+    choose("本机头像", "显示");
+    await sleep(300);
+    const avatarsBack = { ...counts(), pressed: pressedOf("本机头像"), prefs: prefs() };
+
+    entry.click();
+    await sleep(350);
     const closed = !document.querySelector(".graph-page-drawer");
 
-    // Output sits behind its own toggle — one entry wide instead of five controls on the
-    // bar — so opening it is part of exporting, and the check opens it the same way a
-    // reader would. The formats themselves are unchanged.
+    // Output sits behind its own toggle, and each format carries its own test id:
+    // the labels around it have been rewritten twice, the ids have not.
     const exportToggle = [...document.querySelectorAll(".graph-display-wrap > button")].find(
       (button) => button.textContent.trim() === "导出",
     );
-    if (!exportToggle) throw new Error("导出 toggle missing");
+    if (!exportToggle) throw new Error("导出入口缺失");
     exportToggle.click();
-    await sleep(250);
+    await sleep(350);
     const exportPanel = document.querySelector('[aria-label="导出关系网"]');
-    if (!exportPanel) throw new Error("export panel did not open");
+    if (!exportPanel) throw new Error("导出面板没有打开");
+    const exportRect = exportPanel.getBoundingClientRect();
+
+    const formats = [...exportPanel.querySelectorAll('[aria-label="导出格式"] [data-testid^="export-"]')].map(
+      (button) => ({
+        id: (button.getAttribute("data-testid") || "").replace("export-", ""),
+        label: button.textContent.replace(/\\s+/g, " ").trim(),
+      }),
+    );
 
     // The outcome message is transient, so it is waited for rather than sampled once:
     // sleeping a fixed few seconds reads an empty node whether the export succeeded or
@@ -1649,7 +1690,6 @@ const GRAPH_DISPLAY_AND_EXPORT = `
       }
       return "";
     };
-
     const waitForClear = async (timeout) => {
       const deadline = Date.now() + timeout;
       while (Date.now() < deadline && message()) {
@@ -1658,34 +1698,37 @@ const GRAPH_DISPLAY_AND_EXPORT = `
     };
 
     const messages = [];
-    for (const format of ["JPG", "PNG", "PDF"]) {
-      const button = [...document.querySelectorAll(".graph-panel button")].find(
-        (candidate) => candidate.textContent.trim() === format,
-      );
-      if (!button) throw new Error("export button missing: " + format);
+    for (const format of ["png", "svg", "jpg", "pdf"]) {
+      const button = exportPanel.querySelector('[data-testid="export-' + format + '"]');
+      // Reported rather than thrown, so one missing format still shows the other three.
+      if (!button) {
+        messages.push("缺少导出按钮：" + format);
+        continue;
+      }
       // Each format starts from an empty node, so a message can only be its own.
       await waitForClear(6000);
       button.click();
       messages.push((await waitForMessage(30000)) || "（没有结果提示）");
     }
 
-    const exportRows = [...exportPanel.querySelectorAll(".graph-panel-row")].map((row) =>
-      row.textContent.replace(/\\s+/g, " ").trim(),
-    );
-
     return {
       opened,
       namesHidden,
-      namesBack,
+      namesAuto,
+      namesAll,
       avatarsHidden,
       avatarsBack,
       closed,
       exportOpen: {
-        present: Boolean(exportPanel),
-        rows: exportRows,
-        insideViewport: exportPanel.getBoundingClientRect().right <= window.innerWidth + 1,
+        present: true,
+        formats,
+        insideViewport:
+          exportRect.right <= window.innerWidth + 1 && exportRect.left >= -1 && exportRect.bottom >= 0,
       },
       messages,
+      storedUntouched:
+        stored().characters === storedBefore.characters &&
+        stored().relationships === storedBefore.relationships,
     };
   })()
 `;
@@ -5916,7 +5959,11 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       };
     });
 
-    await check("关系网：显示设置只含生效开关，导出三种格式无报错（任务 D）", async () => {
+    // Every switch under 视图与显示 has to do something: this panel once carried
+    // switches wired to nothing. Rows and options are matched by their own labels, and
+    // a row this check does not know fails it rather than passing unexamined — a new
+    // switch needs its own reading here instead of a green tick beside it.
+    await check("关系网：显示设置只含生效开关，导出四种格式无报错（任务 D）", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
       await cdp.goto(base);
       await cdp.value(SEED_GRAPH);
@@ -5929,30 +5976,53 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       const panelOk =
         state.opened.present &&
-        state.opened.rows.join("|").includes("名称显示隐藏") &&
-        state.opened.rows.join("|").includes("头像显示隐藏") &&
-        state.opened.insideViewport;
-      const switched =
+        state.opened.insideViewport &&
+        state.opened.labels.join("|") === "名称|本机头像" &&
+        state.opened.nameOptions.join("|") === "隐藏|自动|全部" &&
+        state.opened.avatarOptions.join("|") === "显示|隐藏";
+      // 自动 and 全部 draw the same five names at this size, so the preference and the
+      // sentence that explains it are what tell them apart; the count only proves that
+      // 隐藏 really hides and 自动 really brings the names back.
+      const namesOk =
+        state.opened.namesBefore === 5 &&
         state.namesHidden.names === 0 &&
-        state.namesBack === 5 &&
+        state.namesHidden.pressed.join("|") === "隐藏" &&
+        state.namesAuto.names === 5 &&
+        state.namesAuto.pressed.join("|") === "自动" &&
+        state.namesAuto.prefs.forceNames === false &&
+        state.namesAuto.hint.includes("自动") &&
+        state.namesAll.names === 5 &&
+        state.namesAll.pressed.join("|") === "全部" &&
+        state.namesAll.prefs.forceNames === true &&
+        state.namesAll.hint.includes("全部");
+      const avatarsOk =
         state.avatarsHidden.images === 0 &&
         state.avatarsHidden.emojis === 0 &&
+        state.avatarsHidden.pressed.join("|") === "隐藏" &&
         state.avatarsBack.images === 1 &&
-        state.avatarsBack.emojis === 4;
-      const exported = state.messages.map((message) => message.replace(" 已导出", "")).join("/") === "JPG/PNG/PDF";
-      // The output panel is one entry on the bar, and it has to open to the same three
-      // formats it always had.
-      const exportOk =
-        state.exportOpen.present &&
-        state.exportOpen.rows.join("|").includes("分辨率") &&
-        state.exportOpen.rows.join("|").includes("JPG") &&
-        state.exportOpen.rows.join("|").includes("PNG") &&
-        state.exportOpen.rows.join("|").includes("PDF") &&
-        state.exportOpen.insideViewport;
+        state.avatarsBack.emojis === 4 &&
+        state.avatarsBack.pressed.join("|") === "显示";
+      // The output panel is one entry on the bar, and it has to open to every format
+      // it offers — read by test id, because the wording around them keeps changing.
+      const formatsOk = state.exportOpen.formats.map((format) => format.id).join("|") === "png|svg|jpg|pdf";
+      const exported =
+        state.messages.length === 4 &&
+        state.messages.every((text, index) => text.startsWith(["PNG", "SVG", "JPG", "PDF"][index] + " 已导出"));
+      const conditions = {
+        面板: panelOk,
+        名称: namesOk,
+        头像: avatarsOk,
+        导出面板: state.exportOpen.present && state.exportOpen.insideViewport,
+        导出格式: formatsOk,
+        导出结果: exported,
+        抽屉关闭: state.closed,
+        存储未变: state.storedUntouched,
+      };
+      const failing = Object.keys(conditions).filter((name) => !conditions[name]);
 
       return {
-        pass: Boolean(panelOk && switched && exportOk && exported && state.closed),
-        detail: `面板 ${state.opened.present ? "已打开" : "未打开"}（在视口内 ${state.opened.insideViewport}）：${state.opened.rows.join("；")}；名称 隐藏后 ${state.namesHidden.names} 个 → 恢复 ${state.namesBack} 个；头像 隐藏后 图片 ${state.avatarsHidden.images} / Emoji ${state.avatarsHidden.emojis} → 恢复 ${state.avatarsBack.images} / ${state.avatarsBack.emojis}；导出入口 ${state.exportOpen.present ? "已打开" : "未打开"}（在视口内 ${state.exportOpen.insideViewport}）：${state.exportOpen.rows.join("；")}；导出结果「${state.messages.join("」「")}」`,
+        pass: failing.length === 0,
+        detail: `开关 ${state.opened.labels.join(" / ")}（在视口内 ${state.opened.insideViewport}）；名称 隐藏 ${state.namesHidden.names} → 自动 ${state.namesAuto.names}（forceNames ${state.namesAuto.prefs.forceNames}）→ 全部 ${state.namesAll.names}（forceNames ${state.namesAll.prefs.forceNames}）；头像 隐藏 ${state.avatarsHidden.images} 图 / ${state.avatarsHidden.emojis} Emoji → 显示 ${state.avatarsBack.images} / ${state.avatarsBack.emojis}；导出入口 ${state.exportOpen.formats.map((format) => format.id).join("/")}（在视口内 ${state.exportOpen.insideViewport}）；结果「${state.messages.join("」「")}」；存储未变 ${state.storedUntouched}；未满足 ${failing.join("、") || "无"}`,
       };
     });
 
