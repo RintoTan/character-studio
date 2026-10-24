@@ -1959,9 +1959,11 @@ export function RelationshipGraph({
    * from it — the old panel had a scope and a ratio that could contradict each other.
    */
   const [exportMode, setExportMode] = useState<"content" | "view" | "selection" | "manual">("content");
-  // The output frame. Local, not a preference: a visitor trying 16:9 for one poster
-  // should not find the next export already framed that way.
-  const [exportRatio, setExportRatio] = useState<GraphExportRatio>("canvas");
+  // The output frame. A preference, not local state: the frame is what the picture
+  // is composed in, and someone who framed a poster in 16:9 last time is composing
+  // the same picture again — not a new one. It defaults to "canvas", which is the
+  // behaviour a record written before the field existed gets.
+  const exportRatio: GraphExportRatio = prefs.exportRatio ?? "canvas";
   // Manual framing. These move a crop, never a coordinate.
   const [exportZoom, setExportZoom] = useState(1);
   const [exportPan, setExportPan] = useState({ x: 0, y: 0 });
@@ -7403,7 +7405,7 @@ export function RelationshipGraph({
               key={entry.value}
               onClick={() => {
                 setExportCustomAspect(null);
-                setExportRatio(entry.value);
+                updatePrefs({ exportRatio: entry.value });
               }}
               type="button"
             >
@@ -7463,7 +7465,7 @@ export function RelationshipGraph({
             className="ghost-button small"
             onClick={() => {
               setExportCustomAspect(null);
-              setExportRatio("canvas");
+              updatePrefs({ exportRatio: "canvas" });
               setExportWidth(2400);
               setExportMode("content");
               setExportZoom(1);

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  EXPORT_RATIOS,
   EXPORT_SCALES,
   AVATAR_SIZES,
   GRAPH_PREFS_KEY,
@@ -37,6 +38,7 @@ describe("graph size preferences", () => {
       exportLegendBg: "canvas",
       exportLegendOpacity: 0.94,
       exportLockAspect: true,
+      exportRatio: "canvas",
     });
 
     expect(loadGraphPrefs()).toEqual({
@@ -54,6 +56,7 @@ describe("graph size preferences", () => {
       exportLegendBg: "canvas",
       exportLegendOpacity: 0.94,
       exportLockAspect: true,
+      exportRatio: "canvas",
     });
     expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}")).toEqual({
       avatarSize: "large",
@@ -70,6 +73,7 @@ describe("graph size preferences", () => {
       exportLegendBg: "canvas",
       exportLegendOpacity: 0.94,
       exportLockAspect: true,
+      exportRatio: "canvas",
     });
   });
 
@@ -91,6 +95,7 @@ describe("graph size preferences", () => {
       exportLegendBg: defaultGraphPrefs.exportLegendBg,
       exportLegendOpacity: defaultGraphPrefs.exportLegendOpacity,
       exportLockAspect: defaultGraphPrefs.exportLockAspect,
+      exportRatio: defaultGraphPrefs.exportRatio,
     });
   });
 
@@ -112,6 +117,7 @@ describe("graph size preferences", () => {
       exportLegendBg: "canvas",
       exportLegendOpacity: 0.94,
       exportLockAspect: true,
+      exportRatio: "canvas",
     });
 
     // The same for a value of the wrong type: only an explicit boolean is honoured,
@@ -150,6 +156,36 @@ describe("graph size preferences", () => {
       expect(normalizeGraphPrefs({ exportScale: value }).exportScale).toBe(
         defaultGraphPrefs.exportScale,
       );
+    }
+  });
+
+  it("round-trips the frame the export was composed in", () => {
+    // The frame used to be local state, so every reload put it back to "canvas" and
+    // the choice did not exist for anyone framing a poster twice.
+    saveGraphPrefs({ ...defaultGraphPrefs, exportRatio: "16:9" });
+
+    expect(loadGraphPrefs().exportRatio).toBe("16:9");
+    expect(JSON.parse(localStorage.getItem(GRAPH_PREFS_KEY) || "{}").exportRatio).toBe("16:9");
+  });
+
+  it("reads a record written before the frame was a preference as whole-canvas", () => {
+    // An object stored by an older build has no key here at all. Reading that as
+    // anything but "canvas" would reframe an export nobody asked to reframe.
+    localStorage.setItem(
+      GRAPH_PREFS_KEY,
+      JSON.stringify({ avatarSize: "large", nameSize: "small", exportScale: 2 }),
+    );
+
+    expect(loadGraphPrefs().exportRatio).toBe("canvas");
+  });
+
+  it("only accepts the frames it offers", () => {
+    for (const entry of EXPORT_RATIOS) {
+      expect(normalizeGraphPrefs({ exportRatio: entry.value }).exportRatio).toBe(entry.value);
+    }
+
+    for (const value of ["21:9", "1:2", 169, null, undefined, ["16:9"]]) {
+      expect(normalizeGraphPrefs({ exportRatio: value }).exportRatio).toBe("canvas");
     }
   });
 

@@ -45,6 +45,13 @@ export type GraphPrefs = {
   exportLegendOpacity: number;
   /** Whether the width/height fields move together. */
   exportLockAspect: boolean;
+  /**
+   * The frame an export is composed in. Stored rather than local: whoever framed a
+   * poster in 16:9 once will frame the next one the same way, and having to pick it
+   * again after a reload is the setting quietly not existing. Records written before
+   * this field existed have no key; absent means "canvas".
+   */
+  exportRatio?: GraphExportRatio;
 };
 
 export type GraphExportScale = 1 | 2 | 3;
@@ -60,6 +67,8 @@ export const EXPORT_SCALES: Array<{ value: GraphExportScale; label: string }> = 
  * content to a fixed ratio by growing the short side, so nothing is cropped.
  */
 export type GraphExportRatio = "canvas" | "1:1" | "4:3" | "16:9" | "9:16";
+
+const FALLBACK_EXPORT_RATIO: GraphExportRatio = "canvas";
 
 export const EXPORT_RATIOS: Array<{ value: GraphExportRatio; label: string; ratio: number }> = [
   { value: "canvas", label: "画布", ratio: 0 },
@@ -121,6 +130,7 @@ export const defaultGraphPrefs: GraphPrefs = {
   exportLegendBg: "canvas",
   exportLegendOpacity: 0.94,
   exportLockAspect: true,
+  exportRatio: FALLBACK_EXPORT_RATIO,
 };
 
 function isSizeValue(value: unknown): value is GraphSizeValue {
@@ -129,6 +139,10 @@ function isSizeValue(value: unknown): value is GraphSizeValue {
 
 function isExportScale(value: unknown): value is GraphExportScale {
   return value === 1 || value === 2 || value === 3;
+}
+
+function isExportRatio(value: unknown): value is GraphExportRatio {
+  return EXPORT_RATIOS.some((entry) => entry.value === value);
 }
 
 // A stored record from before the two visibility switches existed has neither key,
@@ -172,6 +186,7 @@ export function normalizeGraphPrefs(value: unknown): GraphPrefs {
     exportLockAspect: isBoolean(candidate.exportLockAspect)
       ? candidate.exportLockAspect
       : defaultGraphPrefs.exportLockAspect,
+    exportRatio: isExportRatio(candidate.exportRatio) ? candidate.exportRatio : FALLBACK_EXPORT_RATIO,
     exportLegendCorner:
       candidate.exportLegendCorner === "tl" ||
       candidate.exportLegendCorner === "tr" ||
