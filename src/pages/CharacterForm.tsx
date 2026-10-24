@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
+import { Button } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
@@ -1951,18 +1952,26 @@ export function CharacterForm({
             </button>
           </div>
           <div className="editor-action-group">
-            <button className="ghost-button desktop-editor-action" onClick={onCancel} type="button">
-              <Icon name="arrowLeft" size={16} />
-              返回
-            </button>
-            <button
-              className="secondary-button desktop-editor-action"
-              onClick={openEditorPreview}
+            <Button
+              className="desktop-editor-action"
+              leftSection={<Icon name="arrowLeft" size={16} />}
+              onClick={onCancel}
+              size="md"
               type="button"
+              variant="default"
             >
-              <Icon name="eye" size={16} />
+              返回
+            </Button>
+            <Button
+              className="desktop-editor-action"
+              leftSection={<Icon name="eye" size={16} />}
+              onClick={openEditorPreview}
+              size="md"
+              type="button"
+              variant="light"
+            >
               预览
-            </button>
+            </Button>
             <div className="editor-more-wrap">
               <button
                 aria-expanded={isEditorMoreOpen}
@@ -2024,10 +2033,14 @@ export function CharacterForm({
                 </div>
               )}
             </div>
-            <button className="primary-button" onClick={() => void saveCurrentCharacter()} type="button">
-              <Icon name="check" size={16} />
+            <Button
+              leftSection={<Icon name="check" size={16} />}
+              onClick={() => void saveCurrentCharacter()}
+              size="md"
+              type="button"
+            >
               保存角色
-            </button>
+            </Button>
           </div>
         </div>
       </>

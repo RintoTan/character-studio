@@ -425,3 +425,108 @@ body {
 :root[data-theme="dark"] .character-card:hover {
   box-shadow: var(--shadow);
 }
+
+/* ---------- Card tags ----------
+ *
+ * The card is a three-row grid: `tags | actions`, then the identity block, then the
+ * foot. The tag cell is the first column, so a long tag has to be clipped inside that
+ * column: with `white-space: nowrap` and no width limit it ran under the edit and
+ * more buttons in the second column and was cut mid-character by the row's overflow.
+ *
+ * The row is allowed two lines (2 x 20px chip + 5px gap = 45px). It was capped at
+ * 44px, which clipped the second line by a pixel on a 320px card — a one-pixel cut is
+ * still a cut.
+ */
+.card-tags {
+  min-width: 0;
+  max-height: 46px;
+}
+
+.card-tags button {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 14px;
+  text-overflow: ellipsis;
+}
+
+/* The table's tag cell has the same nowrap chips in a narrower column. */
+.table-tags button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tag tones are pastel fills with dark text, which is right on a white card and reads
+   as a light-mode patch on a dark one. In dark mode the same hue comes from the tone's
+   own border colour, mixed into the surface: the chip stays hue-coded, the text turns
+   light, and no second palette is introduced. */
+:root[data-theme="dark"] .card-tags button,
+:root[data-theme="dark"] .table-tags button {
+  background: color-mix(in srgb, var(--tag-border, #6b7280) 20%, var(--surface));
+  border-color: color-mix(in srgb, var(--tag-border, #6b7280) 52%, transparent);
+  color: color-mix(in srgb, var(--tag-border, #6b7280) 72%, #ffffff);
+}
+
+/* ---------- Filter selects ----------
+ *
+ * These stay native `<select>` elements. The acceptance probes drive them by setting
+ * `.value` on an element found by `[aria-label="按年份筛选"]` and by reading the same
+ * property back; Mantine's Select is a combobox with no such property, so replacing it
+ * would mean rewriting four long checks and two forms rather than restyling four
+ * controls. What the brief asks for is one visual and interaction language, and this
+ * keeps the language while leaving the value contract alone.
+ *
+ * The chevron is drawn by us because `appearance: none` removes the platform one; it
+ * follows `currentColor`, so it flips with the theme.
+ */
+.timeline-filter select,
+.world-filter select {
+  appearance: none;
+  height: var(--control-height-compact);
+  min-width: 96px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background-color: var(--surface);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) calc(50% + 1px), calc(100% - 11px) calc(50% + 1px);
+  background-repeat: no-repeat;
+  background-size: 4px 4px, 4px 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.timeline-filter select:hover,
+.world-filter select:hover {
+  border-color: var(--border-strong);
+}
+
+.timeline-filter select:focus-visible,
+.world-filter select:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+@media (max-width: 720px) {
+  .timeline-filter select,
+  .world-filter select {
+    height: 44px;
+    min-width: 104px;
+  }
+}
+
+/* The editor hides its desktop-only actions on a phone with `.desktop-editor-action`.
+   A Mantine button carries the library's own `display: inline-flex`, which the class
+   rule cannot outrank, so the buttons stayed on screen and the action bar wrapped. */
+@media (max-width: 720px) {
+  .editor-action-bar .mantine-Button-root.desktop-editor-action {
+    display: none;
+  }
+}
