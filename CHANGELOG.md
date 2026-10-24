@@ -1,3 +1,15 @@
+## 2.59.8 —— Developer Center 的四个不可达分区下线
+
+- 删除 `ai` / `debug` / `data` / `update` 四个面板。它们的 id 从未出现在 `developerSections`，
+  导航选不中、卡片体也匹配不到——属不可达代码，不是被隐藏的功能。9 个可达分区
+  （project / brand / design / content / prompt / application / export / tools / experimental）
+  的 id、顺序、文案、交互与样式未变。
+- 新增 `test/developerSections.test.ts` 结构守卫：分区 id 必须精确为现有 9 个；渲染分支的
+  集合必须等于「分区集合去掉 project」；四个已下线 id 不得回归；Project 手写卡片必须仍在。
+  变异检验（把 `debug` 分支注回页面）会使该守卫失败。
+- 无用户可见功能变化。`settings.featureFlags.aiSettings` 仍由 Settings 页面使用，未改动；
+  `formalCharacters`、`avatarBindings`、`ComingSoonNote` 等共享读取仍被其余分区使用，未删除。
+
 ## 2.59.7 —— 备份说实话、导出不带姓名、设置不再假装生效
 
 - 备份元数据：`backup-info.json` 的 `appVersion` 一直是字面量 `"0.1.0"`，每份备份都声称来自同一个
