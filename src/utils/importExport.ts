@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../config/version";
 import type { Character, CharacterTag } from "../types/character";
 import { RELATIONSHIP_KINDS, type Relationship } from "../types/relationship";
 import { TIMELINE_EVENT_KINDS, type TimelineEvent } from "../types/timeline";
@@ -565,7 +566,10 @@ export async function exportFullBackupZip(
   const backupInfo = {
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    appVersion: "0.1.0",
+    // The version that wrote the file, not a fixed stamp: a reader comparing two
+    // backups uses this to tell which build produced which. It was a literal
+    // "0.1.0" for long enough that every backup claimed the same ancient version.
+    appVersion: APP_VERSION,
     characterCount: characters.length,
     avatarAssetCount: assets.length,
     assetTotalSize: assets.reduce((sum, item) => sum + (item.asset.size || item.asset.blob.size), 0),
