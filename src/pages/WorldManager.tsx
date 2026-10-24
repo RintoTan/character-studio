@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLightDismiss } from "../hooks/useLightDismiss";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -119,6 +119,29 @@ export function WorldManager({
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Same light-layer contract as the timeline filter row.
   const filterWrapRef = useLightDismiss({ open: filtersOpen, onClose: () => setFiltersOpen(false) });
+  const levelFilterRef = useRef<HTMLSelectElement | null>(null);
+  const filterToggleRef = useRef<HTMLButtonElement | null>(null);
+
+  /**
+   * Clears every filter and hands focus somewhere deliberate.
+   *
+   * Both buttons that call this are rendered by the very state they reset, so pressing
+   * one removes the element that had focus and the focus fell to <body>: the tree came
+   * back, but the next Tab started again from the top of the page. The target is the
+   * first structural filter when the row is on screen, and the control that opens the
+   * row on a phone, where the row is folded away and cannot take focus.
+   */
+  const clearWorldFilters = () => {
+    setFilter(emptyWorldFilter);
+    // Decided by state rather than by measuring the row: the fold is a media query, and
+    // a hidden control cannot take focus. On a phone with the row folded the toggle is
+    // the control that brings the filters back, so it takes the focus.
+    if (isNarrowScreen && !filtersOpen) {
+      filterToggleRef.current?.focus();
+    } else {
+      levelFilterRef.current?.focus();
+    }
+  };
   const counts = useMemo(() => worldCategoryCounts(entries), [entries]);
   const rows = useMemo(
     () => worldTreeRows(entries, { filter, nameOf, collapsed, isFilterActive: isFiltered }),
@@ -340,6 +363,7 @@ export function WorldManager({
           aria-expanded={filtersOpen}
           className="world-filter-toggle"
           onClick={() => setFiltersOpen((current) => !current)}
+          ref={filterToggleRef}
           type="button"
         >
           <Icon name="filter" size={15} />
@@ -351,6 +375,7 @@ export function WorldManager({
             <select
               aria-label="按层级筛选"
               onChange={(changeEvent) => setFilter({ ...filter, parent: changeEvent.target.value as WorldFilter["parent"] })}
+              ref={levelFilterRef}
               value={filter.parent}
             >
               {PARENT_FILTERS.map((option) => (
@@ -377,7 +402,7 @@ export function WorldManager({
             </select>
           </label>
           {isFiltered && (
-            <button className="ghost-button" onClick={() => setFilter(emptyWorldFilter)} type="button">
+            <button className="ghost-button" onClick={clearWorldFilters} type="button">
               清空筛选
             </button>
           )}
@@ -417,7 +442,7 @@ export function WorldManager({
               <div className="empty-state world-empty">
                 <h3>没有匹配的条目</h3>
                 <p>当前条件（{filter.query.trim() ? `关键词「${filter.query.trim()}」` : "筛选"}）没有匹配的条目。</p>
-                <button className="ghost-button" onClick={() => setFilter(emptyWorldFilter)} type="button">
+                <button className="ghost-button" onClick={clearWorldFilters} type="button">
                   清空筛选
                 </button>
               </div>

@@ -1173,6 +1173,21 @@ const WORLD_SEARCH = `
     const names = () => rows().map((row) => (row.querySelector(".world-row-name")?.textContent || "").trim());
     const results = () => rows().filter((row) => !row.classList.contains("via-path")).length;
 
+    // The search field is folded behind its trigger, and the old class-based locator no
+    // longer exists after that refactor, so every use goes through the entry point.
+    const openWorldSearch = async () => {
+      if (document.querySelector('[data-testid="world-search-input"]')) return;
+      const trigger = document.querySelector('[data-testid="world-search"]');
+      if (!trigger) throw new Error("找不到搜索入口：" + '[data-testid="world-search"]');
+      trigger.click();
+      await sleep(350);
+      if (!document.querySelector('[data-testid="world-search-input"]')) throw new Error("搜索框没有展开");
+    };
+    const setWorldSearch = async (value) => {
+      await openWorldSearch();
+      setInput('[data-testid="world-search-input"]', value);
+    };
+
     // Shut every branch first: the point of the next assertion is that a match two
     // levels down is still reachable.
     [...document.querySelectorAll(".world-row-toggle")].forEach((button) => {
@@ -1182,7 +1197,7 @@ const WORLD_SEARCH = `
     const collapsedRows = rows().length;
     const deepHidden = !names().includes("白塔区");
 
-    setInput(".world-search input", "白塔区");
+    await setWorldSearch("白塔区");
     await sleep(400);
     const searched = {
       names: names(),
@@ -1207,14 +1222,14 @@ const WORLD_SEARCH = `
     await sleep(400);
     const withCharacters = { results: results(), expected: expected((entry) => entry.characterIds.length > 0) };
 
-    setInput(".world-search input", "沈青梧");
+    await setWorldSearch("沈青梧");
     await sleep(400);
     const byCharacter = { results: results(), expected: expected((entry) => entry.characterIds.includes("wc-1")) };
-    setInput(".world-search input", "wc-1");
+    await setWorldSearch("wc-1");
     await sleep(400);
     const byId = { results: results() };
 
-    setInput(".world-search input", "不存在的条目");
+    await setWorldSearch("不存在的条目");
     await sleep(400);
     const none = { rows: rows().length, empty: (document.querySelector(".world-empty, .empty-state")?.textContent || "").replace(/\s+/g, " ").trim() };
 
@@ -5426,6 +5441,93 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return {
         pass,
         detail: `折叠后可见 ${state.collapsedRows} 行、白塔区隐藏 ${state.deepHidden}；搜索「白塔区」→ ${state.searched.results} 条结果 + ${state.searched.pathRows} 行上级路径（${state.searched.names.join(" / ")}）「${state.searched.count}」；清空后 ${state.cleared.rows} 行、恢复折叠 ${state.cleared.matchesCollapsed}；仅有上级 ${state.childOnly.results}（${state.childOnly.expected}）、再加有关联角色 ${state.childWithCharacters.results}（${state.childWithCharacters.expected}）、仅有关联角色 ${state.withCharacters.results}（${state.withCharacters.expected}）；按角色名 ${state.byCharacter.results}（${state.byCharacter.expected}）、按 id ${state.byId.results}；无结果 ${state.none.rows} 行「${state.none.empty.slice(0, 30)}」`,
+      };
+    });
+
+    // 清空筛选会卸载按钮本身，所以"清空之后焦点在哪"是这次修复的核心，单列一项来盯。
+    const WORLD_CLEAR_FOCUS = `(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const pick = (aria) => document.querySelector('select[aria-label="' + aria + '"]');
+      const setSelect = (aria, value) => {
+        const el = pick(aria);
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set;
+        setter.call(el, value);
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+      const rows = () => document.querySelectorAll(".world-row").length;
+      const count = () => (document.querySelector(".world-count") || {}).textContent || "";
+      const clearButton = () => [...document.querySelectorAll(".world-filter-row .ghost-button")]
+        .find((button) => button.textContent.trim() === "清空筛选");
+
+      const total = rows();
+      setSelect("按层级筛选", "child");
+      await sleep(400);
+      const filtered = { rows: rows(), layer: pick("按层级筛选").value };
+
+      const button = clearButton();
+      if (!button) throw new Error("筛选后没有出现清空筛选按钮");
+      button.focus();
+      const focusedBefore = document.activeElement === button;
+
+      button.click();
+      await sleep(450);
+      const active = document.activeElement;
+      return {
+        total,
+        filtered,
+        focusedBefore,
+        cleared: {
+          rows: rows(),
+          count: count().trim(),
+          layer: pick("按层级筛选").value,
+          characters: pick("按关联角色筛选").value,
+          clearGone: !clearButton(),
+          focusTag: active ? active.tagName : null,
+          focusAria: active ? active.getAttribute("aria-label") : null,
+          focusIsBody: active === document.body,
+          focusOnScreen: active ? active.getBoundingClientRect().height > 0 : false,
+        },
+      };
+    })()`;
+
+    await check("世界观：清空筛选后焦点回到层级筛选，键盘可继续（任务 D2）", async () => {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.goto(base);
+      await cdp.value(SEED_WORLD);
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("世界观管理"));
+      await cdp.waitFor(`!!document.querySelector(".world-row")`, 8000);
+      const state = await cdp.value(WORLD_CLEAR_FOCUS);
+
+      // Focus has to leave the control it landed on with a plain Tab.
+      await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9, nativeVirtualKeyCode: 9 });
+      await sleep(250);
+      const afterTab = await cdp.value(`(() => { const a = document.activeElement; return { tag: a ? a.tagName : null, aria: a ? a.getAttribute("aria-label") : null, isBody: a === document.body }; })()`);
+
+      const pass =
+        state.total > 0 &&
+        // a filter that changed nothing would make the rest of this check vacuous
+        state.filtered.rows > 0 &&
+        state.filtered.rows < state.total &&
+        state.filtered.layer === "child" &&
+        state.focusedBefore &&
+        state.cleared.rows === state.total &&
+        state.cleared.count.startsWith("共 ") &&
+        state.cleared.layer === "any" &&
+        state.cleared.characters === "any" &&
+        state.cleared.clearGone &&
+        state.cleared.focusTag === "SELECT" &&
+        state.cleared.focusAria === "按层级筛选" &&
+        !state.cleared.focusIsBody &&
+        state.cleared.focusOnScreen &&
+        // ...and the next Tab continues inside the filter row instead of restarting
+        afterTab.tag !== "BODY" &&
+        afterTab.aria === "按关联角色筛选";
+
+      return {
+        pass,
+        detail: `共 ${state.total} 行；仅有上级 → ${state.filtered.rows} 行；清空后 ${state.cleared.rows} 行「${state.cleared.count}」，层级=${state.cleared.layer}/角色=${state.cleared.characters}，按钮已消失 ${state.cleared.clearGone}，焦点 ${state.cleared.focusAria || state.cleared.focusTag}（在视口内 ${state.cleared.focusOnScreen}）；再 Tab → ${afterTab.aria || afterTab.tag}`,
       };
     });
 
