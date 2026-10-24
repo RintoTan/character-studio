@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
-import { Button } from "@mantine/core";
+import { Button, TextInput } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
@@ -2136,7 +2136,8 @@ export function CharacterForm({
                             <label className="avatar-url-inline">
                               输入图片 URL
                               <div>
-                                <input
+                                <TextInput
+                                  aria-label="输入图片 URL"
                                   onChange={(event) => setAvatarUrlValue(event.target.value)}
                                   onKeyDown={(event) => {
                                     if (event.key === "Enter") {
@@ -2240,13 +2241,13 @@ export function CharacterForm({
 
                 <label>
                   名字
-                  <input
-                    value={formData.name}
+                  <TextInput
                     onChange={(event) => {
                       updateField("name", event.target.value);
                       setFormError("");
                     }}
                     placeholder="例如：林见月"
+                    value={formData.name}
                   />
                 </label>
 
@@ -2268,10 +2269,10 @@ export function CharacterForm({
                   {genderMode === "自定义" && (
                     <label className="field-cell">
                       自定义性别
-                      <input
-                        value={customGender}
+                      <TextInput
                         onChange={(event) => handleCustomGenderChange(event.target.value)}
                         placeholder="输入自定义性别"
+                        value={customGender}
                       />
                     </label>
                   )}
@@ -2295,28 +2296,28 @@ export function CharacterForm({
                   </label>
                   <label className="field-cell">
                     种族
-                    <input
-                      value={formData.species}
+                    <TextInput
                       onChange={(event) => updateField("species", event.target.value)}
                       placeholder="例如：人类 / 精灵"
+                      value={formData.species}
                     />
                   </label>
                   <label className="field-cell">
                     职业
-                    <input
-                      value={formData.occupation}
+                    <TextInput
                       onChange={(event) => updateField("occupation", event.target.value)}
                       placeholder="例如：调查员 / 魔法师"
+                      value={formData.occupation}
                     />
                   </label>
                   <label className="field-cell">
                     世界观
                     <div className="combo-field">
-                      <input
+                      <TextInput
                         aria-label="世界观，可直接输入自定义名称"
-                        value={formData.worldview}
                         onChange={(event) => updateField("worldview", event.target.value)}
                         placeholder="选择或输入世界观"
+                        value={formData.worldview}
                       />
                       <select
                         aria-label="选择预设世界观"
@@ -2341,11 +2342,11 @@ export function CharacterForm({
                   <label className="field-cell">
                     视觉风格
                     <div className="combo-field">
-                      <input
+                      <TextInput
                         aria-label="视觉风格，可直接输入自定义名称"
-                        value={formData.visualStyle}
                         onChange={(event) => updateField("visualStyle", event.target.value)}
                         placeholder="选择或输入视觉风格"
+                        value={formData.visualStyle}
                       />
                       <select
                         aria-label="选择预设视觉风格"
@@ -2436,8 +2437,8 @@ export function CharacterForm({
                     ))}
                   </div>
                   <div className="custom-tag-row">
-                    <input
-                      value={customTag}
+                    <TextInput
+                      aria-label="添加自定义性格标签"
                       onChange={(event) => setCustomTag(event.target.value)}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
@@ -2445,8 +2446,8 @@ export function CharacterForm({
                           addCustomTag();
                         }
                       }}
-                      aria-label="添加自定义性格标签"
                       placeholder="添加自定义性格标签"
+                      value={customTag}
                     />
                     <button className="ghost-button" onClick={addCustomTag} type="button">
                       添加
@@ -3030,7 +3031,7 @@ export function CharacterForm({
       )}
         {renderHero()}
 
-      <form className="workspace-layout" onSubmit={handleSubmit}>
+      <form className="workspace-layout editor-form" onSubmit={handleSubmit}>
         <aside className="workspace-nav" aria-label="模块导航">
           {/* The rail only ever showed one section's state at a time, so the
               answer to "how much is left" was a manual count down six rows. */}

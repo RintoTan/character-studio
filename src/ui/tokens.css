@@ -530,3 +530,30 @@ body {
     display: none;
   }
 }
+
+/* ---------- Editor text fields ----------
+ *
+ * Mantine's input is a wrapper around a real `<input>`, so the element keeps its
+ * native behaviour (typing, selection, IME, Enter) while the library owns the states.
+ * The editor's fields are 42px like the rest of its form; the library's default is
+ * 36px, which would have silently shrunk every text field by six pixels.
+ */
+.editor-form .mantine-TextInput-input {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 14px;
+  border-color: var(--border-strong);
+  font-size: var(--text-body);
+}
+
+.editor-form .mantine-TextInput-input::placeholder {
+  color: var(--muted);
+}
+
+/* These fields sit beside a preset select or an 添加 button and have to share the row. */
+.editor-form .combo-field .mantine-TextInput-root,
+.editor-form .custom-tag-row .mantine-TextInput-root,
+.editor-form .avatar-url-inline .mantine-TextInput-root {
+  flex: 1 1 auto;
+  min-width: 0;
+}
