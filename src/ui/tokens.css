@@ -572,6 +572,81 @@ body {
   color: var(--muted);
 }
 
+/* ---------- Editor selects ----------
+ *
+ * `Select` is a combobox, not a `<select>`: the visible part is an `<input>` whose value
+ * is the label of the chosen option, and the list is a portal-rendered dropdown. The
+ * field therefore needs the same 42px, radius and border as the text inputs beside it,
+ * which the library's compact 36px default would otherwise shrink.
+ */
+.editor-form .mantine-Select-input {
+  height: var(--control-height);
+  min-height: var(--control-height);
+  padding: 0 14px;
+  font-size: var(--text-body);
+}
+
+.editor-form .mantine-Select-input:not(:focus) {
+  border-color: var(--border-strong);
+}
+
+.editor-form .mantine-Select-input::placeholder {
+  color: var(--muted);
+}
+
+/* The preset selector shares a border with its text input, so it gives up its own:
+   the container draws the outline, and only the divider between the two halves stays. */
+.editor-form .combo-field .mantine-Select-root,
+.editor-form .combo-field .mantine-Input-wrapper {
+  height: 100%;
+  min-width: 0;
+}
+
+/* A percentage height needs a resolved parent: the wrapper is the one that has none,
+   so it is stretched to the row first and the input follows it. */
+.editor-form .combo-field .mantine-Select-input {
+  height: 100%;
+  min-height: var(--control-height);
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 30px 0 10px;
+  font-size: var(--text-meta);
+}
+
+/* The dropdown is a portal, so its surface cannot inherit the card it appears over.
+   Its surface already comes from the Popover rule above; the options are named after the
+   component that owns them (`Select`), not the primitive (`Combobox`), so both are listed. */
+.mantine-Combobox-dropdown,
+.mantine-Select-dropdown {
+  padding: 4px;
+}
+
+.mantine-Combobox-option,
+.mantine-Select-option {
+  border-radius: 6px;
+  color: var(--text-soft);
+  font-size: var(--text-body);
+  padding: 7px 10px;
+}
+
+.mantine-Combobox-option[data-combobox-active],
+.mantine-Select-option[data-combobox-active] {
+  background: var(--control-fill-hover);
+  color: var(--text);
+}
+
+/* `aria-selected` is what the option actually carries; the selected modifier is not
+   emitted by this version. */
+.mantine-Combobox-option[aria-selected="true"],
+.mantine-Select-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  color: var(--text);
+  font-weight: 650;
+}
+
 /* The form's native controls keep their native behaviour, but they should not draw a
    second, greyer focus ring than the Mantine controls beside them. */
 .editor-form :is(input, textarea, select):focus {

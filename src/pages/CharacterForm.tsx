@@ -11,6 +11,7 @@ import { AvatarDisplay } from "../components/AvatarDisplay";
 import { Button, Textarea, TextInput } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
+import { EditorSelect } from "../ui/EditorSelect";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import { InspirationStudio } from "../components/InspirationStudio";
 import { mergeSuggestions } from "../inspiration/engine";
@@ -2277,17 +2278,16 @@ export function CharacterForm({
                 <div className="basic-info-grid">
                   <label className="field-cell">
                     性别
-                    <select
+                    <EditorSelect
+                      allowDeselect={false}
+                      withCheckIcon={false}
+                      data={[
+                        { value: "", label: "请选择性别" },
+                        ...genderOptions.map((gender) => ({ value: gender, label: gender })),
+                      ]}
+                      onChange={(value) => handleGenderModeChange(value ?? "")}
                       value={genderMode}
-                      onChange={(event) => handleGenderModeChange(event.target.value)}
-                    >
-                      <option value="">请选择性别</option>
-                      {genderOptions.map((gender) => (
-                        <option key={gender} value={gender}>
-                          {gender}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </label>
                   {genderMode === "自定义" && (
                     <label className="field-cell">
@@ -2342,23 +2342,21 @@ export function CharacterForm({
                         placeholder="选择或输入世界观"
                         value={formData.worldview}
                       />
-                      <select
+                      <EditorSelect
+                        allowDeselect={false}
+                        withCheckIcon={false}
                         aria-label="选择预设世界观"
-                        onChange={(event) => {
-                          if (event.target.value) {
-                            updateField("worldview", event.target.value);
-                            event.target.value = "";
+                        data={[
+                          { value: "", label: "选择预设" },
+                          ...worldviewOptions.map((option) => ({ value: option, label: option })),
+                        ]}
+                        onChange={(value) => {
+                          if (value) {
+                            updateField("worldview", value);
                           }
                         }}
                         value=""
-                      >
-                        <option value="">选择预设</option>
-                        {worldviewOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
                     <span className="field-hint">可直接输入自定义名称；选预设只是填入输入框，不会改动世界观条目。</span>
                   </label>
@@ -2371,23 +2369,21 @@ export function CharacterForm({
                         placeholder="选择或输入视觉风格"
                         value={formData.visualStyle}
                       />
-                      <select
+                      <EditorSelect
+                        allowDeselect={false}
+                        withCheckIcon={false}
                         aria-label="选择预设视觉风格"
-                        onChange={(event) => {
-                          if (event.target.value) {
-                            updateField("visualStyle", event.target.value);
-                            event.target.value = "";
+                        data={[
+                          { value: "", label: "选择预设" },
+                          ...visualStyleOptions.map((option) => ({ value: option, label: option })),
+                        ]}
+                        onChange={(value) => {
+                          if (value) {
+                            updateField("visualStyle", value);
                           }
                         }}
                         value=""
-                      >
-                        <option value="">选择预设</option>
-                        {visualStyleOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
+                      />
                     </div>
                     <span className="field-hint">可直接输入自定义风格；保存、再次编辑与导入导出都按原文保留。</span>
                   </label>
@@ -3102,24 +3098,22 @@ export function CharacterForm({
               )}{" "}
               / {visibleSectionMeta.length} 节
             </span>
-            <select
+            <EditorSelect
+              allowDeselect={false}
+              withCheckIcon={false}
               aria-label="跳转到分节"
-              onChange={(changeEvent) => {
-                const next = visibleSectionMeta.find(
-                  (section) => section.id === changeEvent.target.value,
-                );
+              data={visibleSectionMeta.map((section, index) => ({
+                value: section.id,
+                label: `第 ${index + 1}/${visibleSectionMeta.length} 节 · ${section.title}`,
+              }))}
+              onChange={(value) => {
+                const next = visibleSectionMeta.find((section) => section.id === value);
                 if (next) {
                   jumpToSection(next.id);
                 }
               }}
               value={activeSection}
-            >
-              {visibleSectionMeta.map((section, index) => (
-                <option key={section.id} value={section.id}>
-                  第 {index + 1}/{visibleSectionMeta.length} 节 · {section.title}
-                </option>
-              ))}
-            </select>
+            />
           </label>
           {visibleSectionMeta.map((section) => (
             <button
