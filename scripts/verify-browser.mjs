@@ -339,6 +339,22 @@ const clickWorkspace = (label) => `
   })()
 `;
 
+// Search is a compact trigger until it is opened, on every workspace. Both handles are
+// the ones WorkspaceSearch publishes (data-testid), so a probe no longer depends on the
+// class names the control happened to have when this check was written.
+const openGraphSearch = async (cdp) => {
+  await cdp.value(`(() => {
+    if (document.querySelector('[data-testid="graph-search-input"]')) return true;
+    const trigger = document.querySelector('[data-testid="graph-search"]');
+    if (!trigger) throw new Error("搜索入口缺失");
+    trigger.click();
+    return true;
+  })()`);
+  if (!(await cdp.waitFor(`!!document.querySelector('[data-testid="graph-search-input"]')`, 4000))) {
+    throw new Error("搜索框没有打开");
+  }
+};
+
 // Opens the app-level clear through the route a user takes: any page but the
 // dashboard shows the footer, and the footer holds the Settings entry.
 const OPEN_CLEAR_DIALOG = `
@@ -508,6 +524,10 @@ const SEED_GRAPH = `
     localStorage.setItem("character-studio.world", JSON.stringify([]));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // Membership lives in the layout file, so a seed that describes "this graph" has to
+    // clear it: otherwise the previous check's roster decides what is drawn, and a
+    // twelve-character seed can end up with an empty canvas.
+    localStorage.removeItem("character-studio.relationship-layout");
     // The graph remembers whether it was last left on 图谱 or 管理. A seed that
     // describes a graph has to start on the graph, or the check measures the
     // previous check's mode instead of its own data.
@@ -594,6 +614,10 @@ const SEED_GRAPH_LARGE = `
     localStorage.setItem("character-studio.world", JSON.stringify([]));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // Membership lives in the layout file, so a seed that describes "this graph" has to
+    // clear it: otherwise the previous check's roster decides what is drawn, and a
+    // twelve-character seed can end up with an empty canvas.
+    localStorage.removeItem("character-studio.relationship-layout");
     // The graph remembers whether it was last left on 图谱 or 管理. A seed that
     // describes a graph has to start on the graph, or the check measures the
     // previous check's mode instead of its own data.
@@ -733,6 +757,10 @@ const SEED_TIMELINE = `
     localStorage.setItem("character-studio.world", JSON.stringify([]));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // Membership lives in the layout file, so a seed that describes "this graph" has to
+    // clear it: otherwise the previous check's roster decides what is drawn, and a
+    // twelve-character seed can end up with an empty canvas.
+    localStorage.removeItem("character-studio.relationship-layout");
     // The graph remembers whether it was last left on 图谱 or 管理. A seed that
     // describes a graph has to start on the graph, or the check measures the
     // previous check's mode instead of its own data.
@@ -1296,6 +1324,10 @@ const SEED_LINKS = `
     localStorage.setItem("character-studio.world", JSON.stringify(world));
     localStorage.setItem("character-studio.about-seen", "true");
     localStorage.removeItem("character-studio.graph-prefs");
+    // Membership lives in the layout file, so a seed that describes "this graph" has to
+    // clear it: otherwise the previous check's roster decides what is drawn, and a
+    // twelve-character seed can end up with an empty canvas.
+    localStorage.removeItem("character-studio.relationship-layout");
     // The graph remembers whether it was last left on 图谱 or 管理. A seed that
     // describes a graph has to start on the graph, or the check measures the
     // previous check's mode instead of its own data.
@@ -1371,7 +1403,15 @@ const READ_RELATED = `
 const READ_GRAPH_CANVAS = `
   (() => {
     const nodes = [...document.querySelectorAll(".relationship-node")];
-    const names = nodes.map((node) => node.querySelector(".relationship-node-name")?.textContent || "");
+    // A node's <text> holds a <title> and the visible tspans, so its textContent is the
+    // name twice over. The title is the single copy of it.
+    const labelOf = (node) => {
+      const label = node.querySelector(".relationship-node-name");
+      if (!label) return "";
+      const title = label.querySelector("title")?.textContent;
+      return (title || [...label.querySelectorAll("tspan")].map((line) => line.textContent).join("")).trim();
+    };
+    const names = nodes.map(labelOf);
     const images = [...document.querySelectorAll(".relationship-node-image")];
     const canvas = document.querySelector(".relationship-canvas");
     const rect = canvas?.getBoundingClientRect();
@@ -1408,8 +1448,14 @@ const READ_GRAPH_CANVAS = `
 // The node's own screen centre, so a hover can be sent where the circle actually is.
 const graphNodeCentre = (name) => `
   (() => {
+    const labelOf = (candidate) => {
+      const label = candidate.querySelector(".relationship-node-name");
+      if (!label) return "";
+      const title = label.querySelector("title")?.textContent;
+      return (title || [...label.querySelectorAll("tspan")].map((line) => line.textContent).join("")).trim();
+    };
     const node = [...document.querySelectorAll(".relationship-node")].find(
-      (candidate) => candidate.querySelector(".relationship-node-name")?.textContent.trim() === ${JSON.stringify(name)},
+      (candidate) => labelOf(candidate) === ${JSON.stringify(name)},
     );
     if (!node) return null;
     const rect = node.querySelector("circle").getBoundingClientRect();
@@ -1445,6 +1491,14 @@ const GRAPH_SEARCH_AND_FOCUS = `
       setter.call(input, value);
       input.dispatchEvent(new Event("input", { bubbles: true }));
     };
+    // A node label is <text><title>name</title><tspan>name</tspan></text>, so its
+    // textContent reads the name twice. The title is the copy to compare.
+    const labelOf = (node) => {
+      const label = node?.querySelector?.(".relationship-node-name");
+      if (!label) return "";
+      const title = label.querySelector("title")?.textContent;
+      return (title || [...label.querySelectorAll("tspan")].map((line) => line.textContent).join("")).trim();
+    };
     const results = () =>
       [...document.querySelectorAll(".graph-search-panel .character-picker-option")].map((option) => ({
         name: option.querySelector(".character-row-name")?.textContent || "",
@@ -1453,16 +1507,19 @@ const GRAPH_SEARCH_AND_FOCUS = `
       }));
 
     // Search is a compact control until it is opened, so a probe that expects the
-    // field has to take the same first step a reader takes.
-    if (!document.querySelector(".graph-search-field input")) {
-      document.querySelector(".graph-search-trigger")?.click();
-      for (let waited = 0; waited < 2000 && !document.querySelector(".graph-search-field input"); waited += 50) {
+    // field has to take the same first step a reader takes. Both halves are addressed
+    // by the handles WorkspaceSearch publishes, not by the class names it used to have.
+    if (!document.querySelector('[data-testid="graph-search-input"]')) {
+      const trigger = document.querySelector('[data-testid="graph-search"]');
+      if (!trigger) throw new Error("搜索入口缺失");
+      trigger.click();
+      for (let waited = 0; waited < 2000 && !document.querySelector('[data-testid="graph-search-input"]'); waited += 50) {
         await sleep(50);
       }
     }
 
-    const field = document.querySelector(".graph-search-field input");
-    if (!field) throw new Error("graph search field missing");
+    const field = document.querySelector('[data-testid="graph-search-input"]');
+    if (!field) throw new Error("搜索框没有打开");
 
     const read = async (needle) => {
       setValue(field, needle);
@@ -1473,7 +1530,7 @@ const GRAPH_SEARCH_AND_FOCUS = `
     const byName = await read("沈青梧");
     const byJob = await read("工匠");
     const byWorld = await read("云海");
-    const namesBefore = [...document.querySelectorAll(".relationship-node-name")].map((node) => node.textContent.trim());
+    const namesBefore = [...document.querySelectorAll(".relationship-node")].map(labelOf);
     const before = {
       transform: document.querySelector(".relationship-canvas > g")?.getAttribute("transform") || "",
       zoom: (document.querySelector(".graph-zoom-readout")?.textContent || "").trim(),
@@ -1491,13 +1548,17 @@ const GRAPH_SEARCH_AND_FOCUS = `
     }
     await sleep(300);
 
-    const focusedName = (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "";
     const focused = {
-      name: focusedName.trim(),
+      name: labelOf(document.querySelector(".relationship-node.focused")),
       nodeCount: document.querySelectorAll(".relationship-node").length,
       focusedCount: document.querySelectorAll(".relationship-node.focused").length,
-      names: [...document.querySelectorAll(".relationship-node-name")].map((node) => node.textContent.trim()),
-      dimmedNames: [...document.querySelectorAll(".relationship-node")].filter((node) => node.classList.contains("dimmed")).map((node) => node.querySelector(".relationship-node-name")?.textContent?.trim() || "（无名称）"),
+      names: [...document.querySelectorAll(".relationship-node")].map(labelOf).filter(Boolean),
+      // Names are suppressed below the legibility floor, so "who is lit" is read from
+      // the node itself: every node carries its character's name as data.
+      litNames: [...document.querySelectorAll(".relationship-node")]
+        .filter((node) => !node.classList.contains("dimmed"))
+        .map((node) => node.getAttribute("data-character-name") || ""),
+      dimmedNames: [...document.querySelectorAll(".relationship-node")].filter((node) => node.classList.contains("dimmed")).map((node) => labelOf(node) || "（无名称）"),
       activeEdges: document.querySelectorAll(".relationship-edge.active").length,
       panelClosed: !document.querySelector(".graph-search-panel"),
       chip: (document.querySelector(".graph-focus-chip")?.textContent || "").trim(),
@@ -1534,14 +1595,19 @@ const GRAPH_SEARCH_OFF_CANVAS = `
 
     // Search is a compact control until it is opened, so a probe that expects the
     // field has to take the same first step a reader takes.
-    if (!document.querySelector(".graph-search-field input")) {
-      document.querySelector(".graph-search-trigger")?.click();
-      for (let waited = 0; waited < 2000 && !document.querySelector(".graph-search-field input"); waited += 50) {
+    if (!document.querySelector('[data-testid="graph-search-input"]')) {
+      const trigger = document.querySelector('[data-testid="graph-search"]');
+      if (!trigger) throw new Error("搜索入口缺失");
+      trigger.click();
+      for (let waited = 0; waited < 2000 && !document.querySelector('[data-testid="graph-search-input"]'); waited += 50) {
         await sleep(50);
       }
     }
 
-    const field = document.querySelector(".graph-search-field input");
+    const field = document.querySelector('[data-testid="graph-search-input"]');
+    // Setter on null is how this check used to fail with a bare "Illegal invocation":
+    // the field it needed was never opened, and the error said nothing about that.
+    if (!field) throw new Error("搜索框没有打开");
     setValue(field, "梵高");
     await sleep(300);
     const option = document.querySelector(".graph-search-panel .character-picker-option");
@@ -1564,7 +1630,14 @@ const GRAPH_SEARCH_OFF_CANVAS = `
       before,
       after: {
         nodes: document.querySelectorAll(".relationship-node").length,
-        focused: (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "",
+        // <text> carries its own <title> as well as the tspans, so textContent would
+        // read the name twice; the title is one copy of it.
+        focused: (() => {
+          const label = document.querySelector(".relationship-node.focused .relationship-node-name");
+          if (!label) return "";
+          const title = label.querySelector("title")?.textContent;
+          return (title || [...label.querySelectorAll("tspan")].map((line) => line.textContent).join("")).trim();
+        })(),
         notice: Boolean(document.querySelector(".graph-notice")),
         storedRelationships: JSON.parse(localStorage.getItem("character-studio.relationships") || "[]").length,
         storedCharacters: JSON.parse(localStorage.getItem("character-studio.characters") || "[]").length,
@@ -1579,6 +1652,10 @@ const GRAPH_SEARCH_OFF_CANVAS = `
 // kept clicking "the second 隐藏" and crashed on a button that no longer existed.
 // A switch that cannot be found by name is a switch this check cannot vouch for,
 // so it throws instead of guessing a position.
+// The filter actually in force, for the summary line: ONLY can arrive as an argument
+// or as the environment, and the summary is printed outside the scope that reads it.
+let activeOnly = "";
+
 const GRAPH_DISPLAY_AND_EXPORT = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -1758,6 +1835,10 @@ const SEED_MANAGE = `(() => {
   localStorage.setItem("character-studio.world", JSON.stringify([]));
   localStorage.setItem("character-studio.about-seen", "true");
   localStorage.removeItem("character-studio.graph-prefs");
+    // Membership lives in the layout file, so a seed that describes "this graph" has to
+    // clear it: otherwise the previous check's roster decides what is drawn, and a
+    // twelve-character seed can end up with an empty canvas.
+    localStorage.removeItem("character-studio.relationship-layout");
   // The graph remembers whether it was last left on 图谱 or 管理. A seed that
   // describes a graph has to start on the graph, or the check measures the
   // previous check's mode instead of its own data.
@@ -2939,7 +3020,12 @@ async function main() {
     // checks is being diagnosed the other forty prove nothing new. A skipped check is
     // never counted as a pass — the summary says how many were left out, so a filtered
     // run cannot be mistaken for a green one.
-    const only = (process.env.ONLY ?? "").trim();
+    // `--only=<substring>` is the same filter as ONLY, carried as an argument: a harness
+    // that re-launches a long run in the background does not always keep its environment,
+    // and a filtered run that silently becomes a full one is worse than no filter.
+    const onlyArg = process.argv.find((argument) => argument.startsWith("--only="));
+    const only = (onlyArg ? onlyArg.slice("--only=".length) : (process.env.ONLY ?? "")).trim();
+    activeOnly = only;
 
     // Section tokens ("04") select whole blocks and are read by `wanted`; anything else
     // is matched against the check's name, which is what a single failing check needs.
@@ -4730,19 +4816,28 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return {
           page: ${PAGE_IDS},
           focusChip: (document.querySelector(".graph-focus-chip")?.textContent || "").replace(/\s+/g, " ").trim(),
-          focused: (document.querySelector(".relationship-node.focused .relationship-node-name") || {}).textContent || "",
+          // <text> carries its own <title> as well as the tspans, so textContent would
+        // read the name twice; the title is one copy of it.
+        focused: (() => {
+          const label = document.querySelector(".relationship-node.focused .relationship-node-name");
+          if (!label) return "";
+          const title = label.querySelector("title")?.textContent;
+          return (title || [...label.querySelectorAll("tspan")].map((line) => line.textContent).join("")).trim();
+        })(),
           focusedCount: document.querySelectorAll(".relationship-node.focused").length,
           activeEdges: document.querySelectorAll(".relationship-edge.active").length,
           dimmed: document.querySelectorAll(".relationship-node.dimmed").length,
           nodes: document.querySelectorAll(".relationship-node").length,
-          // With the compact search the field may be closed; a trigger that says
-          // plain 搜索 is the same fact as an empty field.
+          // WorkspaceSearch keeps the query when it collapses and shows a chip that
+          // names it. So: an open field reports its value, a closed one reports the
+          // chip, and no chip means no query — one fact, three shapes.
           searchEmpty: (() => {
-            const field = document.querySelector(".graph-search-field input");
+            const field = document.querySelector('[data-testid="graph-search-input"]');
             if (field) return field.value;
-            const trigger = document.querySelector(".graph-search-trigger");
-            if (!trigger) return "n/a";
-            return trigger.textContent.trim() === "搜索" ? "" : "n/a";
+            if (document.querySelector('[data-testid="graph-search-active"]')) {
+              return (document.querySelector('[data-testid="graph-search-active"] .ws-search-active-text')?.textContent || "").trim();
+            }
+            return document.querySelector('[data-testid="graph-search"]') ? "" : "n/a";
           })(),
           historyGrowth: window.history.length - before,
         };
@@ -5851,7 +5946,11 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
     await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-    await check("关系网：大网络默认只画核心节点，搜索任何角色都能直接定位（任务 B）", async () => {
+    // 2.48.6 removed the forty-node cap: every connected character is drawn, and a large
+    // network is navigated by search and zoom instead of by hiding people. The promise
+    // this check defends is that replacement one — nothing silently left out, any
+    // character reachable by name, and the focus a way in and out.
+    await check("关系网：大网络全部画上，搜索任何角色都能定位并聚焦，退出恢复概览（任务 B）", async () => {
       // Its own viewport and its own seed: a check that readers of the previous one
       // decide its starting point is not measuring what it says it measures.
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
@@ -5859,72 +5958,62 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(SEED_GRAPH_LARGE);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
-      await cdp.value(`(() => { if (!document.querySelector(".graph-search-field input")) document.querySelector(".graph-search-trigger")?.click(); return true; })()`);
-      await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
+      await openGraphSearch(cdp);
       const sketch = await cdp.value(READ_GRAPH_CANVAS);
-      // 显示全部角色 moved from the page header into 视图, because it changes what the
-      // canvas contains rather than what the page is. The check reads it where a reader
-      // now finds it.
-      await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="外观设置"]').click()`);
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      const scope = await cdp.value(`(() => {
-        const view = document.querySelector(".graph-style-view");
-        return {
-          pressed: view ? [...view.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.textContent.trim()) : [],
-          labels: view ? [...view.querySelectorAll(".graph-control-label")].map((e) => e.textContent.trim()) : [],
-        };
-      })()`);
-      await cdp.value(`document.querySelector(".graph-page-drawer-close").click()`);
-      await new Promise((resolve) => setTimeout(resolve, 300));
       const state = await cdp.value(GRAPH_SEARCH_AND_FOCUS);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-      // Four hundred connected characters, forty drawn: the default is the core of the
-      // network, and the line under the canvas says exactly how much is not drawn.
-      const startingPoint =
-        sketch.nodeCount === 40 &&
-        sketch.scopeNote.includes("40 / 400") &&
-        sketch.scopeNote.includes("360") &&
-        // The scope buttons now say 有关联角色 / 所有角色 and carry their counts: the
-        // old label was the ambiguity this round removed.
-        // `pressed` is a list of labels, so membership is exact: the button now reads
-        // 有关联角色（400）.
-        scope.pressed.some((label) => label.startsWith("有关联角色")) &&
-        scope.labels.includes("范围");
+      // Four hundred connected characters, four hundred drawn. The scope line only
+      // appears when something is left out, so an empty one is the statement that
+      // nothing is.
+      const startingPoint = sketch.nodeCount === 400 && sketch.scopeNote === "";
 
       const searchOk =
         state.byName.length === 1 &&
         state.byName[0].name === "沈青梧" &&
-        state.byName[0].state === "默认未显示" &&
+        state.byName[0].state === "在画布中" &&
         state.byJob.length > 1 &&
         state.byWorld.length > 1 &&
         state.byWorld.every((entry) => entry.name);
-      // 沈青梧 sits between 陆停云 and 角色089 in the chain and is outside the core. The
-      // search has to draw them and their two neighbours — 40 + 3 nodes — then focus:
-      // three names, two lit edges, the other forty dimmed.
+      // 沈青梧 sits between 陆停云 and 角色089 in the chain. Focusing brings those two
+      // names up with it, lights the two edges that meet there, dims the other 397, and
+      // reframes the view — the drawing was at 5% before, which is what "定位" has to
+      // undo.
+      // At 400 nodes the focus frames at 24%, below the 4px floor a neighbour's name
+      // needs, so only the focused name is drawn — the neighbourhood is what has to be
+      // right, and each node carries its identity whether or not its name is painted.
       const focusOk =
         state.focused.name === "沈青梧" &&
-        state.focused.nodeCount === 43 &&
+        state.focused.nodeCount === 400 &&
         state.focused.focusedCount === 1 &&
         state.focused.activeEdges === 2 &&
         state.focused.names.includes("沈青梧") &&
-        state.focused.names.includes("陆停云") &&
-        state.focused.names.includes("角色089") &&
-        state.focused.dimmedNames.length === 40 &&
+        state.focused.litNames.length === 3 &&
+        ["沈青梧", "陆停云", "角色089"].every((name) => state.focused.litNames.includes(name)) &&
+        state.focused.dimmedNames.length === 397 &&
         state.focused.panelClosed &&
         state.focused.chip.includes("沈青梧") &&
         state.focused.transform !== state.before.transform;
-      // Leaving the focus also puts the extra nodes away: the canvas returns to its core.
+      // Leaving the focus puts the whole drawing back: no dimming, no chip, no edges
+      // held open.
       const escapeOk =
-        state.afterEscape.nodeCount === 40 &&
+        state.afterEscape.nodeCount === 400 &&
         state.afterEscape.focusedCount === 0 &&
         state.afterEscape.dimmedCount === 0 &&
         state.afterEscape.activeEdges === 0 &&
         !state.afterEscape.chip;
 
+      const conditions = {
+        全部画上: startingPoint,
+        搜索: searchOk,
+        聚焦: focusOk,
+        退出恢复: escapeOk,
+      };
+      const failing = Object.keys(conditions).filter((name) => !conditions[name]);
+
       return {
-        pass: Boolean(startingPoint && searchOk && focusOk && escapeOk),
-        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」、范围「${scope.pressed.join("/")}」；按名 命中 ${state.byName.length}（${state.byName.map((entry) => entry.name + "/" + entry.state).join(" ")}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}、面板已关 ${state.focused.panelClosed}、聚焦标「${state.focused.chip}」）、平移 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}`,
+        pass: failing.length === 0,
+        detail: `画布 ${sketch.nodeCount} 个节点、名称 ${sketch.names.length} 个、说明「${sketch.scopeNote}」；按名 命中 ${state.byName.length}（${state.byName.slice(0, 3).map((entry) => entry.name + "/" + entry.state).join(" ")}${state.byName.length > 3 ? " …" : ""}）、按职业 命中 ${state.byJob.length}、按世界观 命中 ${state.byWorld.length}；聚焦 ${state.focused.name}（节点 ${state.focused.nodeCount}、聚焦 ${state.focused.focusedCount}、高亮线 ${state.focused.activeEdges}、亮起 ${state.focused.litNames.join("/")}、画出名称 ${state.focused.names.join("/")}、变暗 ${state.focused.dimmedNames.length}、面板已关 ${state.focused.panelClosed}、聚焦标「${state.focused.chip}」）、变换 ${state.before.transform} → ${state.focused.transform}、缩放 ${state.before.zoom} → ${state.focused.zoom}；退出聚焦后 节点 ${state.afterEscape.nodeCount} / 聚焦 ${state.afterEscape.focusedCount} / 变暗 ${state.afterEscape.dimmedCount} / 高亮线 ${state.afterEscape.activeEdges}；未满足 ${failing.join("、") || "无"}`,
       };
     });
 
@@ -5934,17 +6023,20 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       await cdp.value(SEED_GRAPH);
       await cdp.goto(base);
       await cdp.value(clickWorkspace("角色关系网"));
-      await cdp.value(`(() => { if (!document.querySelector(".graph-search-field input")) document.querySelector(".graph-search-trigger")?.click(); return true; })()`);
-      await cdp.waitFor(`!!document.querySelector(".graph-search-field input")`, 8000);
+      await openGraphSearch(cdp);
       const state = await cdp.value(GRAPH_SEARCH_OFF_CANVAS);
       await cdp.send("Emulation.clearDeviceMetricsOverride");
 
-      // Three states in the result list: drawn, left out by the core view (clicking
-      // draws them), and having no edge at all (the one that needs the notice).
+      // Three states in the result list: on the canvas, connected but not on it, and
+      // having no edge at all — the last one is the case this check is about. Since the
+      // canvas became an explicit roster, the notice says which of the two problems the
+      // reader is looking at (not on this canvas) and offers the one way forward; the
+      // 「无关联」 tag in the result row is what names the missing relationships.
       const told =
         state.state === "无关联" &&
         state.before.notice.includes("文森特·梵高") &&
-        state.before.notice.includes("还没有任何关系") &&
+        state.before.notice.includes("尚未加入当前画布") &&
+        state.before.notice.includes("加入画布并定位") &&
         state.before.nodes === 5;
       const reachable =
         state.after.nodes === 6 &&
@@ -6251,11 +6343,14 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       const focused = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        if (!document.querySelector(".graph-search-field input")) {
-          document.querySelector(".graph-search-trigger")?.click();
+        if (!document.querySelector('[data-testid="graph-search-input"]')) {
+          const trigger = document.querySelector('[data-testid="graph-search"]');
+          if (!trigger) return { found: false, reason: "搜索入口缺失" };
+          trigger.click();
           await sleep(250);
         }
-        const input = document.querySelector(".graph-search-field input");
+        const input = document.querySelector('[data-testid="graph-search-input"]');
+        if (!input) return { found: false, reason: "搜索框没有打开" };
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
         setter.call(input, "沈砚");
         input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -6297,7 +6392,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass: Boolean(framed && overview && before.inside === before.nodes),
-        detail: `聚焦前 节点 ${before.nodes}、在画布内 ${before.inside}、缩放 ${before.zoom}（放大两档后 ${zoomedBefore.zoom}）；搜索「沈砚」${focused.found ? "命中并聚焦" : "未命中"} → 聚焦 ${afterFocus.focused}、未变暗 ${afterFocus.lit} 个、其中在画布内 ${afterFocus.litInside}、缩放 ${afterFocus.zoom}、「${afterFocus.chip}」；退出后 聚焦 ${afterEscape.focused}、在画布内 ${afterEscape.inside}/${afterEscape.nodes}、缩放 ${afterEscape.zoom}`,
+        detail: `视口 ${before.viewport}px（画布 ${before.frame ? before.frame.join("×") : "?"}）、聚焦前 节点 ${before.nodes}、在画布内 ${before.inside}、缩放 ${before.zoom}（放大两档后 ${zoomedBefore.zoom}）；搜索「沈砚」${focused.found ? "命中并聚焦" : "未命中"} → 聚焦 ${afterFocus.focused}、未变暗 ${afterFocus.lit} 个、其中在画布内 ${afterFocus.litInside}、缩放 ${afterFocus.zoom}、「${afterFocus.chip}」；退出后 聚焦 ${afterEscape.focused}、在画布内 ${afterEscape.inside}/${afterEscape.nodes}、缩放 ${afterEscape.zoom}`,
       };
     });
 
@@ -9345,7 +9440,9 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
   const failed = results.filter((result) => !result.pass).length;
   console.log(
     `\n${results.length - failed}/${results.length} 通过`
-      + (skipped.length ? `（ONLY=${process.env.ONLY}：跳过 ${skipped.length} 项，不计为通过）` : ""),
+      // The effective filter, whichever way it arrived: a summary that says
+      // "ONLY=undefined" under `--only=` hides which subset actually ran.
+      + (skipped.length ? `（ONLY=${activeOnly}：跳过 ${skipped.length} 项，不计为通过）` : ""),
   );
   process.exit(failed === 0 && skipped.length === 0 ? 0 : 1);
 }
