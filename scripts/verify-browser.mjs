@@ -17,14 +17,43 @@
 // CHROME_PATH overrides the browser, CHROME_BIN works too. It is not part of CI:
 // the workflow has no browser step, and adding one is a separate decision.
 import { spawn } from "node:child_process";
-import { createReadStream, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assignShards, buildPlan, collectChecks, describe } from "./lib/verify-plan.mjs";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const DIST = join(root, "dist");
+
+// ---- sharding -------------------------------------------------------------------
+//
+// One run outgrew the platform's 900s cap, and a killed run cannot say which checks it
+// never reached. `--shard=2/3` runs a third of them, writes a result file, and exits;
+// `--list` prints the plan (id, name, shard) without starting a browser.
+const argOf = (name) => {
+  const hit = process.argv.find((argument) => argument.startsWith(`--${name}=`));
+  return hit ? hit.slice(name.length + 3) : null;
+};
+
+const plan = (() => {
+  const weights = JSON.parse(readFileSync(join(root, "scripts/lib/check-weights.json"), "utf8"));
+  const checks = collectChecks(readFileSync(fileURLToPath(import.meta.url), "utf8"));
+  const built = buildPlan(checks, weights);
+  const shardArg = argOf("shard");
+  if (!shardArg) {
+    return { entries: built.map((entry) => ({ ...entry, shard: 0 })), shardIndex: 0, shardTotal: 0 };
+  }
+  const [indexText, totalText] = shardArg.split("/");
+  const shardTotal = Number(totalText);
+  const shardIndex = Number(indexText);
+  if (!Number.isInteger(shardTotal) || !Number.isInteger(shardIndex) || shardIndex < 1 || shardIndex > shardTotal) {
+    console.error(`--shard 需要 i/n 且 1 ≤ i ≤ n，收到：${shardArg}`);
+    process.exit(2);
+  }
+  return { entries: assignShards(built, shardTotal), shardIndex, shardTotal };
+})();
 const BASE_PATH = "/character-studio";
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -119,8 +148,34 @@ class Cdp {
 
   send(method, params = {}) {
     const id = ++this.nextId;
+    const started = Date.now();
+    // VERIFY_TRACE=1 prints every command with its round trip. A check that times out
+    // leaves no clue about *where* it stopped, and the whole point of the five 90s
+    // failures is that they hang rather than throw -- so the last line printed is the
+    // step to look at. CDP_TIMEOUT_MS bounds a single command: a promise that never
+    // settles is a hang, not a slow product, and it should say which command it was.
+    const trace = process.env.VERIFY_TRACE === "1";
+    const budget = Number(process.env.CDP_TIMEOUT_MS ?? 0);
+    const label = method === "Runtime.evaluate" ? `Runtime.evaluate ${String(params.expression ?? "").replace(/\s+/g, " ").slice(0, 70)}` : method;
+    if (trace) {
+      console.log(`  → ${label}`);
+    }
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timer = budget
+        ? setTimeout(() => {
+            this.pending.delete(id);
+            reject(new Error(`CDP 命令超时（${budget}ms）：${label}`));
+          }, budget)
+        : null;
+      const done = (fn) => (value) => {
+        if (timer) clearTimeout(timer);
+        if (trace) console.log(`  ← ${label} ${Date.now() - started}ms`);
+        fn(value);
+      };
+      this.pending.set(id, {
+        resolve: done(resolve),
+        reject: done(reject),
+      });
       this.socket.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -360,7 +415,9 @@ const openGraphSearch = async (cdp) => {
 const OPEN_CLEAR_DIALOG = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const settings = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+    // The footer entry is labelled 设置与数据; the old English label has been gone long
+    // enough that a /Settings/ matcher made this throw on every run for five checks.
+    const settings = [...document.querySelectorAll("footer button")].find((button) => /设置与数据|Settings/.test(button.textContent));
     if (!settings) throw new Error("footer settings button missing");
     settings.click();
     await sleep(400);
@@ -2908,7 +2965,7 @@ const READ_EDITOR_SECTIONS = `
 const OPEN_SETTINGS_DIALOG = `
   (async () => {
     const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const settings = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+    const settings = [...document.querySelectorAll("footer button")].find((button) => /设置与数据|Settings/.test(button.textContent));
     if (!settings) throw new Error("footer settings button missing");
     settings.click();
     await sleep(400);
@@ -2999,6 +3056,12 @@ const goBack = (expected) => `
 `;
 
 async function main() {
+  if (process.argv.includes("--list")) {
+    const body = { ...describe(plan.entries, plan.shardTotal), entries: plan.entries };
+    console.log(JSON.stringify(body, null, 2));
+    return;
+  }
+
   if (!existsSync(DIST)) {
     console.error("没有 dist/。先跑 npm run build:pages —— 这个脚本要验证的是真实构建产物。");
     process.exit(2);
@@ -3010,6 +3073,9 @@ async function main() {
   const base = `http://127.0.0.1:${port}${BASE_PATH}/`;
   const debugPort = 9000 + Math.floor(Math.random() * 900);
   const results = [];
+  const seenNames = new Map();
+  const rangeArg = argOf("range");
+  const range = rangeArg ? rangeArg.split("-").map(Number) : null;
   // How many checks an ONLY= run left out. Declared here so the summary can report it.
   const skipped = [];
 
@@ -3050,6 +3116,34 @@ async function main() {
     }
   };
 
+  const outDir = join(root, argOf("out") ?? "tmp/verify-browser");
+  mkdirSync(outDir, { recursive: true });
+  const shardFile =
+    plan.shardTotal > 0
+      ? join(outDir, `shard-${plan.shardIndex}-of-${plan.shardTotal}.json`)
+      : join(outDir, "run-all.json");
+  const distEntry = (() => {
+    try {
+      return readdirSync(join(DIST, "assets"))
+        .filter((name) => /^index-.*\.js$/.test(name))
+        .sort()
+        .join(",");
+    } catch {
+      return "(no dist)";
+    }
+  })();
+  const runRecord = {
+    shard: { index: plan.shardIndex, total: plan.shardTotal },
+    build: { distEntry, builtCommit: process.env.VITE_BUILD_COMMIT ?? null },
+    startedAt: new Date().toISOString(),
+    finishedAt: null,
+    finished: false,
+    counts: { total: plan.entries.filter((entry) => plan.shardTotal === 0 || entry.shard === plan.shardIndex).length },
+    checks: [],
+    notAssigned: [],
+  };
+  const flush = () => writeFileSync(shardFile, JSON.stringify(runRecord, null, 2));
+
   try {
     let targets = null;
     for (let attempt = 0; attempt < 40 && !targets; attempt++) {
@@ -3087,7 +3181,35 @@ async function main() {
     const onlyTokens = only ? only.split(",").map((token) => token.trim()).filter(Boolean) : [];
     const nameOnly = onlyTokens.length > 0 && onlyTokens.every((token) => !/^\d/.test(token));
 
+    // ---- result file -------------------------------------------------------------
+    //
+    // Written after every check rather than once at the end: a shard that is killed at
+    // the platform cap leaves a file that stops halfway, and "halfway" is a fact the
+    // summariser has to be able to see instead of inferring a pass from a missing file.
+
     const check = async (name, run) => {
+      const occurrence = seenNames.get(name) ?? 0;
+      seenNames.set(name, occurrence + 1);
+      const entry = plan.entries.find(
+        (candidate) => candidate.name === name && candidate.occurrence === occurrence + 1,
+      );
+
+      // A check the plan does not know about means the file changed without the plan
+      // being rebuilt -- a silent "ran but not counted" is exactly what this prevents.
+      if (!entry) {
+        throw new Error(`计划里没有这项检查（新增后未重新生成计划）：${name}`);
+      }
+
+      if (plan.shardTotal > 0 && entry.shard !== plan.shardIndex) {
+        runRecord.notAssigned.push(entry.id);
+        return;
+      }
+
+      if (range && (entry.position < range[0] || entry.position > range[1])) {
+        skipped.push(name);
+        return;
+      }
+
       if (nameOnly && !onlyTokens.some((token) => name.includes(token))) {
         skipped.push(name);
         return;
@@ -3117,6 +3239,24 @@ async function main() {
       });
       await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
 
+      const startedAt = new Date().toISOString();
+      const record = (entry, status, detail, startedISO) => {
+        runRecord.checks.push({
+          id: entry.id,
+          name,
+          occurrence: entry.occurrence,
+          position: entry.position,
+          shard: entry.shard,
+          status,
+          pass: status === "PASS",
+          detail,
+          startedAt: startedISO,
+          finishedAt: new Date().toISOString(),
+          durationMs: Date.now() - Date.parse(startedISO),
+        });
+        flush();
+      };
+
       try {
         const detail = await Promise.race([
           run(),
@@ -3130,10 +3270,49 @@ async function main() {
         const result = { name, pass: detail.pass, detail: detail.detail };
         results.push(result);
         console.log(`${result.pass ? "PASS" : "FAIL"}  ${name}`);
+        record(entry, result.pass ? "PASS" : "FAIL", result.detail, startedAt);
       } catch (error) {
-        const result = { name, pass: false, detail: String(error.message ?? error) };
+        const message = String(error.message ?? error);
+        // A timeout is not the same failure as a wrong assertion: the check never got to
+        // compare anything, and the run left a still-running body behind. Kept separate
+        // so a report cannot average them into "N failures" and let the difference go.
+        const timedOut = /^检查超时/.test(message) || /^CDP 命令超时/.test(message);
+        // A timeout says a check stopped; it does not say whether the page stopped with
+        // it. Ask the renderer one trivial question with its own short deadline: if that
+        // hangs too, the main thread is blocked and no amount of waiting in the check
+        // would have helped. If it answers, only the input pipeline stalled.
+        let postMortem = "";
+        if (timedOut) {
+          // A drag that was interrupted leaves the left button down, and every later
+          // dispatch queues behind that press -- which is how one slow check turns into
+          // four 90s holes. Release it, and dismiss a dialog if one is up, before the next
+          // check starts. Both are best-effort: no dialog is an error we ignore.
+          try {
+            await cdp.send("Input.dispatchMouseEvent", {
+              type: "mouseReleased", x: 0, y: 0, button: "left", buttons: 0, clickCount: 1,
+            });
+          } catch {
+            // the browser may already be gone
+          }
+          try {
+            await cdp.send("Page.handleJavaScriptDialog", { accept: true });
+          } catch {
+            // no dialog open: expected
+          }
+          try {
+            const answer = await Promise.race([
+              cdp.value("1+1"),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("3s 无响应")), 3000)),
+            ]);
+            postMortem = answer === 2 ? "；超时后 renderer 仍响应" : `；超时后 renderer 返回 ${answer}`;
+          } catch (probeError) {
+            postMortem = `；超时后 renderer 也不响应（${String(probeError.message ?? probeError)}）`;
+          }
+        }
+        const result = { name, pass: false, detail: message + postMortem };
         results.push(result);
         console.log(`FAIL  ${name}\n      ${result.detail}`);
+        record(entry, timedOut ? "TIMEOUT" : "FAIL", result.detail, startedAt);
       } finally {
         if (timer) {
           clearTimeout(timer);
@@ -3982,7 +4161,7 @@ async function main() {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         window.scrollTo(0, 400);
         await sleep(200);
-        const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+        const trigger = [...document.querySelectorAll("footer button")].find((button) => /设置与数据|Settings/.test(button.textContent));
         if (trigger) trigger.click();
         await sleep(400);
         const open = Boolean(document.querySelector(".settings-dialog"));
@@ -4023,7 +4202,7 @@ async function main() {
           })
           .map((element) => element.tagName + "." + String(element.className || "").split(" ")[0]);
         const buttons = [...node.querySelectorAll("button")].map((button) => button.getAttribute("aria-label"));
-        const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+        const trigger = [...document.querySelectorAll("footer button")].find((button) => /设置与数据|Settings/.test(button.textContent));
         if (trigger) trigger.click();
         await sleep(400);
         const modalBar = document.querySelector(".floating-actions");
@@ -4070,7 +4249,7 @@ async function main() {
 
       const opened = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const trigger = [...document.querySelectorAll("footer button")].find((button) => /Settings/.test(button.textContent));
+        const trigger = [...document.querySelectorAll("footer button")].find((button) => /设置与数据|Settings/.test(button.textContent));
         if (!trigger) throw new Error("footer settings button missing");
         trigger.focus();
         trigger.click();
@@ -9604,6 +9783,24 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
     });
   } finally {
     cleanup();
+  }
+
+  runRecord.finishedAt = new Date().toISOString();
+  runRecord.finished = true;
+  runRecord.counts.executed = runRecord.checks.length;
+  runRecord.counts.notAssigned = runRecord.notAssigned.length;
+  runRecord.counts.skipped = skipped.length;
+  runRecord.counts.pass = runRecord.checks.filter((check) => check.status === "PASS").length;
+  runRecord.counts.fail = runRecord.checks.filter((check) => check.status === "FAIL").length;
+  runRecord.counts.timeout = runRecord.checks.filter((check) => check.status === "TIMEOUT").length;
+  flush();
+
+  if (plan.shardTotal > 0) {
+    console.log(
+      `\n分段 ${plan.shardIndex}/${plan.shardTotal}：执行 ${runRecord.counts.executed} 项、`
+        + `本段的其余检查 ${runRecord.counts.notAssigned} 项归其他分段；`
+        + `结果写入 ${shardFile}`,
+    );
   }
 
   console.log("\n浏览器验证（真实 Chrome，Pages 子路径构建）\n");
