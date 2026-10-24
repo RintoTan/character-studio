@@ -136,6 +136,7 @@ import {
   rasterizeToJpeg,
   stripTransientState,
   removeTransientMarks,
+  stripCharacterNames,
   scopeBounds,
   type ExportScope,
   type WorldBounds,
@@ -5515,6 +5516,9 @@ export function RelationshipGraph({
     stripTransientState(clone);
     inlineSvgPresentation(clone);
     removeTransientMarks(clone);
+    // Attributes, not elements: a name the picture does not show must not survive
+    // in the file as metadata.
+    stripCharacterNames(clone);
 
     if (prune) {
       pruneToSelection(clone, selectedIds);

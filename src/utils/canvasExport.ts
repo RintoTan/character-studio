@@ -290,6 +290,19 @@ export function removeTransientMarks(clone: SVGSVGElement) {
 }
 
 /**
+ * Remove each node's name from a copy of the drawing.
+ *
+ * `data-character-name` exists so the live canvas can name a node without looking it
+ * up again, and it stays there. A picture is different: the author can hide names on
+ * screen, and hiding them is a statement about what the file should contain. A hidden
+ * name left behind as an attribute is still the name — the file would carry what the
+ * picture was asked not to show.
+ */
+export function stripCharacterNames(clone: SVGSVGElement) {
+  clone.querySelectorAll("[data-character-name]").forEach((el) => el.removeAttribute("data-character-name"));
+}
+
+/**
  * The drawing's bounds grown to a target aspect ratio, centred on the content.
  *
  * A ratio is a frame, not a crop: widening the short side keeps every node, label
