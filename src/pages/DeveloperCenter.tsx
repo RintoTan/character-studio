@@ -830,23 +830,6 @@ export function DeveloperCenter({
                   </button>
                 </>
               )}
-              {section.id === "ai" && !settings.featureFlags.aiSettings && (
-                <div className="developer-readonly-grid">
-                  <span><strong>AI Development</strong><ComingSoonNote /></span>
-                  <span><strong>说明</strong>AI Settings 入口已由 Feature Flag 隐藏，当前不会调用 AI。</span>
-                </div>
-              )}
-              {section.id === "ai" && settings.featureFlags.aiSettings && (
-                <div className="developer-readonly-grid">
-                  <span><strong>当前状态</strong>🚧 开发中</span>
-                  <span><strong>数据安全</strong>当前不调用 AI，不发送用户数据。</span>
-                  <span><strong>用户配置</strong>API Key 未来由 Settings → AI 设置填写。</span>
-                  <span><strong>开发原则</strong>Developer Center 不保存用户 API Key。</span>
-                  {["AI 人设生成", "AI 润色", "AI 翻译", "AI Prompt 优化", "AI 世界观生成"].map((item) => (
-                    <span key={item}><strong>{item}</strong>Coming Soon</span>
-                  ))}
-                </div>
-              )}
               {section.id === "application" && (
                 <>
                   <div className="developer-settings-grid">
@@ -1132,69 +1115,6 @@ export function DeveloperCenter({
                     恢复默认实验功能
                   </button>
                 </>
-              )}
-              {section.id === "debug" && (
-                <>
-                  <div className="developer-stat-grid compact">
-                    <span><strong>localStorage</strong>{getSafeStorageStatus()}</span>
-                    <span><strong>IndexedDB</strong>{indexedDbStatus}</span>
-                    <span><strong>当前 Theme</strong>{themeMode}</span>
-                    <span><strong>当前路由</strong>{currentPage === "developer" ? "/developer" : currentPage}</span>
-                    <span><strong>数据版本</strong>Local v1</span>
-                    <span><strong>角色数量</strong>{characters.length}</span>
-                    <span><strong>素材数量</strong>{avatarAssetStats.count}</span>
-                  </div>
-                  <textarea
-                    aria-label="开发者配置 JSON 预览"
-                    className="developer-json-preview"
-                    readOnly
-                    value={JSON.stringify(settings, null, 2)}
-                  />
-                  <button
-                    className="ghost-button"
-                    onClick={() => void navigator.clipboard?.writeText(JSON.stringify(settings, null, 2))}
-                    type="button"
-                  >
-                    复制 Developer Settings JSON
-                  </button>
-                </>
-              )}
-              {section.id === "data" && (
-                <div className="developer-stat-grid compact">
-                  <span><strong>角色数量</strong>{characters.length}</span>
-                  <span><strong>正式角色</strong>{formalCharacters}</span>
-                  <span><strong>草稿数量</strong>{draftCharacters}</span>
-                  <span><strong>收藏数量</strong>{favoriteCharacters}</span>
-                  <span><strong>头像素材</strong>{avatarAssetStats.count}</span>
-                  <span><strong>已绑定头像</strong>{avatarBindings}</span>
-                  <span><strong>未绑定头像</strong>{unboundAvatarAssets}</span>
-                  <span><strong>IndexedDB 估算</strong>{formatAssetSize(avatarAssetStats.size)}</span>
-                  <span><strong>localStorage 估算</strong>{formatAssetSize(localStorageSize)}</span>
-                  <span><strong>Prompt Library</strong>external-inspiration-library.txt</span>
-                </div>
-              )}
-              {section.id === "data" && (
-                <div className="developer-actions-row">
-                  <button className="ghost-button" onClick={onOpenAssetLibrary} type="button">
-                    打开头像素材库
-                  </button>
-                  <button className="ghost-button" onClick={onExportCharactersJson} type="button">
-                    导出角色 JSON
-                  </button>
-                  <button className="ghost-button" onClick={onExportFullBackup} type="button">
-                    导出完整备份 ZIP
-                  </button>
-                </div>
-              )}
-              {section.id === "update" && (
-                <div className="developer-readonly-grid">
-                  <span><strong>Version</strong>{settings.project.version}</span>
-                  <span><strong>Sprint</strong>{settings.project.sprint}</span>
-                  <span><strong>Build</strong>{settings.project.build}</span>
-                  <span><strong>Roadmap</strong>关系网、时间线、世界观、批量设计、备份恢复已完成；AI 创作辅助、云同步计划中。</span>
-                  <span><strong>最近记录</strong>Sprint {settings.project.sprint}：批量角色设计、选中轮廓与备份恢复入口。</span>
-                  <span><strong>发布标签</strong>{settings.project.releaseLabel}</span>
-                </div>
               )}
               <div className="developer-chip-list">
                 {section.items.map((item) => (
