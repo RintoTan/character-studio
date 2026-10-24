@@ -1266,7 +1266,7 @@ async function prepareCharactersFromJson(file: File, existingIds: Set<string>) {
 }
 
 async function prepareCharactersFromBackupZip(file: File, existingIds: Set<string>) {
-  const entries = await readStoredZip(file);
+  const entries = await readZipEntries(file);
   const entryByName = new Map(entries.map((entry) => [entry.name, entry]));
   const charactersEntry = entryByName.get("characters.json");
 
@@ -1456,7 +1456,49 @@ function mimeTypeFromFileName(fileName: string) {
   return "image/webp";
 }
 
-async function readStoredZip(file: File): Promise<ZipEntry[]> {
+const UNSUPPORTED_DEFLATE_MESSAGE =
+  "当前浏览器不支持解压压缩过的 ZIP。请换用较新的浏览器，或用「存储」模式重新打包后再导入。";
+
+/**
+ * Deflate an archive entry was written with, back to its bytes.
+ *
+ * ZIP method 8 is the payload without a zlib wrapper, which is what `deflate-raw`
+ * names — and `DecompressionStream` is the only way to read it without shipping a
+ * decompressor of our own. The two failures are kept apart on purpose: a browser that
+ * has never heard of the format cannot be fixed by re-exporting the file, and a
+ * damaged one can.
+ */
+async function inflateRawData(data: ArrayBuffer): Promise<ArrayBuffer> {
+  if (typeof DecompressionStream === "undefined") {
+    throw new Error(UNSUPPORTED_DEFLATE_MESSAGE);
+  }
+
+  let stream: DecompressionStream;
+  try {
+    stream = new DecompressionStream("deflate-raw");
+  } catch {
+    // The constructor exists but rejects the format (older Safari): still a limit of
+    // this browser, not a broken file.
+    throw new Error(UNSUPPORTED_DEFLATE_MESSAGE);
+  }
+
+  try {
+    const decompressed = new Blob([data]).stream().pipeThrough(stream);
+    return await new Response(decompressed).arrayBuffer();
+  } catch {
+    throw new Error("ZIP 条目解压失败，文件可能已损坏");
+  }
+}
+
+/**
+ * Every file in a zip, whether it was stored as-is or deflated.
+ *
+ * Walks the local headers rather than the central directory: this only has to read
+ * archives we are handed, and a truncated tail should not lose the entries above it.
+ * Method 0 is copied through; method 8 is inflated; anything else is named in the
+ * error instead of being reported as corruption.
+ */
+export async function readZipEntries(file: File): Promise<ZipEntry[]> {
   const buffer = await file.arrayBuffer();
   const view = new DataView(buffer);
   const decoder = new TextDecoder();
@@ -1472,15 +1514,21 @@ async function readStoredZip(file: File): Promise<ZipEntry[]> {
     const dataStart = nameStart + nameLength + extraLength;
     const dataEnd = dataStart + compressedSize;
 
-    if (method !== 0 || dataEnd > buffer.byteLength) {
-      throw new Error("暂不支持压缩过的 ZIP，请导入 Character Studio 导出的完整备份");
+    if (dataEnd > buffer.byteLength) {
+      throw new Error("ZIP 条目长度超出文件范围，文件可能已截断");
     }
 
     const name = decoder.decode(new Uint8Array(buffer, nameStart, nameLength));
-    entries.push({
-      name,
-      blob: new Blob([buffer.slice(dataStart, dataEnd)]),
-    });
+
+    if (method === 0) {
+      entries.push({ name, blob: new Blob([buffer.slice(dataStart, dataEnd)]) });
+    } else if (method === 8) {
+      const inflated = await inflateRawData(buffer.slice(dataStart, dataEnd));
+      entries.push({ name, blob: new Blob([inflated]) });
+    } else {
+      throw new Error(`暂不支持 ZIP 压缩方法 ${method}（仅支持存储与 Deflate）`);
+    }
+
     offset = dataEnd;
   }
 
