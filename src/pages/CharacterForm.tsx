@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { AvatarDisplay } from "../components/AvatarDisplay";
-import { Button, TextInput } from "@mantine/core";
+import { Button, Textarea, TextInput } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
@@ -1151,6 +1151,22 @@ function autoGrowTextArea(event: ChangeEvent<HTMLTextAreaElement>) {
   event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
 }
 
+/**
+ * Grows every multiline field to the text it is holding.
+ *
+ * `autoGrowTextArea` only runs on a change, so a field that arrives already carrying a
+ * long value -- opening a saved character, or expanding a section that was folded --
+ * used to keep its minimum height and hide the rest of the text. Running the same
+ * measurement after render closes that gap without a second sizing rule: the CSS cap
+ * still decides where the box stops growing and starts scrolling.
+ */
+function growAllTextAreas(form: HTMLFormElement | null) {
+  form?.querySelectorAll<HTMLTextAreaElement>("textarea.mantine-Textarea-input").forEach((area) => {
+    area.style.height = "auto";
+    area.style.height = `${area.scrollHeight}px`;
+  });
+}
+
 export function CharacterForm({
   character,
   editorSettings = defaultEditorSettings,
@@ -1363,6 +1379,13 @@ export function CharacterForm({
   const activeAvatarCategory =
     avatarCategories.find((category) => category.id === activeAvatarCategoryId) ||
     avatarCategories[0];
+
+  // The fields are measured after the paint that contains them: on open, and whenever a
+  // section is folded or unfolded and its fields come back into the document.
+  const formRef = useRef<HTMLFormElement | null>(null);
+  useEffect(() => {
+    growAllTextAreas(formRef.current);
+  }, [formData, collapsedSections]);
 
   useEffect(() => {
     const nextData: CharacterDraft = character
@@ -2390,7 +2413,7 @@ export function CharacterForm({
                 {renderHelperButtons("appearance", "appearanceDescription")}
                 <label>
                   外貌描述
-                  <textarea
+                  <Textarea
                     value={formData.appearanceDescription}
                     onChange={(event) => {
                       updateField("appearanceDescription", event.target.value);
@@ -2497,7 +2520,7 @@ export function CharacterForm({
               <div className="preference-grid">
                 <label>
                   喜好
-                  <textarea
+                  <Textarea
                     value={formData.likes}
                     onChange={(event) => {
                       updateField("likes", event.target.value);
@@ -2508,7 +2531,7 @@ export function CharacterForm({
                 </label>
                 <label>
                   厌恶
-                  <textarea
+                  <Textarea
                     value={formData.dislikes}
                     onChange={(event) => {
                       updateField("dislikes", event.target.value);
@@ -2519,7 +2542,7 @@ export function CharacterForm({
                 </label>
                 <label>
                   习惯
-                  <textarea
+                  <Textarea
                     value={formData.habits}
                     onChange={(event) => {
                       updateField("habits", event.target.value);
@@ -2530,7 +2553,7 @@ export function CharacterForm({
                 </label>
                 <label>
                   重要物品
-                  <textarea
+                  <Textarea
                     value={formData.importantItems}
                     onChange={(event) => {
                       updateField("importantItems", event.target.value);
@@ -2541,7 +2564,7 @@ export function CharacterForm({
                 </label>
                 <label className="preference-wide">
                   人际关系关键词
-                  <textarea
+                  <Textarea
                     value={formData.relationshipKeywords}
                     onChange={(event) => {
                       updateField("relationshipKeywords", event.target.value);
@@ -2571,7 +2594,7 @@ export function CharacterForm({
                 {renderHelperButtons("ability", "abilityDescription")}
                 <label>
                   能力描述
-                  <textarea
+                  <Textarea
                     value={formData.abilityDescription}
                     onChange={(event) => {
                       updateField("abilityDescription", event.target.value);
@@ -2601,7 +2624,7 @@ export function CharacterForm({
                 {renderHelperButtons("backstory", "backstory")}
                 <label>
                   背景故事
-                  <textarea
+                  <Textarea
                     value={formData.backstory}
                     onChange={(event) => {
                       updateField("backstory", event.target.value);
@@ -2630,7 +2653,7 @@ export function CharacterForm({
               <div className="workspace-card-body">
                 <label>
                   中文人物关键词
-                  <textarea
+                  <Textarea
                     value={formData.characterKeywords}
                     onChange={(event) => {
                       updateField("characterKeywords", event.target.value);
@@ -2666,7 +2689,7 @@ export function CharacterForm({
 
                 <label>
                   英文 AI Prompt
-                  <textarea
+                  <Textarea
                     value={formData.imagePrompt}
                     onChange={(event) => {
                       updateField("imagePrompt", event.target.value);
@@ -3031,7 +3054,7 @@ export function CharacterForm({
       )}
         {renderHero()}
 
-      <form className="workspace-layout editor-form" onSubmit={handleSubmit}>
+      <form className="workspace-layout editor-form" onSubmit={handleSubmit} ref={formRef}>
         <aside className="workspace-nav" aria-label="模块导航">
           {/* The rail only ever showed one section's state at a time, so the
               answer to "how much is left" was a manual count down six rows. */}
