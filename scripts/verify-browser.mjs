@@ -818,31 +818,55 @@ const TIMELINE_FILTERS = `
     const expected = (predicate) => stored().filter(predicate).length;
     const has = (event) => (event.description || "").includes("红藻");
 
+    // The search field is collapsed behind its trigger until it is opened, so every use
+    // goes through the entry point instead of assuming an always-present input.
+    const openSearch = async () => {
+      if (document.querySelector('[data-testid="timeline-search-input"]')) return;
+      const trigger = document.querySelector('[data-testid="timeline-search"]');
+      if (!trigger) throw new Error("找不到搜索入口：" + '[data-testid="timeline-search"]');
+      trigger.click();
+      await sleep(350);
+      if (!document.querySelector('[data-testid="timeline-search-input"]')) throw new Error("搜索框没有展开");
+    };
+    const setSearch = async (value) => {
+      await openSearch();
+      setInput('[data-testid="timeline-search-input"]', value);
+    };
+
     const start = { rows: rows(), count: countText(), toolbar: Boolean(document.querySelector(".timeline-toolbar")) };
-    setInput(".timeline-search input", "  红藻  ");
+    await setSearch("  红藻  ");
     await sleep(400);
     const search = { rows: rows(), count: countText(), expected: expected(has) };
-    setSelect('[aria-label="按年份筛选"]', "2024");
+    // The year and the kind are taken from an event the search actually matches. With a
+    // fixed 2024 / 起源 pair the seed produced 0, and "0 === 0" would have let a toolbar
+    // that ignored both filters pass this step.
+    const match = stored().find(has) || {};
+    const matchYear = (match.date || "").slice(0, 4);
+    const matchKind = match.kind || "origin";
+    setSelect('[aria-label="按年份筛选"]', matchYear);
     await sleep(400);
-    const withYear = { rows: rows(), count: countText(), expected: expected((event) => has(event) && event.date.startsWith("2024")) };
-    setSelect('[aria-label="按类型筛选"]', "origin");
+    const withYear = { rows: rows(), count: countText(), year: matchYear, expected: expected((event) => has(event) && event.date.startsWith(matchYear)) };
+    setSelect('[aria-label="按类型筛选"]', matchKind);
     await sleep(400);
-    const withKind = { rows: rows(), count: countText(), expected: expected((event) => has(event) && event.date.startsWith("2024") && event.kind === "origin") };
+    const withKind = { rows: rows(), count: countText(), kind: matchKind, expected: expected((event) => has(event) && event.date.startsWith(matchYear) && event.kind === matchKind) };
     document.querySelector(".timeline-clear").click();
     await sleep(400);
-    const cleared = { rows: rows(), count: countText(), clear: Boolean(document.querySelector(".timeline-clear")), year: document.querySelector('[aria-label="按年份筛选"]').value, kind: document.querySelector('[aria-label="按类型筛选"]').value };
+    // The button that is pressed is unmounted by the state change it causes, so where
+    // focus lands is part of what "cleared" means: it must not be the document.
+    const focusAfterClear = document.activeElement;
+    const cleared = { rows: rows(), count: countText(), clear: Boolean(document.querySelector(".timeline-clear")), year: document.querySelector('[aria-label="按年份筛选"]').value, kind: document.querySelector('[aria-label="按类型筛选"]').value, focusTag: focusAfterClear ? focusAfterClear.tagName : null, focusAria: focusAfterClear ? focusAfterClear.getAttribute("aria-label") : null, focusIsBody: focusAfterClear === document.body };
 
-    setInput(".timeline-search input", "不存在的关键词");
+    await setSearch("不存在的关键词");
     await sleep(400);
     const none = { rows: rows(), count: countText(), empty: (document.querySelector(".empty-state")?.textContent || "").replace(/\s+/g, " ").trim(), clear: Boolean(document.querySelector(".timeline-clear")) };
     document.querySelector(".timeline-clear").click();
     await sleep(400);
 
     // A character name is a search term, and it must not be the id.
-    setInput(".timeline-search input", "白露");
+    await setSearch("白露");
     await sleep(400);
     const byCharacter = { rows: rows(), expected: expected((event) => event.characterIds.includes("tl-c3")) };
-    setInput(".timeline-search input", "tl-c3");
+    await setSearch("tl-c3");
     await sleep(400);
     const byId = { rows: rows() };
     document.querySelector(".timeline-clear").click();
@@ -5623,12 +5647,17 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         state.search.rows > 0 &&
         state.search.count.includes(`匹配 ${state.search.expected} / 100`) &&
         state.withYear.rows === state.withYear.expected &&
+        state.withYear.expected > 0 &&
+        state.withYear.rows === state.withYear.expected &&
+        state.withKind.expected > 0 &&
         state.withKind.rows === state.withKind.expected &&
         state.withKind.rows <= state.withYear.rows &&
         state.cleared.rows === 100 &&
         !state.cleared.clear &&
         state.cleared.year === "全部年份" &&
         state.cleared.kind === "全部类型" &&
+        state.cleared.focusTag === "SELECT" &&
+        state.cleared.focusAria === "按年份筛选" &&
         state.none.rows === 0 &&
         state.none.empty.includes("没有匹配的事件") &&
         state.none.clear &&
@@ -5638,7 +5667,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass,
-        detail: `100 个事件；搜索「红藻」→ ${state.search.rows} 条（数据应为 ${state.search.expected}）「${state.search.count}」；加 2024 → ${state.withYear.rows}（${state.withYear.expected}）；再加 起源 → ${state.withKind.rows}（${state.withKind.expected}）；清空 → ${state.cleared.rows} 条且筛选归零（${state.cleared.year}/${state.cleared.kind}）；无结果 → ${state.none.rows} 条「${state.none.empty.slice(0, 40)}」；按角色名 白露 → ${state.byCharacter.rows}（${state.byCharacter.expected}）、按 id → ${state.byId.rows}`,
+        detail: `100 个事件；搜索「红藻」→ ${state.search.rows} 条（数据应为 ${state.search.expected}）「${state.search.count}」；加 ${state.withYear.year} → ${state.withYear.rows}（${state.withYear.expected}）；再加 ${state.withKind.kind} → ${state.withKind.rows}（${state.withKind.expected}）；清空 → ${state.cleared.rows} 条且筛选归零（${state.cleared.year}/${state.cleared.kind}）、焦点落在 ${state.cleared.focusAria || state.cleared.focusTag}；无结果 → ${state.none.rows} 条「${state.none.empty.slice(0, 40)}」；按角色名 白露 → ${state.byCharacter.rows}（${state.byCharacter.expected}）、按 id → ${state.byId.rows}`,
       };
     });
 
@@ -5727,7 +5756,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         const navRect = nav.getBoundingClientRect();
         const buttons = [...nav.querySelectorAll("button")];
         const rows = new Set(buttons.map((button) => Math.round(button.getBoundingClientRect().top)));
-        const search = document.querySelector(".timeline-search").getBoundingClientRect();
+        const search = document.querySelector('[data-testid="timeline-search-wrap"]').getBoundingClientRect();
         const item = document.querySelector(".timeline-item").getBoundingClientRect();
         const card = document.querySelector(".timeline-card").getBoundingClientRect();
         return {

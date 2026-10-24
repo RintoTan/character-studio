@@ -89,6 +89,9 @@ export function Timeline({
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [activeYear, setActiveYear] = useState("");
   const yearNavRef = useRef<HTMLElement | null>(null);
+  // Where focus goes after the filters are cleared: the button that was pressed is
+  // unmounted by that state change, and a keyboard user cannot be left on the document.
+  const yearFilterRef = useRef<HTMLSelectElement | null>(null);
   // The event another screen asked to see, lit up until it is looked at.
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const yearRefs = useRef(new Map<string, HTMLLIElement>());
@@ -347,6 +350,7 @@ export function Timeline({
             <select
               aria-label="按年份筛选"
               onChange={(changeEvent) => setFilter({ ...filter, year: changeEvent.target.value })}
+              ref={yearFilterRef}
               value={filter.year}
             >
               <option value={EVERY_YEAR}>{EVERY_YEAR}</option>
@@ -375,7 +379,16 @@ export function Timeline({
             </select>
           </label>
           {isFiltered && (
-            <button className="ghost-button timeline-clear" onClick={() => setFilter(emptyTimelineFilter)} type="button">
+            <button
+              className="ghost-button timeline-clear"
+              onClick={() => {
+                setFilter(emptyTimelineFilter);
+                // The button disappears with this state change, so focus is handed back
+                // to the first filter control rather than falling to the document body.
+                yearFilterRef.current?.focus();
+              }}
+              type="button"
+            >
               清空筛选
             </button>
           )}
