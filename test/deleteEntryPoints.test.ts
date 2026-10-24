@@ -13,6 +13,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
+import { MantineRoot } from "../src/ui/MantineRoot";
 import { DELETE_RECOVERY_KEY } from "../src/storage/deleteRecovery";
 import { loadCharacters } from "../src/storage/characterStorage";
 import { loadRelationships } from "../src/storage/relationshipStorage";
@@ -33,7 +34,10 @@ async function mountApp() {
   document.body.appendChild(container);
   root = createRoot(container);
   await act(async () => {
-    root!.render(createElement(App));
+    // The app is rendered through the same provider main.tsx uses; Mantine components
+    // throw without one, and a test that mounts the real app should mount it the way
+    // the browser does.
+    root!.render(createElement(MantineRoot, null, createElement(App)));
   });
   return container;
 }

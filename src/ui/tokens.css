@@ -1,0 +1,427 @@
+/* The design-system layer.
+ *
+ * Two jobs, in this order:
+ *   1. Give Mantine the values this app already uses, so a migrated control and a
+ *      legacy one are the same size, radius and colour.
+ *   2. Tighten the shared primitives (focus, hover, elevation) once, instead of
+ *      restating them on every page.
+ *
+ * Nothing here paints a brand colour of its own: every value is a token from
+ * styles.css, or a derivation of one.
+ */
+
+/* ---------- Mantine: sizes and rhythm ---------- */
+
+.mantine-Button-root {
+  --button-height-xs: 26px;
+  --button-height-sm: var(--control-height-compact);
+  --button-height-md: var(--control-height);
+  --button-height-lg: var(--control-height);
+  --button-height-xl: 48px;
+  --button-padding-x-xs: 10px;
+  --button-padding-x-sm: 12px;
+  --button-padding-x-md: 14px;
+  --button-padding-x-lg: 18px;
+  font-size: var(--text-body);
+}
+
+.mantine-ActionIcon-root {
+  --ai-size-xs: 24px;
+  --ai-size-sm: 28px;
+  --ai-size-md: var(--control-height-icon);
+  --ai-size-lg: var(--control-height);
+}
+
+.mantine-Input-input,
+.mantine-TextInput-input,
+.mantine-Select-input,
+.mantine-Autocomplete-input {
+  min-height: var(--control-height-compact);
+  height: var(--control-height-compact);
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.mantine-Input-input::placeholder,
+.mantine-TextInput-input::placeholder {
+  color: var(--muted);
+}
+
+.mantine-Input-input:focus,
+.mantine-Input-input:focus-within,
+.mantine-TextInput-input:focus,
+.mantine-Select-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+/* One focus ring for every control, Mantine or not. It is the accent at low opacity so
+   it reads on both surfaces without turning into a second brand colour. */
+.mantine-Button-root:focus-visible,
+.mantine-ActionIcon-root:focus-visible,
+.mantine-SegmentedControl-control:focus-visible,
+.mantine-CloseButton-root:focus-visible,
+.mantine-Menu-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ---------- Mantine: surfaces ---------- */
+
+.mantine-Menu-dropdown,
+.mantine-Popover-dropdown {
+  border: 1px solid var(--border);
+  border-radius: var(--dialog-radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-strong);
+  padding: 4px;
+}
+
+.mantine-Menu-item {
+  border-radius: 6px;
+  font-size: var(--text-body);
+  color: var(--text-soft);
+  padding: 7px 10px;
+}
+
+.mantine-Menu-item[data-hovered] {
+  background: var(--control-fill-hover);
+  color: var(--text);
+}
+
+.mantine-Menu-divider {
+  border-color: var(--border);
+  margin: 4px 2px;
+}
+
+.mantine-Menu-label {
+  color: var(--muted);
+  font-size: var(--text-meta);
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.mantine-Modal-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-strong);
+}
+
+.mantine-Modal-header {
+  background: transparent;
+  padding: var(--pad-surface) var(--pad-surface) 0;
+  min-height: 0;
+}
+
+.mantine-Modal-title {
+  font-size: var(--text-section-title);
+  font-weight: 650;
+}
+
+.mantine-Modal-body {
+  padding: var(--pad-card) var(--pad-surface) var(--pad-surface);
+  color: var(--text-soft);
+}
+
+.mantine-Modal-overlay,
+.mantine-Drawer-overlay {
+  background: color-mix(in srgb, #0b0d11 55%, transparent);
+}
+
+.mantine-Drawer-content {
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+
+.mantine-Tooltip-tooltip {
+  background: var(--text);
+  color: var(--surface);
+  font-size: var(--text-meta);
+  padding: 5px 8px;
+  border-radius: 6px;
+}
+
+.mantine-Tooltip-arrow {
+  background: var(--text);
+}
+
+.mantine-SegmentedControl-root {
+  background: var(--control-fill);
+  border-radius: var(--control-radius);
+  padding: 2px;
+}
+
+.mantine-SegmentedControl-indicator {
+  background: var(--surface);
+  border-radius: calc(var(--control-radius) - 2px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.mantine-SegmentedControl-label {
+  font-size: var(--text-meta);
+  color: var(--muted);
+  padding: 4px 12px;
+  min-height: calc(var(--control-height-compact) - 6px);
+}
+
+.mantine-SegmentedControl-label[data-active] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mantine-Badge-root {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+/* ---------- Shared primitives: one definition each ---------- */
+
+/* Legacy buttons and Mantine buttons share these three states. The colour change is the
+   feedback; no lift, no scale — this is a tool, not a landing page. */
+.primary-button,
+.ghost-button,
+.danger-button,
+.secondary-button {
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.primary-button:focus-visible,
+.ghost-button:focus-visible,
+.danger-button:focus-visible,
+.secondary-button:focus-visible,
+.graph-icon-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.primary-button:active,
+.ghost-button:active,
+.danger-button:active {
+  transform: translateY(0.5px);
+}
+
+/* Cards and panels: one border, one elevation, no double outline. */
+.panel,
+.hero-card,
+.dashboard-head-card {
+  border-color: var(--border);
+}
+
+:root[data-theme="dark"] .mantine-SegmentedControl-indicator {
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .panel,
+:root[data-theme="dark"] .hero-card {
+  box-shadow: none;
+}
+
+/* Mantine resets line-height on some elements; the app's dense tables and lists depend
+   on the inherited 1.5. */
+.mantine-Button-label,
+.mantine-Menu-itemLabel,
+.mantine-Badge-label {
+  line-height: 1.4;
+}
+
+/* ---------- Migrated: WorkspaceSearch ----------
+ *
+ * The component is Mantine now, but the class names stay: layout (flex, mobile media
+ * queries) is expressed against them, and the probes address the test ids rather than
+ * the styling. These rules strip the old wrapper chrome so the Mantine input is the
+ * only thing drawing a border.
+ */
+
+.ws-search .ws-search-trigger {
+  height: var(--control-h);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.ws-search .ws-search-trigger:hover {
+  background: var(--control-fill);
+  border-color: var(--border-strong);
+}
+
+.ws-search.is-open .ws-search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.ws-search .ws-search-field .mantine-TextInput-input {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  font-size: 13px;
+  border-color: var(--border-strong);
+}
+
+.ws-search .ws-search-active {
+  height: var(--control-h);
+  max-width: 190px;
+  padding: 0 4px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--control-fill);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.ws-search .ws-search-collapse {
+  height: var(--control-h);
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.ws-search .ws-search-collapse:hover {
+  color: var(--text);
+  background: var(--control-fill);
+}
+
+@media (max-width: 720px) {
+  .ws-search .ws-search-trigger,
+  .ws-search .ws-search-field .mantine-TextInput-input,
+  .ws-search .ws-search-collapse {
+    height: 44px;
+    min-height: 44px;
+  }
+  .ws-search .ws-search-active {
+    height: 44px;
+  }
+}
+
+/* ---------- Shared craft: elevation, atmosphere, type ----------
+ *
+ * These are token-level changes, so every surface that already reads a token gets the
+ * same treatment: two-layer elevation (a hairline plus a soft spread) instead of one
+ * heavy shadow, and a page background that has a top-to-bottom tint rather than one
+ * flat colour. Both are derived from the theme's own variables, so dark mode follows
+ * without a second set of values.
+ */
+
+:root {
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 12px 28px rgba(15, 23, 42, 0.06);
+  --shadow-strong: 0 2px 4px rgba(15, 23, 42, 0.06), 0 18px 42px rgba(15, 23, 42, 0.12);
+  --dialog-radius: 12px;
+}
+
+:root[data-theme="dark"] {
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 14px 30px rgba(0, 0, 0, 0.32);
+  --shadow-strong: 0 2px 6px rgba(0, 0, 0, 0.45), 0 22px 48px rgba(0, 0, 0, 0.45);
+}
+
+/* The page is one surface, not a flat fill: a faint accent-tinted band behind the
+   masthead fades into the neutral background. 3% is low enough to read as light. */
+body {
+  background-image: radial-gradient(
+    120% 340px at 50% -80px,
+    color-mix(in srgb, var(--primary) 5%, transparent),
+    transparent 70%
+  );
+  background-repeat: no-repeat;
+}
+
+:root[data-theme="dark"] body {
+  background-image: radial-gradient(
+    120% 340px at 50% -80px,
+    color-mix(in srgb, var(--primary) 12%, transparent),
+    transparent 72%
+  );
+}
+
+.workspace-header-title {
+  letter-spacing: -0.02em;
+  line-height: 1.18;
+}
+
+.workspace-header .eyebrow {
+  letter-spacing: 0.08em;
+}
+
+.hero-icon-button {
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard);
+}
+
+.hero-icon-button:hover:not(:disabled) {
+  background: var(--control-fill-hover);
+  color: var(--text);
+}
+
+.hero-icon-button:focus-visible,
+.graph-icon-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Panels sit on the tinted page; give the border the same weight as the elevation so
+   the card reads as one object rather than a box drawn on top of a shadow. */
+.panel,
+.character-card,
+.preview-card {
+  border-color: color-mix(in srgb, var(--border) 88%, var(--text) 12%);
+}
+
+/* The app has broad `span` rules for its own dense rows (a span inside a section title
+   is muted, and so on). Mantine's label and sections are spans too, so they inherit
+   those colours and a filled button ends up with grey text on the accent. The label
+   takes the button's colour; the sections follow it. */
+.mantine-Button-root .mantine-Button-inner,
+.mantine-Button-root .mantine-Button-label,
+.mantine-Button-root .mantine-Button-section {
+  /* `--button-color` is the one value Mantine sets per variant (white on filled, text on
+     default). `!important` is deliberate: the library paints the label from a rule this
+     file cannot outrank by specificity, and the symptom is grey text on the accent. */
+  color: var(--button-color, inherit) !important;
+  font-size: inherit;
+}
+
+.mantine-ActionIcon-root svg,
+.mantine-Button-root svg {
+  display: block;
+}
+
+/* A primary action sitting in a toolbar row matches that row's control height; 42px is
+   the page-level size and was reading as a taller button wedged between 36px icons. */
+.list-toolbar .list-create-button {
+  height: var(--control-height-icon);
+  min-height: var(--control-height-icon);
+  padding: 0 14px;
+}
+
+/* Cards rest on the page, not on a shadow: the border does the separating, and the
+   elevation arrives on hover. Six stacked cards each casting a shadow was reading as
+   six floating panels rather than one list. */
+.character-card {
+  box-shadow: none;
+  transition: border-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard);
+}
+
+.character-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow);
+}
+
+:root[data-theme="dark"] .character-card:hover {
+  box-shadow: var(--shadow);
+}

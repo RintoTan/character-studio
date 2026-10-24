@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } fr
 import { AiSettingsForm } from "../components/AiSettingsForm";
 import { AvatarDisplay } from "../components/AvatarDisplay";
 import { BottomSheet } from "../components/BottomSheet";
+import { ActionIcon, Button } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import { APP_BUILD_DATE, APP_COMMIT_SHORT, APP_SPRINT, APP_VERSION, RELEASE_YEAR } from "../config/version";
 import type { Character } from "../types/character";
@@ -2671,10 +2672,15 @@ export function Dashboard({
             behind — creating a character and the import/export menu — are what made
             the header say two things at once. They come back with the selection. */}
         {!isBulkMode && (
-          <button className="primary-button list-create-button" onClick={onCreate} type="button">
-            <Icon name="plus" size={16} />
+          <Button
+            className="list-create-button"
+            leftSection={<Icon name="plus" size={16} />}
+            onClick={onCreate}
+            size="md"
+            type="button"
+          >
             新建角色
-          </button>
+          </Button>
         )}
         {!isBulkMode && (
         <div className="dashboard-actions" ref={moreMenuRef}>
@@ -2686,12 +2692,13 @@ export function Dashboard({
             ref={fileInputRef}
             type="file"
           />
-          <button
+          <ActionIcon
             aria-expanded={isMoreMenuOpen}
             aria-label="更多操作"
             className="hero-icon-button"
             data-tooltip="更多操作"
             disabled={loadingAction !== null}
+            loading={loadingAction !== null}
             onClick={() => {
               setIsSearchBoxOpen(false);
               setIsSearchPanelOpen(false);
@@ -2699,9 +2706,10 @@ export function Dashboard({
             }}
             ref={moreTriggerRef}
             type="button"
+            variant="default"
           >
-            {loadingAction ? "…" : <Icon name="more" />}
-          </button>
+            <Icon name="more" />
+          </ActionIcon>
           {isMoreMenuOpen && (isNarrowScreen ? (
             <BottomSheet
               open

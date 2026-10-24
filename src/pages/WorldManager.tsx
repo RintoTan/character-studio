@@ -15,6 +15,7 @@ import { RelatedCharacters } from "../components/RelatedCharacters";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
 import { WorkspaceSearch } from "../components/WorkspaceSearch";
 import WorldGuide from "../components/WorldGuide";
+import { Button } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import {
   WORLD_CATEGORIES,
@@ -293,16 +294,16 @@ export function WorldManager({
              workspace instead of a second equally loud button. */
           isNarrowScreen ? (
             <div className="toolbar-group">
-              <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
+              <Button onClick={() => setDraft(emptyDraft())} size="md" type="button">
                 新建条目
-              </button>
+              </Button>
             </div>
           ) : (
             <>
               <div className="toolbar-group">
-                <button className="ghost-button" onClick={onBack} type="button">
+                <Button onClick={onBack} size="md" type="button" variant="default">
                   返回 Dashboard
-                </button>
+                </Button>
               </div>
               <div className="toolbar-group">
                 <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">

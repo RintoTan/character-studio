@@ -16,6 +16,8 @@
     "preview:local": "node scripts/preview-local.mjs"
   },
   "dependencies": {
+    "@mantine/core": "7.17.8",
+    "@mantine/hooks": "7.17.8",
     "@vitejs/plugin-react": "^4.3.4",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",

@@ -1,3 +1,4 @@
+import { Badge, Button, CloseButton, Text, TextInput } from "@mantine/core";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 
@@ -43,6 +44,10 @@ type WorkspaceSearchProps = {
  *
  * Filtering is deliberately absent: filters are the page's own controls and stay visible
  * whether or not a search is running.
+ *
+ * The controls are Mantine's (Button / TextInput / Badge), while the test ids and the
+ * keyboard contract above are this component's. That split is deliberate: probes address
+ * behaviour, the library owns the focus, hover and loading states.
  */
 export function WorkspaceSearch({
   value,
@@ -85,33 +90,40 @@ export function WorkspaceSearch({
   if (!expanded) {
     return (
       <div className={`ws-search${className ? ` ${className}` : ""}`} data-testid={`${testId}-wrap`}>
-        <button
+        <Button
           aria-expanded={false}
           aria-label={label}
           className="ws-search-trigger"
           data-testid={testId}
+          leftSection={<Icon name="search" size={15} />}
           onClick={() => setExpanded(true)}
           ref={triggerRef}
+          size="sm"
           type="button"
+          variant="default"
         >
-          <Icon name="search" size={16} />
-          <span>搜索</span>
-        </button>
+          搜索
+        </Button>
         {value.trim() !== "" && (
-          <span className="ws-search-active" data-testid={`${testId}-active`}>
-            <Icon name="search" size={12} />
+          <Badge
+            className="ws-search-active"
+            data-testid={`${testId}-active`}
+            leftSection={<Icon name="search" size={12} />}
+            rightSection={
+              <CloseButton
+                aria-label="清除搜索"
+                data-testid={`${testId}-active-clear`}
+                onClick={() => onChange("")}
+                size={14}
+              />
+            }
+            size="lg"
+            variant="light"
+          >
             <span className="ws-search-active-text" title={value}>
               {value}
             </span>
-            <button
-              aria-label="清除搜索"
-              data-testid={`${testId}-active-clear`}
-              onClick={() => onChange("")}
-              type="button"
-            >
-              <Icon name="close" size={12} />
-            </button>
-          </span>
+          </Badge>
         )}
       </div>
     );
@@ -119,53 +131,60 @@ export function WorkspaceSearch({
 
   return (
     <div className={`ws-search is-open${className ? ` ${className}` : ""}`} data-testid={`${testId}-wrap`}>
-      <label className="ws-search-field">
-        <Icon name="search" size={15} />
-        <input
-          aria-label={label}
-          data-testid={`${testId}-input`}
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              // Only this field closes. The panel it sits in stays where it is.
-              event.preventDefault();
-              event.stopPropagation();
-              collapse();
-              return;
-            }
-            if (event.key === "Enter") {
-              onSubmit?.();
-            }
-          }}
-          placeholder={placeholder}
-          ref={inputRef}
-          type="search"
-          value={value}
-        />
-        {value !== "" && (
-          <button
-            aria-label="清空搜索"
-            data-testid={`${testId}-clear`}
-            onClick={() => {
-              onChange("");
-              inputRef.current?.focus();
-            }}
-            type="button"
-          >
-            <Icon name="close" size={13} />
-          </button>
-        )}
-      </label>
-      <button
+      <TextInput
+        aria-label={label}
+        className="ws-search-field"
+        data-testid={`${testId}-input`}
+        leftSection={<Icon name="search" size={15} />}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            // Only this field closes. The panel it sits in stays where it is.
+            event.preventDefault();
+            event.stopPropagation();
+            collapse();
+            return;
+          }
+          if (event.key === "Enter") {
+            onSubmit?.();
+          }
+        }}
+        placeholder={placeholder}
+        ref={inputRef}
+        rightSection={
+          value !== "" ? (
+            <CloseButton
+              aria-label="清空搜索"
+              data-testid={`${testId}-clear`}
+              onClick={() => {
+                onChange("");
+                inputRef.current?.focus();
+              }}
+              size={16}
+              tabIndex={-1}
+            />
+          ) : null
+        }
+        rightSectionPointerEvents="all"
+        type="search"
+        value={value}
+      />
+      <Button
         aria-label="收起搜索"
         className="ws-search-collapse"
         data-testid={`${testId}-collapse`}
         onClick={collapse}
+        size="sm"
         type="button"
+        variant="subtle"
       >
         收起
-      </button>
-      {resultSummary && <span className="ws-search-summary">{resultSummary}</span>}
+      </Button>
+      {resultSummary && (
+        <Text className="ws-search-summary" component="span" size="xs">
+          {resultSummary}
+        </Text>
+      )}
     </div>
   );
 }

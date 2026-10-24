@@ -22,6 +22,7 @@ import {
   pruneRelationships,
   saveRelationships,
 } from "../storage/relationshipStorage";
+import { Button } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import GraphGuide from "../components/GraphGuide";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
@@ -8327,9 +8328,9 @@ export function RelationshipGraph({
           {/* Output sits with the page's other main action; the entry under the
               drawing is gone. */}
           {!isStudio && exportMenu}
-          <button className="primary-button" disabled={!canLink} onClick={openDraft} type="button">
+          <Button disabled={!canLink} onClick={openDraft} size="md" type="button">
             新建关系
-          </button>
+          </Button>
         </div>
       </>
     }

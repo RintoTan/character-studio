@@ -421,6 +421,11 @@ export function applyDeveloperSettings(settings: DeveloperSettings) {
 
   document.title = settings.application.pageTitle || "Character Studio";
   root.style.setProperty("--primary", settings.appearance.accentColor);
+  // Anything that keeps its own copy of the accent (the Mantine theme) listens for this,
+  // so there is still exactly one place that decides what the brand colour is.
+  window.dispatchEvent(
+    new CustomEvent("character-studio:accent", { detail: settings.appearance.accentColor }),
+  );
   root.style.setProperty("--primary-hover", hoverVariantOf(settings.appearance.accentColor));
   root.style.setProperty("--on-primary", readableTextOn(settings.appearance.accentColor));
   root.style.setProperty("--control-radius", `${settings.designTokens.inputRadius}px`);

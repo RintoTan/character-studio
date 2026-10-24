@@ -1590,7 +1590,7 @@ function App() {
             </button>
           )}
           <button onClick={() => setIsAppSettingsOpen((current) => !current)} type="button">
-            Settings
+            设置与数据
           </button>
           <span>{developerSettings.content.footerText || developerSettings.application.footerText}</span>
         </footer>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLightDismiss } from "../hooks/useLightDismiss";
 import { useDialogKeyboard } from "../hooks/useDialogKeyboard";
 import { CharacterPicker } from "../components/CharacterPicker";
+import { Button } from "@mantine/core";
 import { Icon } from "../components/Icon";
 import { RelatedCharacters } from "../components/RelatedCharacters";
 import { WorkspaceHeader } from "../components/WorkspaceHeader";
@@ -290,16 +291,16 @@ export function Timeline({
         actions={
           isNarrowScreen ? (
             <div className="toolbar-group">
-              <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
+              <Button onClick={() => setDraft(emptyDraft())} size="md" type="button">
                 新建事件
-              </button>
+              </Button>
             </div>
           ) : (
             <>
               <div className="toolbar-group">
-                <button className="ghost-button" onClick={onBack} type="button">
+                <Button onClick={onBack} size="md" type="button" variant="default">
                   返回 Dashboard
-                </button>
+                </Button>
               </div>
               <div className="toolbar-group">
                 <button className="primary-button" onClick={() => setDraft(emptyDraft())} type="button">
