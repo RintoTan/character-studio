@@ -1,7 +1,7 @@
 {
   "name": "character-studio",
   "private": true,
-  "version": "2.59.6",
+  "version": "2.59.7",
   "type": "module",
   "scripts": {
     "dev": "vite",

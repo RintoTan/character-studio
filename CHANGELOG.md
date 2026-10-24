@@ -1,3 +1,25 @@
+## 2.59.7 —— 备份说实话、导出不带姓名、设置不再假装生效
+
+- 备份元数据：`backup-info.json` 的 `appVersion` 一直是字面量 `"0.1.0"`，每份备份都声称来自同一个
+  远古版本；改为读 `APP_VERSION`。真实导出一次核对：`"appVersion": "2.59.6"`（本次发布前构建）。
+- 导出隐私：节点组上的 `data-character-name` 只在导出副本里剥离，实时画布保留（隐藏姓名是显示，
+  不是删数据）。实测隐藏姓名后导出的 SVG 17,151 字节、`data-character-name` 命中 **0**，同时
+  实时 DOM 仍有 4 个节点带该属性、屏幕上 0 个姓名。
+- 导出画幅：`exportRatio` 从组件 state 移入 `GraphPrefs`（缺字段＝`"canvas"`，旧存储无需迁移）。
+  实测选 16:9 后刷新，面板仍按下 16:9，`localStorage` 记录 `exportRatio: "16:9"`。
+- 备份可读性：ZIP 读取从「只接受 stored」扩展为「stored + Deflate」（`DecompressionStream`
+  `deflate-raw`，无新依赖），按条目 `compressedSize` 截取后再解压。三种失败分开报：浏览器不支持、
+  条目损坏、压缩方法未知。stored 归档行为不变。
+- 设置诚实化：`includeFooter` / `includePromptSection` / `includeTimeInfo` 三个导出开关没有任何
+  消费者（PDF 页脚、Prompt 区、时间信息目前固定），改为「暂未应用」并禁用；`importGuide` 从
+  「已应用」纠正为「暂未应用」。两份清单移入 `config/developerSettings.ts` 作为唯一来源。
+- 设置面板实测：`导出 Footer` / `导出 Prompt 区` / `导出时间信息` 三格为「暂未应用」且开关 disabled，
+  `PDF Light Mode` 仍「已应用」可切换，`导入说明` 由「已应用」转为「暂未应用」，`About 标题` 不变。
+- 验收：`tsc -b` 通过；全量 86 文件 / 924 用例通过；6 次变异检验（逐项回退修复后对应用例变红，
+  恢复后全绿）；真实备份往返（导出 5,473 字节 ZIP → 清空 → 导入）4 角色 / 5 关系 / 2 事件 /
+  2 世界观 / 1 头像绑定逐项一致；`verify:browser` 导出相关 4 项 3 通过（PDF 分页、data URL 头像、
+  四视口面板），「显示设置只含生效开关」在基线 2.59.6 上同样失败，与本版无关；开发者深链 1/1 通过。
+
 ## 2.59.6 —— 左侧边缘的姓名也向内翻转
 
 - 2.59.5 只处理了右侧溢出：375px 下最左节点本身已在视口外（left = -20），姓名的左侧外置
