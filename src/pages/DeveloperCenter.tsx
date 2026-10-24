@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "../components/Icon";
-import { defaultDeveloperSettings, type DeveloperSettings } from "../config/developerSettings";
+import {
+  defaultDeveloperSettings,
+  unwiredContentKeys,
+  unwiredExportDefaultKeys,
+  type DeveloperSettings,
+} from "../config/developerSettings";
 import externalInspirationLibraryRaw from "../data/external-inspiration-library.txt?raw";
 import type { Page, ThemeMode } from "../types/app";
 import type { Character } from "../types/character";
@@ -166,16 +171,6 @@ const appliedFeatureFlags = new Set<keyof DeveloperSettings["featureFlags"]>([
   "experimentalRelationshipGraph",
   "experimentalTimeline",
   "worldManager",
-]);
-
-// Content fields that are editable and persisted but not rendered anywhere yet.
-// footerText is the only wired one, so it keeps the "已应用" badge.
-const unwiredContentKeys = new Set<keyof DeveloperSettings["content"]>([
-  // settingsSummary describes the settings screen itself and has no rendered
-  // slot yet; toastCopy documents what Toast is for and is developer-facing
-  // description rather than product copy. Both stay unwired deliberately.
-  "settingsSummary",
-  "toastCopy",
 ]);
 
 type DeveloperFieldStatus = "applied" | "comingSoon" | "readonly";
@@ -997,18 +992,31 @@ export function DeveloperCenter({
                         value={settings.exportDefaults.pngScale}
                       />
                     </DeveloperField>
-                    {(["pdfLightMode", "includeFooter", "includePromptSection", "includeTimeInfo"] as const).map((key) => (
-                      <DeveloperField
-                        key={key}
-                        title={exportSettingLabels[key]}
-                        description={key === "includeFooter" ? "控制 Preview 展示导出是否附加轻量 Footer。" : "展示导出偏好，Preview 导出时应用。"}
-                      >
-                        <DeveloperSwitch
-                          checked={settings.exportDefaults[key]}
-                          onChange={(value) => updateDeveloperModule("exportDefaults", { [key]: value })}
-                        />
-                      </DeveloperField>
-                    ))}
+                    {(["pdfLightMode", "includeFooter", "includePromptSection", "includeTimeInfo"] as const).map((key) => {
+                      // Three of these four are stored and editable and read by nothing:
+                      // the PDF footer, the prompt block and the timestamp are fixed.
+                      // They keep their switch so the stored value stays visible, but the
+                      // badge tells the truth and the control does not pretend to work.
+                      const wired = !unwiredExportDefaultKeys.has(key);
+                      return (
+                        <DeveloperField
+                          key={key}
+                          title={exportSettingLabels[key]}
+                          description={
+                            wired
+                              ? "控制 Preview 展示导出是否使用浅色背景，实时应用。"
+                              : "该导出规则当前保持固定，后续提供可视化配置。"
+                          }
+                          status={wired ? "applied" : "comingSoon"}
+                        >
+                          <DeveloperSwitch
+                            checked={settings.exportDefaults[key]}
+                            disabled={!wired}
+                            onChange={(value) => updateDeveloperModule("exportDefaults", { [key]: value })}
+                          />
+                        </DeveloperField>
+                      );
+                    })}
                     {(["JSON Metadata", "CSV 字段配置", "ZIP Manifest 策略", "Logo 导出开关", "Version 导出开关"] as const).map((label) => (
                       <DeveloperField key={label} title={label} description="该导出规则当前保持固定，后续提供可视化配置。" status="comingSoon">
                         <button className="ghost-button" disabled type="button">Coming Soon</button>

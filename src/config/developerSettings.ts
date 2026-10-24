@@ -186,6 +186,37 @@ export const defaultDeveloperSettings: DeveloperSettings = {
   },
 };
 
+/**
+ * Settings that are stored and editable but that nothing reads yet.
+ *
+ * They live here rather than in the panel because two things have to agree: the badge
+ * the Developer Center paints, and the fact that no consumer exists. Keeping one list
+ * means a switch that does nothing cannot wear "已应用", and wiring one up is a change
+ * to this list rather than a comment nobody checks.
+ */
+export const unwiredExportDefaultKeys: ReadonlySet<keyof DeveloperSettings["exportDefaults"]> = new Set([
+  // Preview reads jpgQuality, pngScale and pdfLightMode. These three are written to
+  // storage and to this panel and read by nothing: the PDF footer, the prompt block
+  // and the timestamp are fixed today.
+  "includeFooter",
+  "includePromptSection",
+  "includeTimeInfo",
+]);
+
+/**
+ * Content fields that are editable and persisted but rendered nowhere yet.
+ *
+ * settingsSummary describes the settings screen itself and has no rendered slot;
+ * toastCopy documents what Toast is for and is developer-facing description rather
+ * than product copy; importGuide is declared in Dashboard's contentText type but no
+ * surface prints it. All three stay unwired deliberately.
+ */
+export const unwiredContentKeys: ReadonlySet<keyof DeveloperSettings["content"]> = new Set([
+  "settingsSummary",
+  "toastCopy",
+  "importGuide",
+]);
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
