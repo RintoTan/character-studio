@@ -2346,6 +2346,7 @@ export function CharacterForm({
                         allowDeselect={false}
                         withCheckIcon={false}
                         aria-label="选择预设世界观"
+                        comboboxProps={{ width: 190 }}
                         data={[
                           { value: "", label: "选择预设" },
                           ...worldviewOptions.map((option) => ({ value: option, label: option })),
@@ -2373,6 +2374,7 @@ export function CharacterForm({
                         allowDeselect={false}
                         withCheckIcon={false}
                         aria-label="选择预设视觉风格"
+                        comboboxProps={{ width: 190 }}
                         data={[
                           { value: "", label: "选择预设" },
                           ...visualStyleOptions.map((option) => ({ value: option, label: option })),
