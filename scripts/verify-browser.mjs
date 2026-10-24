@@ -4704,7 +4704,13 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       // Put it back from the recovery point, through the button the author would use.
       const rollback = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        const trigger = [...document.querySelectorAll("footer button, button")].find((item) => item.textContent.trim() === "Settings");
+        // The footer entry is labelled 设置与数据 (it was "Settings" once). Exact-match against
+        // the old label returned undefined, so rollback.confirmed was undefined and the
+        // whole rollback half of this check never ran -- the data looked unrestored because
+        // nothing had asked it to restore. No backticks in here: this is inside a template
+        // literal.
+        const trigger = [...document.querySelectorAll("footer button, button")]
+          .find((item) => /^(设置与数据|Settings)$/.test(item.textContent.trim()));
         if (!trigger) return { opened: false };
         trigger.click();
         await sleep(400);
@@ -6946,7 +6952,42 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     })()`;
 
-    const CANVAS_STATE = `(() => {
+    
+// Opening the group form, as the product does it now: the selection bar offers 排列,
+// and 创建分组 lives one press inside it. The old path -- a 创建分组 button directly in
+// the selection bar -- has been gone long enough that this check failed with
+// "Cannot read properties of undefined (reading 'click')" on every run: find() returned
+// undefined and .click() was called on it. Each step reports what it did see, so a
+// future rename fails with the element's name and the surrounding controls instead of a
+// type error forty lines later.
+const OPEN_GROUP_DRAFT = `(async () => {
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const text = (node) => (node.textContent || "").trim();
+  const fail = (step, seen) => ({ ok: false, step, seen });
+
+  const bar = document.querySelector(".graph-context.selection");
+  if (!bar) return fail("selection-bar", document.querySelector(".graph-context")?.className ?? "missing");
+  const arrange = [...bar.querySelectorAll("button")].find((button) => text(button) === "排列");
+  if (!arrange) return fail("arrange-button", [...bar.querySelectorAll("button")].map(text).join(" / "));
+  arrange.click();
+  await sleep(250);
+
+  const create = document.querySelector('[data-testid="align-create-group"]');
+  if (!create) {
+    return fail("align-create-group", [...document.querySelectorAll("[data-testid]")]
+      .map((node) => node.getAttribute("data-testid"))
+      .filter((id) => id.startsWith("align-"))
+      .join(" / ") || "no align-* control");
+  }
+  create.click();
+  await sleep(250);
+
+  const input = document.querySelector('input[aria-label="分组名称"]');
+  if (!input) return fail("group-name-input", (document.querySelector(".graph-group-panel")?.textContent ?? "no panel").trim().slice(0, 80));
+  return { ok: true, controls: [...bar.querySelectorAll("button")].map(text).join(" / ") };
+})()`;
+
+const CANVAS_STATE = `(() => {
       const svg = document.querySelector(".relationship-canvas");
       const transform = svg?.querySelector(":scope > g")?.getAttribute("transform") || "";
       const match = /translate\\(([-0-9.]+) ([-0-9.]+)\\) scale\\(([-0-9.]+)\\)/.exec(transform);
@@ -7207,8 +7248,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       }
 
       await cdp.waitFor(`!!document.querySelector(".graph-context.selection")`, 3000);
-      await cdp.value(`([...document.querySelectorAll(".graph-context.selection button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
-      await cdp.waitFor(`!!document.querySelector('input[aria-label="分组名称"]')`, 3000);
+      const opened = await cdp.value(OPEN_GROUP_DRAFT);
+      if (!opened.ok) {
+        throw new Error(`打不开分组表单：${opened.step}；当前可见 ${opened.seen}`);
+      }
       await cdp.value(`(() => {
         const input = document.querySelector('input[aria-label="分组名称"]');
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -7217,7 +7260,16 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return true;
       })()`);
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await cdp.value(`([...document.querySelectorAll(".graph-group-form button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      const submitted = await cdp.value(`(() => {
+        const form = document.querySelector(".graph-group-form");
+        if (!form) return { ok: false, seen: "no .graph-group-form" };
+        const submit = form.querySelector('button[type="submit"]');
+        if (!submit) return { ok: false, seen: [...form.querySelectorAll("button")].map((b) => b.textContent.trim()).join(" / ") };
+        if (submit.disabled) return { ok: false, seen: "submit disabled (name empty?)" };
+        submit.click();
+        return { ok: true };
+      })()`);
+      if (!submitted.ok) throw new Error(`提交分组失败：${submitted.seen}`);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const grouped = await cdp.value(CANVAS_STATE);
 
@@ -7475,8 +7527,10 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       }
 
       await cdp.waitFor(`!!document.querySelector(".graph-context.selection")`, 3000);
-      await cdp.value(`([...document.querySelectorAll(".graph-context.selection button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
-      await cdp.waitFor(`!!document.querySelector('input[aria-label="分组名称"]')`, 3000);
+      const opened = await cdp.value(OPEN_GROUP_DRAFT);
+      if (!opened.ok) {
+        throw new Error(`打不开分组表单：${opened.step}；当前可见 ${opened.seen}`);
+      }
       await cdp.value(`(() => {
         const input = document.querySelector('input[aria-label="分组名称"]');
         const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -7485,7 +7539,16 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         return true;
       })()`);
       await new Promise((resolve) => setTimeout(resolve, 150));
-      await cdp.value(`([...document.querySelectorAll(".graph-group-form button")].find((b) => b.textContent.trim() === "创建分组")).click()`);
+      const submitted = await cdp.value(`(() => {
+        const form = document.querySelector(".graph-group-form");
+        if (!form) return { ok: false, seen: "no .graph-group-form" };
+        const submit = form.querySelector('button[type="submit"]');
+        if (!submit) return { ok: false, seen: [...form.querySelectorAll("button")].map((b) => b.textContent.trim()).join(" / ") };
+        if (submit.disabled) return { ok: false, seen: "submit disabled (name empty?)" };
+        submit.click();
+        return { ok: true };
+      })()`);
+      if (!submitted.ok) throw new Error(`提交分组失败：${submitted.seen}`);
       await new Promise((resolve) => setTimeout(resolve, 400));
       const grouped = await cdp.value(CANVAS_STATE);
 

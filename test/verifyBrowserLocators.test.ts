@@ -137,4 +137,139 @@ describe("verify-browser locators", () => {
     );
     expect(derivedSamples.length).toBeGreaterThan(0);
   });
+
+});
+
+/**
+ * Labels the suite compares against, rather than selectors it queries.
+ *
+ * `button[aria-label="搜索"]` was findable by name; the checks that broke in the next
+ * round were a different shape: query a list, then pick the element whose text matches a
+ * literal. A class-name audit cannot see those, which is how /Settings/ survived in three
+ * helpers long after the footer entry became 设置与数据 -- five checks kept failing with
+ * "footer settings button missing" and nothing pointed at the string.
+ *
+ * "Rendered" here means the label appears as JSX text, an aria-label, or a title. A label
+ * that is only used in an expression -- a preset table entry, a fixture created at
+ * runtime -- cannot be judged that way, so those are listed with a reason instead.
+ */
+type LabelMatcher = { kind: "equality" | "regex"; alternatives: string[]; line: number };
+
+function extractLabelMatchers(source: string): LabelMatcher[] {
+  const found: LabelMatcher[] = [];
+  const equality = /(?:textContent|innerText)[^;\n]{0,60}?===\s*"([^"$]+)"/g;
+  for (const match of source.matchAll(equality)) {
+    found.push({ kind: "equality", alternatives: [match[1]], line: source.slice(0, match.index).split("\n").length });
+  }
+  const regex = /\/\^?\(?([^/\n]+?)\)?\$?\/\.test\([^)\n]*(?:textContent|innerText)/g;
+  for (const match of source.matchAll(regex)) {
+    const alternatives = match[1]
+      .split("|")
+      .map((part) => part.replace(/[\^$.]/g, "").trim())
+      .filter((part) => part.length > 0);
+    if (alternatives.length > 0) {
+      found.push({ kind: "regex", alternatives, line: source.slice(0, match.index).split("\n").length });
+    }
+  }
+  return found;
+}
+
+function isRendered(label: string, haystack: string): boolean {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (
+    new RegExp(`>\\s*${escaped}\\s*<`).test(haystack) ||
+    haystack.includes(`aria-label="${label}"`) ||
+    haystack.includes(`title="${label}"`) ||
+    haystack.includes(`"${label}"`) && /[\u4e00-\u9fff]/.test(label)
+  );
+}
+
+/** Labels the source cannot render literally, each with the reason it is legitimate. */
+const NOT_LITERAL: Array<{ label: string; why: string; fixture?: boolean }> = [
+  { label: "人物群像", why: "preset label in src/storage/canvasStyle.ts, rendered through the preset table" },
+  { label: "极简展示", why: "preset label in src/storage/canvasStyle.ts, rendered through the preset table" },
+  { label: "档案研究", why: "preset label in src/storage/canvasStyle.ts, rendered through the preset table" },
+  { label: "保存修改", why: "dialog action label built by the form-actions helper" },
+  { label: "保存关系", why: "dialog action label built by the form-actions helper" },
+  { label: "性格", why: "category label from the identity section table" },
+  { label: "PDF", why: "export format id, assembled into the button label at render time" },
+  { label: "Appearance", why: "surface id in src/utils/graphSurfaces.ts, not a visible label" },
+  { label: "改过标题的事件", why: "fixture created by the check itself, never written in src", fixture: true },
+  { label: "新建的事件标题", why: "fixture created by the check itself, never written in src", fixture: true },
+  { label: "第03位北境人", why: "fixture created by the check itself, never written in src", fixture: true },
+  { label: "第04位北境人", why: "fixture created by the check itself, never written in src", fixture: true },
+];
+
+describe("verify-browser label matchers", () => {
+  const source = readFileSync(SCRIPT, "utf8");
+  const haystack = sourceHaystack();
+  const matchers = extractLabelMatchers(source);
+  const alive = (label: string) =>
+    isRendered(label, haystack) || NOT_LITERAL.some((entry) => entry.label === label);
+
+  it("finds the matchers, including the ones this phase repaired", () => {
+    // Non-vacuity: if extraction breaks, the audit below checks nothing and passes.
+    expect(matchers.length).toBeGreaterThan(10);
+    const labels = matchers.flatMap((matcher) => matcher.alternatives);
+    expect(labels).toContain("设置与数据");
+    expect(labels).toContain("确认恢复");
+  });
+
+  it("requires at least one alternative of every matcher to be rendered somewhere", () => {
+    const dead: string[] = [];
+    for (const matcher of matchers) {
+      if (matcher.alternatives.some(alive)) continue;
+      dead.push(`L${matcher.line}  ${matcher.kind}: ${matcher.alternatives.join(" | ")}`);
+    }
+    expect(dead, `labels no component renders:\n${dead.join("\n")}`).toEqual([]);
+  });
+
+  it("would have caught the /Settings/ regression", () => {
+    // Reconstructed: a matcher whose only alternative is the label that was renamed away.
+    const fake = 'find((item) => /^(Settings)$/.test(item.textContent.trim()))';
+    const found = extractLabelMatchers(fake);
+    expect(found).toHaveLength(1);
+    expect(found[0].alternatives).toEqual(["Settings"]);
+    expect(found[0].alternatives.some(alive)).toBe(false);
+  });
+
+  it("accepts a hedged matcher that keeps the old label beside the new one", () => {
+    const found = extractLabelMatchers('/^(设置与数据|Settings)$/.test(item.textContent.trim())');
+    expect(found[0].alternatives).toEqual(["设置与数据", "Settings"]);
+    expect(found[0].alternatives.some(alive)).toBe(true);
+  });
+
+  it("would have caught the equality form of the same regression", () => {
+    // The rollback path compared with === "Settings" -- the exact shape that made the
+    // restore check look like a product defect.
+    const found = extractLabelMatchers('x.textContent.trim() === "Settings"');
+    expect(found[0].kind).toBe("equality");
+    expect(found[0].alternatives.some(alive)).toBe(false);
+  });
+
+  it("flags a text matcher on a label nothing writes", () => {
+    const found = extractLabelMatchers('x.textContent.trim() === "不存在的按钮"');
+    expect(found[0].alternatives.some(alive)).toBe(false);
+  });
+
+  it("keeps the exemption list documented", () => {
+    // Every exemption is a claim about where the label comes from; a bare list would be
+    // a mute switch for exactly the class of bug this file exists to catch.
+    for (const entry of NOT_LITERAL) {
+      expect(entry.why.length, entry.label).toBeGreaterThan(20);
+      if (entry.fixture) {
+        // A fixture label must NOT be in src: if it were, the exemption would be stale.
+        expect(haystack.includes(entry.label), `${entry.label} 已出现在 src 里，豁免应改成实判`).toBe(false);
+      } else {
+        expect(haystack.includes(entry.label), `${entry.label} 已不在 src 里，豁免应删除`).toBe(true);
+      }
+    }
+  });
+
+  it("collects getElementById targets and checks them too", () => {
+    const ids = [...source.matchAll(/getElementById\(\s*["']([^"'$]+)["']\s*\)/g)].map((match) => match[1]);
+    for (const id of ids) {
+      expect(haystack, `getElementById("${id}") targets an id no component renders`).toContain(id);
+    }
+  });
 });
