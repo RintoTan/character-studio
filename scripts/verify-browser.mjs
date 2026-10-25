@@ -4003,11 +4003,34 @@ async function main() {
             h: createBox ? Math.round(createBox.height) : 0,
             inside: createBox ? createBox.right <= barBox.right + 1 : false,
             labelFits: create ? create.scrollWidth <= create.clientWidth + 1 : false,
+            // scrollWidth on the button does not see a label clipped by the button's
+            // own overflow, so ask the label element directly.
+            labelClipped: (() => {
+              const label = create?.querySelector(".mantine-Button-label");
+              return label ? label.scrollWidth > label.clientWidth + 1 : false;
+            })(),
           });
           return {
             width: Math.round(barBox.width),
             height: Math.round(barBox.height),
-            rows: new Set(kids.map((node) => Math.round(box(node).top))).size,
+            // Children on one line do not share a top: a 44px icon button and a 36px
+            // primary button centred in the same row differ by 4px. Counting distinct
+            // tops reported three rows for a row that is visually one, so cluster the
+            // vertical centres instead -- anything within half a control height is the
+            // same line.
+            rows: (() => {
+              const centres = kids.map((node) => {
+                const rect = box(node);
+                return rect.top + rect.height / 2;
+              }).sort((a, b) => a - b);
+              let lines = 0;
+              let last = -Infinity;
+              for (const centre of centres) {
+                if (centre - last > 12) lines += 1;
+                last = centre;
+              }
+              return lines;
+            })(),
             controls,
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
           };
@@ -4084,7 +4107,8 @@ async function main() {
       const toolbarOk = widths.every((width) => {
         const state = toolbar[width];
         const four = state.controls.length === 4 && state.controls.every((control) => control.w > 0 && control.h >= 40 && control.inside);
-        const fits = state.controls.find((control) => control.label === "新建角色")?.labelFits !== false;
+        const create = state.controls.find((control) => control.label === "新建角色");
+        const fits = create?.labelFits !== false && create?.labelClipped !== true;
         return state.rows === 1 && four && fits && state.overflow <= 1;
       });
       const timelineOk =
