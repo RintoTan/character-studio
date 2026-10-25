@@ -8562,6 +8562,41 @@ body:has([aria-modal="true"]) .floating-actions {
   gap: 8px;
 }
 
+/* The card is 1120px wide and the prose is 40em, so half of every card used to be
+   empty. The account and the facts about it answer different questions, so on a wide
+   card they sit side by side: the prose keeps its measure on the left, and 地点 /
+   关联角色 move to the right edge instead of hiding under the last paragraph. */
+.timeline-card-body {
+  display: grid;
+  /* As a grid item this would otherwise be sized by its content, which capped the
+     columns at the prose measure and left the right column stuck at its minimum. */
+  width: 100%;
+  gap: 10px 32px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.timeline-card-main {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .timeline-card-body {
+    grid-template-columns: minmax(0, 40em) minmax(180px, 1fr);
+    align-items: start;
+  }
+
+  .timeline-card-aside {
+    justify-self: end;
+    max-width: 280px;
+  }
+
+  /* A rule above the facts reads as a margin note rather than a second paragraph
+     continued under the title. */
+  .timeline-card-aside > * + * {
+    margin-top: 8px;
+  }
+}
+
 /* The title is the card. Everything above it is a label and everything below it is
    context, so it carries the largest type on the card and wraps rather than clipping. */
 .timeline-card-title {
@@ -10249,8 +10284,7 @@ body:has([aria-modal="true"]) .floating-actions {
    surfaces agree. Only the measure changes: the card still spans the workspace, and
    the year rail, the filters and the event density are untouched. */
 .timeline-page .timeline-card-title,
-.timeline-page .timeline-card p,
-.timeline-page .timeline-card-body {
+.timeline-page .timeline-card p {
   max-width: 40em;
 }
 

@@ -498,33 +498,43 @@ export function Timeline({
                             </button>
                           </span>
                         </div>
-                        <h4 className="timeline-card-title">{event.title}</h4>
-                        {event.location && <p className="timeline-meta">地点：{event.location}</p>}
-                        {event.description && (
-                          <>
-                            <p className="timeline-description">
-                              {isExpanded ? event.description : summary.text}
-                              {summary.truncated && !isExpanded ? "…" : ""}
-                            </p>
-                            {summary.truncated && (
-                              <button
-                                aria-expanded={isExpanded}
-                                className="timeline-description-toggle"
-                                onClick={() => toggleExpanded(event.id)}
-                                type="button"
-                              >
-                                {isExpanded ? "收起描述" : "展开完整描述"}
-                              </button>
+                        {/* Two columns on a wide card: the account on the left, the
+                            facts about it on the right. The right column is where the
+                            empty half of a 1120px card used to be, and it keeps the
+                            prose at its own measure instead of stretching to fill. */}
+                        <div className="timeline-card-body">
+                          <div className="timeline-card-main">
+                            <h4 className="timeline-card-title">{event.title}</h4>
+                            {event.description && (
+                              <>
+                                <p className="timeline-description">
+                                  {isExpanded ? event.description : summary.text}
+                                  {summary.truncated && !isExpanded ? "…" : ""}
+                                </p>
+                                {summary.truncated && (
+                                  <button
+                                    aria-expanded={isExpanded}
+                                    className="timeline-description-toggle"
+                                    onClick={() => toggleExpanded(event.id)}
+                                    type="button"
+                                  >
+                                    {isExpanded ? "收起描述" : "展开完整描述"}
+                                  </button>
+                                )}
+                              </>
                             )}
-                          </>
-                        )}
-                        <RelatedCharacters
-                          characters={event.characterIds.flatMap((id) => {
-                            const character = characterById.get(id);
-                            return character ? [character] : [];
-                          })}
-                          onOpenCharacter={onOpenCharacter}
-                        />
+                          </div>
+                          <aside className="timeline-card-aside">
+                            {event.location && <p className="timeline-meta">地点：{event.location}</p>}
+                            <RelatedCharacters
+                              characters={event.characterIds.flatMap((id) => {
+                                const character = characterById.get(id);
+                                return character ? [character] : [];
+                              })}
+                              onOpenCharacter={onOpenCharacter}
+                            />
+                          </aside>
+                        </div>
                       </article>
                     </li>
                   );
