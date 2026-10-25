@@ -10242,10 +10242,16 @@ body:has([aria-modal="true"]) .floating-actions {
   margin-inline: var(--workspace-inset);
 }
 
+/* The line of prose, measured in `em` rather than `ch`.
+   `ch` is the width of a zero, and at 14.4px that made 68ch about 47 Han characters
+   per line -- past the point where the eye finds the start of the next line. 40em is
+   40 characters, the same ruler `.world-detail-body` already uses, so the two reading
+   surfaces agree. Only the measure changes: the card still spans the workspace, and
+   the year rail, the filters and the event density are untouched. */
 .timeline-page .timeline-card-title,
 .timeline-page .timeline-card p,
 .timeline-page .timeline-card-body {
-  max-width: 68ch;
+  max-width: 40em;
 }
 
 .world-page .world-detail {
@@ -10770,9 +10776,9 @@ body:has([aria-modal="true"]) .floating-actions {
   border-top: 1px solid var(--border);
 }
 
-.timeline-description {
-  max-width: 72ch;
-}
+/* `.timeline-description { max-width: 72ch }` stood here and never applied: the
+   `.timeline-page .timeline-card p` rule above is more specific, so the description was
+   capped at 68ch of its own font while this said 72. One measure, stated once. */
 
 /* Edit and delete stay where they were, quieter until the card is pointed at. */
 .timeline-actions {
