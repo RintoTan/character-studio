@@ -10976,6 +10976,27 @@ body:has([aria-modal="true"]) .floating-actions {
     margin-left: 0;
   }
 
+  /* At 320 the row has 252px between the card edges: 44 + 42 + 42 + the primary
+     action leaves no room for a two-character label on the search trigger. It keeps
+     the magnifier, which is the affordance people press, and keeps its accessible
+     name 搜索角色 — the label is the only thing that goes. */
+  .list-search .ws-search-trigger {
+    width: 44px;
+    min-width: 44px;
+    padding-inline: 0;
+  }
+
+  .list-search .ws-search-trigger .mantine-Button-label {
+    display: none;
+  }
+
+  /* The plus goes before the label does: at 100px the icon plus four Han characters
+     clips the last one, and a primary button that reads 新建角 is worse than one that
+     reads 新建角色 with no glyph in front of it. */
+  .list-toolbar .list-create-button .mantine-Button-section {
+    display: none;
+  }
+
   .list-toolbar .list-create-button {
     padding-inline: 8px;
   }
@@ -13221,8 +13242,11 @@ circle.graph-grid-dot {
     padding: 8px 2px;
   }
 
-  /* Tools on one line, the primary task on its own: four controls plus a wide
-     新建角色 cannot share 343px without pushing 更多 onto a line by itself. */
+  /* One row: search, filter, more, then the primary action at the far right.
+     This used to hand 新建角色 a whole line of its own, on the grounds that four
+     controls plus the label could not share 343px. That was true when the search was
+     an open input; the collapsed trigger is 69px, so the row now has room and the
+     primary action grows into it instead of pushing the list 48px down. */
   .list-toolbar {
     flex-wrap: wrap;
   }
@@ -13232,7 +13256,12 @@ circle.graph-grid-dot {
   }
 
   .list-toolbar .list-create-button {
-    flex: 1 1 100%;
+    /* Basis 0, not auto: `auto` bases the line on the label's full width, and at 320
+       that one number is what pushed the button onto its own line. With a zero basis
+       the action grows into whatever the three icon controls leave over. */
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 42px;
     order: 20;
     justify-content: center;
   }

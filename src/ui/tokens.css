@@ -408,6 +408,16 @@ body {
   padding: 0 14px;
 }
 
+/* On a phone this button shares its row with three 42px icon controls, so it matches
+   them rather than sitting six pixels shorter in the same line. Desktop keeps the
+   36px version that lines up with the search field's baseline. */
+@media (max-width: 720px) {
+  .list-toolbar .list-create-button {
+    height: 42px;
+    min-height: 42px;
+  }
+}
+
 /* Cards rest on the page, not on a shadow: the border does the separating, and the
    elevation arrives on hover. Six stacked cards each casting a shadow was reading as
    six floating panels rather than one list. */
