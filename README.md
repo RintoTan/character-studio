@@ -181,7 +181,7 @@ docs/                 # 技术文档、状态、路线图、截图
 ## 项目状态
 
 - 当前版本：**v2.60.0**
-- 阶段：Mantine UI 收尾完成，处于**发布候选**（分支 `ui/mantine-foundation`）。候选**尚未合并、尚未部署**，线上仍是 v2.59.8
+- 阶段：**v2.60.0 已发布**（2026-10-25）。`main` 与发布分支一致，线上产物由 GitHub Actions 构建；线上版本核对以 `npm run verify:deploy` 的比对结果为准
 - 已知边界：浏览器验收的完整套件并非每次发布都全量执行，详见 [docs/TESTING.md](docs/TESTING.md)；移动端工具栏与首屏密度仍在收敛，详见 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)
 
 详细状态、已知问题与下一步见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 与 [docs/ROADMAP.md](docs/ROADMAP.md)。

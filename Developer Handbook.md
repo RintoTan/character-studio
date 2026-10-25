@@ -9,7 +9,7 @@
 - 四个工作区（角色创作、关系网、时间线、世界观管理）**均已交付并可用**，不再是「未来功能」。
 - 输入控件在 v2.60.0 统一到 Mantine 7（`TextInput` / `Textarea` / `EditorSelect`），样式仍由本仓库的令牌决定，见 `docs/ARCHITECTURE.md` §0。
 - **云同步与多语言适配不在当前规划内**；本文中把它们写作「未来版本目标」的段落属于早期判断，已失效。
-- 当前分支 `ui/mantine-foundation` 是 v2.60.0 发布候选，**尚未推送、尚未部署**，线上仍是 2.59.8。
+- v2.60.0 已于 2026-10-25 发布：`ui/mantine-foundation` 合并进 `main`，由 GitHub Actions 构建部署；线上具体构建以 `npm run verify:deploy` 的比对为准。
 
 下面开始是原始设计记录，保留当时的版本与用词。
 
