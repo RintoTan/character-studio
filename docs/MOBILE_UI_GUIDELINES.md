@@ -1,5 +1,10 @@
 # Character Studio — Mobile UI Guidelines
 
+> **状态（2026-10-25，v2.60.0 候选）**：本文是**设计目标**，不是现状描述。
+> 已达成：底部抽屉切换工作区、搜索折叠/展开、44px 触控目标、`scrollWidth === clientWidth`。
+> **未达成**：§8 的「画布进入首屏、搜索只占一行」在 320–430px 下实际是 3 行工具栏，375px 首卡 `y=464`。
+> 这项差距登记为待决策契约（见 `docs/KNOWN_ISSUES.md` 与 `docs/FEATURES.md`），不在 v2.60.0 内改布局。
+
 Applies to the four workspaces: 角色创作工作台, 角色关系网, 世界观管理, 世界观时间线.
 Desktop and phone share business logic and the same design language; they do not have to
 share an information architecture.

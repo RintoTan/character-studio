@@ -57,11 +57,13 @@ Character Studio 把这三件事放进同一个工作台：
 
 ![世界观管理](docs/screenshots/v2.60/world.png)
 
-### 深色主题
+### 深色主题与手机
 
-四个工作区共用同一套设计令牌，深浅色同步切换，画布、时间线与详情页的对比度一致。
+四个工作区共用同一套设计令牌，深浅色同步切换，画布、时间线与详情页的对比度一致。手机上四个工作区通过底部抽屉切换，卡片改为单列。
 
 ![深色主题下的关系网](docs/screenshots/v2.60/relationship-graph-dark.png)
+
+<img src="docs/screenshots/v2.60/mobile-dashboard.png" alt="390px 宽的手机工作台" width="320">
 
 ---
 
@@ -179,7 +181,7 @@ docs/                 # 技术文档、状态、路线图、截图
 ## 项目状态
 
 - 当前版本：**v2.60.0**
-- 阶段：Mantine UI 收尾完成，进入发布候选（候选分支尚未合并至 `main`）
+- 阶段：Mantine UI 收尾完成，处于**发布候选**（分支 `ui/mantine-foundation`）。候选**尚未合并、尚未部署**，线上仍是 v2.59.8
 - 已知边界：浏览器验收的完整套件并非每次发布都全量执行，详见 [docs/TESTING.md](docs/TESTING.md)；移动端工具栏与首屏密度仍在收敛，详见 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)
 
 详细状态、已知问题与下一步见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 与 [docs/ROADMAP.md](docs/ROADMAP.md)。
