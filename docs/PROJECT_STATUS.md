@@ -1,6 +1,6 @@
 # Character Studio —— 项目状态总览
 
-> 文档最后核查日期：**2026-10-23** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
+> 文档最后核查日期：**2026-10-25** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
 > 本文只记录**有证据**的结论。凡未验证的，一律显式标注。
 > **位置变更**：本文件原在仓库根目录，2026-10-15 随文档落位规整移入 `docs/`（根目录只保留 `README.md` / `CHANGELOG.md` / `Developer Handbook.md`）。文档索引见 [`README.md`](README.md)。
 
@@ -10,13 +10,14 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.59.6**（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.60.0**（发布候选，分支 `ui/mantine-foundation`；线上仍为 2.59.8，未经授权未推送）（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
-| 分支 | `main` |
+| 分支 | `ui/mantine-foundation`（v2.60.0 发布候选；`main` 仍为 `110c519`）
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
 | 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
-| 工作区状态 | 以 `git status --porcelain` 为准；本轮收尾见下方「Sprint 56.x（2.59.0）」的发布记录 || Sprint 51.3 状态 | **已发布 2.47.0**（原记录：画布工作室已完成本地实现（拖动加固、撤销重做、对齐分布、多布局、五种预设、高级外观、沉浸工作室、局部样式、字号、聚光灯、透镜、书签、PNG/SVG 导出、导出样式内联、UI Pass A 信息架构与工具栏/工具坞整改、UI Pass B0 移动端独立布局与字号/图标规范、B1 节点形态与连线语言），**已于 2.40.0 发布** |
+| 工作区状态 | 以 `git status --porcelain` 为准；本轮收尾见下方「Sprint 56.x（2.59.0）」的发布记录 |
+| Sprint 51.3 状态 | **已发布 2.47.0**（原记录：画布工作室已完成本地实现（拖动加固、撤销重做、对齐分布、多布局、五种预设、高级外观、沉浸工作室、局部样式、字号、聚光灯、透镜、书签、PNG/SVG 导出、导出样式内联、UI Pass A 信息架构与工具栏/工具坞整改、UI Pass B0 移动端独立布局与字号/图标规范、B1 节点形态与连线语言），**已于 2.40.0 发布** |
 | 工作区状态 | 以 `git status --porcelain` 为准（本阶段只做本地提交） |
 | 远端 | `origin` → `https://github.com/RintoTan/character-studio.git` |
 | 线上地址 | <https://rintotan.github.io/character-studio/> |

@@ -4,6 +4,16 @@
 
 ---
 
+## 0. UI 层：Mantine 与品牌令牌（2.60.0）
+
+组件库只承担「表单控件 + 主题基座」，视觉仍由本仓库的令牌决定：
+
+- `src/ui/EditorSelect.tsx`：Mantine `Select` 的封装。组合框的值是 `string | null`，选项是 `[role="option"]`；库本身不写 `aria-expanded`，所以封装层通过 `comboboxProps.onDropdownOpen/onDropdownClose` 用 ref 自己写，屏幕阅读器才能读到展开状态。
+- `src/ui/tokens.css`：`.editor-form` 下的 `TextInput` / `Textarea` / `Select` 输入框、下拉层与选项的边框、底色、聚焦环统一取品牌紫色令牌；下拉层 `z-index: 300`，深色主题同一套变量。
+- 其它页面不使用 Mantine 布局组件，避免出现第二套间距体系；`src/styles.css` 仍是唯一的样式来源，令牌集中在文件顶部的 `:root`。
+
+约束：新增控件优先复用上述两个入口；不要在页面里直接写 Mantine 的内联样式覆盖品牌色。
+
 ## 1. 技术栈与入口
 
 | 项 | 值 | 来源 |
