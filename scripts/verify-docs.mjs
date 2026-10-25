@@ -21,7 +21,11 @@ const stripCode = (text) => text.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]
 
 // ---- 1. images referenced by README exist and are real screenshots -------------------
 const readme = read("README.md");
-const images = [...readme.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]);
+// Markdown images plus the raw <img src> form, which is how a screenshot gets a width.
+const images = [
+  ...[...readme.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map((m) => m[1]),
+  ...[...readme.matchAll(/<img[^>]+src="([^"]+)"/g)].map((m) => m[1]),
+];
 for (const src of images) {
   if (/^https?:/.test(src)) continue; // badges live on someone else's server
   const path = join(ROOT, decodeURIComponent(src));
