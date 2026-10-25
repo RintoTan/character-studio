@@ -1,3 +1,13 @@
+## 2.60.0 —— Mantine UI 基础层落地与阅读体验收尾
+
+- **编辑器输入统一到 Mantine**：8 个单行字段改用 `TextInput`、10 个多行字段改用 `Textarea`、4 个选择控件改用 `EditorSelect`（Mantine `Select` 的组合框封装）。字段值、默认值、`name/id`、标签关联、校验文案、草稿自动保存与手动保存流程均未变；组合框保留自由输入与 `.value` 契约。
+- **新增 `src/ui/tokens.css`**：Mantine 组件的边框、底色、聚焦环与下拉层统一取品牌紫色令牌，深浅色同步；320px 下预设下拉不出视口。
+- **时间线正文行宽**：`68ch` → `40em`（约 40 字/行），与世界观详情的 `40em` 同一把尺；同时删除一条从未生效的 `.timeline-description { max-width: 72ch }`（被更具体的选择器覆盖）。1440 / 1920 实测正文 576px，1024 无横向溢出。
+- **关系网默认外观**：`normalizeCanvasStyle` 在没有 `style` 字段时改为返回深拷贝，不再按引用交出模块级默认对象——就地改写默认值的调用不会再污染后续读取。
+- **筛选清空后的焦点**：时间线与世界观页清空筛选后焦点回到筛选控件，不再落到 `body`。
+- **验证工具**：`verify:browser` 支持 `--only=` / `--range=` / `--shard=i/n` 与机器可读汇总；缺失分段、重复 ID、SKIP 记作通过都会被判为 INCOMPLETE 而非 PASS。
+- **已知限制**：完整 88 项浏览器检查并非每次发布都全量执行（见 `docs/TESTING.md`）；长会话下 CDP 输入事件偶有积压，记录为 TIMEOUT 且不计为通过；320–430px 工具栏仍为两到三行，列入后续体验迭代。
+
 ## 2.59.8 —— Developer Center 的四个不可达分区下线
 
 - 删除 `ai` / `debug` / `data` / `update` 四个面板。它们的 id 从未出现在 `developerSections`，
