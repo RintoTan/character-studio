@@ -88,15 +88,29 @@ const DERIVED: Array<{ kind: Token["kind"]; test: (name: string) => boolean; why
     test: (name) => /-input$|-wrap$|-active$|-active-clear$/.test(name),
     why: "WorkspaceSearch builds `${testId}-input` and friends from the testId prop",
   },
+  {
+    kind: "testid",
+    test: (name) => /-field$/.test(name),
+    why: "NumericControl builds `${testId}-field` for its numeric input; the wrapper is `${testId}-wrap`",
+  },
+  {
+    kind: "aria",
+    test: (name) => name.endsWith("数值"),
+    why: "NumericControl writes aria-label={`${ariaLabel}数值`} on that same field",
+  },
 ];
 
 function resolveToken(token: Token, haystack: string): boolean {
   if (token.kind === "testid") {
-    const base = token.name.replace(/-input$|-wrap$|-active$|-active-clear$/, "");
+    const base = token.name.replace(/-input$|-wrap$|-active$|-active-clear$|-field$/, "");
     return [`"${base}"`, `'${base}'`, `\`${base}`, `"${base}-`, `\`${base}-`].some((needle) => haystack.includes(needle));
   }
   if (token.kind === "aria") {
-    return haystack.includes(`"${token.name}"`) || haystack.includes(`'${token.name}'`);
+    if (haystack.includes(`"${token.name}"`) || haystack.includes(`'${token.name}'`)) return true;
+    // A composed label: `${ariaLabel}数值` reads back as `<base>数值`, so the base has to
+    // exist as an ariaLabel prop.
+    const base = token.name.replace(/数值$/, "");
+    return base !== token.name && (haystack.includes(`ariaLabel="${base}"`) || haystack.includes(`ariaLabel={'${base}'}`));
   }
   return haystack.includes(token.name);
 }
