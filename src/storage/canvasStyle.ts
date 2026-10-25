@@ -276,9 +276,26 @@ const num = (value: unknown, fallback: number, min: number, max: number) => {
  * field. A style written by an older build, or half-written by a crash, must not
  * blank the canvas.
  */
+/**
+ * A style the caller owns.
+ *
+ * The default is a module-level object. Handing it out by reference means the first
+ * reader that edits what it was given (a slider writing into `style.node`) has edited
+ * the default for every later page, and the author's chosen look changes with no record
+ * of anyone having asked. Cheap copy, on the read path only.
+ */
+function cloneStyle(style: CanvasStyle): CanvasStyle {
+  return {
+    preset: style.preset,
+    node: { ...style.node },
+    edge: { ...style.edge, kindColors: { ...style.edge.kindColors } },
+    canvas: { ...style.canvas },
+  };
+}
+
 export function normalizeCanvasStyle(value: unknown): CanvasStyle {
   if (!value || typeof value !== "object") {
-    return DEFAULT_CANVAS_STYLE;
+    return cloneStyle(DEFAULT_CANVAS_STYLE);
   }
   const record = value as Record<string, unknown>;
   const node = (record.node ?? {}) as Record<string, unknown>;
