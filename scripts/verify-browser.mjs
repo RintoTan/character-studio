@@ -6756,6 +6756,23 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       return true;
     };
 
+    /**
+     * A real refresh: navigate again and come back to the graph, with no seeding.
+     *
+     * OPEN_GRAPH() is a *start* -- it wipes the layout file on purpose, because a seed
+     * that describes "this graph" cannot inherit the previous check's roster. Using it
+     * as the refresh step is how the appearance check spent months reporting that a
+     * preset came back as null: it had just deleted the record it was about to read.
+     * Anything that wants to know what survived a reload has to come through here.
+     */
+    const RELOAD_GRAPH = async () => {
+      await cdp.goto(base);
+      await cdp.value(clickWorkspace("角色关系网"));
+      await cdp.waitFor(`!!document.querySelector(".relationship-canvas")`, 8000);
+      await cdp.waitFor(`document.querySelectorAll(".relationship-node").length > 0`, 5000);
+      return true;
+    };
+
       // The export panel is measured, not assumed: at every width its four edges have
       // to sit inside the window, and when the content is taller than the window it
       // has to scroll inside itself rather than run off the top.
@@ -8163,8 +8180,44 @@ const CANVAS_STATE = `(() => {
       await new Promise((resolve) => setTimeout(resolve, 350));
       const minimal = await look();
 
-      await OPEN_GRAPH();
+      const storedBeforeReload = await cdp.value(`(() => {
+        const raw = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "{}");
+        return { preset: raw.style ? raw.style.preset : null, size: raw.style ? raw.style.node.size : null };
+      })()`);
+      await RELOAD_GRAPH();
       const reloaded = await look();
+
+      // A hand-tweaked preset is a preset plus the author's own numbers. It has to come
+      // back as 自己调的 with those numbers intact -- not snapped to the preset, and not
+      // reset to the base look.
+      const custom = await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const panel = document.querySelector(".graph-style-panel");
+        if (!panel) {
+          const open = document.querySelector('.graph-toolbar button[aria-label="外观设置"]');
+          if (!open) return { ok: false, why: "外观按钮不存在" };
+          open.click();
+          await sleep(300);
+        }
+        // 节点大小 is a numeric field showing a percentage (displayScale 100), committed
+        // on Enter or blur -- writing .value alone would leave the draft uncommitted.
+        const field = document.querySelector('[data-testid="node-size-field"]');
+        if (!field) return { ok: false, why: "节点大小输入框不存在" };
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+        setter.call(field, "160");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        await sleep(500);
+        const raw = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "{}");
+        return {
+          ok: true,
+          preset: raw.style ? raw.style.preset : null,
+          size: raw.style ? raw.style.node.size : null,
+          r: Number(document.querySelector(".relationship-node circle").getAttribute("r")),
+        };
+      })()`);
+      await RELOAD_GRAPH();
+      const customAfter = await look();
 
       await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="外观设置"]')).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
@@ -8182,14 +8235,22 @@ const CANVAS_STATE = `(() => {
         String(archive.grid).includes("line-grid") &&
         portrait.r > base.r &&
         String(minimal.grid) === "none" &&
+        storedBeforeReload.preset === "minimal" &&
         reloaded.preset === "minimal" &&
+        String(reloaded.grid) === "none" &&
         Math.abs(reloaded.r - minimal.r) < 0.5 &&
+        // the override survives its own reload, and keeps the numbers the author chose
+        custom.ok &&
+        custom.preset === "custom" &&
+        custom.size === 1.6 &&
+        customAfter.preset === "custom" &&
+        Math.abs(customAfter.r - custom.r) < 0.5 &&
         restored.preset === "classic" &&
         Math.abs(restored.r - base.r) < 0.5;
 
       return {
         pass,
-        detail: `预设 ${presetCount} 个；基准 r=${base.r} 线宽=${base.width}；档案 r=${archive.r} 线宽=${archive.width} 网格线=${String(archive.grid).includes("line-grid")}；群像 r=${portrait.r}；极简网格=${minimal.grid}；刷新后 ${reloaded.preset} r=${reloaded.r}；恢复后 ${restored.preset} r=${restored.r}`,
+        detail: `预设 ${presetCount} 个；基准 r=${base.r} 线宽=${base.width}；档案 r=${archive.r} 线宽=${archive.width} 网格线=${String(archive.grid).includes("line-grid")}；群像 r=${portrait.r}；极简网格=${minimal.grid}；刷新前存储 ${storedBeforeReload.preset}/${storedBeforeReload.size}；刷新后 ${reloaded.preset} r=${reloaded.r} 网格=${reloaded.grid}；自定义 ${custom.preset}/${custom.size} r=${custom.r} → 刷新后 ${customAfter.preset} r=${customAfter.r}；恢复后 ${restored.preset} r=${restored.r}`,
       };
     });
 
