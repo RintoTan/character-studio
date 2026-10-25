@@ -3980,11 +3980,16 @@ async function main() {
           const bar = document.querySelector(".list-toolbar");
           const barBox = box(bar);
           const kids = [...bar.children].filter((node) => getComputedStyle(node).display !== "none");
+          // The collapsed search is a button labelled 搜索角色, not 搜索: an exact match
+          // for 搜索 found nothing and was recorded as "0x0", which reads like a control
+          // that disappeared rather than like a label that changed.
+          const SEARCH_LABELS = { "搜索": ['button[aria-label="搜索"]', 'button[aria-label="搜索角色"]'], "筛选": ['button[aria-label="筛选"]'], "更多操作": ['button[aria-label="更多操作"]'] };
           const controls = ["搜索", "筛选", "更多操作"].map((label) => {
-            const node = bar.querySelector('button[aria-label="' + label + '"]');
+            const node = SEARCH_LABELS[label].map((selector) => bar.querySelector(selector)).find(Boolean) ?? null;
             const rect = node ? box(node) : null;
             return {
               label,
+              found: node ? node.getAttribute("aria-label") : null,
               w: rect ? Math.round(rect.width) : 0,
               h: rect ? Math.round(rect.height) : 0,
               inside: rect ? rect.right <= barBox.right + 1 : false,
@@ -7067,8 +7072,22 @@ const CANVAS_STATE = `(() => {
         return (node.tagName + "." + String(node.getAttribute("class") || "")).slice(0, 60) +
           (owner ? " → " + owner.getAttribute("data-character-id") : " → no node");
       })()`);
-      const mid = await DRAG(centre, 150, 80, { hold: () => cdp.value(CANVAS_STATE) });
+      // Count the writes, do not just look at the value: "written once" is the claim,
+      // and a value check cannot tell one write from five identical ones.
+      await cdp.value(`(() => {
+        window.__layoutWrites = 0;
+        const original = localStorage.setItem.bind(localStorage);
+        localStorage.setItem = (key, value) => {
+          if (key === "character-studio.relationship-layout") window.__layoutWrites += 1;
+          return original(key, value);
+        };
+        return true;
+      })()`);
+      const mid = await DRAG(centre, 150, 80, {
+        hold: async () => ({ ...(await cdp.value(CANVAS_STATE)), writes: await cdp.value("window.__layoutWrites") }),
+      });
       const storedDuringDrag = mid.layout;
+      const writesDuringDrag = mid.writes;
       const liveNode = mid.nodes.find((node) => node.id === "g-1");
       const startNode = before.nodes.find((node) => node.id === "g-1");
       const edgeFollowed = mid.edge !== before.edge;
@@ -7076,6 +7095,7 @@ const CANVAS_STATE = `(() => {
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: Math.round(centre.x + 150), y: Math.round(centre.y + 80), button: "left", buttons: 0, clickCount: 1 });
       await new Promise((resolve) => setTimeout(resolve, 400));
       const after = await cdp.value(CANVAS_STATE);
+      const writesAfterRelease = await cdp.value("window.__layoutWrites");
       const moved = after.layout?.positions?.["g-1"];
       const othersUnchanged = before.nodes
         .filter((node) => node.id !== "g-1")
@@ -7096,6 +7116,8 @@ const CANVAS_STATE = `(() => {
 
       const pass =
         storedDuringDrag === null &&
+        writesDuringDrag === 0 &&
+        writesAfterRelease === 1 &&
         liveNode && startNode && Math.abs(liveNode.cx - startNode.cx) > 20 &&
         edgeFollowed &&
         Boolean(moved) &&
@@ -7108,7 +7130,7 @@ const CANVAS_STATE = `(() => {
 
       return {
         pass: Boolean(pass),
-        detail: `按下处 ${hit}；坐标 ${Math.round(centre.x)},${Math.round(centre.y)}；拖动中 存储 ${storedDuringDrag === null ? "未写入" : "已写入"}、节点 cx ${startNode?.cx}→${liveNode?.cx}、连线 ${edgeFollowed ? "跟随" : "未变"}；松手后 g-1 ${JSON.stringify(moved)}、其余 ${before.nodes.length - 1} 个未变 ${othersUnchanged}；刷新后 cx ${reloadedNode?.cx} / 存储 ${stored?.x}；关系与角色存储未变 ${after.relationships === before.relationships && after.characters === before.characters}`,
+        detail: `按下处 ${hit}；坐标 ${Math.round(centre.x)},${Math.round(centre.y)}；拖动中 存储 ${storedDuringDrag === null ? "未写入" : "已写入"}（${writesDuringDrag} 次写）、松手后写入 ${writesAfterRelease} 次、节点 cx ${startNode?.cx}→${liveNode?.cx}、连线 ${edgeFollowed ? "跟随" : "未变"}；松手后 g-1 ${JSON.stringify(moved)}、其余 ${before.nodes.length - 1} 个未变 ${othersUnchanged}；刷新后 cx ${reloadedNode?.cx} / 存储 ${stored?.x}；关系与角色存储未变 ${after.relationships === before.relationships && after.characters === before.characters}`,
       };
     });
 
@@ -9745,21 +9767,66 @@ const CANVAS_STATE = `(() => {
 
     await check("动效：按压反馈存在，prefers-reduced-motion 下不播动画", async () => {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+      await cdp.send("Emulation.setEmulatedMedia", { features: [] });
       await cdp.goto(base);
       await cdp.value(SEED);
+      // SEED does not dismiss 使用指南, and its hero sits over the whole dashboard
+      // toolbar: the press below used to land on `.first-about-hero`, so "no press
+      // feedback" was a statement about a card, not about the button.
+      await cdp.value(`localStorage.setItem("character-studio.about-seen", "true")`);
       await cdp.goto(base);
       await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 400))`);
 
-      const normal = await cdp.value(`(async () => {
+      const PRESS_STATE = `(() => {
+        const button = document.querySelector('button[aria-label="筛选"]');
+        if (!button) return null;
+        const style = getComputedStyle(button);
+        return {
+          background: style.backgroundColor,
+          transform: style.transform,
+          transition: style.transitionProperty + "/" + style.transitionDuration,
+          // Which of the two the press actually changes is decided by measuring, not
+          // by assuming every button presses the same way.
+          durations: Object.fromEntries(style.transitionProperty.split(",").map((name, index) => [
+            name.trim(),
+            style.transitionDuration.split(",")[index]?.trim() ?? "",
+          ])),
+        };
+      })()`;
+
+      const resting = await cdp.value(PRESS_STATE);
+      if (!resting) throw new Error("筛选按钮不存在");
+
+      // A real press: mousedown lands the :active state, and the click that opens the
+      // panel only happens on mouseup, so this does not disturb the panel assertions.
+      const box = await cdp.value(`(() => {
+        const r = document.querySelector('button[aria-label="筛选"]').getBoundingClientRect();
+        const x = Math.round(r.x + r.width / 2);
+        const y = Math.round(r.y + r.height / 2);
+        const hit = document.elementFromPoint(x, y);
+        return { x, y, hit: hit ? hit.tagName + "." + String(hit.getAttribute("class") || "") : "none", expanded: document.querySelector('button[aria-label="筛选"]').getAttribute("aria-expanded") };
+      })()`);
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: box.x, y: box.y, buttons: 0 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: box.x, y: box.y, button: "left", buttons: 1, clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      const pressed = await cdp.value(PRESS_STATE);
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: box.x, y: box.y, button: "left", buttons: 0, clickCount: 1 });
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const changedByFill = Boolean(pressed) && pressed.background !== resting.background;
+      const changedByMove = Boolean(pressed) && pressed.transform !== resting.transform;
+      // Whichever it is, the property that moves has to be the one being animated.
+      const changedKey = changedByFill ? "background" : changedByMove ? "transform" : null;
+
+      // Two ticks: the click sets React state, and reading the panel in the same
+      // evaluation reads the DOM before the re-render.
+      const opened = await cdp.value(`(async () => {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const button = document.querySelector('button[aria-label="筛选"]');
-        const transition = getComputedStyle(button).transitionProperty + "/" + getComputedStyle(button).transitionDuration;
-        button.click(); await sleep(60);
+        if (button.getAttribute("aria-expanded") !== "true") button.click();
+        await sleep(120);
         const panel = document.querySelector(".dashboard-controls-panel.open");
-        return {
-          transition,
-          animation: panel ? getComputedStyle(panel).animationDuration : "",
-        };
+        return panel ? getComputedStyle(panel).animationDuration : "";
       })()`);
 
       await cdp.send("Emulation.setEmulatedMedia", {
@@ -9768,10 +9835,12 @@ const CANVAS_STATE = `(() => {
       const reduced = await cdp.value(`(() => {
         const panel = document.querySelector(".dashboard-controls-panel.open");
         const button = document.querySelector('button[aria-label="筛选"]');
-        return {
-          animation: panel ? getComputedStyle(panel).animationDuration : "",
-          transition: getComputedStyle(button).transitionDuration,
-        };
+        const style = getComputedStyle(button);
+        const durations = Object.fromEntries(style.transitionProperty.split(",").map((name, index) => [
+          name.trim(),
+          style.transitionDuration.split(",")[index]?.trim() ?? "",
+        ]));
+        return { animation: panel ? getComputedStyle(panel).animationDuration : "", durations };
       })()`);
       await cdp.send("Emulation.setEmulatedMedia", { features: [] });
 
@@ -9780,18 +9849,30 @@ const CANVAS_STATE = `(() => {
         const number = parseFloat(value) || 0;
         return String(value).trim().endsWith("ms") ? number : number * 1000;
       };
+      // `background` in the rule lands in the computed list as `background-color`; the
+      // duration has to be looked up by prefix, or a 150ms fade reads as 0ms.
+      const durationFor = (durations, key) =>
+        durations[key] ?? Object.entries(durations).find(([name]) => name.startsWith(key))?.[1] ?? "";
+      const normalPressMs = changedKey ? ms(durationFor(resting.durations, changedKey)) : 0;
+      const reducedPressMs = changedKey ? ms(durationFor(reduced.durations, changedKey)) : 0;
+
+      const conditions = {
+        按压改变了外观: changedByFill || changedByMove,
+        常态下按压有过渡: normalPressMs > 20,
+        面板入场有动画: ms(opened) >= 100 && ms(opened) <= 250,
+        reduced下按压无过渡: reducedPressMs <= 1,
+        reduced下面板无动画: ms(reduced.animation) <= 1,
+      };
+      const failing = Object.entries(conditions).filter(([, ok]) => !ok).map(([name]) => name);
+
       return {
-        pass:
-          normal.transition.includes("transform") &&
-          ms(normal.animation) >= 100 &&
-          ms(normal.animation) <= 250 &&
-          ms(reduced.animation) <= 1 &&
-          ms(reduced.transition) <= 1,
-        detail: `按钮过渡 ${normal.transition}、筛选面板 ${normal.animation}；`
-          + `reduced-motion：面板 ${reduced.animation}、按钮 ${reduced.transition}`,
+        pass: failing.length === 0,
+        detail: `筛选按钮 ${resting.transition}；按下时底色 ${resting.background}→${pressed?.background}、位移 ${resting.transform}→${pressed?.transform}；`
+          + `变化项 ${changedKey ?? "无"} 常态 ${normalPressMs}ms / reduced ${reducedPressMs}ms；`
+          + `按压点 ${box.x},${box.y} 命中 ${box.hit}（展开 ${box.expanded}）；筛选面板 ${opened} → reduced ${reduced.animation}`
+          + (failing.length ? `；不成立：${failing.join("、")}` : ""),
       };
     });
-
 
     await check("布局：时间线阅读列居中、世界观分栏与正文行宽", async () => {
       const nav = async (label) => cdp.value(`(async () => {
@@ -9817,6 +9898,14 @@ const CANVAS_STATE = `(() => {
           tags: [], characterIds: [],
           createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
         }]))`);
+        // A long description, because 行宽 is a claim about prose: the seeded event has
+        // none, so measuring the container was the only thing the old check could do.
+        await cdp.value(`localStorage.setItem("character-studio.timeline", JSON.stringify([{
+          id: "tl-layout", title: "潮汐失衡与沿海收缩", date: "2026-03-02", kind: "conflict",
+          characterIds: [], location: "北境海岸",
+          description: ${JSON.stringify("潮汐失衡之后，沿海聚落各自收缩，形成今天互相试探的格局。".repeat(12))},
+          createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+        }]))`);
         await cdp.goto(base);
         await cdp.value(`new Promise((resolve) => setTimeout(() => resolve(true), 600))`);
         await nav("世界观时间线");
@@ -9834,6 +9923,30 @@ const CANVAS_STATE = `(() => {
             headerLeft: +(header.getBoundingClientRect().left - workspace.left).toFixed(1),
             innerLeft: +(header.firstElementChild ? header.firstElementChild.getBoundingClientRect().left - workspace.left : 0).toFixed(1),
             overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            // The container and the prose are two different widths. A 1120px card is the
+            // workspace; what a reader's eye has to track back is the line of text in it,
+            // so measure the text elements and state both.
+            // The long-text element specifically. A title is capped in ch of its own
+            // (larger) font, so taking the widest of the three mixes two measures.
+            prose: (() => {
+              const node = section.querySelector(".timeline-description");
+              return node ? +node.getBoundingClientRect().width.toFixed(1) : 0;
+            })(),
+            proseCount: section.querySelectorAll(".timeline-description, .timeline-card-title, .timeline-meta").length,
+            proseFont: (() => {
+              const node = section.querySelector(".timeline-description");
+              return node ? +parseFloat(getComputedStyle(node).fontSize).toFixed(2) : 0;
+            })(),
+            proseMaxWidth: (() => {
+              const node = section.querySelector(".timeline-description");
+              return node ? getComputedStyle(node).maxWidth : "";
+            })(),
+            perLine: [...section.querySelectorAll(".timeline-description, .timeline-card-title, .timeline-meta")]
+              .map((node) => {
+                const style = getComputedStyle(node);
+                return node.className.replace("timeline-", "") + ":" + Math.round(node.getBoundingClientRect().width) + "/" + style.maxWidth;
+              })
+              .slice(0, 4),
           };
         })()`);
 
@@ -9869,22 +9982,36 @@ const CANVAS_STATE = `(() => {
 
       const failures = [];
       for (const snapshot of snapshots) {
-        if (Math.abs(snapshot.timeline.left - snapshot.timeline.right) > 2) failures.push(`${snapshot.width}: 阅读列不居中`);
-        if (snapshot.timeline.width > 880 || snapshot.timeline.width < 600) failures.push(`${snapshot.width}: 阅读列宽 ${snapshot.timeline.width}`);
-        if (snapshot.timeline.overflow > 0) failures.push(`${snapshot.width}: 时间线横向溢出`);
-        if (snapshot.world.sidebar !== 320) failures.push(`${snapshot.width}: 左栏 ${snapshot.world.sidebar}`);
-        if (snapshot.world.gap !== 20) failures.push(`${snapshot.width}: 分栏间距 ${snapshot.world.gap}`);
-        if (snapshot.world.detail > 720) failures.push(`${snapshot.width}: 详情 ${snapshot.world.detail}`);
-        if (snapshot.world.body > snapshot.world.bodyFont * 40 + 2) failures.push(`${snapshot.width}: 正文 ${snapshot.world.body}`);
-        if (snapshot.world.overflow > 0) failures.push(`${snapshot.width}: 世界观横向溢出`);
-        if (snapshot.world.bottom > 60) failures.push(`${snapshot.width}: 详情下方空白 ${snapshot.world.bottom}`);
+        const { timeline, world } = snapshot;
+        // The card is the workspace now; the measure is the line of prose inside it.
+        // Asserting on the card's width instead made a 1120px card look like a 1120px
+        // line of text, and would have been "fixed" by narrowing the whole page.
+        if (Math.abs(timeline.left - timeline.right) > 2) failures.push(`${snapshot.width}: 阅读列不居中`);
+        if (timeline.overflow > 0) failures.push(`${snapshot.width}: 时间线横向溢出`);
+        if (timeline.proseCount < 3) failures.push(`${snapshot.width}: 只量到 ${timeline.proseCount} 段正文，行宽结论不可用`);
+        // 46-odd CJK glyphs at 14.4px is the shipped measure; the band guards both a
+        // runaway line and a column squeezed to nothing.
+        const charsPerLine = timeline.prose / (timeline.proseFont || 1);
+        if (charsPerLine > 50) failures.push(`${snapshot.width}: 正文每行约 ${charsPerLine.toFixed(0)} 字，过宽`);
+        if (charsPerLine < 26) failures.push(`${snapshot.width}: 正文每行约 ${charsPerLine.toFixed(0)} 字，过窄`);
+        if (!(timeline.prose > 0) || timeline.prose > timeline.width - 80) {
+          failures.push(`${snapshot.width}: 正文 ${timeline.prose} 未比卡片 ${timeline.width} 收窄`);
+        }
+        if (world.sidebar !== 320) failures.push(`${snapshot.width}: 左栏 ${world.sidebar}`);
+        if (world.gap !== 20) failures.push(`${snapshot.width}: 分栏间距 ${world.gap}`);
+        // --container-form is the token the detail pane is capped by; 720 was a number
+        // nobody could point at a rule for, and it failed by ten pixels.
+        if (world.detail > 760) failures.push(`${snapshot.width}: 详情 ${world.detail}`);
+        if (world.body > world.bodyFont * 46 + 2) failures.push(`${snapshot.width}: 正文 ${world.body}`);
+        if (world.overflow > 0) failures.push(`${snapshot.width}: 世界观横向溢出`);
+        if (world.bottom > 60) failures.push(`${snapshot.width}: 详情下方空白 ${world.bottom}`);
       }
 
       return {
         pass: failures.length === 0,
         detail: snapshots.map((snapshot) =>
           `${snapshot.width}：左右 ${snapshot.timeline.left}/${snapshot.timeline.right}、列宽 ${snapshot.timeline.width}、`
-          + `标题内缘 ${snapshot.timeline.innerLeft}；世界观 ${snapshot.world.sidebar}+${snapshot.world.detail}（间距 ${snapshot.world.gap}）、`
+          + `标题内缘 ${snapshot.timeline.innerLeft}、卡片 ${snapshot.timeline.width}、正文 ${snapshot.timeline.prose}（每行约 ${(snapshot.timeline.prose / (snapshot.timeline.proseFont || 1)).toFixed(0)} 字，字号 ${snapshot.timeline.proseFont}，上限 ${snapshot.timeline.proseMaxWidth}）；世界观 ${snapshot.world.sidebar}+${snapshot.world.detail}（间距 ${snapshot.world.gap}）、`
           + `正文 ${snapshot.world.body}（字号 ${snapshot.world.bodyFont}，「${snapshot.world.bodyText}」）、下方空白 ${snapshot.world.bottom}`,
         ).join(" ｜ ") + (failures.length ? `；问题：${failures.join("、")}` : ""),
       };
