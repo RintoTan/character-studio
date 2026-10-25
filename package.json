@@ -1,7 +1,7 @@
 {
   "name": "character-studio",
   "private": true,
-  "version": "2.59.8",
+  "version": "2.60.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,7 +13,8 @@
     "verify:version": "node scripts/verify-version.mjs",
     "verify:browser": "node scripts/verify-browser.mjs",
     "test": "vitest run",
-    "preview:local": "node scripts/preview-local.mjs"
+    "preview:local": "node scripts/preview-local.mjs",
+    "verify:docs": "node scripts/verify-docs.mjs"
   },
   "dependencies": {
     "@mantine/core": "7.17.8",

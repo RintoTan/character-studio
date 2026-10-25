@@ -7397,7 +7397,21 @@ const CANVAS_STATE = `(() => {
           overflow: t.scrollWidth - t.clientWidth,
           pageOverflow: document.documentElement.scrollWidth - innerWidth,
           names: document.querySelectorAll(".relationship-node-name").length,
-          coversCanvas: r.top < frame.bottom - 1,
+          // A fixed dock always sits over the frame at the top of the page -- the space
+          // that keeps it clear is reserved *after* the content (.app-shell padding on
+          // phones), so the only place the question has an answer is the end of the
+          // scroll. Comparing rects at the initial position reported an occlusion that
+          // one flick of the page removed.
+          coversCanvasAtBottom: (() => {
+            const before = scrollY;
+            scrollTo(0, document.documentElement.scrollHeight);
+            const scrolledFrame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+            const scrolledBar = bar.getBoundingClientRect();
+            const covered = scrolledBar.top < scrolledFrame.bottom - 1;
+            scrollTo(0, before);
+            return covered;
+          })(),
+          zIndex: getComputedStyle(bar).zIndex,
         };
       })()`);
       await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="更多工具"]').click()`);
@@ -7674,7 +7688,21 @@ const CANVAS_STATE = `(() => {
           overflow: t.scrollWidth - t.clientWidth,
           pageOverflow: document.documentElement.scrollWidth - innerWidth,
           names: document.querySelectorAll(".relationship-node-name").length,
-          coversCanvas: r.top < frame.bottom - 1,
+          // A fixed dock always sits over the frame at the top of the page -- the space
+          // that keeps it clear is reserved *after* the content (.app-shell padding on
+          // phones), so the only place the question has an answer is the end of the
+          // scroll. Comparing rects at the initial position reported an occlusion that
+          // one flick of the page removed.
+          coversCanvasAtBottom: (() => {
+            const before = scrollY;
+            scrollTo(0, document.documentElement.scrollHeight);
+            const scrolledFrame = document.querySelector(".graph-canvas-frame").getBoundingClientRect();
+            const scrolledBar = bar.getBoundingClientRect();
+            const covered = scrolledBar.top < scrolledFrame.bottom - 1;
+            scrollTo(0, before);
+            return covered;
+          })(),
+          zIndex: getComputedStyle(bar).zIndex,
         };
       })()`);
       await cdp.value(`document.querySelector('.graph-toolbar button[aria-label="更多工具"]').click()`);
@@ -7787,14 +7815,14 @@ const CANVAS_STATE = `(() => {
         pruned.groups === 0 &&
         pruned.overflow <= 1 &&
         shelf.dock === "fixed" && shelf.bottomGap === 0 && shelf.toolbar <= 56 &&
-        shelf.overflow <= 0 && shelf.pageOverflow <= 0 && !shelf.coversCanvas && shelf.names >= 4 &&
+        shelf.overflow <= 0 && shelf.pageOverflow <= 0 && !shelf.coversCanvasAtBottom && shelf.names >= 4 &&
         menu.open && menu.inside && menu.items.length >= 4 &&
         ["撤销", "重做", "全屏编辑", "视觉分组"].every((item) => menu.items.includes(item)) &&
         menuClosed
 
       return {
         pass: Boolean(pass),
-        detail: `375px 底部坞 ${shelf.dock} 距底 ${shelf.bottomGap}px、高 ${shelf.toolbar}px、溢出 ${shelf.overflow}px、页面溢出 ${shelf.pageOverflow}px、未遮挡画布 ${!shelf.coversCanvas}、名称 ${shelf.names} 个；更多菜单 ${menu.items.length} 项（${menu.items.join("、")}）在视口内 ${menu.inside}、Escape 关闭 ${menuClosed}；` +
+        detail: `375px 底部坞 ${shelf.dock} 距底 ${shelf.bottomGap}px、高 ${shelf.toolbar}px、溢出 ${shelf.overflow}px、页面溢出 ${shelf.pageOverflow}px、未遮挡画布 ${!shelf.coversCanvasAtBottom}（滚到底判定，z=${shelf.zIndex}）、名称 ${shelf.names} 个；更多菜单 ${menu.items.length} 项（${menu.items.join("、")}）在视口内 ${menu.inside}、Escape 关闭 ${menuClosed}；` +
           `长名截断 ${longShown} / 选中显示完整 ${longFull.full}；轻点 选中 ${tapped.selected} 页面 ${tapped.page ? "图谱" : "离开"}；5px 抖动 ${wobbleMoved ? "移动了" : "未移动"}；40px 拖动 ${draggedMoved ? "已移动" : "未移动"}、页面 ${dragged.page ? "仍在图谱" : "已离开"}；幽灵坐标裁剪 ${!pruned.layout?.positions?.ghost}、幽灵分组 ${pruned.groups === 0 ? "已清除" : "仍在"}；横向溢出 ${pruned.overflow}px`,      };
     });
 
