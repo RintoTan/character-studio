@@ -11,7 +11,8 @@ const notes = [];
 const read = (path) => readFileSync(join(ROOT, path), "utf8");
 
 /** Markdown files that count as current documentation (history lives in docs/audit). */
-const DOCS = ["README.md", "CHANGELOG.md", "Developer Handbook.md"];
+// 手册已归档到 docs/archive/；当前手册在 docs/DEVELOPER_GUIDE.md（docs/*.md 自动纳入）。
+const DOCS = ["README.md", "CHANGELOG.md", "AGENTS.md"];
 const DOC_DIR = join(ROOT, "docs");
 for (const name of readdirSync(DOC_DIR)) {
   if (name.endsWith(".md")) DOCS.push(join("docs", name));

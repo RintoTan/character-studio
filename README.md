@@ -202,7 +202,7 @@ docs/                 # 技术文档、状态、路线图、截图
 | [docs/ROADMAP.md](docs/ROADMAP.md) | 近期与长期计划 |
 | [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md) | 已知问题与验证边界 |
 | [CHANGELOG.md](CHANGELOG.md) | 逐版本变更与验证边界 |
-| [Developer Handbook.md](Developer%20Handbook.md) | 长期开发手册（应用内也有入口） |
+| [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | 长期开发手册（应用内也有入口） |
 
 ---
 

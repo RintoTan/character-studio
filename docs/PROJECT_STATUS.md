@@ -2,7 +2,7 @@
 
 > 文档最后核查日期：**2026-10-25** ｜ 核查方式：源码 + Git 历史 + 本地只读检查（`tsc -b`、`vitest run`、`vite build`）+ 线上 `build-info.json`
 > 本文只记录**有证据**的结论。凡未验证的，一律显式标注。
-> **位置变更**：本文件原在仓库根目录，2026-10-15 随文档落位规整移入 `docs/`（根目录只保留 `README.md` / `CHANGELOG.md` / `Developer Handbook.md`）。文档索引见 [`README.md`](README.md)。
+> **位置变更**：本文件原在仓库根目录，2026-10-15 随文档落位规整移入 `docs/`（根目录只保留 `README.md` / `CHANGELOG.md` / `AGENTS.md`）。文档索引见 [`README.md`](README.md)。
 
 ---
 
@@ -397,7 +397,7 @@ B 阶段 21 项全部 PASS）、12 张验收截图均已完成并发布。**
 
 | 项 | 依据 |
 | --- | --- |
-| 阵营 / 组织、地图 / 地点（作为独立模块） | README 与 Developer Handbook 的 Roadmap 中列为未来项，代码中不存在对应页面 |
+| 阵营 / 组织、地图 / 地点（作为独立模块） | README 与 `ROADMAP.md` 中列为未来项，代码中不存在对应页面 |
 | 多版本角色 | 同上 |
 | AI 创作辅助 | `featureFlags.aiSettings` 存在，`AiSettingsForm` 存在，但**只存配置、不发起任何请求**；`components/AiSettingsForm.tsx` 中 API Key 输入框为 `disabled`。界面标注「🚧 Coming Soon」 |
 | 云同步 | 不存在任何服务端依赖（本地优先架构，`localStorage` + `IndexedDB`） |
