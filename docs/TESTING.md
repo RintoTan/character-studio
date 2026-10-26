@@ -126,7 +126,7 @@ pnpm verify:deploy
 | `npm test` | 95 个测试文件（用例数随维护变化，以运行输出为准） |
 | `npm run build:pages` | 22 文件 |
 | `npm run verify:browser` | 90 项检查（88 项常规 + 2 项 `SHOTS` 门控）；支持 `--shard=i/n` 分段执行，缺失分段判为 INCOMPLETE |
-| `npm run verify:version` | 2.60.0 |
+| `npm run verify:version` | 2.60.1（候选） |
 
 新增断言：导出面板在 1440/1024/375/320 的 `boundingClientRect` 四边都在视口内；使用指南的 `1 → 2 → 3 → 4 → 1` 闭环、末张回卷、聚焦前后方向键的差别、与画布不同容器且间距 ≥ 20px、无折叠入口、全屏不重复渲染、375 无横向溢出、操作前后角色与存储键不变。
 
