@@ -10,10 +10,10 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 应用版本 | **2.60.1（发布候选，未发布）**（上一发布 2.60.0 / 2026-10-25 / `main`）（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
+| 应用版本 | **2.60.1**（2026-10-26 发布，`main`；上一发布 2.60.0 / 2026-10-25）（来源：`src/config/version.ts` 的 `APP_VERSION`，与 `package.json` 一致，`npm run verify:version` 通过）—— About 弹窗按阅读宽度排布、手机 About 布局精修、Developer Center 手机导航与徽章响应式修复、低缩放下卡片姓名回退；线上 commit 以 `npm run verify:deploy` 的比对结果为准 |
 | Sprint | **54.10**（`APP_SPRINT`）—— 该标识自 2.57.x 起未再递增，2.58/2.59 的交付阶段记录在下方条目与 `CHANGELOG.md`；取值沿用发布历史既有的「版本记录所交付阶段」规则 |
 | Build / Release Year | `2026` / `2026` |
-| 分支 | `ui/mobile-dashboard-2.60.1`（v2.60.1 候选）；`main` 与线上仍为 v2.60.0
+| 分支 | `main`（v2.60.1 已发布；候选分支 `ui/mobile-dashboard-2.60.1` 已合并）
 | 审计基线提交 | `93de13d`（2.39.0 发布前最后一个功能提交）—— 本文与 `docs/ARCHITECTURE.md` 的行号与行为描述以该版本为准 |
 | 文档整理 | 2026-10-19：README 重写、四份历史快照归档、新增数据格式 / 测试 / 部署三份文档（提交见本轮 `git log`） |
 | 工作区状态 | 以 `git status --porcelain` 为准；本轮收尾见下方「Sprint 56.x（2.59.0）」的发布记录 |

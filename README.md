@@ -180,8 +180,8 @@ docs/                 # 技术文档、状态、路线图、截图
 
 ## 项目状态
 
-- 当前版本：**v2.60.1（发布候选）**
-- 阶段：**v2.60.1 候选就绪，尚未发布**。候选分支 `ui/mobile-dashboard-2.60.1`；`main` 与线上仍为 **v2.60.0**，未合并、未部署。线上版本核对以 `npm run verify:deploy` 的比对结果为准
+- 当前版本：**v2.60.1**
+- 阶段：**v2.60.1 已发布到 `main`**（2026-10-26）。线上产物由 GitHub Actions 构建，线上版本以 `build-info.json` 与 `npm run verify:deploy` 的比对结果为准
 - 已知边界：浏览器验收的完整套件并非每次发布都全量执行，详见 [docs/TESTING.md](docs/TESTING.md)；移动端工具栏与首屏密度仍在收敛，详见 [docs/KNOWN_ISSUES.md](docs/KNOWN_ISSUES.md)
 
 详细状态、已知问题与下一步见 [docs/PROJECT_STATUS.md](docs/PROJECT_STATUS.md) 与 [docs/ROADMAP.md](docs/ROADMAP.md)。
