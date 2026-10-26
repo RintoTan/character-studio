@@ -8571,7 +8571,7 @@ body:has([aria-modal="true"]) .floating-actions {
   /* As a grid item this would otherwise be sized by its content, which capped the
      columns at the prose measure and left the right column stuck at its minimum. */
   width: 100%;
-  gap: 10px 32px;
+  gap: 8px 32px;
   grid-template-columns: minmax(0, 1fr);
 }
 
@@ -8579,21 +8579,36 @@ body:has([aria-modal="true"]) .floating-actions {
   min-width: 0;
 }
 
+/* One column on a phone, in source order: 标题 → 地点 → 正文 → 关联角色. The order is
+   the DOM's, not a set of `order` values, so the reading order and the tab order stay
+   the order a reader needs. */
 @media (min-width: 900px) {
   .timeline-card-body {
     grid-template-columns: minmax(0, 40em) minmax(180px, 1fr);
+    grid-template-areas:
+      "title place"
+      "main aside";
     align-items: start;
   }
 
-  .timeline-card-aside {
+  .timeline-card-title {
+    grid-area: title;
+  }
+
+  .timeline-card-place {
+    grid-area: place;
     justify-self: end;
     max-width: 280px;
   }
 
-  /* A rule above the facts reads as a margin note rather than a second paragraph
-     continued under the title. */
-  .timeline-card-aside > * + * {
-    margin-top: 8px;
+  .timeline-card-main {
+    grid-area: main;
+  }
+
+  .timeline-card-aside {
+    grid-area: aside;
+    justify-self: end;
+    max-width: 280px;
   }
 }
 
@@ -10802,6 +10817,36 @@ body:has([aria-modal="true"]) .floating-actions {
 
 .timeline-toolbar {
   gap: 10px 16px;
+}
+
+/* An open search took every pixel the row had (`flex: 1 1 auto`), so the field sat at
+   the left edge, 收起 was pushed to the right edge of that block, and the filters started
+   after it — two groups with a screen-wide hole between them. The field gets a reading
+   width instead, and 收起 stays beside it; the count keeps `margin-left: auto` because it
+   is status, not part of the search group. */
+@media (min-width: 721px) {
+  .timeline-toolbar .ws-search.is-open,
+  .world-toolbar .ws-search.is-open {
+    flex: 0 1 auto;
+  }
+
+  /* Wide enough for the longest placeholder in the two bars (「搜索名称、简介、详情、标签、
+     关联角色」), not wide enough to become the row. */
+  .timeline-toolbar .ws-search-field,
+  .world-toolbar .ws-search-field {
+    flex: 0 1 auto;
+    width: 300px;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* The border sits on the wrapper Mantine builds; without this the input keeps its
+     intrinsic width and the placeholder is cut 11 characters in, inside a 300px box. */
+  .timeline-toolbar .ws-search-field .mantine-Input-wrapper,
+  .world-toolbar .ws-search-field .mantine-Input-wrapper {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
 }
 
 .timeline-year-nav {
@@ -13993,14 +14038,16 @@ circle.graph-grid-dot {
 /* Pass A: the design panel opens with swatches, not names. */
 .graph-preset-cards {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  /* Four across, so the eight shipped presets are two rows instead of four. At the
+     drawer's 292px this still leaves each name a full line. */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .graph-preset-cards .graph-preset {
   display: grid;
-  gap: 4px;
-  padding: 6px;
+  gap: 3px;
+  padding: 4px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--surface);
@@ -14020,7 +14067,11 @@ circle.graph-grid-dot {
 }
 
 .graph-preset-cards .graph-preset > span {
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* --- Pass A.1: one job per panel, and a panel that does not lie on the drawing --- */
@@ -14048,11 +14099,49 @@ circle.graph-grid-dot {
   gap: 8px;
 }
 
-.graph-design-heading {
-  font-size: var(--studio-font-section);
+/* One heading language for the panel's groups. 视图与显示, 风格预设 and 快速调整 are
+   peers, but they used to be set at two sizes and two colours: the first as a section
+   head, the others as tier headings. */
+.graph-design-heading,
+.graph-style-view .graph-style-section-head strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+/* The groups below a heading are one step quieter than it, so the panel reads as
+   heading → rows rather than as a list of equally loud labels. */
+.graph-style-section-head {
+  gap: 1px;
+  margin-top: 2px;
+}
+
+.graph-style-section-head strong {
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+}
+
+.graph-style-section-head span {
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+/* Three groups inside 快速调整 — the node, the portrait, the lines — and one list. A
+   rule above each group is what makes them countable at a glance. */
+.graph-style-quick > .graph-style-section-head:not(:first-child) {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+/* A rule between the tiers, so 视图 / 预设 / 快速调整 are three blocks rather than one
+   long column of rows. */
+.graph-design-tier + .graph-design-tier {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
 }
 
 .graph-design-advanced {
@@ -16470,6 +16559,33 @@ circle.graph-grid-dot {
   width: 100%;
 }
 
+/* One control column. Every row puts its label in the same 74px column, but a slider
+   used to start at the panel's left edge while a segmented control started 84px in,
+   so the panel had two left edges for its controls. The slider now starts where the
+   segments do; the label and its value still share the row above it. */
+.graph-style-panel .nc {
+  grid-template-columns: 74px minmax(0, 1fr);
+  column-gap: 10px;
+}
+
+.graph-style-panel .nc-head {
+  grid-column: 1 / -1;
+}
+
+.graph-style-panel .nc-row,
+.graph-style-panel .nc-hint {
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* Two colour fields, two sizes: 96×28 in the quick tier and 164×30 in the advanced
+   rows. One size, and not the full width of a phone drawer. */
+.graph-style-panel input[type="color"] {
+  width: 100%;
+  max-width: 120px;
+  height: 30px;
+}
+
 /* The counts are a status line, not a headline. */
 .graph-scope-stats {
   font-size: 11.5px;
@@ -16874,7 +16990,9 @@ circle.graph-grid-dot {
 
 .graph-design-scope {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* Three scopes, one row. Two columns pushed the third (disabled) tab onto a line of
+     its own, where a full-width grey block read as an input rather than a tab. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 3px;
   margin-bottom: 12px;
@@ -16885,11 +17003,17 @@ circle.graph-grid-dot {
 
 .graph-design-scope-button {
   height: 32px;
+  min-width: 0;
+  padding: 0 6px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12.5px;
+  /* 多个角色 (3) still has to fit its third of a 292px drawer. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   transition: background 120ms ease, color 120ms ease;
 }
 
@@ -16900,8 +17024,12 @@ circle.graph-grid-dot {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
+/* A scope that is not available yet still has to be readable. At 0.45 the label
+   measured 1.96:1 on white and 2.41:1 on the dark surface; at 0.7 it is 3.11:1 and
+   4.00:1 — over the 3:1 floor for a disabled control — while the active tab still
+   carries the weight (surface fill, 600) that says which one is on. */
 .graph-design-scope-button:disabled {
-  opacity: 0.45;
+  opacity: 0.7;
   cursor: not-allowed;
 }
 

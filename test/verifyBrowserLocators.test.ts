@@ -98,6 +98,11 @@ const DERIVED: Array<{ kind: Token["kind"]; test: (name: string) => boolean; why
     test: (name) => name.endsWith("数值"),
     why: "NumericControl writes aria-label={`${ariaLabel}数值`} on that same field",
   },
+  {
+    kind: "class",
+    test: (name) => name.startsWith("mantine-"),
+    why: ".mantine-Button-label is emitted by @mantine/core, not written in src — the check reads the library's own label element",
+  },
 ];
 
 function resolveToken(token: Token, haystack: string): boolean {

@@ -5970,6 +5970,31 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
       const start = await cdp.value(READ_TIMELINE);
       const state = await cdp.value(TIMELINE_FILTERS);
 
+      // An open search used to take the whole row, leaving 收起 and the two selects at
+      // the far right with a screen-wide hole between the field and them. The group is
+      // compact and left-aligned; the count stays at the right because it is status.
+      const spacing = await cdp.value(`(() => {
+        const bar = document.querySelector(".timeline-toolbar");
+        const search = bar.querySelector(".ws-search.is-open");
+        const collapse = bar.querySelector(".ws-search-collapse");
+        const row = bar.querySelector(".timeline-filter-row");
+        const field = bar.querySelector(".ws-search-field");
+        const count = bar.querySelector(".timeline-count");
+        if (!search || !collapse || !row || !field || !count) return { missing: true };
+        const b = bar.getBoundingClientRect();
+        return {
+          missing: false,
+          fieldWidth: Math.round(field.getBoundingClientRect().width),
+          searchWidth: Math.round(search.getBoundingClientRect().width),
+          // The hole the report described lived between the field and 收起.
+          gapFieldToCollapse: Math.round(collapse.getBoundingClientRect().left - field.getBoundingClientRect().right),
+          gapCollapseToFilters: Math.round(row.getBoundingClientRect().left - collapse.getBoundingClientRect().right),
+          filtersToBarLeft: Math.round(row.getBoundingClientRect().left - b.left),
+          countToBarRight: Math.round(b.right - count.getBoundingClientRect().right),
+          barWidth: Math.round(b.width),
+        };
+      })()`);
+
       // Every count is compared with the number the stored events imply, so a toolbar
       // that reports a plausible number it did not compute cannot pass.
       const pass =
@@ -5995,11 +6020,19 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         state.none.clear &&
         state.byCharacter.rows === state.byCharacter.expected &&
         state.byCharacter.rows > 0 &&
-        state.byId.rows === 0;
+        state.byId.rows === 0 &&
+        // one compact group on the left, the count alone on the right
+        spacing.missing === false &&
+        spacing.fieldWidth >= 240 &&
+        spacing.fieldWidth <= 360 &&
+        spacing.gapFieldToCollapse <= 12 &&
+        spacing.gapCollapseToFilters <= 32 &&
+        spacing.filtersToBarLeft < spacing.barWidth / 2 &&
+        spacing.countToBarRight <= 4;
 
       return {
         pass,
-        detail: `100 个事件；搜索「红藻」→ ${state.search.rows} 条（数据应为 ${state.search.expected}）「${state.search.count}」；加 ${state.withYear.year} → ${state.withYear.rows}（${state.withYear.expected}）；再加 ${state.withKind.kind} → ${state.withKind.rows}（${state.withKind.expected}）；清空 → ${state.cleared.rows} 条且筛选归零（${state.cleared.year}/${state.cleared.kind}）、焦点落在 ${state.cleared.focusAria || state.cleared.focusTag}；无结果 → ${state.none.rows} 条「${state.none.empty.slice(0, 40)}」；按角色名 白露 → ${state.byCharacter.rows}（${state.byCharacter.expected}）、按 id → ${state.byId.rows}`,
+        detail: `100 个事件；搜索框 ${spacing.fieldWidth}px、框到收起 ${spacing.gapFieldToCollapse}px、收到筛选 ${spacing.gapCollapseToFilters}px、筛选距左 ${spacing.filtersToBarLeft}px、计数距右 ${spacing.countToBarRight}px；搜索「红藻」→ ${state.search.rows} 条（数据应为 ${state.search.expected}）「${state.search.count}」；加 ${state.withYear.year} → ${state.withYear.rows}（${state.withYear.expected}）；再加 ${state.withKind.kind} → ${state.withKind.rows}（${state.withKind.expected}）；清空 → ${state.cleared.rows} 条且筛选归零（${state.cleared.year}/${state.cleared.kind}）、焦点落在 ${state.cleared.focusAria || state.cleared.focusTag}；无结果 → ${state.none.rows} 条「${state.none.empty.slice(0, 40)}」；按角色名 白露 → ${state.byCharacter.rows}（${state.byCharacter.expected}）、按 id → ${state.byId.rows}`,
       };
     });
 
@@ -6102,6 +6135,26 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         };
       })()`);
 
+      // Reading order on a phone. The card is one column there, so the order is the
+      // source order: 标题 → 地点 → 正文 → 关联角色. 地点 used to sit in the right-hand
+      // column on a wide card and, once that column collapsed, under the last paragraph.
+      const reading = await cdp.value(`(() => {
+        const card = document.querySelector(".timeline-card");
+        const top = (sel) => { const n = card.querySelector(sel); return n ? Math.round(n.getBoundingClientRect().top) : null; };
+        const left = (sel) => { const n = card.querySelector(sel); return n ? Math.round(n.getBoundingClientRect().left) : null; };
+        return {
+          title: top(".timeline-card-title"),
+          place: top(".timeline-card-place"),
+          body: top(".timeline-description"),
+          people: top(".timeline-card-aside"),
+          titleLeft: left(".timeline-card-title"),
+          placeLeft: left(".timeline-card-place"),
+          bodyLeft: left(".timeline-description"),
+          placeCopies: card.querySelectorAll(".timeline-meta").length,
+          placeText: (card.querySelector(".timeline-card-place") || {}).textContent || "",
+        };
+      })()`);
+
       // The event dialog on a phone, with the keyboard-driven fields and a long
       // description inside it.
       await cdp.value(`(() => { [...document.querySelectorAll("button")].find((button) => button.textContent.trim() === "新建事件").click(); return true; })()`);
@@ -6156,6 +6209,16 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
         dialog.actionsInside &&
         dialog.descriptionRows === 6 &&
         dialog.textareaInside &&
+        reading.title !== null &&
+        reading.place !== null &&
+        reading.body !== null &&
+        reading.title < reading.place &&
+        reading.place < reading.body &&
+        (reading.people === null || reading.body < reading.people) &&
+        reading.placeLeft === reading.titleLeft &&
+        reading.bodyLeft === reading.titleLeft &&
+        reading.placeCopies === 1 &&
+        reading.placeText.includes("地点") &&
         theme === "dark" &&
         darkStyle.theme === "dark" &&
         dark.items === 100 &&
@@ -6163,7 +6226,7 @@ await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 900,
 
       return {
         pass,
-        detail: `375px：事件 ${narrow.items} 个、页面溢出 ${layout.overflow}px；年份导航单行 ${layout.navRows === 1}、在视口内 ${layout.navInside}（横向可滚动 ${layout.navScrolls}）；搜索框占满一行 ${layout.searchFullWidth}；卡片在视口内 ${layout.cardInside}；弹窗在视口内 ${dialog.inside}、可滚动 ${dialog.scrollable}、操作栏在视口内 ${dialog.actionsInside}、描述 ${dialog.descriptionRows} 行；深色切换「${theme}」→ data-theme=${darkStyle.theme}、卡片底色 ${darkStyle.cardBackground}、事件节点边框 ${darkStyle.nodeBorder}、深色下溢出 ${dark.pageOverflow}px`,
+        detail: `375px：事件 ${narrow.items} 个、页面溢出 ${layout.overflow}px；年份导航单行 ${layout.navRows === 1}、在视口内 ${layout.navInside}（横向可滚动 ${layout.navScrolls}）；搜索框占满一行 ${layout.searchFullWidth}；窄屏阅读顺序 标题 ${reading.title} → 地点 ${reading.place} → 正文 ${reading.body} → 角色 ${reading.people}（地点 ${reading.placeCopies} 份、同列 ${reading.placeLeft === reading.titleLeft && reading.bodyLeft === reading.titleLeft}）；卡片在视口内 ${layout.cardInside}；弹窗在视口内 ${dialog.inside}、可滚动 ${dialog.scrollable}、操作栏在视口内 ${dialog.actionsInside}、描述 ${dialog.descriptionRows} 行；深色切换「${theme}」→ data-theme=${darkStyle.theme}、卡片底色 ${darkStyle.cardBackground}、事件节点边框 ${darkStyle.nodeBorder}、深色下溢出 ${dark.pageOverflow}px`,
       };
     });
 
@@ -8295,9 +8358,84 @@ const CANVAS_STATE = `(() => {
 
       await cdp.value(`(document.querySelector('.graph-toolbar button[aria-label="外观设置"]')).click()`);
       await cdp.waitFor(`!!document.querySelector(".graph-style-panel")`, 3000);
+
+      // Keyboard path, on the real control: focus the 节点大小 slider and press →.
+      // A range input that cannot be driven from the keyboard is a control the panel
+      // shows but the keyboard cannot use.
+      const keyboardFocus = await cdp.value(`(() => {
+        const range = document.querySelector('[data-testid="node-size"]');
+        if (!range) return { ok: false, why: "节点大小滑块不存在" };
+        range.focus();
+        return { ok: document.activeElement === range, value: Number(range.value) };
+      })()`);
+      if (keyboardFocus.ok) {
+        for (const type of ["rawKeyDown", "keyUp"]) {
+          await cdp.send("Input.dispatchKeyEvent", { type, windowsVirtualKeyCode: 39, nativeVirtualKeyCode: 39, code: "ArrowRight", key: "ArrowRight" });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 320));
+      }
+      const keyboardAfter = await cdp.value(`(() => {
+        const range = document.querySelector('[data-testid="node-size"]');
+        const raw = JSON.parse(localStorage.getItem("character-studio.relationship-layout") || "{}");
+        return { value: range ? Number(range.value) : null, stored: raw.style ? raw.style.node.size : null };
+      })()`);
+
       await cdp.value(`([...document.querySelectorAll(".graph-style-panel button")].find((b) => b.textContent.trim() === "恢复整体画布默认外观")).click()`);
       await new Promise((resolve) => setTimeout(resolve, 350));
       const restored = await look();
+
+      // The panel's own layout, which "the presets still work" says nothing about: a tab
+      // bar that wraps its third tab onto its own line, a preset name that is cut off, two
+      // colour fields of two widths. Read at the drawer width and again at 375.
+      const PANEL_SHAPE = `(() => {
+        const panel = document.querySelector(".graph-style-panel");
+        if (!panel) return { missing: true };
+        const tabs = [...panel.querySelectorAll(".graph-design-scope-button")];
+        const presets = [...panel.querySelectorAll(".graph-preset")];
+        const rows = (nodes) => new Set(nodes.map((n) => Math.round(n.getBoundingClientRect().top))).size;
+        const clipped = [...panel.querySelectorAll(".graph-preset, .graph-design-scope-button, .graph-style-section-head strong, .graph-panel-row .graph-control-label, .nc-label")]
+          .filter((n) => n.scrollWidth > n.clientWidth + 1)
+          .map((n) => n.textContent.trim().slice(0, 10));
+        const colours = [...panel.querySelectorAll('input[type="color"]')].map((i) => Math.round(i.getBoundingClientRect().width) + "x" + Math.round(i.getBoundingClientRect().height));
+        let box = panel.parentElement;
+        while (box && box !== document.body) {
+          const cs = getComputedStyle(box);
+          if (/(auto|scroll)/.test(cs.overflowY) && box.scrollHeight > box.clientHeight + 4) break;
+          box = box.parentElement;
+        }
+        return {
+          missing: false,
+          tabs: tabs.length,
+          tabRows: rows(tabs),
+          presets: presets.length,
+          presetRows: rows(presets),
+          clipped,
+          colourSizes: [...new Set(colours)],
+          scrollable: Boolean(box && box !== document.body && box.scrollHeight > box.clientHeight + 4),
+          panelOverflowX: panel.scrollWidth - panel.clientWidth,
+          pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      })()`;
+
+      const shapeWide = await cdp.value(PANEL_SHAPE);
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 375, height: 812, deviceScaleFactor: 2, mobile: true });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await cdp.value(`(async () => {
+        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        if (document.querySelector(".graph-style-panel")) return true;
+        const direct = document.querySelector('[aria-label="外观设置"]');
+        if (direct) { direct.click(); await sleep(400); return !!document.querySelector(".graph-style-panel"); }
+        const more = document.querySelector('[aria-label="更多工具"]');
+        if (more) { more.click(); await sleep(250); }
+        const item = document.querySelector('[aria-label="外观设置"]');
+        if (item) { item.click(); await sleep(400); }
+        return !!document.querySelector(".graph-style-panel");
+      })()`);
+      const shapeNarrow = await cdp.value(PANEL_SHAPE);
+      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+      await cdp.send("Emulation.clearDeviceMetricsOverride");
+      await new Promise((resolve) => setTimeout(resolve, 300));
 
       const pass =
         presetCount === 8 &&
@@ -8320,11 +8458,32 @@ const CANVAS_STATE = `(() => {
         customAfter.preset === "custom" &&
         Math.abs(customAfter.r - custom.r) < 0.5 &&
         restored.preset === "classic" &&
-        Math.abs(restored.r - base.r) < 0.5;
+        Math.abs(restored.r - base.r) < 0.5 &&
+        // keyboard, on the real slider
+        keyboardFocus.ok &&
+        keyboardAfter.value > keyboardFocus.value &&
+        typeof keyboardAfter.stored === "number" &&
+        // one row of scopes, no cut-off label, one colour size, eight presets in at most
+        // two rows, and a panel that can be scrolled rather than run off the drawer
+        shapeWide.tabs === 3 &&
+        shapeWide.tabRows === 1 &&
+        shapeWide.clipped.length === 0 &&
+        shapeWide.colourSizes.length === 1 &&
+        shapeWide.presets === 8 &&
+        shapeWide.presetRows <= 2 &&
+        shapeWide.scrollable &&
+        shapeWide.panelOverflowX <= 0 &&
+        // and the same at 375
+        shapeNarrow.tabs === 3 &&
+        shapeNarrow.tabRows === 1 &&
+        shapeNarrow.clipped.length === 0 &&
+        shapeNarrow.colourSizes.length === 1 &&
+        shapeNarrow.presets === 8 &&
+        shapeNarrow.pageOverflow <= 0;
 
       return {
         pass,
-        detail: `预设 ${presetCount} 个；基准 r=${base.r} 线宽=${base.width}；档案 r=${archive.r} 线宽=${archive.width} 网格线=${String(archive.grid).includes("line-grid")}；群像 r=${portrait.r}；极简网格=${minimal.grid}；刷新前存储 ${storedBeforeReload.preset}/${storedBeforeReload.size}；刷新后 ${reloaded.preset} r=${reloaded.r} 网格=${reloaded.grid}；自定义 ${custom.preset}/${custom.size} r=${custom.r} → 刷新后 ${customAfter.preset} r=${customAfter.r}；恢复后 ${restored.preset} r=${restored.r}`,
+        detail: `预设 ${presetCount} 个；基准 r=${base.r} 线宽=${base.width}；档案 r=${archive.r} 线宽=${archive.width} 网格线=${String(archive.grid).includes("line-grid")}；群像 r=${portrait.r}；极简网格=${minimal.grid}；刷新前存储 ${storedBeforeReload.preset}/${storedBeforeReload.size}；刷新后 ${reloaded.preset} r=${reloaded.r} 网格=${reloaded.grid}；自定义 ${custom.preset}/${custom.size} r=${custom.r} → 刷新后 ${customAfter.preset} r=${customAfter.r}；恢复后 ${restored.preset} r=${restored.r}；键盘 → 从 ${keyboardFocus.value} 到 ${keyboardAfter.value}（存储 ${keyboardAfter.stored}）；面板 ${shapeWide.tabs} 个范围页签 ${shapeWide.tabRows} 行、预设 ${shapeWide.presets} 个 ${shapeWide.presetRows} 行、颜色 ${shapeWide.colourSizes.join("/")}、裁切 ${shapeWide.clipped.length}、可滚动 ${shapeWide.scrollable}；375 页签 ${shapeNarrow.tabRows} 行、裁切 ${shapeNarrow.clipped.length}、溢出 ${shapeNarrow.pageOverflow}`,
       };
     });
 
@@ -9993,6 +10152,17 @@ const CANVAS_STATE = `(() => {
               const node = section.querySelector(".timeline-description");
               return node ? getComputedStyle(node).maxWidth : "";
             })(),
+            // 地点 is a fact, not the prose: on a wide card it belongs beside the text,
+            // not under the last paragraph. The phone order is checked at 375.
+            columns: (() => {
+              const box = (sel) => {
+                const node = section.querySelector(sel);
+                if (!node) return null;
+                const rect = node.getBoundingClientRect();
+                return { left: +rect.left.toFixed(1), right: +rect.right.toFixed(1) };
+              };
+              return { title: box(".timeline-card-title"), prose: box(".timeline-description"), place: box(".timeline-card-place"), people: box(".timeline-card-aside") };
+            })(),
             perLine: [...section.querySelectorAll(".timeline-description, .timeline-card-title, .timeline-meta")]
               .map((node) => {
                 const style = getComputedStyle(node);
@@ -10049,6 +10219,17 @@ const CANVAS_STATE = `(() => {
         if (!(timeline.prose > 0) || timeline.prose > timeline.width - 80) {
           failures.push(`${snapshot.width}: 正文 ${timeline.prose} 未比卡片 ${timeline.width} 收窄`);
         }
+        // Two columns, one reading order: the prose keeps the left column and 地点 / 关联角色
+        // sit to the right of it. A single-column card would pass every width above and
+        // still waste half the card.
+        const columns = timeline.columns;
+        if (!columns.place || !columns.prose) {
+          failures.push(`${snapshot.width}: 地点或正文不存在，无法判断分栏`);
+        } else {
+          if (columns.place.left <= columns.prose.right + 8) failures.push(`${snapshot.width}: 地点 ${columns.place.left} 未在正文右侧（正文到 ${columns.prose.right}）`);
+          if (columns.people && columns.people.left <= columns.prose.right + 8) failures.push(`${snapshot.width}: 关联角色未在正文右侧`);
+          if (Math.abs(columns.title.left - columns.prose.left) > 1) failures.push(`${snapshot.width}: 标题与正文左缘不齐`);
+        }
         if (world.sidebar !== 320) failures.push(`${snapshot.width}: 左栏 ${world.sidebar}`);
         if (world.gap !== 20) failures.push(`${snapshot.width}: 分栏间距 ${world.gap}`);
         // --container-form is the token the detail pane is capped by; 720 was a number
@@ -10063,7 +10244,7 @@ const CANVAS_STATE = `(() => {
         pass: failures.length === 0,
         detail: snapshots.map((snapshot) =>
           `${snapshot.width}：左右 ${snapshot.timeline.left}/${snapshot.timeline.right}、列宽 ${snapshot.timeline.width}、`
-          + `标题内缘 ${snapshot.timeline.innerLeft}、卡片 ${snapshot.timeline.width}、正文 ${snapshot.timeline.prose}（每行约 ${(snapshot.timeline.prose / (snapshot.timeline.proseFont || 1)).toFixed(0)} 字，字号 ${snapshot.timeline.proseFont}，上限 ${snapshot.timeline.proseMaxWidth}）；世界观 ${snapshot.world.sidebar}+${snapshot.world.detail}（间距 ${snapshot.world.gap}）、`
+          + `标题内缘 ${snapshot.timeline.innerLeft}、卡片 ${snapshot.timeline.width}、右栏 ${snapshot.timeline.columns.place ? "地点@" + snapshot.timeline.columns.place.left : "无地点"}、正文 ${snapshot.timeline.prose}（每行约 ${(snapshot.timeline.prose / (snapshot.timeline.proseFont || 1)).toFixed(0)} 字，字号 ${snapshot.timeline.proseFont}，上限 ${snapshot.timeline.proseMaxWidth}）；世界观 ${snapshot.world.sidebar}+${snapshot.world.detail}（间距 ${snapshot.world.gap}）、`
           + `正文 ${snapshot.world.body}（字号 ${snapshot.world.bodyFont}，「${snapshot.world.bodyText}」）、下方空白 ${snapshot.world.bottom}`,
         ).join(" ｜ ") + (failures.length ? `；问题：${failures.join("、")}` : ""),
       };

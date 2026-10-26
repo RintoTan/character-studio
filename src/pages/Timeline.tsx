@@ -503,8 +503,17 @@ export function Timeline({
                             empty half of a 1120px card used to be, and it keeps the
                             prose at its own measure instead of stretching to fill. */}
                         <div className="timeline-card-body">
+                          <h4 className="timeline-card-title">{event.title}</h4>
+                          {/* Where it happened is a fact about the event, so it sits next
+                              to the title and not under the last paragraph. One copy in
+                              the DOM: on a wide card it takes the right-hand column, and
+                              on a phone the reading order falls out of the source order
+                              (title → 地点 → 正文 → 关联角色) instead of being reassembled
+                              with `order`. */}
+                          {event.location && (
+                            <p className="timeline-meta timeline-card-place">地点：{event.location}</p>
+                          )}
                           <div className="timeline-card-main">
-                            <h4 className="timeline-card-title">{event.title}</h4>
                             {event.description && (
                               <>
                                 <p className="timeline-description">
@@ -525,7 +534,6 @@ export function Timeline({
                             )}
                           </div>
                           <aside className="timeline-card-aside">
-                            {event.location && <p className="timeline-meta">地点：{event.location}</p>}
                             <RelatedCharacters
                               characters={event.characterIds.flatMap((id) => {
                                 const character = characterById.get(id);

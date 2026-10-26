@@ -6358,6 +6358,10 @@ export function RelationshipGraph({
                     ))}
                   </div>
                 </div>
+                {/* The head is a drawing choice, not a fact about the relationship: a
+                    symmetric kind never draws one, and 无箭头 hides the head while the
+                    direction stays in the data and in 管理. */}
+                <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
                 <p className="graph-style-subhead">关系标签</p>
                 <div className="graph-label-controls" data-testid="edge-labels">
                     <div className="graph-panel-row">
@@ -6948,8 +6952,14 @@ export function RelationshipGraph({
               {/* Everything else, folded away: present when a session needs it, out of
           the way of the four controls above. Native <details> so the fold is a
           browser guarantee rather than a class that hides a live control. */}
-      <details className="graph-design-advanced">
+      <details className="graph-design-advanced" data-testid="design-advanced">
         <summary>高级选项</summary>
+        {/* Two questions, not one grid: how a line is drawn, and what the surface under
+            it looks like. They were six rows in a single two-column grid. */}
+        <div className="graph-style-section-head">
+          <strong>连线</strong>
+          <span>一条线怎么画出来</span>
+        </div>
         <div className="graph-style-grid">
 
           {/* Relationship words: on/off, how big, where along the line, and how
@@ -6964,6 +6974,12 @@ export function RelationshipGraph({
               <option value="straight">直线</option>
             </select>
           </label>
+        </div>
+        <div className="graph-style-section-head">
+          <strong>画布</strong>
+          <span>底色、网格与吸附</span>
+        </div>
+        <div className="graph-style-grid">
           <label>画布底色
             <input aria-label="画布底色" onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, background: event.target.value } })} type="color" value={style.canvas.background || "#f7f7f8"} />
           </label>
@@ -6993,11 +7009,6 @@ export function RelationshipGraph({
             <input aria-label="网格强度" max={0.8} min={0.05} onChange={(event) => patchStyle({ ...style, preset: "custom", canvas: { ...style.canvas, gridOpacity: Number(event.target.value) } }, "grid-opacity")} step={0.05} type="range" value={style.canvas.gridOpacity} />
           </label>
         </div>
-        {/* The head is a drawing choice, not a fact about the relationship: a
-            symmetric kind never draws one, and 无箭头 hides the head while the
-            direction stays in the data and in 管理. */}
-
-        <p className="graph-style-note">互为关系（友人、亲属等）不分方向，始终不画箭头。</p>
       </details>
 
               <button className="ghost-button" onClick={() => applyPreset("classic")} type="button">恢复整体画布默认外观</button>
