@@ -62,6 +62,7 @@
 | UI 风格 / 移动端 | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) 的 UI 章节 + `src/styles.css` |
 | 测试与发布 | [`docs/TESTING.md`](docs/TESTING.md)、[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) |
 | 某决定的来由 | [`docs/history/DECISIONS.md`](docs/history/DECISIONS.md) |
+| 产品往哪走 / 要不要做某功能 | [`docs/PRODUCT_VISION.md`](docs/PRODUCT_VISION.md)（规划，未批准开发） |
 
 ## 6. 提交约定
 

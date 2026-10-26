@@ -32,6 +32,7 @@
 | [`ACCEPTANCE.md`](ACCEPTANCE.md) | 验收分层、各轮截图索引与属性（当前/历史）、回归入口 | 查证据是否还算数 |
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Pages 子路径、CI、构建身份、发布与回滚、线上校验 | 发布或排查部署 |
 | [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) | 当前未解决 / 待验证的问题 | 修缺陷或确认观感是否已证实 |
+| [`PRODUCT_VISION.md`](PRODUCT_VISION.md) | **长期产品定位、三层理念、方向 A–E、边界与验收目标** | 判断某个方向该不该做、和什么有依赖 |
 | [`ROADMAP.md`](ROADMAP.md) | 近期与长期计划、已取消与已替代的项 | 决定下一步做什么 |
 | [`DEVELOPMENT_LOG.md`](DEVELOPMENT_LOG.md) | Sprint 38.2 之前的过程原文、关键修复与口径更正 | 查某次排查的原始经过 |
 | [`history/PROJECT_HISTORY.md`](history/PROJECT_HISTORY.md) | 历史主线、编号规范（Version/Sprint/Phase）、缺口清单 | 确认「哪个版本发生了什么」 |
